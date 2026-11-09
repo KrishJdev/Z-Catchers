@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { DateTime } from 'luxon';
 import { verifyPin, getRequestSessionMemberId } from '@/lib/auth';
-import { calculateSleepStreak } from '@/lib/sleepEngine';
+import { calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
+import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
 
 export async function GET(request: Request) {
   try {
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
     }
 
     const sleeperNow = DateTime.utc().setZone(toValidLuxonZone(member.timezone));
-    const todayStr = sleeperNow.toISODate();
+    const cycleDate = getSleepCycleDate(member, DateTime.utc());
 
     // Fetch member's recent check-ins
     const { data: logs } = await supabaseAdmin
@@ -37,14 +38,14 @@ export async function GET(request: Request) {
       .limit(60);
 
     const checkinDates = (logs || []).map((l: { local_date: string }) => l.local_date);
-    const isInBed = checkinDates.includes(todayStr || '');
+    const isInBed = checkinDates.includes(cycleDate);
     const streakDays = calculateSleepStreak(checkinDates, sleeperNow);
 
     return NextResponse.json({
       member_id: member.id,
       is_in_bed: isInBed,
       streak_days: streakDays,
-      local_date: todayStr,
+      local_date: cycleDate,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -77,10 +78,10 @@ export async function POST(request: Request) {
     // 1. Session must match target memberId, OR
     // 2. A valid PIN must be provided matching member's passcode_hash.
     const sessionMemberId = getRequestSessionMemberId(request);
-    const isSessionMatch = sessionMemberId && sessionMemberId === member.id;
-    const isPinMatch = pin && member.passcode_hash && verifyPin(pin.trim(), member.passcode_hash);
+    const isSessionMatch = Boolean(sessionMemberId && sessionMemberId === member.id);
 
-    if (!isSessionMatch && !isPinMatch) {
+    let isPinMatch = false;
+    if (!isSessionMatch) {
       if (sessionMemberId && sessionMemberId !== member.id) {
         return NextResponse.json(
           {
@@ -91,6 +92,35 @@ export async function POST(request: Request) {
         );
       }
 
+      if (pin !== undefined && pin !== null) {
+        if (typeof pin !== 'string') {
+          return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
+        }
+        const clientIp = getClientIp(request);
+        const rateCheck = checkPinRateLimit(clientIp, member.id);
+        if (!rateCheck.allowed) {
+          return NextResponse.json(
+            {
+              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+            },
+            {
+              status: 429,
+              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+            }
+          );
+        }
+
+        const cleanPin = pin.trim();
+        if (member.passcode_hash && verifyPin(cleanPin, member.passcode_hash)) {
+          isPinMatch = true;
+          resetPinFailure(clientIp, member.id);
+        } else {
+          recordPinFailure(clientIp, member.id);
+        }
+      }
+    }
+
+    if (!isSessionMatch && !isPinMatch) {
       return NextResponse.json(
         {
           error: member.passcode_hash
@@ -104,7 +134,7 @@ export async function POST(request: Request) {
 
     const nowUtc = DateTime.utc();
     const sleeperNow = nowUtc.setZone(toValidLuxonZone(member.timezone));
-    const localDate = sleeperNow.toISODate();
+    const localDate = getSleepCycleDate(member, nowUtc);
 
     if (!localDate) {
       return NextResponse.json({ error: 'Failed to compute local date' }, { status: 500 });

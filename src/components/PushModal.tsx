@@ -24,6 +24,7 @@ import {
   setStoredMemberId,
   isPushSupported,
   getNotificationPermission,
+  getStoredAuthToken,
 } from '@/lib/pushClient';
 
 interface PushModalProps {
@@ -145,14 +146,13 @@ export function PushModal({
     setFeedback(null);
 
     try {
+      const authToken = getStoredAuthToken();
       const res = await fetch('/api/push/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          member_id: targetMemberId,
-          title: '🦊 Z Catchers: Test Bedtime Alert',
-          body: 'Success! Your Sleep Shield and push notifications are active.',
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
       });
 
       const data = await res.json();

@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
-import { hashPin, verifyPin, createSessionToken } from '@/lib/auth';
+import { hashPin, verifyPin, createSessionToken, verifyModPasscode } from '@/lib/auth';
+import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { member_id, username, pin } = body;
+    const { member_id, username, pin, mod_passcode } = body;
 
     const cleanUsername = typeof username === 'string' ? username.trim() : '';
     const cleanMemberId = typeof member_id === 'string' ? member_id.trim() : '';
@@ -22,6 +23,22 @@ export async function POST(request: Request) {
     }
 
     const cleanPin = pin.trim();
+    const clientIp = getClientIp(request);
+    const targetIdentifier = cleanMemberId || cleanUsername.toLowerCase();
+
+    // Rate limit check before verifying PIN
+    const rateCheck = checkPinRateLimit(clientIp, targetIdentifier);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many failed PIN attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+        }
+      );
+    }
 
     // 1. Fetch member from Supabase by member_id or case-insensitive username
     let query = supabaseAdmin.from('members').select('*').eq('is_active', true);
@@ -44,23 +61,43 @@ export async function POST(request: Request) {
 
     // 2. PIN validation or first-time claim
     if (!currentMember.passcode_hash) {
-      // First-time profile claiming: set the PIN
+      // Require trusted authorization before enrolling/claiming unconfigured moderator accounts
+      if (currentMember.role === 'moderator') {
+        const isModAuthorized = verifyModPasscode(mod_passcode);
+        if (!isModAuthorized) {
+          recordPinFailure(clientIp, currentMember.id);
+          return NextResponse.json(
+            { error: 'Claiming an initial moderator profile requires the moderator secret passcode.' },
+            { status: 403 }
+          );
+        }
+      }
+
+      // First-time profile claiming: atomic update requiring passcode_hash to still be null
       const newHash = hashPin(cleanPin);
-      const { error: updateErr } = await supabaseAdmin
+      const { data: updatedRows, error: updateErr } = await supabaseAdmin
         .from('members')
         .update({ passcode_hash: newHash })
-        .eq('id', currentMember.id);
+        .eq('id', currentMember.id)
+        .is('passcode_hash', null)
+        .select('id');
 
-      if (updateErr) {
-        return NextResponse.json({ error: 'Failed to claim profile with PIN.' }, { status: 500 });
+      if (updateErr || !updatedRows || updatedRows.length === 0) {
+        return NextResponse.json(
+          { error: 'Profile has already been claimed or could not be updated. Please try logging in.' },
+          { status: 409 }
+        );
       }
       currentMember.passcode_hash = newHash;
+      resetPinFailure(clientIp, currentMember.id);
     } else {
       // Verify existing PIN
       const isMatch = verifyPin(cleanPin, currentMember.passcode_hash);
       if (!isMatch) {
+        recordPinFailure(clientIp, currentMember.id);
         return NextResponse.json({ error: 'Invalid PIN. Please check your PIN and try again.' }, { status: 401 });
       }
+      resetPinFailure(clientIp, currentMember.id);
     }
 
     // 3. Generate session token

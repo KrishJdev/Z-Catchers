@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T02:14:00+05:30  
+> **Last Updated:** 2026-11-10T02:38:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `6aa7c11`  
+> **Latest Commit:** Pending commit on `krish`  
 > **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 21 routes | All auth, security, E2E & GMT privacy tests passing)
 
@@ -256,6 +256,32 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * Verified `npx tsc --noEmit` clean (0 errors).
   * Verified `npm run build` succeeds cleanly in isolated environment without environment variables, generating all 21 routes.
 
+### Phase 14: Comprehensive CodeRabbit Security, Hook, and Architectural Hardening
+* **React Rules of Hooks Fix (`src/components/MyScheduleModal.tsx`):**
+  * Moved `pendingCooldownNotice` and `previewTime` `useMemo` hooks above the `if (!isOpen) return null;` early return, preventing render crashes when modal opens/closes.
+* **Production Secret Fail-Closed Governance (`src/lib/auth.ts`):**
+  * Hardened `PIN_SALT` and `SESSION_SECRET` to fail closed in production when environment variables are omitted, while retaining dev fallbacks for local test suites.
+* **PIN Brute-Force Rate Limiting (`src/lib/rateLimit.ts`):**
+  * Created sliding-window rate limiter tracking failed attempts per IP and per member target (5 failed attempts per 15m window).
+  * Enforced rate limiting and strict string input validation across `src/app/api/auth/login`, `src/app/api/members/in-bed`, `src/app/api/members/update-schedule`, `src/app/api/members/cancel-pending`, and `src/app/api/push/subscribe`.
+* **Push Testing Endpoint Hardening (`src/app/api/push/test/route.ts` & `src/components/PushModal.tsx`):**
+  * Enforced session authentication (`getRequestSessionMemberId`); restricted test notifications strictly to the caller's registered subscriptions and replaced arbitrary payload inputs with fixed safe system alerts.
+* **Cron Authorization Hardening (`src/app/api/cron/dispatch-notifications/route.ts`):**
+  * Enforced fail-closed behavior in production when `CRON_SECRET` is unset; removed query parameter secret exposure in favor of timing-safe `Authorization: Bearer` and `x-cron-secret` headers.
+* **Moderator Account Enrollment & Atomic PIN Claiming (`src/app/api/auth/login/route.ts`):**
+  * Required moderator master passcode (`mod_passcode`) verification before enrolling unconfigured moderator profiles.
+  * Implemented atomic CAS updates (`.is('passcode_hash', null)`) to eliminate race conditions during profile claiming.
+* **Midnight Wrap-Around Sleep Cycle Alignment (`src/lib/sleepEngine.ts`):**
+  * Implemented `getSleepCycleDate` ensuring members with post-midnight bedtimes (hour < 12) have check-ins, suppression lookups, and `is_in_bed` status mapped consistently to the preceding sleep session date.
+* **PostgREST Row Cap Pagination (`src/lib/db.ts` & `src/app/api/members/route.ts`):**
+  * Implemented `fetchAllNotificationLogs` using `.range()` pagination to prevent row truncation on high-volume notification log tables.
+* **Due-and-Not-Yet-Logged Cron Dispatch Engine (`src/lib/cronDispatcher.ts`):**
+  * Replaced fragile narrow-minute window checks with robust due-and-not-yet-logged evaluation for 30m wind-down (`-30 <= diff < 0`) and bedtime hit (`0 <= diff < 60`), guaranteeing delivery under 1m, 5m, or jittered schedulers with zero duplicate dispatches. Aborts execution if log prefetch errors occur.
+* **CI/CD Script Injection Prevention (`.github/workflows/jira-transition.yml`):**
+  * Passed `${{ github.event.inputs.* }}` through quoted environment variables to eliminate shell template injection risks.
+* **Safe Demo Member Purging (`src/app/api/mod/route.ts` & `scripts/purge-demo-members.mjs`):**
+  * Filtered demo profile deletions by both username and demo handle fingerprint (`aoi_jp`, `sarah_ny`, `marcus_ldn`, `arjun_in`) to prevent deleting real users.
+
 ---
 
 ## 5. Current File Tree & Key Components
@@ -372,8 +398,12 @@ d:\Projects\Z Catchers\
 All core features, Phase 10 security hardening, and Phase 11 PWA reliability/crons are complete. The codebase is now ready for production deployment and user testing.
 
 1. **Production Environment Configuration:**
-   * Set required production environment variables: `DISCORD_COMMUNITY_WEBHOOK_URL`, `CRON_SECRET`, `MOD_SECRET_PASSCODE`, `SESSION_SECRET`, `PIN_SALT`.
-   * Configure 1-minute cron ping (e.g. cron-job.org or GitHub Actions fallback) if deploying on Vercel Hobby.
+   * Set required production environment variables (see `.env.example` for the full template):
+     * Database & Auth: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+     * Web Push & VAPID: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+     * Security & Sessions: `SESSION_SECRET`, `PIN_SALT`, `MOD_SECRET_PASSCODE`, `CRON_SECRET`
+     * Integrations: `DISCORD_COMMUNITY_WEBHOOK_URL`
+   * Configure an external cron scheduler (e.g. cron-job.org, EasyCron, or Crontap) to send a GET request with `Authorization: Bearer <CRON_SECRET>` to `/api/cron/dispatch-notifications` every 1 to 5 minutes when deploying on Vercel Hobby (or upgrade to Vercel Pro for native per-minute cron scheduling). Dedicated HTTP schedulers are recommended over GitHub Actions to avoid scheduling jitter.
 2. **Community Roster & Friend Onboarding:**
    * Demo profiles have been purged from Supabase. Friends can now visit the app URL directly, click **"Join Den"**, input their username, local bedtime, auto-detected timezone, Discord journal thread link, and 4-digit PIN.
    * To restore demo seed profiles for staging/testing at any time, run `node --env-file=.env.local scripts/seed-demo-members.mjs`.

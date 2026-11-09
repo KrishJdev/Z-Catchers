@@ -13,11 +13,13 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 async function run() {
   console.log('🧹 Purging pre-seeded demo profiles (Aoi, SarahK, Marcus, Arjun)...');
   const seedNames = ['Aoi', 'SarahK', 'Marcus', 'Arjun'];
+  const seedHandles = ['aoi_jp', 'sarah_ny', 'marcus_ldn', 'arjun_in'];
 
   const { data: found, error: findErr } = await supabaseAdmin
     .from('members')
-    .select('id, discord_username')
-    .in('discord_username', seedNames);
+    .select('id, discord_username, discord_handle')
+    .in('discord_username', seedNames)
+    .in('discord_handle', seedHandles);
 
   if (findErr) {
     console.error('❌ Error finding members:', findErr.message);
@@ -30,11 +32,12 @@ async function run() {
   }
 
   console.log(`Found ${found.length} demo profiles to remove:`, found.map(m => m.discord_username).join(', '));
+  const seedIds = found.map(m => m.id);
 
   const { error: delErr } = await supabaseAdmin
     .from('members')
     .delete()
-    .in('discord_username', seedNames);
+    .in('id', seedIds);
 
   if (delErr) {
     console.error('❌ Error deleting demo profiles:', delErr.message);

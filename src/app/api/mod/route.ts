@@ -548,10 +548,32 @@ export async function POST(request: Request) {
     // 9. Purge Demo Seed Members ('Aoi', 'SarahK', 'Marcus', 'Arjun')
     if (action === 'purge_seed_members') {
       const seedNames = ['Aoi', 'SarahK', 'Marcus', 'Arjun'];
+      const seedHandles = ['aoi_jp', 'sarah_ny', 'marcus_ldn', 'arjun_in'];
+
+      // Match demo profiles specifically by name AND demo handle to protect real users
+      const { data: candidates, error: findErr } = await supabaseAdmin
+        .from('members')
+        .select('id, discord_username, discord_handle')
+        .in('discord_username', seedNames)
+        .in('discord_handle', seedHandles);
+
+      if (findErr) {
+        return NextResponse.json({ error: findErr.message }, { status: 500 });
+      }
+
+      const seedIds = (candidates || []).map((m: { id: string }) => m.id);
+      if (seedIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          message: 'No demo seed profiles found to purge.',
+          purged: [],
+        });
+      }
+
       const { data: deleted, error: purgeErr } = await supabaseAdmin
         .from('members')
         .delete()
-        .in('discord_username', seedNames)
+        .in('id', seedIds)
         .select('id, discord_username');
 
       if (purgeErr) {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db';
 import { getRequestSessionMemberId, verifyPin } from '@/lib/auth';
+import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
 
 export async function POST(request: Request) {
   try {
@@ -65,7 +66,36 @@ export async function POST(request: Request) {
     // Security Gate:
     // Must be authenticated via session OR provide valid PIN matching member's passcode_hash
     const isSessionMatch = Boolean(sessionMemberId && sessionMemberId === member.id);
-    const isPinMatch = Boolean(pin && member.passcode_hash && verifyPin(pin.trim(), member.passcode_hash));
+    let isPinMatch = false;
+
+    if (!isSessionMatch) {
+      if (pin !== undefined && pin !== null) {
+        if (typeof pin !== 'string') {
+          return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
+        }
+        const clientIp = getClientIp(request);
+        const rateCheck = checkPinRateLimit(clientIp, member.id);
+        if (!rateCheck.allowed) {
+          return NextResponse.json(
+            {
+              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+            },
+            {
+              status: 429,
+              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+            }
+          );
+        }
+
+        const cleanPin = pin.trim();
+        if (member.passcode_hash && verifyPin(cleanPin, member.passcode_hash)) {
+          isPinMatch = true;
+          resetPinFailure(clientIp, member.id);
+        } else {
+          recordPinFailure(clientIp, member.id);
+        }
+      }
+    }
 
     if (!isSessionMatch && !isPinMatch) {
       return NextResponse.json(

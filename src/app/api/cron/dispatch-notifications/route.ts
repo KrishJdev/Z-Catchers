@@ -1,27 +1,42 @@
+import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { executeNotificationDispatcher } from '@/lib/cronDispatcher';
 
 function isAuthorized(request: Request): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return true; // If not configured, allow local/dev execution
+  const isProd = process.env.NODE_ENV === 'production';
+  const cronSecret = process.env.CRON_SECRET?.trim();
 
+  if (!cronSecret) {
+    if (isProd) {
+      console.warn('CRON_SECRET is not configured in production. Dispatcher access disabled.');
+      return false; // Fail closed in production
+    }
+    return true; // Allow local dev testing when secret unset
+  }
+
+  // 1. Authorization: Bearer <cronSecret>
   const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader === `Bearer ${cronSecret}`) {
-    return true;
+  let providedToken: string | null = null;
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+    providedToken = authHeader.slice(7).trim();
   }
 
-  // Also check x-cron-secret header or url parameter
-  const secretHeader = request.headers.get('x-cron-secret');
-  if (secretHeader && secretHeader === cronSecret) {
-    return true;
+  // 2. x-cron-secret header
+  if (!providedToken) {
+    providedToken = request.headers.get('x-cron-secret')?.trim() || null;
   }
 
-  const url = new URL(request.url);
-  if (url.searchParams.get('secret') === cronSecret) {
-    return true;
+  if (!providedToken) {
+    return false;
   }
 
-  return false;
+  try {
+    const expectedHash = crypto.createHash('sha256').update(cronSecret).digest();
+    const actualHash = crypto.createHash('sha256').update(providedToken).digest();
+    return crypto.timingSafeEqual(expectedHash, actualHash);
+  } catch {
+    return false;
+  }
 }
 
 export async function GET(request: Request) {

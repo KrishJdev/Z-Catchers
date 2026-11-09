@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
+import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
 export async function POST(request: Request) {
@@ -27,12 +28,28 @@ export async function POST(request: Request) {
     const isModerator = verifyModPasscode(mod_passcode);
 
     if (!isModerator && member.passcode_hash) {
-      if (!pin || !verifyPin(pin, member.passcode_hash)) {
+      const clientIp = getClientIp(request);
+      const rateCheck = checkPinRateLimit(clientIp, member.id);
+      if (!rateCheck.allowed) {
+        return NextResponse.json(
+          {
+            error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+          },
+          {
+            status: 429,
+            headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+          }
+        );
+      }
+
+      if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), member.passcode_hash)) {
+        recordPinFailure(clientIp, member.id);
         return NextResponse.json(
           { error: 'Invalid PIN. PIN is required to cancel your pending change.' },
           { status: 401 }
         );
       }
+      resetPinFailure(clientIp, member.id);
     }
 
     const { data: updatedMember, error: updateError } = await supabaseAdmin

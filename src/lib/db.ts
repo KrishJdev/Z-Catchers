@@ -61,7 +61,41 @@ export interface PushSubscriptionRecord {
 export interface NotificationLog {
   id: string;
   member_id: string;
-  notification_type: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY';
+  notification_type: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY' | string;
   local_date: string; // "YYYY-MM-DD"
   dispatched_at: string;
+}
+
+/**
+ * Safely fetches all rows matching a query despite PostgREST's default 1000-row cap,
+ * paging through results using .range(from, to).
+ */
+export async function fetchAllNotificationLogs<T = any>(
+  builderFn: (query: any) => any,
+  pageSize = 1000
+): Promise<{ data: T[]; error: any }> {
+  let page = 0;
+  const allRows: T[] = [];
+
+  while (true) {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    const baseQuery = supabaseAdmin.from('notification_logs');
+    const query = builderFn(baseQuery).range(from, to);
+
+    const { data, error } = (await query) as { data: T[] | null; error: any };
+    if (error) {
+      return { data: allRows, error };
+    }
+    if (!data || data.length === 0) {
+      break;
+    }
+    allRows.push(...data);
+    if (data.length < pageSize) {
+      break;
+    }
+    page++;
+  }
+
+  return { data: allRows, error: null };
 }

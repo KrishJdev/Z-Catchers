@@ -1,20 +1,42 @@
 import crypto from 'crypto';
 import type { Member } from '@/lib/db';
 
-const PIN_SALT = process.env.PIN_SALT || 'z_catchers_salt_2026_cozy_den';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'z_catchers_session_secret_2026_warm_dark';
+export function getPinSalt(): string {
+  const isProd = process.env.NODE_ENV === 'production';
+  const salt = process.env.PIN_SALT;
+  if (!salt) {
+    if (isProd) {
+      throw new Error('PIN_SALT environment variable is required in production.');
+    }
+    return 'z_catchers_salt_dev_only';
+  }
+  return salt;
+}
+
+export function getSessionSecret(): string {
+  const isProd = process.env.NODE_ENV === 'production';
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    if (isProd) {
+      throw new Error('SESSION_SECRET environment variable is required in production.');
+    }
+    return 'z_catchers_session_secret_dev_only';
+  }
+  return secret;
+}
 
 /**
  * Hash a member's 4-digit PIN for safe database storage.
  */
-export function hashPin(pin: string, salt = PIN_SALT): string {
-  return crypto.createHmac('sha256', salt).update(pin.trim()).digest('hex');
+export function hashPin(pin: string, salt?: string): string {
+  const activeSalt = salt || getPinSalt();
+  return crypto.createHmac('sha256', activeSalt).update(pin.trim()).digest('hex');
 }
 
 /**
  * Verifies a provided PIN against the member's stored passcode hash.
  */
-export function verifyPin(pin: string, storedHash: string | null, salt = PIN_SALT): boolean {
+export function verifyPin(pin: string, storedHash: string | null, salt?: string): boolean {
   if (!pin || !storedHash) return false;
   try {
     const computed = hashPin(pin, salt);
@@ -53,6 +75,7 @@ export function verifyModPasscode(passcode: string | null | undefined): boolean 
  * Valid for 30 days.
  */
 export function createSessionToken(memberId: string): string {
+  const secret = getSessionSecret();
   const payload = Buffer.from(
     JSON.stringify({
       memberId,
@@ -61,7 +84,7 @@ export function createSessionToken(memberId: string): string {
   ).toString('base64url');
 
   const signature = crypto
-    .createHmac('sha256', SESSION_SECRET)
+    .createHmac('sha256', secret)
     .update(payload)
     .digest('base64url');
 
@@ -77,12 +100,13 @@ export function verifySessionToken(token: string | null | undefined): { memberId
   if (parts.length !== 2) return null;
   const [payload, signature] = parts;
 
-  const expectedSignature = crypto
-    .createHmac('sha256', SESSION_SECRET)
-    .update(payload)
-    .digest('base64url');
-
   try {
+    const secret = getSessionSecret();
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(payload)
+      .digest('base64url');
+
     const sigBuf = Buffer.from(signature);
     const expBuf = Buffer.from(expectedSignature);
     if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {

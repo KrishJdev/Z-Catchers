@@ -329,6 +329,43 @@ export function getNightBedtimeDateTime(
 }
 
 /**
+ * Computes the canonical sleep cycle night date ("YYYY-MM-DD") for a member at a given moment.
+ * If the member's target bedtime hour < 12 (i.e. after midnight, e.g. 01:30 AM),
+ * the night date belongs to the prior evening (targetBedtime minus 1 day).
+ * This ensures check-ins before midnight or in the early hours map to the same sleep session.
+ */
+export function getSleepCycleDate(member: Member, nowUtc = DateTime.utc()): string {
+  const normalizedSleeperZone = toValidLuxonZone(member.timezone);
+  const sleeperZone = DateTime.now().setZone(normalizedSleeperZone).isValid
+    ? normalizedSleeperZone
+    : 'UTC';
+  const sleeperNow = nowUtc.setZone(sleeperZone);
+
+  const candidateNights = [
+    sleeperNow.minus({ days: 2 }),
+    sleeperNow.minus({ days: 1 }),
+    sleeperNow,
+    sleeperNow.plus({ days: 1 }),
+    sleeperNow.plus({ days: 2 }),
+  ];
+
+  const candidates = candidateNights.map((nightDate) =>
+    getNightBedtimeDateTime(member, nightDate)
+  );
+
+  const closest = candidates.reduce((best, curr) =>
+    Math.abs(curr.bedtimeDateTime.diff(sleeperNow, 'minutes').minutes) <
+    Math.abs(best.bedtimeDateTime.diff(sleeperNow, 'minutes').minutes)
+      ? curr
+      : best
+  );
+
+  const target = closest.bedtimeDateTime;
+  const nightDt = target.hour < 12 ? target.minus({ days: 1 }) : target;
+  return nightDt.toISODate() || sleeperNow.toISODate()!;
+}
+
+/**
  * Computes a member's sleep bucket, viewer-adjusted bedtime, and sleep shield state.
  * Supports distinct weekend hours for Friday night and Saturday night bedtimes.
  */

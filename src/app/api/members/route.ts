@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { supabase, supabaseAdmin, Member } from '@/lib/db';
-import { checkCooldownPromotion, calculateSleepStreak } from '@/lib/sleepEngine';
+import { supabase, supabaseAdmin, Member, fetchAllNotificationLogs } from '@/lib/db';
+import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
 import { hashPin, sanitizeMember, createSessionToken } from '@/lib/auth';
 import { toValidLuxonZone, isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import { DateTime } from 'luxon';
@@ -21,31 +21,31 @@ export async function GET() {
 
     const nowUtc = DateTime.utc();
 
-    // Query recent check-ins for streak calculation and today's status
-    const sixtyDaysAgo = nowUtc.minus({ days: 60 }).toISODate();
-    const { data: inBedLogs } = await supabaseAdmin
-      .from('notification_logs')
-      .select('member_id, local_date')
-      .eq('notification_type', 'IN_BED_EARLY')
-      .gte('local_date', sixtyDaysAgo || '2026-01-01');
+    // Query recent check-ins for streak calculation and today's status (paginated to avoid PostgREST row cap)
+    const sixtyDaysAgo = nowUtc.minus({ days: 60 }).toISODate() || '2026-01-01';
+    const { data: inBedLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string }>((q) =>
+      q.select('member_id, local_date')
+        .eq('notification_type', 'IN_BED_EARLY')
+        .gte('local_date', sixtyDaysAgo)
+    );
 
     const checkinsByMember = new Map<string, string[]>();
-    for (const log of (inBedLogs || []) as { member_id: string; local_date: string }[]) {
+    for (const log of (inBedLogs || [])) {
       const dates = checkinsByMember.get(log.member_id) || [];
       dates.push(log.local_date);
       checkinsByMember.set(log.member_id, dates);
     }
 
-    // Query recent nag assists for today's active count
-    const twoDaysAgo = nowUtc.minus({ days: 2 }).toISODate();
-    const { data: nagLogs } = await supabaseAdmin
-      .from('notification_logs')
-      .select('member_id, local_date')
-      .like('notification_type', 'NAG_ASSIST:%')
-      .gte('local_date', twoDaysAgo || '2026-01-01');
+    // Query recent nag assists for today's active count (paginated to avoid PostgREST row cap)
+    const twoDaysAgo = nowUtc.minus({ days: 2 }).toISODate() || '2026-01-01';
+    const { data: nagLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string }>((q) =>
+      q.select('member_id, local_date')
+        .like('notification_type', 'NAG_ASSIST:%')
+        .gte('local_date', twoDaysAgo)
+    );
 
     const nagAssistsByMemberAndDate = new Map<string, number>();
-    for (const log of (nagLogs || []) as { member_id: string; local_date: string }[]) {
+    for (const log of (nagLogs || [])) {
       const key = `${log.member_id}_${log.local_date}`;
       nagAssistsByMemberAndDate.set(key, (nagAssistsByMemberAndDate.get(key) || 0) + 1);
     }
@@ -77,7 +77,7 @@ export async function GET() {
 
       // Check-in & streak computation
       const sleeperNow = nowUtc.setZone(toValidLuxonZone(activeMember.timezone));
-      const localDateStr = sleeperNow.toISODate() || '';
+      const localDateStr = getSleepCycleDate(activeMember, nowUtc);
       const memberCheckins = checkinsByMember.get(activeMember.id) || [];
       const is_in_bed = memberCheckins.includes(localDateStr);
       const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);

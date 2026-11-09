@@ -126,22 +126,6 @@ export function MyScheduleModal({
     }
   }, [isOpen, members, selectedMemberId]);
 
-  if (!isOpen) return null;
-
-  // Validate journal URL
-  const isJournalValid = journalUrl.trim() === '' || DISCORD_JOURNAL_REGEX.test(journalUrl.trim());
-
-  // Check if schedule (bedtime, wake time, timezone, weekend hours) has changed from active values
-  const hasScheduleChanged = activeMember
-    ? bedtime !== activeMember.bedtime_local ||
-      formatGmtOffset(timezone) !== formatGmtOffset(activeMember.timezone) ||
-      wakeTime !== activeMember.wake_time_local ||
-      (enableWeekendHours
-        ? weekendBedtime !== (activeMember.weekend_bedtime_local || '') ||
-          weekendWakeTime !== (activeMember.weekend_wake_time_local || '')
-        : Boolean(activeMember.weekend_bedtime_local))
-    : false;
-
   // Check if pending cooldown is currently active on selected member
   const pendingCooldownNotice = useMemo(() => {
     if (!activeMember || !activeMember.pending_effective_at) return null;
@@ -176,6 +160,22 @@ export function MyScheduleModal({
       return { sleeper: bedtime, viewer: bedtime };
     }
   }, [bedtime, timezone, viewerTimezone]);
+
+  if (!isOpen) return null;
+
+  // Validate journal URL
+  const isJournalValid = journalUrl.trim() === '' || DISCORD_JOURNAL_REGEX.test(journalUrl.trim());
+
+  // Check if schedule (bedtime, wake time, timezone, weekend hours) has changed from active values
+  const hasScheduleChanged = activeMember
+    ? bedtime !== activeMember.bedtime_local ||
+      formatGmtOffset(timezone) !== formatGmtOffset(activeMember.timezone) ||
+      wakeTime !== activeMember.wake_time_local ||
+      (enableWeekendHours
+        ? weekendBedtime !== (activeMember.weekend_bedtime_local || '') ||
+          weekendWakeTime !== (activeMember.weekend_wake_time_local || '')
+        : Boolean(activeMember.weekend_bedtime_local))
+    : false;
 
   // Handle PIN Unlock
   const handleUnlockProfile = (e: React.FormEvent) => {

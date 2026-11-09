@@ -34,9 +34,12 @@ jobs:
           JIRA_DOMAIN: krishjaiswal2182003.atlassian.net
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ISSUE_KEY: ${{ github.event.inputs.issue_key }}
+          INPUT_TARGET_STATUS: ${{ github.event.inputs.target_status }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            node scripts/transition-jira-issue.mjs "${{ github.event.inputs.issue_key }}" "${{ github.event.inputs.target_status }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            node scripts/transition-jira-issue.mjs "$INPUT_ISSUE_KEY" "$INPUT_TARGET_STATUS"
           else
             cat .jira-transition
             while IFS= read -r line || [ -n "$line" ]; do

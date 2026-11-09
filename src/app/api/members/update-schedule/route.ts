@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { hashPin, verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
 import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
+import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -48,32 +49,55 @@ export async function POST(request: Request) {
     let updatedPasscodeHash = currentMember.passcode_hash;
 
     if (!isModeratorOverride) {
+      const clientIp = getClientIp(request);
       if (!currentMember.passcode_hash) {
+        if (currentMember.role === 'moderator') {
+          return NextResponse.json(
+            { error: 'Claiming an initial moderator profile requires moderator authorization.' },
+            { status: 403 }
+          );
+        }
         // Unclaimed profile: user must set a 4-digit PIN to claim and protect it
-        if (!pin || pin.length < 4 || !/^\d{4,6}$/.test(pin)) {
+        if (!pin || typeof pin !== 'string' || pin.trim().length < 4 || !/^\d{4,6}$/.test(pin.trim())) {
           return NextResponse.json(
             { error: 'Please choose a 4-to-6 digit PIN to claim and protect your profile.' },
             { status: 400 }
           );
         }
-        updatedPasscodeHash = hashPin(pin);
+        updatedPasscodeHash = hashPin(pin.trim());
       } else {
-        // Profile already claimed: verify PIN
-        if (!pin || !verifyPin(pin, currentMember.passcode_hash)) {
+        // Profile already claimed: verify PIN with rate limit protection
+        const rateCheck = checkPinRateLimit(clientIp, currentMember.id);
+        if (!rateCheck.allowed) {
+          return NextResponse.json(
+            {
+              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+            },
+            {
+              status: 429,
+              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+            }
+          );
+        }
+
+        if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), currentMember.passcode_hash)) {
+          recordPinFailure(clientIp, currentMember.id);
           return NextResponse.json(
             { error: 'Invalid 4-digit PIN. Please enter your correct PIN.' },
             { status: 401 }
           );
         }
+        resetPinFailure(clientIp, currentMember.id);
+
         // If updating PIN
         if (new_pin) {
-          if (!/^\d{4,6}$/.test(new_pin)) {
+          if (typeof new_pin !== 'string' || !/^\d{4,6}$/.test(new_pin.trim())) {
             return NextResponse.json(
               { error: 'New PIN must be 4 to 6 digits.' },
               { status: 400 }
             );
           }
-          updatedPasscodeHash = hashPin(new_pin);
+          updatedPasscodeHash = hashPin(new_pin.trim());
         }
       }
     }

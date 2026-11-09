@@ -1,56 +1,38 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, PushSubscriptionRecord } from '@/lib/db';
+import { supabaseAdmin } from '@/lib/db';
 import { sendPushNotification } from '@/lib/pushServer';
+import { getRequestSessionMemberId } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const {
-      member_id,
-      endpoint,
-      subscription,
-      title = '🦊 Z Catchers: Test Alert',
-      body: notificationBody = 'Test notification from Z Catchers! Your Sleep Shield is configured.',
-      url = '/',
-    } = body;
-
-    let targets: { endpoint: string; p256dh_key: string; auth_key: string }[] = [];
-
-    if (subscription?.endpoint && subscription?.keys?.p256dh && subscription?.keys?.auth) {
-      targets.push({
-        endpoint: subscription.endpoint,
-        p256dh_key: subscription.keys.p256dh,
-        auth_key: subscription.keys.auth,
-      });
-    } else if (endpoint) {
-      const { data, error } = await supabaseAdmin
-        .from('push_subscriptions')
-        .select('*')
-        .eq('endpoint', endpoint);
-
-      if (error || !data || data.length === 0) {
-        return NextResponse.json({ error: 'Subscription endpoint not found.' }, { status: 404 });
-      }
-      targets = data;
-    } else if (member_id) {
-      const { data, error } = await supabaseAdmin
-        .from('push_subscriptions')
-        .select('*')
-        .eq('member_id', member_id);
-
-      if (error || !data || data.length === 0) {
-        return NextResponse.json(
-          { error: 'No active push subscriptions registered for this member.' },
-          { status: 404 }
-        );
-      }
-      targets = data;
-    } else {
+    const sessionMemberId = getRequestSessionMemberId(request);
+    if (!sessionMemberId) {
       return NextResponse.json(
-        { error: 'Must provide subscription, endpoint, or member_id.' },
-        { status: 400 }
+        { error: 'Unauthorized. You must be logged in to send a test notification.' },
+        { status: 401 }
       );
     }
+
+    // Only resolve targets registered to the authenticated session member
+    const { data: targets, error } = await supabaseAdmin
+      .from('push_subscriptions')
+      .select('*')
+      .eq('member_id', sessionMemberId);
+
+    if (error || !targets || targets.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            'No active push subscriptions registered for your profile. Please enable notifications on this device first.',
+        },
+        { status: 404 }
+      );
+    }
+
+    // Fixed safe notification payload and same-origin URL (prevent arbitrary content injection)
+    const title = '🦊 Z Catchers: Test Bedtime Alert';
+    const body = 'Success! Your Sleep Shield and push notifications are active.';
+    const url = '/';
 
     let delivered = 0;
     let failed = 0;
@@ -67,7 +49,7 @@ export async function POST(request: Request) {
         },
         {
           title,
-          body: notificationBody,
+          body,
           url,
         }
       );
@@ -76,28 +58,25 @@ export async function POST(request: Request) {
         delivered++;
       } else {
         failed++;
-        // Auto-prune 404 / 410 dead subscriptions
         if (result.statusCode === 404 || result.statusCode === 410) {
           deadEndpoints.push(target.endpoint);
         }
       }
     }
 
+    // Clean up expired or dead subscriptions
     if (deadEndpoints.length > 0) {
-      await supabaseAdmin
-        .from('push_subscriptions')
-        .delete()
-        .in('endpoint', deadEndpoints);
+      await supabaseAdmin.from('push_subscriptions').delete().in('endpoint', deadEndpoints);
     }
 
     return NextResponse.json({
-      success: true,
+      success: delivered > 0,
       delivered,
       failed,
-      prunedDeadEndpoints: deadEndpoints.length,
+      cleaned: deadEndpoints.length,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown server error';
+    const message = err instanceof Error ? err.message : 'Internal push error';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
