@@ -1,10 +1,11 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T02:00:00+05:30  
+> **Last Updated:** 2026-11-10T02:04:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `49fea68`  
+> **Latest Commit:** `767a4b5`  
+> **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 21 routes | All auth, security, E2E & GMT privacy tests passing)
 
 ---
