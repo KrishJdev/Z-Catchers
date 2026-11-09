@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T00:48:30+05:30  
+> **Last Updated:** 2026-11-10T00:59:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `cd2f009`  
+> **Latest Commit:** `c17bd61`  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 20 routes | All security & sleep tests passing)
 
 ---
@@ -201,6 +201,27 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Verification Suite (`scripts/test-phase1-security.mjs`):**
   * Added automated test suite validating credential stripping, anonymous check-in blocking, wrong PIN rejection, cross-user hijacking prevention, and valid session authorization.
 
+### Phase 11: Production Crons & PWA Reliability (Commit `c17bd61`)
+* **iOS Safari PWA Icon Fix (`src/app/layout.tsx`):**
+  * Updated `apple` touch icon to point to `/icons/icon-192x192.png` instead of `.svg` so iOS Home Screen icon displays correctly.
+* **Android PWA Manifest & Adaptive Icons (`public/manifest.json`):**
+  * Added `"purpose": "maskable"` and `"purpose": "any"` icon entries, `"id": "/"`, `"scope": "/"`, and categories.
+* **Android / Chrome `beforeinstallprompt` Install Flow (`src/components/PwaBanner.tsx`):**
+  * Captured `beforeinstallprompt` event and surfaced an active "Install App" banner for Android & desktop Chrome users.
+* **Service Worker Offline Caching & Shell (`public/sw.js`):**
+  * Added `CACHE_NAME = 'zcatchers-v2'` pre-caching the HTML shell, icons, and manifest.
+  * Added `fetch` event handler: network-first for navigation with offline fallback, cache-first for static icons, and strictly network-only for dynamic `/api/*` routes.
+* **Cron Dispatcher N+1 Query Elimination (`src/lib/cronDispatcher.ts`):**
+  * Batch pre-fetched all recent `IN_BED_EARLY` and dispatch records in a single query; converted `hasBeenDispatched` to an in-memory `O(1)` check. Prevents Vercel serverless 10s function timeouts.
+* **Dashboard Auto-Refresh & Focus Sync (`src/app/page.tsx`):**
+  * Added 60s periodic polling of `/api/members` and an instant sync on window focus / `visibilitychange` to reflect buddies' check-ins and bedtime shifts in real-time.
+* **External Cron Fallback (`.github/workflows/cron-dispatcher.yml`):**
+  * Created scheduled GitHub Actions runner hitting `/api/cron/dispatch-notifications` every 5 minutes as a free cron fallback for Vercel Hobby deployments.
+* **Production Passcode Protection (`src/lib/auth.ts`):**
+  * Disabled hardcoded `'cozyfox2026'` default passcode when `NODE_ENV === 'production'`. Requires `MOD_SECRET_PASSCODE` in production.
+* **Updated Environment Template (`.env.example`):**
+  * Documented `CRON_SECRET`, `DISCORD_COMMUNITY_WEBHOOK_URL`, `SESSION_SECRET`, and `PIN_SALT`.
+
 ---
 
 ## 5. Current File Tree & Key Components
@@ -314,16 +335,16 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-All core feature milestones and Phase 10 security hardening fixes are complete.
+All core features, Phase 10 security hardening, and Phase 11 PWA reliability/crons are complete. The codebase is now ready for production deployment and user testing.
 
-1. **Phase 2 Implementation (Production Crons & Secrets):**
-   * Ensure `DISCORD_COMMUNITY_WEBHOOK_URL` is set in production Vercel project environment variables to target the Discord server's announcement channel.
-   * Verify Vercel Cron trigger runs `/api/cron/dispatch-notifications` every 1 minute.
-2. **Phase 3 Implementation (PWA Reliability & Offline Shell):**
-   * Fix iOS Safari `apple-touch-icon` to use PNG (`/icons/icon-192x192.png`).
-   * Add maskable icon configuration to `manifest.json`.
-   * Add service worker offline caching/fetch handler in `sw.js`.
-   * Pre-fetch check-in logs in `cronDispatcher.ts` to eliminate sequential N+1 Supabase queries.
+1. **Production Environment Configuration:**
+   * Set required production environment variables: `DISCORD_COMMUNITY_WEBHOOK_URL`, `CRON_SECRET`, `MOD_SECRET_PASSCODE`, `SESSION_SECRET`, `PIN_SALT`.
+   * Configure 1-minute cron ping (e.g. cron-job.org or GitHub Actions fallback) if deploying on Vercel Hobby.
+2. **Community Roster Preparation:**
+   * Replace or claim the 4 seed profiles (`Aoi`, `SarahK`, `Marcus`, `Arjun`) in Supabase with actual community members.
+
+
+
 3. **Verification Checklist:**
    * Always verify `npx tsc --noEmit` and `npm run build` pass with 0 errors.
    * Always keep changes on branch `krish`.
