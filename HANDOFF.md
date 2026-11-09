@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T02:58:00+05:30  
+> **Last Updated:** 2026-11-10T03:04:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `9666c38`  
+> **Latest Commit:** `46ed131`  
 > **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 21 routes | All rate limiting, auth, security, E2E & GMT privacy tests passing)
 
@@ -298,6 +298,19 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Automated Test Suite (`scripts/test-pin-rate-limiting.mjs`):**
   * Created comprehensive test suite verifying IP blocking at 5 failed attempts, cross-IP per-member lockout, independent member isolation, non-destructive IP tracking on member reset, whitespace sanitization, and sliding window expiration. All 14 tests passing cleanly.
 
+### Phase 16: Demo Profile Identification & Safe Purge via Shared Fingerprint (Commit `46ed131`)
+* **Centralized Demo Seed Fingerprints (`src/lib/demoSeed.ts`):**
+  * Created `DEMO_SEED_FINGERPRINTS` and pure `isDemoSeedMember` helper strictly pairing `discord_username`, `discord_handle`, and the dummy Discord journal thread URL (`https://discord.com/channels/123456789/...`).
+  * Guaranteed zero false positives for real community members sharing common names (`Marcus`, `Arjun`, `Aoi`, `SarahK`).
+* **Unified Moderator Purge Endpoint (`src/app/api/mod/route.ts`):**
+  * Refactored `action === 'purge_seed_members'` to query candidate names and filter through `isDemoSeedMember` before initiating deletions.
+* **Frontend Detection Alignment (`src/components/ModDrawer.tsx`):**
+  * Replaced fragile `hasDemoMembers` name-only check (`demoSet.has(m.discord_username)`) with `modMembers.some(isDemoSeedMember)`, preventing the purge banner from incorrectly showing when real members with matching names join.
+* **CLI Script Synchronization (`scripts/purge-demo-members.mjs`):**
+  * Updated CLI script to fetch `journal_url` and use `isDemoSeedMember`, keeping script and backend API behaviors identical.
+* **Verification Suite (`scripts/test-demo-seed-fingerprint.mjs`):**
+  * 11 unit tests validating positive identification of pre-seeded profiles, case-insensitivity, whitespace resilience, protection of real users with identical names or handles, and safety against falsy/malformed input. All 11 tests passing cleanly.
+
 ---
 
 ## 5. Current File Tree & Key Components
@@ -322,6 +335,7 @@ d:\Projects\Z Catchers\
 │   ├── create-and-sync-issues.mjs      # Creates ZC-1 to ZC-12 issues in Jira
 │   ├── purge-demo-members.mjs          # Purges initial seed profiles from database
 │   ├── seed-demo-members.mjs           # Restores demo seed profiles
+│   ├── test-demo-seed-fingerprint.mjs  # Demo profile fingerprint & safe purge tests
 │   ├── test-discord-webhook-and-assists.mjs # Discord Webhook & Nag Assist unit & live DB tests
 │   ├── test-e2e-api-endpoints.mjs      # Live DB & Sleep Shield integration tests
 │   ├── test-gmt-timezones.mjs          # GMT/UTC label formatting and offset tests
@@ -378,6 +392,7 @@ d:\Projects\Z Catchers\
 │       ├── auth.ts                     # Moderator passcode & PIN hashing/verification & sessions
 │       ├── cronDispatcher.ts           # Core cron dispatch, early check-in suppression, Discord webhook & Sleep Shield
 │       ├── db.ts                       # Supabase client & TypeScript data models
+│       ├── demoSeed.ts                 # Pre-seeded demo profile fingerprints & matching logic
 │       ├── discordWebhook.ts           # Discord webhook API client, embed formatters, and color tokens
 │       ├── pushClient.ts               # Client-side Web Push & service worker registration
 │       ├── pushServer.ts               # Web Push VAPID helper functions & error handling
