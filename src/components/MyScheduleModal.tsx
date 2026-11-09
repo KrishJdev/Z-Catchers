@@ -30,6 +30,7 @@ interface MyScheduleModalProps {
   members: Member[];
   viewerTimezone: string;
   onRefreshRoster: () => Promise<void>;
+  currentUser?: Member | null;
 }
 
 // Curated list of popular IANA timezones spanning global regions
@@ -58,6 +59,7 @@ export function MyScheduleModal({
   members,
   viewerTimezone,
   onRefreshRoster,
+  currentUser,
 }: MyScheduleModalProps) {
   const [tab, setTab] = useState<'claim' | 'new'>('claim');
 
@@ -103,6 +105,8 @@ export function MyScheduleModal({
       setPin('');
       // If member has no PIN, auto-unlock so they can set initial PIN
       setIsUnlocked(!activeMember.passcode_hash);
+    } else if (currentUser) {
+      setSelectedMemberId(currentUser.id);
     } else if (members.length > 0 && !selectedMemberId && tab === 'claim') {
       setSelectedMemberId(members[0].id);
     }
@@ -113,7 +117,9 @@ export function MyScheduleModal({
     if (isOpen) {
       setErrorMessage(null);
       setSuccessMessage(null);
-      if (members.length > 0 && !selectedMemberId) {
+      if (currentUser) {
+        setSelectedMemberId(currentUser.id);
+      } else if (members.length > 0 && !selectedMemberId) {
         setSelectedMemberId(members[0].id);
       }
     } else {

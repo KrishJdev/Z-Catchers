@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db';
+import { getRequestSessionMemberId } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
+    const sessionMemberId = getRequestSessionMemberId(request);
     const body = await request.json();
     const {
       member_id,
@@ -19,14 +21,28 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!member_id) {
+    // Determine target member ID: Prefer authenticated session member ID
+    const effectiveMemberId = sessionMemberId || member_id;
+
+    if (!effectiveMemberId) {
       return NextResponse.json(
         {
           error:
-            'A member profile is required to link push notifications and calculate your Sleep Shield window.',
+            'A logged-in member profile is required to link push notifications and calculate your Sleep Shield window.',
           code: 'MEMBER_REQUIRED',
         },
         { status: 400 }
+      );
+    }
+
+    // If both session and body member_id provided, ensure no cross-profile impersonation
+    if (sessionMemberId && member_id && sessionMemberId !== member_id) {
+      return NextResponse.json(
+        {
+          error: 'Unauthorized. You cannot bind push notifications to another member profile.',
+          code: 'FORBIDDEN',
+        },
+        { status: 403 }
       );
     }
 
@@ -34,7 +50,7 @@ export async function POST(request: Request) {
     const { data: member, error: memberErr } = await supabaseAdmin
       .from('members')
       .select('id, discord_username, timezone')
-      .eq('id', member_id)
+      .eq('id', effectiveMemberId)
       .eq('is_active', true)
       .single();
 

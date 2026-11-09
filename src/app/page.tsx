@@ -9,12 +9,15 @@ import { FoxMascot } from '@/components/FoxMascot';
 import { MyScheduleModal } from '@/components/MyScheduleModal';
 import { ModDrawer } from '@/components/ModDrawer';
 import { PushModal } from '@/components/PushModal';
+import { LoginModal } from '@/components/LoginModal';
 import { computeMemberState, MemberState } from '@/lib/sleepEngine';
 import {
   registerServiceWorker,
   getExistingSubscription,
   isPushSupported,
   getStoredMemberId,
+  getStoredAuthMember,
+  setStoredAuthMember,
 } from '@/lib/pushClient';
 import type { Member } from '@/lib/db';
 import {
@@ -29,6 +32,8 @@ import {
   Bell,
   Star,
   Users,
+  KeyRound,
+  User,
 } from 'lucide-react';
 
 const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
@@ -41,7 +46,8 @@ export default function HomePage() {
   const [isSleepShieldActive, setIsSleepShieldActive] = useState(false);
   const [tick, setTick] = useState(0);
 
-  // Claimed member profile ID from localStorage
+  // Authenticated current member session (ZC-13)
+  const [currentUser, setCurrentUser] = useState<Member | null>(null);
   const [claimedMemberId, setClaimedMemberId] = useState<string | null>(null);
 
   // Starred accountability buddies
@@ -52,7 +58,7 @@ export default function HomePage() {
   const [isCheckingIn, setIsCheckingIn] = useState(false);
 
   // Dialog / Modal states: 'schedule' | 'mod' | 'push' | null
-  const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | 'push' | null>(null);
+  const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | 'push' | 'login' | null>(null);
 
   // Detect viewer's local timezone
   useEffect(() => {
@@ -78,6 +84,26 @@ export default function HomePage() {
       console.warn('Failed to load local settings:', err);
     }
   }, [activeModal]);
+
+  // Check auth session on mount
+  useEffect(() => {
+    const cached = getStoredAuthMember<Member>();
+    if (cached) {
+      setCurrentUser(cached);
+      setClaimedMemberId(cached.id);
+    }
+
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.authenticated && data.member) {
+          setCurrentUser(data.member);
+          setClaimedMemberId(data.member.id);
+          setStoredAuthMember(data.member);
+        }
+      })
+      .catch((err) => console.warn('Auth check error:', err));
+  }, []);
 
   // Register service worker and inspect existing push subscription
   useEffect(() => {
@@ -240,6 +266,8 @@ export default function HomePage() {
         onToggleSleepShield={() => setIsSleepShieldActive((prev) => !prev)}
         onOpenSchedule={() => setActiveModal('schedule')}
         onOpenMod={() => setActiveModal('mod')}
+        currentUser={currentUser}
+        onOpenLogin={() => setActiveModal('login')}
       />
 
       <div className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6 pb-28 md:pb-12">
@@ -424,7 +452,7 @@ export default function HomePage() {
                   key={member.id}
                   member={member}
                   state={state}
-                  currentMemberId={claimedMemberId}
+                  currentMemberId={currentUser?.id || claimedMemberId}
                   isStarred={starredMembers.includes(member.id)}
                   onToggleStar={handleToggleStar}
                   onCheckIn={handleCheckIn}
@@ -448,7 +476,7 @@ export default function HomePage() {
                   key={member.id}
                   member={member}
                   state={state}
-                  currentMemberId={claimedMemberId}
+                  currentMemberId={currentUser?.id || claimedMemberId}
                   isStarred={starredMembers.includes(member.id)}
                   onToggleStar={handleToggleStar}
                   onCheckIn={handleCheckIn}
@@ -471,7 +499,7 @@ export default function HomePage() {
                   key={member.id}
                   member={member}
                   state={state}
-                  currentMemberId={claimedMemberId}
+                  currentMemberId={currentUser?.id || claimedMemberId}
                   isStarred={starredMembers.includes(member.id)}
                   onToggleStar={handleToggleStar}
                   onCheckIn={handleCheckIn}
@@ -496,7 +524,7 @@ export default function HomePage() {
                   key={member.id}
                   member={member}
                   state={state}
-                  currentMemberId={claimedMemberId}
+                  currentMemberId={currentUser?.id || claimedMemberId}
                   isStarred={starredMembers.includes(member.id)}
                   onToggleStar={handleToggleStar}
                   onCheckIn={handleCheckIn}
@@ -556,6 +584,7 @@ export default function HomePage() {
         members={members}
         viewerTimezone={viewerTimezone}
         onRefreshRoster={fetchRoster}
+        currentUser={currentUser}
       />
 
       {/* Push Notification Settings & Sleep Shield Modal (Phase 1.5 & 1.6) */}
@@ -566,6 +595,26 @@ export default function HomePage() {
         isPushEnabled={isPushEnabled}
         onPushStateChanged={setIsPushEnabled}
         onOpenScheduleModal={() => setActiveModal('schedule')}
+        currentUser={currentUser}
+        onOpenLogin={() => setActiveModal('login')}
+      />
+
+      {/* Member PIN Login & Profile Claiming Modal (ZC-13) */}
+      <LoginModal
+        isOpen={activeModal === 'login'}
+        onClose={() => setActiveModal(null)}
+        members={members}
+        currentUser={currentUser}
+        onLoginSuccess={(member) => {
+          setCurrentUser(member);
+          setClaimedMemberId(member.id);
+          fetchRoster();
+        }}
+        onLogout={() => {
+          setCurrentUser(null);
+          setClaimedMemberId(null);
+          fetchRoster();
+        }}
       />
 
       {/* Passcode-Protected Moderator Drawer (Phase 2) */}

@@ -6,6 +6,8 @@ export const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
 
 export const STORAGE_KEY_MEMBER_ID = 'zcatchers_member_id';
 export const STORAGE_KEY_PUSH_ENABLED = 'zcatchers_push_enabled';
+export const STORAGE_KEY_AUTH_TOKEN = 'zcatchers_auth_token';
+export const STORAGE_KEY_AUTH_MEMBER = 'zcatchers_auth_member';
 
 /**
  * Converts a URL-safe Base64 VAPID public key into a Uint8Array backed by an ArrayBuffer
@@ -125,10 +127,18 @@ export async function subscribeToPush(
 
     // 4. Save to backend database
     const memberIdToUse = options.memberId || getStoredMemberId() || null;
+    const token = getStoredAuthToken();
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
 
     const res = await fetch('/api/push/subscribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         member_id: memberIdToUse,
         subscription: {
@@ -219,3 +229,62 @@ export function setStoredMemberId(memberId: string | null): void {
     localStorage.removeItem(STORAGE_KEY_MEMBER_ID);
   }
 }
+
+/**
+ * Retrieves the stored auth session token
+ */
+export function getStoredAuthToken(): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  return localStorage.getItem(STORAGE_KEY_AUTH_TOKEN);
+}
+
+/**
+ * Stores or clears the auth session token
+ */
+export function setStoredAuthToken(token: string | null): void {
+  if (typeof localStorage === 'undefined') return;
+  if (token) {
+    localStorage.setItem(STORAGE_KEY_AUTH_TOKEN, token);
+  } else {
+    localStorage.removeItem(STORAGE_KEY_AUTH_TOKEN);
+  }
+}
+
+/**
+ * Retrieves the stored authenticated member object
+ */
+export function getStoredAuthMember<T = unknown>(): T | null {
+  if (typeof localStorage === 'undefined') return null;
+  const raw = localStorage.getItem(STORAGE_KEY_AUTH_MEMBER);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stores or clears the authenticated member object
+ */
+export function setStoredAuthMember(member: unknown | null): void {
+  if (typeof localStorage === 'undefined') return;
+  if (member) {
+    localStorage.setItem(STORAGE_KEY_AUTH_MEMBER, JSON.stringify(member));
+    if (typeof member === 'object' && member !== null && 'id' in member) {
+      setStoredMemberId((member as { id: string }).id);
+    }
+  } else {
+    localStorage.removeItem(STORAGE_KEY_AUTH_MEMBER);
+    setStoredMemberId(null);
+  }
+}
+
+/**
+ * Clears all authentication credentials and member session data
+ */
+export function clearAuthSession(): void {
+  setStoredAuthToken(null);
+  setStoredAuthMember(null);
+}
+

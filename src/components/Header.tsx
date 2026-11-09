@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Bell, BellOff, Clock, Shield, Moon } from 'lucide-react';
+import { Bell, BellOff, Clock, Shield, Moon, KeyRound, UserCheck } from 'lucide-react';
+import type { Member } from '@/lib/db';
 import { FoxMascot } from '@/components/FoxMascot';
 
 interface HeaderProps {
@@ -12,6 +13,8 @@ interface HeaderProps {
   onToggleSleepShield?: () => void;
   onOpenSchedule?: () => void;
   onOpenMod?: () => void;
+  currentUser?: Member | null;
+  onOpenLogin?: () => void;
 }
 
 export function Header({
@@ -22,6 +25,8 @@ export function Header({
   onToggleSleepShield,
   onOpenSchedule,
   onOpenMod,
+  currentUser,
+  onOpenLogin,
 }: HeaderProps) {
   const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
 
@@ -144,6 +149,31 @@ export function Header({
               {isPushEnabled ? 'Alerts On' : 'Alerts Off'}
             </span>
           </button>
+
+          {/* Member Login / Account Button */}
+          {currentUser ? (
+            <button
+              type="button"
+              onClick={onOpenLogin}
+              title={`Logged in as ${currentUser.discord_username}. Tap to view account or log out.`}
+              className="flex h-9 items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2.5 sm:px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all"
+            >
+              <span className="h-2 w-2 rounded-full bg-status-sage" />
+              <span className="max-w-[100px] truncate sm:max-w-[140px]">
+                @{currentUser.discord_username}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenLogin}
+              title="Log in with your 4-digit PIN to link bedtime alerts"
+              className="flex h-9 items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 sm:px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary transition-all"
+            >
+              <KeyRound className="h-3.5 w-3.5 text-status-amber" />
+              <span>Log In</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

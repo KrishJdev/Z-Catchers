@@ -1,11 +1,11 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-09T23:18:00+05:30  
+> **Last Updated:** 2026-11-09T23:25:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `d06d81f`  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing)
+> **Latest Commit:** Working tree updated (ZC-13)  
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 18 routes)
 
 ---
 
@@ -153,6 +153,26 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * Enabled static analysis tools: `github-checks`, `gitleaks` (Betterleaks secret detection), `dotenvLint`, `markdownlint`, `reactDoctor` (React correctness & a11y), and `osvScanner` (vulnerability scanning).
   * Connected Jira knowledge base (`project_keys: ["ZC"]`) and coding guidelines scanner for `AGENTS.md`, `AGENT_RULES.md`, `DESIGN_SYSTEM.md`, `BACKEND_TZ_PWA_SPEC.md`, and `PROJECT_SPEC.md`.
 
+### Phase 7: Simple Member PIN Login & Profile Session Binding (`ZC-13`)
+* **HMAC-SHA256 Session Engine (`src/lib/auth.ts`):**
+  * Built self-contained cryptographic session token generation (`createSessionToken`) and verification (`verifySessionToken`) with 30-day expiration and timing-safe signature comparison.
+  * Added `getRequestSessionMemberId` reading `Authorization: Bearer <token>` or `zcatchers_session` cookie.
+* **Authentication API Endpoints:**
+  * `POST /api/auth/login`: Handles 4-digit PIN verification or initial account claim; issues signed session token and sets `HttpOnly` cookie.
+  * `GET /api/auth/me`: Validates active cookie/bearer session and returns sanitized member profile (`has_pin`).
+  * `POST /api/auth/logout`: Clears the session cookie and client tokens.
+* **Push Subscription Security Enforcement (`src/app/api/push/subscribe/route.ts`):**
+  * Bound Web Push endpoints directly to authenticated sessions, preventing unauthorized cross-member push subscription impersonation.
+* **Warm Dark Login Modal (`src/components/LoginModal.tsx`):**
+  * Built cozy dialog / sheet with Sleepy Fox mascot for member selection, PIN entry, first-time claim, account status, and logout.
+* **Frontend & Navigation Integration:**
+  * Added logged-in user display to desktop `Header.tsx` (`@{currentUser.discord_username}`) and mobile bottom navigation tab (`You` / `Log In`).
+  * Updated `PushModal.tsx` to automatically link push alerts to authenticated profile, prompting login if unauthenticated.
+  * Updated `MyScheduleModal.tsx` to pre-select authenticated user.
+  * Updated `MemberCard.tsx` so `YOU` badge and "I'm in Bed" button are strictly restricted to authenticated member.
+* **Verification Suite (`scripts/test-login-and-auth.mjs`):**
+  * Verified PIN hashing, session creation, tampered token rejection, first-time database profile claim, login verification, and push subscription profile binding.
+
 ---
 
 ## 5. Current File Tree & Key Components
@@ -177,12 +197,17 @@ d:\Projects\Z Catchers\
 │   ├── create-and-sync-issues.mjs      # Creates ZC-1 to ZC-12 issues in Jira
 │   ├── test-e2e-api-endpoints.mjs      # Live DB & Sleep Shield integration tests
 │   ├── test-in-bed-and-streaks.mjs     # Check-in, anti-spam & streak unit tests
+│   ├── test-login-and-auth.mjs         # Member PIN login, session token & profile binding tests
 │   ├── test-push-and-cron.mjs          # Push engine & cron Sleep Shield tests
 │   ├── test-schedule-cooldown.mjs      # Verification tests for 48h cooldown logic
 │   └── transition-jira-issue.mjs       # Script invoked by GitHub Action to transition issues
 ├── src/
 │   ├── app/
 │   │   ├── api/
+│   │   │   ├── auth/
+│   │   │   │   ├── login/route.ts      # POST verify/claim 4-digit PIN & issue session cookie
+│   │   │   │   ├── logout/route.ts     # POST clear session cookie
+│   │   │   │   └── me/route.ts         # GET current authenticated member session
 │   │   │   ├── cron/
 │   │   │   │   ├── route.ts            # Alias dispatcher endpoint
 │   │   │   │   └── dispatch-notifications/
@@ -206,6 +231,7 @@ d:\Projects\Z Catchers\
 │   ├── components/
 │   │   ├── FoxMascot.tsx               # Minimalist Sleepy Fox mascot vector states
 │   │   ├── Header.tsx                  # Top desktop command bar & mobile top bar
+│   │   ├── LoginModal.tsx              # Member 4-digit PIN login & profile claiming modal
 │   │   ├── MemberCard.tsx              # Dual-timezone member card, streak badge, "I'm in Bed" button & Star
 │   │   ├── ModDrawer.tsx               # Moderator bottom sheet / dialog with passcode lock
 │   │   ├── MyScheduleModal.tsx         # Self-service edit modal with check-in card & PIN verification
@@ -246,6 +272,7 @@ d:\Projects\Z Catchers\
 | **ZC-8** | Epic: Phase 2 Moderation & Anti-Dodge Controls | **DONE** | Commit `f8ddcb2` |
 | **ZC-9** | Phase 2.1: Passcode-Protected Moderator Drawer (`ModDrawer.tsx`)| DONE | Commit `d66de1f` / `4339402` |
 | **ZC-10**| Phase 2.2: Instant Cooldown Override & Roster Admin API | DONE | Commit `a3fc7fa` |
+| **ZC-13**| Phase 2.3: Simple Member PIN Login & Session Profile Binding | **DONE** | ZC-13 / Milestone 6 |
 | **ZC-11**| Epic: Phase 3 Sleep Streaks, Badges & Discord Webhooks | **IN PROGRESS** | Commit `f8ddcb2` |
 
 ---

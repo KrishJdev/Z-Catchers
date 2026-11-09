@@ -14,6 +14,7 @@ import {
   Moon,
   Clock,
   Sparkles,
+  KeyRound,
 } from 'lucide-react';
 import {
   subscribeToPush,
@@ -31,6 +32,8 @@ interface PushModalProps {
   isPushEnabled: boolean;
   onPushStateChanged: (enabled: boolean) => void;
   onOpenScheduleModal: () => void;
+  currentUser?: Member | null;
+  onOpenLogin?: () => void;
 }
 
 export function PushModal({
@@ -40,6 +43,8 @@ export function PushModal({
   isPushEnabled,
   onPushStateChanged,
   onOpenScheduleModal,
+  currentUser,
+  onOpenLogin,
 }: PushModalProps) {
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [notifyPersonal, setNotifyPersonal] = useState<boolean>(true);
@@ -51,34 +56,44 @@ export function PushModal({
   );
 
   useEffect(() => {
-    const storedId = getStoredMemberId();
-    if (storedId) {
-      setSelectedMemberId(storedId);
-    } else if (members.length > 0) {
-      setSelectedMemberId(members[0].id);
+    if (currentUser) {
+      setSelectedMemberId(currentUser.id);
+    } else {
+      const storedId = getStoredMemberId();
+      if (storedId) {
+        setSelectedMemberId(storedId);
+      } else if (members.length > 0) {
+        setSelectedMemberId(members[0].id);
+      }
     }
-  }, [members, isOpen]);
+  }, [currentUser, members, isOpen]);
 
   if (!isOpen) return null;
 
-  const currentMember = members.find((m) => m.id === selectedMemberId);
+  const currentMember = currentUser || members.find((m) => m.id === selectedMemberId);
   const supported = isPushSupported();
   const permission = getNotificationPermission();
 
   const handleEnablePush = async () => {
-    if (!selectedMemberId) {
+    if (!currentUser && !selectedMemberId) {
       setFeedback({
         type: 'error',
-        message: 'Please select your community profile so your Sleep Shield can be calculated.',
+        message: 'Please log in to your community profile so your Sleep Shield can be calculated.',
       });
+      if (onOpenLogin) {
+        onClose();
+        onOpenLogin();
+      }
       return;
     }
+
+    const effectiveMemberId = currentUser?.id || selectedMemberId;
 
     setLoading(true);
     setFeedback(null);
 
     const result = await subscribeToPush({
-      memberId: selectedMemberId,
+      memberId: effectiveMemberId,
       notifyPersonal,
       notifyCommunity,
     });
@@ -86,7 +101,7 @@ export function PushModal({
     setLoading(false);
 
     if (result.success) {
-      setStoredMemberId(selectedMemberId);
+      setStoredMemberId(effectiveMemberId);
       onPushStateChanged(true);
       setFeedback({
         type: 'success',
@@ -122,7 +137,8 @@ export function PushModal({
   };
 
   const handleSendTestPush = async () => {
-    if (!selectedMemberId) return;
+    const targetMemberId = currentUser?.id || selectedMemberId;
+    if (!targetMemberId) return;
 
     setTestLoading(true);
     setFeedback(null);
@@ -132,7 +148,7 @@ export function PushModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          member_id: selectedMemberId,
+          member_id: targetMemberId,
           title: '🦊 Z Catchers: Test Bedtime Alert',
           body: 'Success! Your Sleep Shield and push notifications are active.',
         }),
@@ -198,6 +214,7 @@ export function PushModal({
           </div>
         )}
 
+        {/* Browser Support Check */}
         {!supported && (
           <div className="mb-4 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral">
             ⚠️ Web Push is not supported in this browser. On iOS, install the app via <strong>Add to Home Screen</strong> first.
@@ -212,27 +229,74 @@ export function PushModal({
 
         {/* Profile Linking Section */}
         <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-cream-primary mb-1.5">
-              Select Your Community Profile
-            </label>
-            <div className="relative">
-              <select
-                value={selectedMemberId}
-                onChange={(e) => setSelectedMemberId(e.target.value)}
-                className="w-full appearance-none rounded-xl border border-night-border bg-night-bg px-3.5 py-2.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-              >
-                {members.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-night-surface">
-                    {m.discord_username} ({m.bedtime_local} in {m.timezone.split('/').pop()?.replace(/_/g, ' ')})
-                  </option>
-                ))}
-              </select>
+          {currentUser ? (
+            /* Authenticated Account Card */
+            <div className="rounded-2xl border border-status-amber/40 bg-night-bg p-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <img
+                  src={
+                    currentUser.avatar_url ||
+                    `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+                      currentUser.discord_username
+                    )}`
+                  }
+                  alt={currentUser.discord_username}
+                  className="h-10 w-10 rounded-full border border-status-amber/50 bg-night-elevated"
+                />
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-cream-primary">
+                      @{currentUser.discord_username}
+                    </span>
+                    <span className="rounded bg-status-sage/20 border border-status-sage/40 px-1.5 py-0.2 text-[9px] font-semibold text-status-sage">
+                      Logged In
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-cream-secondary">
+                    Bedtime: {currentUser.bedtime_local} in{' '}
+                    {currentUser.timezone.split('/').pop()?.replace(/_/g, ' ')}
+                  </p>
+                </div>
+              </div>
+
+              {onOpenLogin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenLogin();
+                  }}
+                  className="rounded-lg bg-night-elevated px-2.5 py-1 text-[11px] font-semibold text-status-amber hover:text-status-amber/80 transition-colors"
+                >
+                  Manage
+                </button>
+              )}
             </div>
-            <p className="mt-1 text-[11px] text-cream-muted">
-              Used to calculate your personal 8-hour Sleep Shield so you are never awakened.
-            </p>
-          </div>
+          ) : (
+            /* Unauthenticated Prompt */
+            <div className="rounded-2xl border border-status-amber/40 bg-status-amber/10 p-3.5 space-y-2.5 text-center">
+              <div className="flex items-center justify-center gap-2 text-status-amber">
+                <KeyRound className="h-4 w-4" />
+                <span className="text-xs font-bold">Profile Login Required</span>
+              </div>
+              <p className="text-[11px] text-cream-secondary leading-snug">
+                Log in with your 4-digit PIN so that personal bedtime reminders and the 8-hour Sleep Shield are accurately linked to your account.
+              </p>
+              {onOpenLogin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenLogin();
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-status-amber py-2 text-xs font-bold text-night-bg hover:bg-status-amber/90 transition-all"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  <span>Log In with 4-Digit PIN</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Preferences Checkboxes */}
           <div className="space-y-2.5 rounded-2xl border border-night-border bg-night-bg/60 p-3.5">
@@ -274,38 +338,42 @@ export function PushModal({
           {/* Action Buttons */}
           <div className="pt-2 flex flex-col gap-2.5">
             {isPushEnabled ? (
-              <>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSendTestPush}
-                    disabled={testLoading}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 py-2.5 text-xs font-semibold text-status-amber hover:bg-status-amber/25 transition-colors disabled:opacity-50"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    <span>{testLoading ? 'Sending Test...' : 'Send Test Alert'}</span>
-                  </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSendTestPush}
+                  disabled={testLoading}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 py-2.5 text-xs font-semibold text-status-amber hover:bg-status-amber/25 transition-colors disabled:opacity-50"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>{testLoading ? 'Sending Test...' : 'Send Test Alert'}</span>
+                </button>
 
-                  <button
-                    type="button"
-                    onClick={handleDisablePush}
-                    disabled={loading}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-surface py-2.5 text-xs font-semibold text-cream-muted hover:border-status-coral/40 hover:text-status-coral transition-colors disabled:opacity-50"
-                  >
-                    <BellOff className="h-3.5 w-3.5" />
-                    <span>Disable Alerts</span>
-                  </button>
-                </div>
-              </>
+                <button
+                  type="button"
+                  onClick={handleDisablePush}
+                  disabled={loading}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-surface py-2.5 text-xs font-semibold text-cream-muted hover:border-status-coral/40 hover:text-status-coral transition-colors disabled:opacity-50"
+                >
+                  <BellOff className="h-3.5 w-3.5" />
+                  <span>Disable Alerts</span>
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
-                onClick={handleEnablePush}
+                onClick={currentUser ? handleEnablePush : onOpenLogin || handleEnablePush}
                 disabled={loading || !supported}
                 className="w-full flex items-center justify-center gap-2 rounded-xl bg-status-amber py-3 text-xs font-bold text-night-bg hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 <Bell className="h-4 w-4" />
-                <span>{loading ? 'Activating Alerts...' : 'Turn On Bedtime Alerts'}</span>
+                <span>
+                  {loading
+                    ? 'Activating Alerts...'
+                    : currentUser
+                    ? 'Turn On Bedtime Alerts'
+                    : 'Log In to Turn On Alerts'}
+                </span>
               </button>
             )}
 
