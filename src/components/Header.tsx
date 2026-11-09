@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Bell, BellOff, Clock, Shield, Moon, KeyRound, UserCheck } from 'lucide-react';
+import { Bell, BellOff, Clock, Shield, Moon, KeyRound, UserCheck, UserPlus } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import { FoxMascot } from '@/components/FoxMascot';
 
@@ -14,7 +14,7 @@ interface HeaderProps {
   onOpenSchedule?: () => void;
   onOpenMod?: () => void;
   currentUser?: Member | null;
-  onOpenLogin?: () => void;
+  onOpenLogin?: (initialTab?: 'login' | 'register') => void;
 }
 
 export function Header({
@@ -150,11 +150,11 @@ export function Header({
             </span>
           </button>
 
-          {/* Member Login / Account Button */}
+          {/* Member Login / Account Buttons */}
           {currentUser ? (
             <button
               type="button"
-              onClick={onOpenLogin}
+              onClick={() => onOpenLogin?.('login')}
               title={`Logged in as ${currentUser.discord_username}. Tap to view account or log out.`}
               className="flex h-9 items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2.5 sm:px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all"
             >
@@ -164,15 +164,26 @@ export function Header({
               </span>
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={onOpenLogin}
-              title="Log in with your 4-digit PIN to link bedtime alerts"
-              className="flex h-9 items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 sm:px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary transition-all"
-            >
-              <KeyRound className="h-3.5 w-3.5 text-status-amber" />
-              <span>Log In</span>
-            </button>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                onClick={() => onOpenLogin?.('register')}
+                title="Create your profile and set your bedtime"
+                className="flex h-9 items-center gap-1.5 rounded-xl bg-status-amber px-2.5 sm:px-3 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 transition-all hover:scale-[1.02] active:scale-95"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                <span>Join Den</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenLogin?.('login')}
+                title="Log in with your 4-digit PIN"
+                className="flex h-9 items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 sm:px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary transition-all"
+              >
+                <KeyRound className="h-3.5 w-3.5 text-status-amber" />
+                <span className="hidden xs:inline">Log In</span>
+              </button>
+            </div>
           )}
         </div>
       </div>

@@ -5,10 +5,16 @@ import { hashPin, verifyPin, createSessionToken } from '@/lib/auth';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { member_id, pin } = body;
+    const { member_id, username, pin } = body;
 
-    if (!member_id) {
-      return NextResponse.json({ error: 'Please select or provide a member profile.' }, { status: 400 });
+    const cleanUsername = typeof username === 'string' ? username.trim() : '';
+    const cleanMemberId = typeof member_id === 'string' ? member_id.trim() : '';
+
+    if (!cleanMemberId && !cleanUsername) {
+      return NextResponse.json(
+        { error: 'Please enter your username or select your member profile.' },
+        { status: 400 }
+      );
     }
 
     if (!pin || typeof pin !== 'string' || pin.trim().length < 4) {
@@ -17,16 +23,21 @@ export async function POST(request: Request) {
 
     const cleanPin = pin.trim();
 
-    // 1. Fetch member from Supabase
-    const { data: member, error: memberErr } = await supabaseAdmin
-      .from('members')
-      .select('*')
-      .eq('id', member_id)
-      .eq('is_active', true)
-      .single();
+    // 1. Fetch member from Supabase by member_id or case-insensitive username
+    let query = supabaseAdmin.from('members').select('*').eq('is_active', true);
+    if (cleanMemberId) {
+      query = query.eq('id', cleanMemberId);
+    } else {
+      query = query.ilike('discord_username', cleanUsername);
+    }
+
+    const { data: member, error: memberErr } = await query.maybeSingle();
 
     if (memberErr || !member) {
-      return NextResponse.json({ error: 'Member not found or inactive.' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Profile not found. Please check your username or create a new profile.' },
+        { status: 404 }
+      );
     }
 
     const currentMember = member as Member;

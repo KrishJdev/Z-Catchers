@@ -123,8 +123,22 @@ if (!supabaseUrl || !supabaseKey) {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const { data: members } = await supabase.from('members').select('*').limit(1);
-  if (members && members.length > 0) {
-    const testMember = members[0];
+  let testMember = members && members.length > 0 ? members[0] : null;
+  let createdTempMember = false;
+
+  if (!testMember) {
+    const { data: tempMem } = await supabase.from('members').insert({
+      discord_username: 'StreakFox_' + Date.now(),
+      journal_url: 'https://discord.com/channels/123/456',
+      bedtime_local: '23:00',
+      timezone: 'UTC',
+      is_active: true,
+    }).select().single();
+    testMember = tempMem;
+    createdTempMember = true;
+  }
+
+  if (testMember) {
     const testDate = '2099-05-15'; // far future date to avoid interfering with real records
 
     // Insert test IN_BED_EARLY log
@@ -146,6 +160,9 @@ if (!supabaseUrl || !supabaseKey) {
 
     // Clean up
     await supabase.from('notification_logs').delete().eq('id', found[0].id);
+    if (createdTempMember) {
+      await supabase.from('members').delete().eq('id', testMember.id);
+    }
     console.log('✅ Cleaned up test database record.');
   }
 }

@@ -544,6 +544,27 @@ export async function POST(request: Request) {
       });
     }
 
+    // 9. Purge Demo Seed Members ('Aoi', 'SarahK', 'Marcus', 'Arjun')
+    if (action === 'purge_seed_members') {
+      const seedNames = ['Aoi', 'SarahK', 'Marcus', 'Arjun'];
+      const { data: deleted, error: purgeErr } = await supabaseAdmin
+        .from('members')
+        .delete()
+        .in('discord_username', seedNames)
+        .select('id, discord_username');
+
+      if (purgeErr) {
+        return NextResponse.json({ error: purgeErr.message }, { status: 500 });
+      }
+
+      const count = deleted ? deleted.length : 0;
+      return NextResponse.json({
+        success: true,
+        message: `Successfully purged ${count} demo seed profiles from the den.`,
+        purged: deleted,
+      });
+    }
+
     return NextResponse.json(
       { error: `Unsupported action: "${action}"` },
       { status: 400 }

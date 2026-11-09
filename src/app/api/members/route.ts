@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase, supabaseAdmin, Member } from '@/lib/db';
 import { checkCooldownPromotion, calculateSleepStreak } from '@/lib/sleepEngine';
-import { hashPin, sanitizeMember } from '@/lib/auth';
+import { hashPin, sanitizeMember, createSessionToken } from '@/lib/auth';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -114,46 +114,134 @@ export async function POST(request: Request) {
 
     if (!discord_username || !journal_url || !bedtime_local || !timezone) {
       return NextResponse.json(
-        { error: 'Missing required fields (username, journal_url, bedtime, timezone)' },
+        { error: 'Missing required fields (username, journal link, bedtime, timezone).' },
         { status: 400 }
       );
     }
 
-    if (!DISCORD_JOURNAL_REGEX.test(journal_url.trim())) {
+    const cleanUsername = String(discord_username).trim();
+    if (cleanUsername.length < 2 || cleanUsername.length > 32) {
       return NextResponse.json(
-        { error: 'Invalid Discord journal thread URL. Must match https://discord.com/channels/...' },
+        { error: 'Username must be between 2 and 32 characters.' },
         { status: 400 }
       );
     }
 
-    const passcode_hash = pin && /^\d{4,6}$/.test(pin.trim()) ? hashPin(pin.trim()) : null;
+    // Check for username duplication (case-insensitive)
+    const { data: existingUser } = await supabaseAdmin
+      .from('members')
+      .select('id, discord_username')
+      .ilike('discord_username', cleanUsername)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (existingUser) {
+      return NextResponse.json(
+        { error: `The username "${cleanUsername}" is already taken. Please choose a different username or log in.` },
+        { status: 409 }
+      );
+    }
+
+    // Validate Discord Journal URL
+    const cleanJournal = String(journal_url).trim();
+    if (!DISCORD_JOURNAL_REGEX.test(cleanJournal)) {
+      return NextResponse.json(
+        { error: 'Invalid Discord journal thread URL. Must match format: https://discord.com/channels/{server_id}/{thread_id}' },
+        { status: 400 }
+      );
+    }
+
+    // Validate 4-to-6 digit numeric PIN
+    const cleanPin = pin ? String(pin).trim() : '';
+    if (!cleanPin || !/^\d{4,6}$/.test(cleanPin)) {
+      return NextResponse.json(
+        { error: 'Please choose a 4-to-6 digit numeric PIN to protect your profile.' },
+        { status: 400 }
+      );
+    }
+
+    // Validate Timezone
+    const cleanTz = String(timezone).trim();
+    if (!DateTime.now().setZone(cleanTz).isValid) {
+      return NextResponse.json(
+        { error: 'Invalid timezone identifier. Please select a valid timezone.' },
+        { status: 400 }
+      );
+    }
+
+    const passcode_hash = hashPin(cleanPin);
     const avatar_url = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-      discord_username.trim()
+      cleanUsername
     )}`;
 
-    const { data, error } = await supabaseAdmin
+    const insertPayload: Record<string, unknown> = {
+      discord_username: cleanUsername,
+      discord_handle: discord_handle?.trim() || null,
+      avatar_url,
+      journal_url: cleanJournal,
+      bedtime_local: bedtime_local.trim(),
+      wake_time_local: wake_time_local.trim(),
+      timezone: cleanTz,
+      role: 'member',
+      passcode_hash,
+    };
+
+    if (weekend_bedtime_local?.trim()) {
+      insertPayload.weekend_bedtime_local = weekend_bedtime_local.trim();
+    }
+    if (weekend_wake_time_local?.trim()) {
+      insertPayload.weekend_wake_time_local = weekend_wake_time_local.trim();
+    }
+
+    let { data, error } = await supabaseAdmin
       .from('members')
-      .insert({
-        discord_username: discord_username.trim(),
-        discord_handle: discord_handle?.trim() || null,
-        avatar_url,
-        journal_url: journal_url.trim(),
-        bedtime_local: bedtime_local.trim(),
-        wake_time_local: wake_time_local.trim(),
-        timezone: timezone.trim(),
-        weekend_bedtime_local: weekend_bedtime_local?.trim() || null,
-        weekend_wake_time_local: weekend_wake_time_local?.trim() || null,
-        role: 'member',
-        passcode_hash,
-      })
+      .insert(insertPayload)
       .select()
       .single();
+
+    // Resilient fallback: If weekend columns do not exist in the database schema yet (PGRST204), retry with core fields
+    if (error && error.code === 'PGRST204' && error.message.includes('weekend')) {
+      delete insertPayload.weekend_bedtime_local;
+      delete insertPayload.weekend_wake_time_local;
+      const fallbackRes = await supabaseAdmin
+        .from('members')
+        .insert(insertPayload)
+        .select()
+        .single();
+      data = fallbackRes.data;
+      error = fallbackRes.error;
+    }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ member: sanitizeMember(data as Member) }, { status: 201 });
+    const createdMember = data as Member;
+    const token = createSessionToken(createdMember.id);
+    const sanitized = sanitizeMember(createdMember);
+
+    const response = NextResponse.json(
+      {
+        success: true,
+        member: sanitized,
+        token,
+        message: `Welcome to Z Catchers, ${cleanUsername}! Your profile has been created and secured with your PIN.`,
+      },
+      { status: 201 }
+    );
+
+    // Set 30-day HttpOnly session cookie
+    response.cookies.set({
+      name: 'zcatchers_session',
+      value: token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+
+    return response;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error';
     return NextResponse.json({ error: message }, { status: 500 });

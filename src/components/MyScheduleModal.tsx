@@ -21,7 +21,7 @@ import {
   Moon,
 } from 'lucide-react';
 
-import { setStoredMemberId } from '@/lib/pushClient';
+import { setStoredMemberId, setStoredAuthToken, setStoredAuthMember } from '@/lib/pushClient';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 
@@ -366,6 +366,12 @@ export function MyScheduleModal({
       }
 
       setSuccessMessage('Welcome to Z Catchers! Your bedtime schedule is active.');
+      if (data.token) {
+        setStoredAuthToken(data.token);
+      }
+      if (data.member) {
+        setStoredAuthMember(data.member);
+      }
       await onRefreshRoster();
       setTab('claim');
       if (data.member?.id) {

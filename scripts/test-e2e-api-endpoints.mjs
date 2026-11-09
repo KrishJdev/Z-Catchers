@@ -33,12 +33,31 @@ async function run() {
       .select('*')
       .eq('is_active', true);
 
-    assert(!mErr && members && members.length > 0, `Active members retrieved from database (count: ${members?.length})`);
-    for (const m of members || []) {
-      console.log(`   - ${m.discord_username}: bedtime ${m.bedtime_local} (${m.timezone})`);
-    }
+    let testMember = members && members.length > 0 ? members[0] : null;
+    let createdTempMember = false;
 
-    const testMember = members[0];
+    if (!testMember) {
+      console.log('   ℹ️ Den roster currently empty. Creating temporary member for E2E testing...');
+      const { data: tempMem, error: tempErr } = await supabaseAdmin
+        .from('members')
+        .insert({
+          discord_username: 'E2EFox_' + Date.now(),
+          journal_url: 'https://discord.com/channels/123/456',
+          bedtime_local: '23:00',
+          timezone: 'UTC',
+          is_active: true,
+        })
+        .select()
+        .single();
+      assert(!tempErr && tempMem, 'Temporary test member created for clean den roster');
+      testMember = tempMem;
+      createdTempMember = true;
+    } else {
+      assert(!mErr && members.length > 0, `Active members retrieved from database (count: ${members.length})`);
+      for (const m of members) {
+        console.log(`   - ${m.discord_username}: bedtime ${m.bedtime_local} (${m.timezone})`);
+      }
+    }
 
     // 2. Test Push Subscription Upsert in Database
     console.log('\n--- 2. Push Subscription Upsert & Fetch ---');
@@ -111,7 +130,8 @@ async function run() {
     let shieldedCount = 0;
     let awakeCount = 0;
 
-    for (const m of members || []) {
+    const evalMembers = members && members.length > 0 ? members : [testMember];
+    for (const m of evalMembers) {
       const state = computeMemberState(m, m.timezone, nowUtc);
       const isShielded =
         state.isSleepShieldActive ||
@@ -127,7 +147,7 @@ async function run() {
       }
     }
 
-    assert(shieldedCount + awakeCount === members.length, 'Evaluated Sleep Shield status for all active members');
+    assert(shieldedCount + awakeCount === evalMembers.length, 'Evaluated Sleep Shield status for all active members');
 
     // 5. Clean Up Test Subscription
     console.log('\n--- 5. Push Unsubscribe Cleanup ---');
@@ -144,6 +164,11 @@ async function run() {
       .eq('endpoint', mockEndpoint);
 
     assert(checkDeleted?.length === 0, 'Confirmed mock endpoint removed from database');
+
+    if (createdTempMember && testMember) {
+      await supabaseAdmin.from('members').delete().eq('id', testMember.id);
+      console.log('   Cleaned up temporary test member.');
+    }
 
     console.log('\n-----------------------------------------------------------');
     if (failed) {

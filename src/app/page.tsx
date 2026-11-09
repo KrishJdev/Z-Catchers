@@ -58,8 +58,14 @@ export default function HomePage() {
   // Check-in loading indicator
   const [isCheckingIn, setIsCheckingIn] = useState(false);
 
-  // Dialog / Modal states: 'schedule' | 'mod' | 'push' | null
+  // Dialog / Modal states: 'schedule' | 'mod' | 'push' | 'login' | null
   const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | 'push' | 'login' | null>(null);
+  const [loginModalTab, setLoginModalTab] = useState<'login' | 'register'>('login');
+
+  const handleOpenLogin = (tab: 'login' | 'register' = 'login') => {
+    setLoginModalTab(tab);
+    setActiveModal('login');
+  };
 
   // Detect viewer's local timezone
   useEffect(() => {
@@ -303,7 +309,7 @@ export default function HomePage() {
         onOpenSchedule={() => setActiveModal('schedule')}
         onOpenMod={() => setActiveModal('mod')}
         currentUser={currentUser}
-        onOpenLogin={() => setActiveModal('login')}
+        onOpenLogin={handleOpenLogin}
       />
 
       <div className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6 pb-28 md:pb-12">
@@ -442,12 +448,13 @@ export default function HomePage() {
             </button>
           </div>
 
-          {!claimedMember && (
+          {!currentUser && (
             <button
-              onClick={() => setActiveModal('schedule')}
-              className="text-xs text-status-amber hover:underline flex items-center gap-1 font-medium"
+              onClick={() => handleOpenLogin('register')}
+              className="text-xs text-status-amber hover:underline flex items-center gap-1.5 font-medium bg-status-amber/10 border border-status-amber/30 px-3 py-1 rounded-lg transition-colors hover:bg-status-amber/20"
             >
-              <span>Claim your profile to track streaks & check in</span>
+              <Sparkles className="h-3 w-3" />
+              <span>Join Den: Create profile & PIN</span>
               <span>→</span>
             </button>
           )}
@@ -471,6 +478,34 @@ export default function HomePage() {
             >
               Show All Members
             </button>
+          </div>
+        ) : displayedMembers.length === 0 && buddyFilter === 'all' ? (
+          <div className="flex min-h-[340px] flex-col items-center justify-center rounded-3xl border border-dashed border-night-border bg-night-surface/60 p-8 text-center backdrop-blur-sm animate-fade-in">
+            <div className="mb-4 rounded-2xl bg-night-elevated/70 p-4 border border-night-border/50">
+              <FoxMascot state="lantern" size={56} />
+            </div>
+            <h3 className="text-lg font-bold text-cream-primary sm:text-xl">
+              Welcome to the Fox Den! 🌙
+            </h3>
+            <p className="mt-2 max-w-md text-xs sm:text-sm text-cream-secondary leading-relaxed">
+              The den is peaceful and ready for your friends! Create your profile to set your local bedtime, link your Discord journal, and choose a simple 4-digit PIN.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={() => handleOpenLogin('register')}
+                className="flex items-center gap-2 rounded-xl bg-status-amber px-5 py-2.5 text-xs font-bold text-night-bg shadow-lg hover:bg-status-amber/90 transition-all hover:scale-[1.02] active:scale-95"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span>Join Den & Create Profile</span>
+              </button>
+              <button
+                onClick={() => handleOpenLogin('login')}
+                className="flex items-center gap-2 rounded-xl border border-night-border bg-night-elevated px-4 py-2.5 text-xs font-semibold text-cream-primary hover:bg-night-border transition-all"
+              >
+                <KeyRound className="h-4 w-4 text-status-amber" />
+                <span>Log In with Existing Profile</span>
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -611,6 +646,26 @@ export default function HomePage() {
           <Shield className="h-5 w-5" />
           <span className="text-[10px] font-medium">Mod</span>
         </button>
+
+        {currentUser ? (
+          <button
+            onClick={() => handleOpenLogin('login')}
+            className="flex flex-col items-center gap-1 text-cream-muted transition-colors hover:text-cream-secondary"
+            title="My Profile"
+          >
+            <User className="h-5 w-5 text-status-amber" />
+            <span className="text-[10px] font-medium max-w-[50px] truncate">@{currentUser.discord_username}</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => handleOpenLogin('register')}
+            className="flex flex-col items-center gap-1 text-status-amber font-semibold"
+            title="Join Den"
+          >
+            <User className="h-5 w-5" />
+            <span className="text-[10px] font-medium">Join</span>
+          </button>
+        )}
       </nav>
 
       {/* Self-Service My Schedule Modal (Phase 1.4 & Check-In) */}
@@ -632,7 +687,7 @@ export default function HomePage() {
         onPushStateChanged={setIsPushEnabled}
         onOpenScheduleModal={() => setActiveModal('schedule')}
         currentUser={currentUser}
-        onOpenLogin={() => setActiveModal('login')}
+        onOpenLogin={handleOpenLogin}
       />
 
       {/* Member PIN Login & Profile Claiming Modal (ZC-13) */}
@@ -651,6 +706,9 @@ export default function HomePage() {
           setClaimedMemberId(null);
           fetchRoster();
         }}
+        initialTab={loginModalTab}
+        viewerTimezone={viewerTimezone}
+        onRefreshRoster={fetchRoster}
       />
 
       {/* Passcode-Protected Moderator Drawer (Phase 2) */}

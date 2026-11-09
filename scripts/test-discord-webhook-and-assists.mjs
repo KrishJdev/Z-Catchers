@@ -75,10 +75,22 @@ if (!supabaseUrl || !supabaseKey) {
 
   // Fetch or create a test member
   const { data: members } = await sb.from('members').select('*').limit(1);
-  if (!members || members.length === 0) {
-    console.log('⚠️ No members in DB to test assists with.');
-  } else {
-    const sleeper = members[0];
+  let sleeper = members && members.length > 0 ? members[0] : null;
+  let createdTempSleeper = false;
+
+  if (!sleeper) {
+    const { data: tempMem } = await sb.from('members').insert({
+      discord_username: 'WebhookFox_' + Date.now(),
+      journal_url: 'https://discord.com/channels/123/456',
+      bedtime_local: '23:00',
+      timezone: 'UTC',
+      is_active: true,
+    }).select().single();
+    sleeper = tempMem;
+    createdTempSleeper = true;
+  }
+
+  if (sleeper) {
     const nowUtc = DateTime.utc();
     const sleeperLocalNow = nowUtc.setZone(sleeper.timezone);
     const localDate = sleeperLocalNow.toISODate();
@@ -135,6 +147,9 @@ if (!supabaseUrl || !supabaseKey) {
       .delete()
       .eq('member_id', sleeper.id)
       .in('notification_type', [`NAG_ASSIST:${helper1}`, `NAG_ASSIST:${helper2}`]);
+    if (createdTempSleeper) {
+      await sb.from('members').delete().eq('id', sleeper.id);
+    }
     console.log('   Cleaned up test nag assist logs.');
   }
 }

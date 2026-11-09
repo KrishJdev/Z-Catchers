@@ -646,6 +646,46 @@ export function ModDrawer({
     }
   };
 
+  const hasDemoMembers = useMemo(() => {
+    const demoSet = new Set(['Aoi', 'SarahK', 'Marcus', 'Arjun']);
+    return modMembers.some((m: Member) => demoSet.has(m.discord_username));
+  }, [modMembers]);
+
+  const handlePurgeDemoMembers = async () => {
+    if (
+      !window.confirm(
+        'Are you sure you want to remove the default pre-seeded demo profiles (Aoi, SarahK, Marcus, Arjun)?'
+      )
+    ) {
+      return;
+    }
+    setActionLoadingId('purge_demo');
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const res = await fetch('/api/mod', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'purge_seed_members',
+          mod_passcode: passcode.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMessage(data.error || 'Failed to purge demo profiles.');
+      } else {
+        setSuccessMessage(data.message || 'Purged demo profiles successfully.');
+        await fetchModRoster(passcode.trim());
+        await onRosterChanged();
+      }
+    } catch {
+      setErrorMessage('Network error while purging demo profiles.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -1214,6 +1254,26 @@ export function ModDrawer({
             {/* TAB 2: FULL ROSTER MANAGEMENT */}
             {activeTab === 'roster' && !editingMember && !pinResetMember && (
               <div className="mt-4 space-y-3">
+                {/* Pre-seeded demo profiles banner */}
+                {hasDemoMembers && (
+                  <div className="flex items-center justify-between rounded-xl border border-status-amber/40 bg-status-amber/10 p-3 text-xs text-status-amber">
+                    <div>
+                      <span className="font-bold">Pre-seeded demo profiles detected</span>
+                      <p className="text-[11px] opacity-80 mt-0.5">
+                        Clean the den so only your friends&apos; real profiles appear.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handlePurgeDemoMembers}
+                      disabled={actionLoadingId === 'purge_demo'}
+                      className="shrink-0 rounded-lg bg-status-amber px-3 py-1.5 text-xs font-bold text-night-bg hover:bg-status-amber/90 transition-all disabled:opacity-50"
+                    >
+                      {actionLoadingId === 'purge_demo' ? 'Purging...' : 'Purge Demo Profiles'}
+                    </button>
+                  </div>
+                )}
+
                 {/* Search Bar */}
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-cream-muted" />
