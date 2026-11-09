@@ -1,12 +1,12 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T02:38:00+05:30  
+> **Last Updated:** 2026-11-10T02:58:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `e5f6882`  
+> **Latest Commit:** `9666c38`  
 > **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 21 routes | All auth, security, E2E & GMT privacy tests passing)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 21 routes | All rate limiting, auth, security, E2E & GMT privacy tests passing)
 
 ---
 
@@ -282,6 +282,22 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Safe Demo Member Purging (`src/app/api/mod/route.ts` & `scripts/purge-demo-members.mjs`):**
   * Filtered demo profile deletions by both username and demo handle fingerprint (`aoi_jp`, `sarah_ny`, `marcus_ldn`, `arjun_in`) to prevent deleting real users.
 
+### Phase 15: Shared Per-Member & Per-IP Rate Limiting on PIN Verification Gates (Commit `9666c38`)
+* **Login Route `verifyPin` Gate Hardening (`src/app/api/auth/login/route.ts`):**
+  * Enforced shared per-member rate limit check (`checkPinRateLimit(clientIp, currentMember.id)`) immediately after member profile resolution (lines 58-64), prior to PIN verification and first-time claim enrollment.
+  * Synchronized failed attempt and reset counters across both `currentMember.id` (canonical UUID) and `targetIdentifier` (case-insensitive username), preventing per-member rate limit evasion via username lookups across rotated IPs.
+* **Schedule Cancellation Security Safeguard (`src/app/api/members/cancel-pending/route.ts`):**
+  * Fixed critical authentication bypass where profiles with `passcode_hash: null` allowed unauthenticated callers without moderator credentials to cancel pending schedule changes.
+  * Enforced strict 403 rejection if non-moderator attempts cancellation on profiles lacking PIN protection, and validated rate limits before evaluating `verifyPin`.
+* **Schedule Update Rate Limit Unification (`src/app/api/members/update-schedule/route.ts`):**
+  * Applied `checkPinRateLimit(clientIp, currentMember.id)` unified at the start of non-moderator operations, protecting initial profile claiming, unconfigured moderator enrollment, and existing PIN verification.
+* **Global Rate Limit Storage & Failure Behavior (`src/lib/rateLimit.ts`):**
+  * Bound `pinRateLimits` Map to `globalThis.__pinRateLimits` ensuring persistence across Next.js module reloads, bundle chunks, and warm serverless containers.
+  * Sanitized IP and target identifiers against empty/whitespace keys to prevent cross-request bucket collisions.
+  * Hardened `resetPinFailure`: only purges target-specific buckets upon successful verification and preserves IP failure counts, preventing attackers with valid credentials from resetting IP brute-force thresholds.
+* **Automated Test Suite (`scripts/test-pin-rate-limiting.mjs`):**
+  * Created comprehensive test suite verifying IP blocking at 5 failed attempts, cross-IP per-member lockout, independent member isolation, non-destructive IP tracking on member reset, whitespace sanitization, and sliding window expiration. All 14 tests passing cleanly.
+
 ---
 
 ## 5. Current File Tree & Key Components
@@ -304,12 +320,19 @@ d:\Projects\Z Catchers\
 │   └── sw.js                           # Service worker handling push & Discord deep linking
 ├── scripts/
 │   ├── create-and-sync-issues.mjs      # Creates ZC-1 to ZC-12 issues in Jira
+│   ├── purge-demo-members.mjs          # Purges initial seed profiles from database
+│   ├── seed-demo-members.mjs           # Restores demo seed profiles
 │   ├── test-discord-webhook-and-assists.mjs # Discord Webhook & Nag Assist unit & live DB tests
 │   ├── test-e2e-api-endpoints.mjs      # Live DB & Sleep Shield integration tests
+│   ├── test-gmt-timezones.mjs          # GMT/UTC label formatting and offset tests
 │   ├── test-in-bed-and-streaks.mjs     # Check-in, anti-spam & streak unit tests
 │   ├── test-login-and-auth.mjs         # Member PIN login, session token & profile binding tests
+│   ├── test-phase1-security.mjs        # Credential stripping & Phase 1 auth tests
+│   ├── test-pin-rate-limiting.mjs      # Shared per-member & per-IP rate limiting tests
 │   ├── test-push-and-cron.mjs          # Push engine & cron Sleep Shield tests
 │   ├── test-schedule-cooldown.mjs      # Verification tests for 48h cooldown logic
+│   ├── test-signup-and-profiles.mjs    # Self-service profile creation tests
+│   ├── test-weekend-hours.mjs          # Weekend night scheduling & midnight crossover tests
 │   └── transition-jira-issue.mjs       # Script invoked by GitHub Action to transition issues
 ├── src/
 │   ├── app/
@@ -358,6 +381,7 @@ d:\Projects\Z Catchers\
 │       ├── discordWebhook.ts           # Discord webhook API client, embed formatters, and color tokens
 │       ├── pushClient.ts               # Client-side Web Push & service worker registration
 │       ├── pushServer.ts               # Web Push VAPID helper functions & error handling
+│       ├── rateLimit.ts                # Sliding-window shared per-member & per-IP PIN rate limiter
 │       └── sleepEngine.ts              # Luxon timezone calculations, streaks & milestone badges
 ├── .coderabbit.yaml                    # CodeRabbit AI code review configuration & guardrails
 ├── AGENT_RULES.md                      # Hard guardrails & architectural constraints for AI agents
