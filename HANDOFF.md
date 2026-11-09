@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T03:04:00+05:30  
+> **Last Updated:** 2026-11-10T03:14:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `46ed131`  
+> **Latest Commit:** `369803b`  
 > **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 21 routes | All rate limiting, auth, security, E2E & GMT privacy tests passing)
 
@@ -310,6 +310,12 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * Updated CLI script to fetch `journal_url` and use `isDemoSeedMember`, keeping script and backend API behaviors identical.
 * **Verification Suite (`scripts/test-demo-seed-fingerprint.mjs`):**
   * 11 unit tests validating positive identification of pre-seeded profiles, case-insensitivity, whitespace resilience, protection of real users with identical names or handles, and safety against falsy/malformed input. All 11 tests passing cleanly.
+
+### Phase 17: Atomic CAS Verification & First-Time PIN Claiming Hardening (Commit `369803b`)
+* **Verified Existing Atomic Claiming in Login (`src/app/api/auth/login/route.ts`):**
+  * Verified that first-time profile claiming already performs an atomic CAS update (`.is('passcode_hash', null)`), selects the updated `id`, and strictly rejects concurrent/already-claimed updates with HTTP 409 without issuing session tokens.
+* **Extended Atomic CAS to Schedule Updates (`src/app/api/members/update-schedule/route.ts`):**
+  * Applied the identical conditional atomic CAS update (`.is('passcode_hash', null)`) when an unconfigured member claims their PIN through schedule updates (`isFirstTimeClaim`), returning HTTP 409 if a concurrent update claimed the profile first.
 
 ---
 
