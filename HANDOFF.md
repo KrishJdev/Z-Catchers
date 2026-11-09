@@ -1,11 +1,11 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T00:07:00+05:30  
+> **Last Updated:** 2026-11-10T00:48:30+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `cdc7dd8`  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 20 routes | 20 Weekend Hours tests passing)
+> **Latest Commit:** `cd2f009`  
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 20 routes | All security & sleep tests passing)
 
 ---
 
@@ -186,6 +186,21 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Verification Suite (`scripts/test-weekend-hours.mjs`):**
   * 20 automated tests validating day-of-week classification (Friday & Saturday vs Sun-Thu), before/after midnight crossovers, member state machine buckets, and cooldown promotion.
 
+### Phase 10: Critical Security & Data Protection Fixes (Commit `cd2f009`)
+* **Credential Stripping (`sanitizeMember` in `src/lib/auth.ts`):**
+  * Stripped `passcode_hash` from `GET /api/members`, `POST /api/members`, `/api/members/update-schedule`, `/api/members/cancel-pending`, and `/api/mod`.
+  * Added `has_pin?: boolean` property to `Member` interface in `src/lib/db.ts` to expose claimed status without exposing password hashes.
+  * Updated UI components (`LoginModal.tsx`, `MyScheduleModal.tsx`, `ModDrawer.tsx`) to check `has_pin`.
+* **Secured "I'm In Bed" Check-In (`src/app/api/members/in-bed/route.ts`):**
+  * Enforced authorization gate: caller must supply matching authenticated session cookie/token OR valid 4-digit PIN.
+  * Rejects unauthenticated check-in/cancellation with HTTP 401; rejects cross-user impersonation with HTTP 403.
+  * Updated `handleCheckIn` and `handleCancelInBed` in `page.tsx` to automatically supply bearer auth token and prompt login on 401.
+* **Secured Push Subscriptions (`src/app/api/push/subscribe/route.ts`):**
+  * Strictly requires active session or verified PIN to bind push tokens to a member.
+  * Fixed `PushModal.tsx`: removed arbitrary fallback that defaulted unauthenticated visitors to `members[0].id`.
+* **Verification Suite (`scripts/test-phase1-security.mjs`):**
+  * Added automated test suite validating credential stripping, anonymous check-in blocking, wrong PIN rejection, cross-user hijacking prevention, and valid session authorization.
+
 ---
 
 ## 5. Current File Tree & Key Components
@@ -299,14 +314,16 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-All Phase 1, Phase 2, and Phase 3 milestones are complete and verified across both unit and live Supabase environments.
+All core feature milestones and Phase 10 security hardening fixes are complete.
 
-1. **Production Deployment & Environment Setup:**
+1. **Phase 2 Implementation (Production Crons & Secrets):**
    * Ensure `DISCORD_COMMUNITY_WEBHOOK_URL` is set in production Vercel project environment variables to target the Discord server's announcement channel.
    * Verify Vercel Cron trigger runs `/api/cron/dispatch-notifications` every 1 minute.
-2. **Optional Future Enhancements:**
-   * Discord Slash Command bot integration (`/sleep-status`, `/goodnight`).
-   * Custom user notification quiet hours decoupling.
+2. **Phase 3 Implementation (PWA Reliability & Offline Shell):**
+   * Fix iOS Safari `apple-touch-icon` to use PNG (`/icons/icon-192x192.png`).
+   * Add maskable icon configuration to `manifest.json`.
+   * Add service worker offline caching/fetch handler in `sw.js`.
+   * Pre-fetch check-in logs in `cronDispatcher.ts` to eliminate sequential N+1 Supabase queries.
 3. **Verification Checklist:**
    * Always verify `npx tsc --noEmit` and `npm run build` pass with 0 errors.
    * Always keep changes on branch `krish`.
