@@ -1,0 +1,122 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# ==============================================================================
+# CodeRabbit AI Configuration: Z Catchers
+# Cross-Timezone Sleep Accountability PWA & Web Dashboard
+# Enforces non-negotiable architectural guardrails from AGENT_RULES.md
+# ==============================================================================
+
+language: "en-US"
+early_access: false
+
+tone_instructions: >
+  You are an expert, constructive code reviewer for Z Catchers, a cross-timezone sleep
+  accountability application. Strictly enforce the non-negotiable architectural commandments
+  defined in AGENT_RULES.md, including:
+  1. Strict Luxon IANA timezone math (no native Date offset math or static UTC bedtime storage).
+  2. The 48-Hour Cooldown anti-dodge governance for self-service bedtime updates.
+  3. The Sleep Shield guarantee (never dispatch nag notifications to sleeping members).
+  4. Discord journal link regex sanitization.
+  5. The Warm Dark low-blue-light design system (#120F0D bg, #F5EBE1 text, terracotta Fox mascot).
+  Provide concise, actionable suggestions with direct code diffs where appropriate.
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: true
+  review_status: true
+  collapse_walkthrough: false
+  sequence_diagrams: true
+  changed_files_summary: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "dev"
+      - "main"
+      - "krish"
+
+  path_filters:
+    - "!public/icons/**"
+    - "!package-lock.json"
+    - "!**/*.png"
+    - "!**/*.svg"
+    - "!**/*.ico"
+    - "!**/*.woff2"
+
+  path_instructions:
+    - path: "src/lib/sleepEngine.ts"
+      instructions: >
+        Strictly enforce Luxon DateTime for all timezone calculations and comparisons.
+        Forbid native JavaScript new Date().getTimezoneOffset(), manual offset arithmetic,
+        or hardcoded UTC hour offsets (e.g. UTC-5). Ensure yesterday, today, and tomorrow
+        bedtime instances are evaluated relative to the member's current local time to
+        guarantee midnight wrap-arounds never fail. Centralize sleep status math here.
+
+    - path: "src/app/api/members/**"
+      instructions: >
+        Enforce the 48-Hour Cooldown anti-dodge governance rule: regular member schedule updates
+        must write to pending_bedtime_local, pending_timezone, and pending_effective_at (NOW + 48 hours).
+        Regular members must NEVER directly overwrite bedtime_local or timezone.
+        Verify 4-digit PIN authentication.
+        Validate Discord journal URLs with the regex:
+        ^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$
+
+    - path: "src/app/api/mod/**"
+      instructions: >
+        Verify authentication against MOD_SECRET_PASSCODE on all moderator endpoints.
+        Ensure moderation actions (instant cooldown approval, rejection, member create/update/delete,
+        PIN reset) sanitize input and return 401 Unauthorized when unauthenticated.
+
+    - path: "src/app/api/cron/**"
+      instructions: >
+        Strictly enforce the Sleep Shield rule: never dispatch nag notifications to any member
+        currently inside their 8-hour sleep window or within 15 minutes before bedtime.
+        Ensure all notification dispatches record to notification_logs with (member_id, notification_type, local_date)
+        unique constraint to guarantee idempotency and prevent duplicate alerts.
+
+    - path: "src/components/**"
+      instructions: >
+        Ensure strict adherence to the Warm Dark low-blue-light design system:
+        Night background #120F0D, card surface #1C1714, primary text #F5EBE1, muted text #B0A295,
+        warm amber #E59843, coral alert #D96B52, fox mascot terracotta #E07A5F.
+        Never allow pure white #FFFFFF, pure black #000000, or default Tailwind blues.
+        Ensure true responsive dual-layout: mobile single-column vertical stack with bottom navigation
+        (minimum touch targets >= 44px), desktop wide CSS grid (max-w-7xl) with centered dialog modals.
+
+    - path: "src/lib/pushServer.ts"
+      instructions: >
+        Ensure web-push VAPID configuration handles payload encryption securely, gracefully handles
+        expired or invalid subscriptions (HTTP 410 Gone / 404), and never exposes private VAPID keys.
+
+  tools:
+    github-checks:
+      enabled: true
+    gitleaks:
+      enabled: true
+    dotenvLint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    reactDoctor:
+      enabled: true
+    osvScanner:
+      enabled: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "AGENT_RULES.md"
+      - "DESIGN_SYSTEM.md"
+      - "BACKEND_TZ_PWA_SPEC.md"
+      - "PROJECT_SPEC.md"
+  jira:
+    usage: "enabled"
+    project_keys:
+      - "ZC"
+
+chat:
+  auto_reply: true
