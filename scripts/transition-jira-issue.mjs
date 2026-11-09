@@ -1,0 +1,68 @@
+const JIRA_DOMAIN = process.env.JIRA_DOMAIN || 'krishjaiswal2182003.atlassian.net';
+const JIRA_EMAIL = process.env.JIRA_EMAIL || 'krish.jaiswal2182003@gmail.com';
+const JIRA_TOKEN = process.env.JIRA_TOKEN;
+
+if (!JIRA_TOKEN) {
+  console.error('No JIRA_TOKEN set. If running locally, please set JIRA_TOKEN, or run via GitHub Action.');
+  process.exit(1);
+}
+
+const authHeader = 'Basic ' + Buffer.from(`${JIRA_EMAIL}:${JIRA_TOKEN}`).toString('base64');
+
+async function transitionIssue(issueKey, targetState = 'in progress') {
+  console.log(`Fetching transitions for ${issueKey}...`);
+  const res = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/issue/${issueKey}/transitions`, {
+    headers: {
+      Authorization: authHeader,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to fetch transitions for ${issueKey}: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  const transitions = data.transitions || [];
+  console.log('Available transitions:', transitions.map((t) => `${t.id}: ${t.name}`));
+
+  const targetTransition = transitions.find(
+    (t) =>
+      t.name.toLowerCase().includes(targetState.toLowerCase()) ||
+      (t.to && t.to.name.toLowerCase().includes(targetState.toLowerCase()))
+  );
+
+  if (!targetTransition) {
+    console.error(`Could not find a transition matching "${targetState}".`);
+    console.log('Available transitions were:', transitions);
+    process.exit(1);
+  }
+
+  console.log(`Applying transition "${targetTransition.name}" (ID: ${targetTransition.id})...`);
+  const transRes = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/issue/${issueKey}/transitions`, {
+    method: 'POST',
+    headers: {
+      Authorization: authHeader,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      transition: { id: targetTransition.id },
+    }),
+  });
+
+  if (!transRes.ok) {
+    const errText = await transRes.text();
+    throw new Error(`Failed to transition issue ${issueKey}: ${transRes.status} ${errText}`);
+  }
+
+  console.log(`🎉 Successfully transitioned ${issueKey} to "${targetTransition.name}"!`);
+}
+
+const issueKey = process.argv[2] || 'ZC-5';
+const targetState = process.argv[3] || 'in progress';
+
+transitionIssue(issueKey, targetState).catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

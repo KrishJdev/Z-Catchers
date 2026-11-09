@@ -1,0 +1,45 @@
+name: Jira Issue Transition
+
+on:
+  push:
+    branches:
+      - krish
+    paths:
+      - '.jira-transition'
+  workflow_dispatch:
+    inputs:
+      issue_key:
+        description: 'Jira Issue Key (e.g. ZC-5)'
+        required: true
+        default: 'ZC-5'
+      target_status:
+        description: 'Target Status (e.g. "in progress" or "done")'
+        required: true
+        default: 'in progress'
+
+jobs:
+  transition:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Transition Jira Issue
+        env:
+          JIRA_DOMAIN: krishjaiswal2182003.atlassian.net
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            node scripts/transition-jira-issue.mjs "${{ github.event.inputs.issue_key }}" "${{ github.event.inputs.target_status }}"
+          else
+            cat .jira-transition
+            ISSUE_KEY=$(cat .jira-transition | cut -d' ' -f1)
+            TARGET_STATUS=$(cat .jira-transition | cut -d' ' -f2-)
+            node scripts/transition-jira-issue.mjs "$ISSUE_KEY" "$TARGET_STATUS"
+          fi
