@@ -144,29 +144,42 @@ export async function executeNotificationDispatcher(options: {
     return true;
   };
 
-  // Helper to check idempotency / status log
-  const hasBeenDispatched = async (
+  // 3b. Pre-fetch recent notification logs in a single batch query (eliminates N+1 DB roundtrips)
+  const twoDaysAgo = nowUtc.minus({ days: 2 }).toISODate() || '2026-01-01';
+  const { data: recentLogs, error: logsError } = await supabaseAdmin
+    .from('notification_logs')
+    .select('member_id, notification_type, local_date')
+    .gte('local_date', twoDaysAgo);
+
+  if (logsError) {
+    results.details.errors.push(`Failed to fetch notification logs: ${logsError?.message}`);
+  }
+
+  const dispatchedSet = new Set<string>();
+  for (const log of (recentLogs || []) as {
+    member_id: string;
+    notification_type: string;
+    local_date: string;
+  }[]) {
+    dispatchedSet.add(`${log.member_id}:${log.notification_type}:${log.local_date}`);
+  }
+
+  // Helper to check idempotency / status log (O(1) in-memory lookup)
+  const hasBeenDispatched = (
     memberId: string,
     notificationType: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY',
     localDate: string
-  ): Promise<boolean> => {
-    const { data } = await supabaseAdmin
-      .from('notification_logs')
-      .select('id')
-      .eq('member_id', memberId)
-      .eq('notification_type', notificationType)
-      .eq('local_date', localDate)
-      .maybeSingle();
-
-    return Boolean(data);
+  ): boolean => {
+    return dispatchedSet.has(`${memberId}:${notificationType}:${localDate}`);
   };
 
-  // Helper to log dispatch
+  // Helper to log dispatch and update in-memory cache
   const recordDispatch = async (
     memberId: string,
     notificationType: 'WIND_DOWN_30M' | 'BEDTIME_HIT',
     localDate: string
   ) => {
+    dispatchedSet.add(`${memberId}:${notificationType}:${localDate}`);
     if (options.dryRun) return;
 
     await supabaseAdmin.from('notification_logs').insert({
@@ -190,7 +203,7 @@ export async function executeNotificationDispatcher(options: {
     if (!localDate) continue;
 
     // Check if sleeper has checked in early via "I'm in Bed" Safe Button for tonight
-    const alreadyInBed = await hasBeenDispatched(member.id, 'IN_BED_EARLY', localDate);
+    const alreadyInBed = hasBeenDispatched(member.id, 'IN_BED_EARLY', localDate);
 
     const state = computeMemberState(member, member.timezone, nowUtc, alreadyInBed);
     const diff = state.diffMinutes;
@@ -207,7 +220,7 @@ export async function executeNotificationDispatcher(options: {
           `${member.discord_username} (Wind-down skipped: already checked in as in bed)`
         );
       } else {
-        const alreadySent = await hasBeenDispatched(member.id, 'WIND_DOWN_30M', localDate);
+        const alreadySent = hasBeenDispatched(member.id, 'WIND_DOWN_30M', localDate);
         if (!alreadySent) {
           const memberSubs = subscriptionsByMember.get(member.id) || [];
           const personalSubs = memberSubs.filter((s) => s.notify_personal);
@@ -240,7 +253,7 @@ export async function executeNotificationDispatcher(options: {
           `${member.discord_username} (Checked in early via Safe Button — nag alerts suppressed)`
         );
       } else {
-        const alreadySent = await hasBeenDispatched(member.id, 'BEDTIME_HIT', localDate);
+        const alreadySent = hasBeenDispatched(member.id, 'BEDTIME_HIT', localDate);
         if (!alreadySent) {
           // Dispatch A: To the sleeper member (personal notification)
           const memberSubs = subscriptionsByMember.get(member.id) || [];
@@ -268,7 +281,7 @@ export async function executeNotificationDispatcher(options: {
             const peerNow = nowUtc.setZone(peer.timezone);
             const peerLocalDate = peerNow.toISODate();
             const peerInBed = peerLocalDate
-              ? await hasBeenDispatched(peer.id, 'IN_BED_EARLY', peerLocalDate)
+              ? hasBeenDispatched(peer.id, 'IN_BED_EARLY', peerLocalDate)
               : false;
 
             const peerState = computeMemberState(peer, peer.timezone, nowUtc, peerInBed);

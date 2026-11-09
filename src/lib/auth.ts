@@ -30,7 +30,12 @@ export function verifyPin(pin: string, storedHash: string | null, salt = PIN_SAL
 export function verifyModPasscode(passcode: string | null | undefined): boolean {
   if (!passcode) return false;
   try {
-    const modPasscode = (process.env.MOD_SECRET_PASSCODE || 'cozyfox2026').trim();
+    const defaultPasscode = process.env.NODE_ENV === 'production' ? null : 'cozyfox2026';
+    const modPasscode = (process.env.MOD_SECRET_PASSCODE || defaultPasscode)?.trim();
+    if (!modPasscode) {
+      console.warn('MOD_SECRET_PASSCODE is not set in production. Mod access disabled.');
+      return false;
+    }
     const input = passcode.trim();
 
     // Hash with sha256 to ensure equal length buffers and prevent timing attacks

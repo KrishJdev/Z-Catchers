@@ -138,13 +138,36 @@ export default function HomePage() {
     fetchRoster();
   }, [fetchRoster]);
 
-  // Self-refreshing interval every 30s to advance countdowns without layout thrashing
+  // Self-refreshing interval every 30s to advance countdowns and periodically sync roster
   useEffect(() => {
-    const interval = setInterval(() => {
+    const tickInterval = setInterval(() => {
       setTick((prev) => prev + 1);
     }, 30000);
-    return () => clearInterval(interval);
-  }, []);
+
+    // Periodic 60s roster sync to reflect buddy check-ins and bedtime shifts
+    const rosterInterval = setInterval(() => {
+      fetchRoster();
+    }, 60000);
+
+    // Instant sync on window focus or tab visibility resume
+    const handleFocus = () => {
+      setTick((prev) => prev + 1);
+      fetchRoster();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        handleFocus();
+      }
+    });
+
+    return () => {
+      clearInterval(tickInterval);
+      clearInterval(rosterInterval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchRoster]);
 
   // Toggle buddy star
   const handleToggleStar = (memberId: string) => {
