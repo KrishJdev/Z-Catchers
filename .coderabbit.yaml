@@ -9,15 +9,9 @@ language: "en-US"
 early_access: false
 
 tone_instructions: >
-  You are an expert, constructive code reviewer for Z Catchers, a cross-timezone sleep
-  accountability application. Strictly enforce the non-negotiable architectural commandments
-  defined in AGENT_RULES.md, including:
-  1. Strict Luxon IANA timezone math (no native Date offset math or static UTC bedtime storage).
-  2. The 48-Hour Cooldown anti-dodge governance for self-service bedtime updates.
-  3. The Sleep Shield guarantee (never dispatch nag notifications to sleeping members).
-  4. Discord journal link regex sanitization.
-  5. The Warm Dark low-blue-light design system (#120F0D bg, #F5EBE1 text, terracotta Fox mascot).
-  Provide concise, actionable suggestions with direct code diffs where appropriate.
+  Expert, constructive code reviewer enforcing AGENT_RULES.md (strict Luxon TZ math, 48h
+  cooldown anti-dodge, Sleep Shield, and Warm Dark UI). Provide concise, actionable suggestions
+  with direct diffs.
 
 reviews:
   profile: "chill"

@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T02:04:00+05:30  
+> **Last Updated:** 2026-11-10T02:14:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `767a4b5`  
+> **Latest Commit:** Pending push on `krish`  
 > **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 21 routes | All auth, security, E2E & GMT privacy tests passing)
 
@@ -244,6 +244,17 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Verification & Test Suite:**
   * Created `scripts/test-signup-and-profiles.mjs` validating self-service registration, PIN hashing, case-insensitive lookup, duplicate username rejection, and session token validation.
   * Updated `test-e2e-api-endpoints.mjs`, `test-in-bed-and-streaks.mjs`, and `test-discord-webhook-and-assists.mjs` to dynamically create and clean up temporary test records, ensuring 100% test pass rates on clean/empty databases.
+
+### Phase 13: CI/CD, CodeRabbit & Vercel Deployment Hardening
+* **CodeRabbit Configuration Fix (`.coderabbit.yaml`):**
+  * Resolved parsing error on PR #14: CodeRabbit schema v2 enforces a strict `maxLength: 250` character limit on `tone_instructions`.
+  * Condensed `tone_instructions` from 656 characters to 200 characters while preserving all non-negotiable architectural guardrails (strict Luxon TZ math, 48h cooldown anti-dodge, Sleep Shield, and Warm Dark UI). Comprehensive instructions remain active in `knowledge_base.code_guidelines` and `reviews.path_instructions`.
+* **Vercel Deployment Hardening (`vercel.json` & `src/lib/db.ts`):**
+  * `vercel.json`: Changed cron interval from `* * * * *` (which is prohibited on Vercel Hobby accounts and triggers instant deployment failure) to `"0 0 * * *"` (daily midnight UTC). Frequent 5-minute dispatches are handled independently by `.github/workflows/cron-dispatcher.yml`.
+  * `src/lib/db.ts`: Added placeholder fallback URLs and keys for `createClient` to prevent top-level module initialization failures (`Error: supabaseUrl is required`) during Next.js static page collection on fresh Vercel build environments before runtime environment variables are bound.
+* **Verification:**
+  * Verified `npx tsc --noEmit` clean (0 errors).
+  * Verified `npm run build` succeeds cleanly in isolated environment without environment variables, generating all 21 routes.
 
 ---
 
