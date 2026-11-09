@@ -1,11 +1,11 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-09T23:45:00+05:30  
+> **Last Updated:** 2026-11-10T00:07:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `6fdb8a0`  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 20 routes)
+> **Latest Commit:** `cdc7dd8`  
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 20 routes | 20 Weekend Hours tests passing)
 
 ---
 
@@ -159,6 +159,32 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * Validated Discord URL regex (standard, canary, ptb, rejected invalid).
   * Validated embed colors and Sleep Shield branding.
   * Live Supabase database test for nag assist logging, helper deduplication, and count aggregation.
+
+---
+
+### Phase 9: Weekend Sleep Hours (Friday & Saturday Nights)
+* **Custom Weekend Sleep Hours Engine (`src/lib/sleepEngine.ts`):**
+  * Added `weekend_bedtime_local` and `weekend_wake_time_local` to support distinct sleep hours for Friday nights and Saturday nights.
+  * Added helper functions `isWeekendNight(dt)` (Luxon weekday 5 = Friday, 6 = Saturday) and `getBedtimeForNight(member, dt)`.
+  * `getNightBedtimeDateTime`: Seamlessly handles both before-midnight (e.g. `23:45`) and after-midnight (e.g. `01:30` AM into Saturday/Sunday morning) bedtimes.
+  * `computeMemberState`: Dynamically identifies the closest candidate bedtime across weekdays vs weekend nights, populates `isWeekendSchedule`, and adjusts `formattedSleeperTime` / `formattedViewerTime`.
+  * `checkCooldownPromotion`: Promotes `pending_weekend_bedtime_local` and `pending_weekend_wake_time_local` when the 48-hour cooldown expires.
+* **Database & Migration (`src/lib/db.ts`, `supabase/schema.sql`):**
+  * Extended `Member` interface and PostgreSQL schema with `weekend_bedtime_local`, `weekend_wake_time_local`, `pending_weekend_bedtime_local`, and `pending_weekend_wake_time_local`.
+* **API Endpoints:**
+  * `POST /api/members/update-schedule`: Detects changes to weekend schedule; enqueues into 48-hour pending cooldown for regular members; allows immediate moderator override.
+  * `POST /api/members/cancel-pending`: Clears pending weekend changes.
+  * `GET` & `POST /api/members`: Supports weekend fields in creation and background promotion.
+  * `POST /api/mod`: Moderator drawer actions (`approve_pending`, `cancel_cooldown`, `edit_member`, `add_member`) fully support weekend hours.
+  * `GET /api/auth/me` & `POST /api/auth/login`: Hydrates authenticated member session with weekend hours.
+* **Notification & Webhook Dispatchers (`src/lib/cronDispatcher.ts`, `src/lib/discordWebhook.ts`):**
+  * Push alerts and Discord webhook announcements dynamically use that night's effective local bedtime (`state.formattedSleeperTime`).
+* **Warm Dark UI Components:**
+  * `MyScheduleModal.tsx`: Added Weekend Hours toggle switch and 24h bedtime/wake time inputs with Sleepy Fox helper hint for both Claim/Edit and New Member tabs.
+  * `MemberCard.tsx`: Displays `🌙 Weekend` badge when a member is actively on their Friday/Saturday night schedule.
+  * `ModDrawer.tsx`: Displays pending weekend diffs in Cooldown Approvals tab, adds weekend controls to Edit & Add Member modals, and shows `🌙 Fri/Sat` pill on Roster cards.
+* **Verification Suite (`scripts/test-weekend-hours.mjs`):**
+  * 20 automated tests validating day-of-week classification (Friday & Saturday vs Sun-Thu), before/after midnight crossovers, member state machine buckets, and cooldown promotion.
 
 ---
 
