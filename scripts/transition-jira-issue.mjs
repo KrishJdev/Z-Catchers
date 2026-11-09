@@ -3,14 +3,61 @@ const JIRA_EMAIL = process.env.JIRA_EMAIL || 'krish.jaiswal2182003@gmail.com';
 const JIRA_TOKEN = process.env.JIRA_TOKEN;
 
 if (!JIRA_TOKEN) {
-  console.error('No JIRA_TOKEN set. If running locally, please set JIRA_TOKEN, or run via GitHub Action.');
+  console.error('No JIRA_TOKEN set.');
   process.exit(1);
 }
 
 const authHeader = 'Basic ' + Buffer.from(`${JIRA_EMAIL}:${JIRA_TOKEN}`).toString('base64');
 
+async function debugJira() {
+  console.log(`Checking current Jira user on ${JIRA_DOMAIN}...`);
+  const userRes = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/myself`, {
+    headers: { Authorization: authHeader, Accept: 'application/json' },
+  });
+  console.log('User status:', userRes.status);
+  if (userRes.ok) {
+    const user = await userRes.json();
+    console.log(`Logged in as: ${user.displayName} (${user.emailAddress})`);
+  }
+
+  console.log('Fetching projects...');
+  const projRes = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/project`, {
+    headers: { Authorization: authHeader, Accept: 'application/json' },
+  });
+  if (projRes.ok) {
+    const projects = await projRes.json();
+    console.log('Available projects:', projects.map((p) => `${p.key} (${p.name})`));
+  }
+
+  console.log('Searching recent issues...');
+  const searchRes = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/search/jql?jql=order+by+created+DESC&maxResults=10`, {
+    headers: { Authorization: authHeader, Accept: 'application/json' },
+  });
+  if (searchRes.ok) {
+    const searchData = await searchRes.json();
+    console.log(
+      'Recent issues:',
+      (searchData.issues || []).map((i) => `${i.key}: ${i.fields?.summary} [Status: ${i.fields?.status?.name}]`)
+    );
+  } else {
+    // try fallback search endpoint
+    const fallbackRes = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/search?maxResults=10`, {
+      headers: { Authorization: authHeader, Accept: 'application/json' },
+    });
+    if (fallbackRes.ok) {
+      const searchData = await fallbackRes.json();
+      console.log(
+        'Recent issues (fallback):',
+        (searchData.issues || []).map((i) => `${i.key}: ${i.fields?.summary} [Status: ${i.fields?.status?.name}]`)
+      );
+    }
+  }
+}
+
 async function transitionIssue(issueKey, targetState = 'in progress') {
-  console.log(`Fetching transitions for ${issueKey}...`);
+  await debugJira();
+
+  console.log(`\nFetching transitions for ${issueKey}...`);
   const res = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/issue/${issueKey}/transitions`, {
     headers: {
       Authorization: authHeader,
@@ -20,7 +67,8 @@ async function transitionIssue(issueKey, targetState = 'in progress') {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Failed to fetch transitions for ${issueKey}: ${res.status} ${text}`);
+    console.error(`Failed to fetch transitions for ${issueKey}: ${res.status} ${text}`);
+    return;
   }
 
   const data = await res.json();
@@ -35,8 +83,7 @@ async function transitionIssue(issueKey, targetState = 'in progress') {
 
   if (!targetTransition) {
     console.error(`Could not find a transition matching "${targetState}".`);
-    console.log('Available transitions were:', transitions);
-    process.exit(1);
+    return;
   }
 
   console.log(`Applying transition "${targetTransition.name}" (ID: ${targetTransition.id})...`);
@@ -66,3 +113,4 @@ transitionIssue(issueKey, targetState).catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
