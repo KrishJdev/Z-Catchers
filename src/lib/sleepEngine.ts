@@ -21,6 +21,8 @@ export interface MemberState {
   pendingNotice?: string | null;
   checkedInEarly?: boolean;
   streakMilestone?: StreakMilestone | null;
+  isWeekendSchedule?: boolean;
+  activeBedtimeLocal?: string;
 }
 
 /**
@@ -40,14 +42,27 @@ export function checkCooldownPromotion(
   const effectiveAt = DateTime.fromISO(member.pending_effective_at, { zone: 'utc' });
 
   if (nowUtc >= effectiveAt) {
+    const nextWeekendBedtime =
+      member.pending_weekend_bedtime_local !== undefined
+        ? (member.pending_weekend_bedtime_local || null)
+        : (member.weekend_bedtime_local || null);
+    const nextWeekendWakeTime =
+      member.pending_weekend_wake_time_local !== undefined
+        ? (member.pending_weekend_wake_time_local || null)
+        : (member.weekend_wake_time_local || null);
+
     const updated: Member = {
       ...member,
       bedtime_local: member.pending_bedtime_local || member.bedtime_local,
       wake_time_local: member.pending_wake_time_local || member.wake_time_local,
       timezone: member.pending_timezone || member.timezone,
+      weekend_bedtime_local: nextWeekendBedtime,
+      weekend_wake_time_local: nextWeekendWakeTime,
       pending_bedtime_local: null,
       pending_wake_time_local: null,
       pending_timezone: null,
+      pending_weekend_bedtime_local: null,
+      pending_weekend_wake_time_local: null,
       pending_effective_at: null,
     };
     return { promoted: true, activeMember: updated };
@@ -153,7 +168,57 @@ export function getStreakMilestoneBadge(streakDays: number): StreakMilestone | n
 }
 
 /**
+ * Determines whether a night date falls on a weekend night.
+ * Weekend nights are explicitly defined as Friday nights and Saturday nights.
+ * In Luxon: 5 = Friday, 6 = Saturday.
+ */
+export function isWeekendNight(dt: DateTime): boolean {
+  return dt.weekday === 5 || dt.weekday === 6;
+}
+
+/**
+ * Returns the effective bedtime string and whether weekend hours apply for a given night date.
+ */
+export function getBedtimeForNight(
+  member: Member,
+  nightDate: DateTime
+): { bedtimeStr: string; isWeekend: boolean } {
+  const isWeekend = isWeekendNight(nightDate);
+  if (isWeekend && member.weekend_bedtime_local && member.weekend_bedtime_local.trim() !== '') {
+    return { bedtimeStr: member.weekend_bedtime_local.trim(), isWeekend: true };
+  }
+  return { bedtimeStr: member.bedtime_local.trim(), isWeekend: false };
+}
+
+/**
+ * Calculates the exact DateTime when a given night's bedtime occurs in the sleeper's timezone.
+ * If bedtime hour >= 12, it takes place on the nightDate calendar day (e.g. Friday 23:30).
+ * If bedtime hour < 12, it takes place on the following calendar day morning (e.g. Friday night's 01:00 AM sleep hits Saturday 01:00 AM).
+ */
+export function getNightBedtimeDateTime(
+  member: Member,
+  nightDate: DateTime
+): { bedtimeDateTime: DateTime; isWeekend: boolean; bedtimeStr: string } {
+  const { bedtimeStr, isWeekend } = getBedtimeForNight(member, nightDate);
+  const [hours, minutes] = bedtimeStr.split(':').map(Number);
+  const h = hours || 0;
+  const m = minutes || 0;
+
+  const baseDate = h < 12 ? nightDate.plus({ days: 1 }) : nightDate;
+
+  const bedtimeDateTime = baseDate.set({
+    hour: h,
+    minute: m,
+    second: 0,
+    millisecond: 0,
+  });
+
+  return { bedtimeDateTime, isWeekend, bedtimeStr };
+}
+
+/**
  * Computes a member's sleep bucket, viewer-adjusted bedtime, and sleep shield state.
+ * Supports distinct weekend hours for Friday night and Saturday night bedtimes.
  */
 export function computeMemberState(
   member: Member,
@@ -169,28 +234,32 @@ export function computeMemberState(
     ? viewerTz
     : 'UTC';
 
-  const [hours, minutes] = member.bedtime_local.split(':').map(Number);
   const sleeperNow = nowUtc.setZone(sleeperZone);
 
-  const bedtimeToday = sleeperNow.set({
-    hour: hours || 0,
-    minute: minutes || 0,
-    second: 0,
-    millisecond: 0,
-  });
+  // Consider night dates around now: 2 days ago, yesterday, today, tomorrow, and 2 days ahead
+  const candidateNights = [
+    sleeperNow.minus({ days: 2 }),
+    sleeperNow.minus({ days: 1 }),
+    sleeperNow,
+    sleeperNow.plus({ days: 1 }),
+    sleeperNow.plus({ days: 2 }),
+  ];
 
-  const bedtimeYesterday = bedtimeToday.minus({ days: 1 });
-  const bedtimeTomorrow = bedtimeToday.plus({ days: 1 });
+  const candidates = candidateNights.map((nightDate) =>
+    getNightBedtimeDateTime(member, nightDate)
+  );
 
-  const candidates = [bedtimeYesterday, bedtimeToday, bedtimeTomorrow];
-
-  // Find candidate closest to current time
-  const targetBedtime = candidates.reduce((closest, curr) =>
-    Math.abs(curr.diff(sleeperNow, 'minutes').minutes) <
-    Math.abs(closest.diff(sleeperNow, 'minutes').minutes)
+  // Find candidate whose bedtimeDateTime is closest to sleeperNow
+  const closestCandidate = candidates.reduce((closest, curr) =>
+    Math.abs(curr.bedtimeDateTime.diff(sleeperNow, 'minutes').minutes) <
+    Math.abs(closest.bedtimeDateTime.diff(sleeperNow, 'minutes').minutes)
       ? curr
       : closest
   );
+
+  const targetBedtime = closestCandidate.bedtimeDateTime;
+  const isWeekendSchedule = closestCandidate.isWeekend && Boolean(member.weekend_bedtime_local);
+  const activeBedtimeLocal = closestCandidate.bedtimeStr;
 
   const diffMinutes = sleeperNow.diff(targetBedtime, 'minutes').minutes;
 
@@ -221,7 +290,12 @@ export function computeMemberState(
     isSleepShieldActive = true;
   } else {
     bucket = 'AWAKE';
-    const nextBedtime = diffMinutes < 0 ? targetBedtime : bedtimeTomorrow;
+    // Find next upcoming bedtime strictly in the future
+    const upcomingCandidates = candidates
+      .map((c) => c.bedtimeDateTime)
+      .filter((dt) => dt > sleeperNow)
+      .sort((a, b) => a.toMillis() - b.toMillis());
+    const nextBedtime = upcomingCandidates[0] || targetBedtime.plus({ days: 1 });
     const hoursUntil = Math.floor(nextBedtime.diff(sleeperNow, 'hours').hours);
     const minsUntil = Math.floor(nextBedtime.diff(sleeperNow, 'minutes').minutes % 60);
     statusText = `Awake • in ${hoursUntil}h ${minsUntil}m`;
@@ -234,7 +308,7 @@ export function computeMemberState(
 
   // Cooldown notice calculation if pending
   let pendingNotice: string | null = null;
-  if (member.pending_effective_at && member.pending_bedtime_local) {
+  if (member.pending_effective_at && (member.pending_bedtime_local || member.pending_weekend_bedtime_local)) {
     const effectiveAt = DateTime.fromISO(member.pending_effective_at, { zone: 'utc' });
     const remainingHours = Math.max(0, Math.floor(effectiveAt.diff(nowUtc, 'hours').hours));
     const remainingMins = Math.max(0, Math.floor(effectiveAt.diff(nowUtc, 'minutes').minutes % 60));
@@ -253,5 +327,7 @@ export function computeMemberState(
     pendingNotice,
     checkedInEarly,
     streakMilestone,
+    isWeekendSchedule,
+    activeBedtimeLocal,
   };
 }

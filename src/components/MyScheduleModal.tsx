@@ -18,6 +18,7 @@ import {
   UserCheck,
   UserPlus,
   RefreshCw,
+  Moon,
 } from 'lucide-react';
 
 import { setStoredMemberId } from '@/lib/pushClient';
@@ -76,6 +77,11 @@ export function MyScheduleModal({
   const [wakeTime, setWakeTime] = useState<string>('07:00');
   const [timezone, setTimezone] = useState<string>(viewerTimezone || 'UTC');
 
+  // Weekend hours (Friday & Saturday nights)
+  const [enableWeekendHours, setEnableWeekendHours] = useState<boolean>(false);
+  const [weekendBedtime, setWeekendBedtime] = useState<string>('00:30');
+  const [weekendWakeTime, setWeekendWakeTime] = useState<string>('09:00');
+
   // New member specific fields
   const [newMemberPin, setNewMemberPin] = useState<string>('');
 
@@ -100,6 +106,15 @@ export function MyScheduleModal({
       setBedtime(activeMember.bedtime_local);
       setWakeTime(activeMember.wake_time_local);
       setTimezone(activeMember.timezone);
+      if (activeMember.weekend_bedtime_local) {
+        setEnableWeekendHours(true);
+        setWeekendBedtime(activeMember.weekend_bedtime_local);
+        setWeekendWakeTime(activeMember.weekend_wake_time_local || '09:00');
+      } else {
+        setEnableWeekendHours(false);
+        setWeekendBedtime('00:30');
+        setWeekendWakeTime('09:00');
+      }
       setErrorMessage(null);
       setSuccessMessage(null);
       setPin('');
@@ -134,11 +149,15 @@ export function MyScheduleModal({
   // Validate journal URL
   const isJournalValid = journalUrl.trim() === '' || DISCORD_JOURNAL_REGEX.test(journalUrl.trim());
 
-  // Check if schedule (bedtime, wake time, timezone) has changed from active values
+  // Check if schedule (bedtime, wake time, timezone, weekend hours) has changed from active values
   const hasScheduleChanged = activeMember
     ? bedtime !== activeMember.bedtime_local ||
       timezone !== activeMember.timezone ||
-      wakeTime !== activeMember.wake_time_local
+      wakeTime !== activeMember.wake_time_local ||
+      (enableWeekendHours
+        ? weekendBedtime !== (activeMember.weekend_bedtime_local || '') ||
+          weekendWakeTime !== (activeMember.weekend_wake_time_local || '')
+        : Boolean(activeMember.weekend_bedtime_local))
     : false;
 
   // Check if pending cooldown is currently active on selected member
@@ -153,6 +172,7 @@ export function MyScheduleModal({
 
     return {
       pendingBedtime: activeMember.pending_bedtime_local,
+      pendingWeekendBedtime: activeMember.pending_weekend_bedtime_local,
       pendingTimezone: activeMember.pending_timezone,
       remainingHours,
       remainingMins,
@@ -230,6 +250,8 @@ export function MyScheduleModal({
           bedtime_local: bedtime.trim(),
           wake_time_local: wakeTime.trim(),
           timezone: timezone.trim(),
+          weekend_bedtime_local: enableWeekendHours ? weekendBedtime.trim() : null,
+          weekend_wake_time_local: enableWeekendHours ? weekendWakeTime.trim() : null,
         }),
       });
 
@@ -328,6 +350,8 @@ export function MyScheduleModal({
           bedtime_local: bedtime.trim(),
           wake_time_local: wakeTime.trim(),
           timezone: timezone.trim(),
+          weekend_bedtime_local: enableWeekendHours ? weekendBedtime.trim() : null,
+          weekend_wake_time_local: enableWeekendHours ? weekendWakeTime.trim() : null,
           pin: newMemberPin.trim(),
         }),
       });
@@ -483,6 +507,7 @@ export function MyScheduleModal({
                       Shifting to{' '}
                       <span className="font-bold text-cream-primary">
                         {pendingCooldownNotice.pendingBedtime} ({pendingCooldownNotice.pendingTimezone})
+                        {pendingCooldownNotice.pendingWeekendBedtime ? ` • Weekend: ${pendingCooldownNotice.pendingWeekendBedtime}` : ''}
                       </span>{' '}
                       in{' '}
                       <span className="font-bold text-status-amber">
@@ -736,6 +761,72 @@ export function MyScheduleModal({
                   </select>
                 </div>
 
+                {/* Weekend Hours Toggle & Controls (Friday & Saturday Nights) */}
+                <div className="rounded-2xl border border-night-border bg-night-elevated/70 p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Moon className="h-4 w-4 text-status-amber" />
+                      <div>
+                        <span className="text-xs font-bold text-cream-primary block">
+                          Weekend Hours (Friday &amp; Saturday Nights)
+                        </span>
+                        <span className="text-[11px] text-cream-muted">
+                          Sleep later on weekend nights? Set custom hours for Fri &amp; Sat.
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEnableWeekendHours((prev) => !prev)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        enableWeekendHours ? 'bg-status-amber' : 'bg-night-border'
+                      }`}
+                      aria-label="Toggle weekend hours"
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-night-bg shadow ring-0 transition duration-200 ease-in-out ${
+                          enableWeekendHours ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {enableWeekendHours && (
+                    <div className="pt-2 border-t border-night-border/50 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-cream-secondary mb-1">
+                            Weekend Bedtime (24h)
+                          </label>
+                          <input
+                            type="time"
+                            required={enableWeekendHours}
+                            value={weekendBedtime}
+                            onChange={(e) => setWeekendBedtime(e.target.value)}
+                            className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-cream-secondary mb-1">
+                            Weekend Wake Time (24h)
+                          </label>
+                          <input
+                            type="time"
+                            required={enableWeekendHours}
+                            value={weekendWakeTime}
+                            onChange={(e) => setWeekendWakeTime(e.target.value)}
+                            className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-cream-muted flex items-center gap-1.5">
+                        <span>🦊</span>
+                        <span>Applies on Friday night and Saturday night bedtimes. Sunday through Thursday use your regular hours.</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 {/* Live Dual-Time Preview Pill */}
                 <div className="rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs flex items-center justify-between text-cream-secondary">
                   <span>
@@ -773,7 +864,7 @@ export function MyScheduleModal({
                       <span>Accountability Cooldown (48 Hours)</span>
                     </p>
                     <p className="mt-1">
-                      Changing your bedtime or timezone takes 48 hours to take effect so nobody can dodge
+                      Changing your bedtime, weekend hours, or timezone takes 48 hours to take effect so nobody can dodge
                       their bedtime at the last minute. Updating your Discord Journal link is instant.
                     </p>
                   </div>
@@ -940,6 +1031,72 @@ export function MyScheduleModal({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Weekend Hours Toggle & Controls (Friday & Saturday Nights) */}
+            <div className="rounded-2xl border border-night-border bg-night-elevated/70 p-3.5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Moon className="h-4 w-4 text-status-amber" />
+                  <div>
+                    <span className="text-xs font-bold text-cream-primary block">
+                      Weekend Hours (Friday &amp; Saturday Nights)
+                    </span>
+                    <span className="text-[11px] text-cream-muted">
+                      Sleep later on weekend nights? Set custom hours for Fri &amp; Sat.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEnableWeekendHours((prev) => !prev)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    enableWeekendHours ? 'bg-status-amber' : 'bg-night-border'
+                  }`}
+                  aria-label="Toggle weekend hours"
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-night-bg shadow ring-0 transition duration-200 ease-in-out ${
+                      enableWeekendHours ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {enableWeekendHours && (
+                <div className="pt-2 border-t border-night-border/50 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-cream-secondary mb-1">
+                        Weekend Bedtime (24h)
+                      </label>
+                      <input
+                        type="time"
+                        required={enableWeekendHours}
+                        value={weekendBedtime}
+                        onChange={(e) => setWeekendBedtime(e.target.value)}
+                        className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-cream-secondary mb-1">
+                        Weekend Wake Time (24h)
+                      </label>
+                      <input
+                        type="time"
+                        required={enableWeekendHours}
+                        value={weekendWakeTime}
+                        onChange={(e) => setWeekendWakeTime(e.target.value)}
+                        className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-cream-muted flex items-center gap-1.5">
+                    <span>🦊</span>
+                    <span>Applies on Friday night and Saturday night bedtimes. Sunday through Thursday use your regular hours.</span>
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* 4-digit PIN */}

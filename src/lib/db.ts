@@ -23,12 +23,16 @@ export interface Member {
   discord_handle: string | null;
   avatar_url: string | null;
   journal_url: string;
-  bedtime_local: string; // "HH:mm", e.g. "23:30"
+  bedtime_local: string; // "HH:mm", e.g. "23:30" (Weekday: Sunday-Thursday nights)
   wake_time_local: string; // "HH:mm", default "07:00"
   timezone: string; // IANA timezone, e.g. "America/New_York"
+  weekend_bedtime_local?: string | null; // "HH:mm" for Friday & Saturday nights (optional)
+  weekend_wake_time_local?: string | null; // "HH:mm" for weekend mornings (optional)
   pending_bedtime_local: string | null;
   pending_wake_time_local: string | null;
   pending_timezone: string | null;
+  pending_weekend_bedtime_local?: string | null;
+  pending_weekend_wake_time_local?: string | null;
   pending_effective_at: string | null; // ISO timestamp
   role: 'member' | 'moderator';
   passcode_hash: string | null;

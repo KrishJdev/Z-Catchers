@@ -61,9 +61,13 @@ export async function GET() {
             bedtime_local: activeMember.bedtime_local,
             wake_time_local: activeMember.wake_time_local,
             timezone: activeMember.timezone,
+            weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
+            weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
             pending_bedtime_local: null,
             pending_wake_time_local: null,
             pending_timezone: null,
+            pending_weekend_bedtime_local: null,
+            pending_weekend_wake_time_local: null,
             pending_effective_at: null,
             updated_at: nowUtc.toISO(),
           })
@@ -103,6 +107,8 @@ export async function POST(request: Request) {
       bedtime_local,
       wake_time_local = '07:00',
       timezone,
+      weekend_bedtime_local,
+      weekend_wake_time_local,
       pin,
     } = body;
 
@@ -135,6 +141,8 @@ export async function POST(request: Request) {
         bedtime_local: bedtime_local.trim(),
         wake_time_local: wake_time_local.trim(),
         timezone: timezone.trim(),
+        weekend_bedtime_local: weekend_bedtime_local?.trim() || null,
+        weekend_wake_time_local: weekend_wake_time_local?.trim() || null,
         role: 'member',
         passcode_hash,
       })

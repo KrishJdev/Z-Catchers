@@ -147,9 +147,18 @@ export function MemberCard({
           )}
         </div>
 
-        <p className="text-xs text-cream-secondary">
-          {formattedSleeperTime} local ({member.timezone.split('/').pop()?.replace(/_/g, ' ')})
-        </p>
+        <div className="flex items-center gap-1.5 flex-wrap text-xs text-cream-secondary">
+          <span>{formattedSleeperTime} local ({member.timezone.split('/').pop()?.replace(/_/g, ' ')})</span>
+          {state.isWeekendSchedule && (
+            <span
+              className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.2 text-[10px] font-semibold text-status-amber border border-status-amber/30"
+              title="Weekend bedtime schedule active (Friday/Saturday nights)"
+            >
+              <span>🌙</span>
+              <span>Weekend</span>
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

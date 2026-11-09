@@ -14,14 +14,20 @@ CREATE TABLE IF NOT EXISTS members (
   journal_url TEXT NOT NULL,
   
   -- Active Schedule (Always evaluated in local time + IANA zone)
-  bedtime_local VARCHAR(5) NOT NULL,        -- Format: "HH:mm" (e.g., "23:30")
+  bedtime_local VARCHAR(5) NOT NULL,        -- Format: "HH:mm" (e.g., "23:30") - Weekday schedule (Sun-Thu nights)
   wake_time_local VARCHAR(5) NOT NULL DEFAULT '07:00',
   timezone TEXT NOT NULL,                   -- IANA string (e.g., "America/New_York", "Asia/Kolkata")
+  
+  -- Weekend Schedule (Optional: Friday & Saturday nights)
+  weekend_bedtime_local VARCHAR(5),         -- Format: "HH:mm" (e.g., "00:30")
+  weekend_wake_time_local VARCHAR(5),       -- Format: "HH:mm" (e.g., "09:00")
   
   -- 48-Hour Cooldown Pending Queue
   pending_bedtime_local VARCHAR(5),
   pending_wake_time_local VARCHAR(5),
   pending_timezone TEXT,
+  pending_weekend_bedtime_local VARCHAR(5),
+  pending_weekend_wake_time_local VARCHAR(5),
   pending_effective_at TIMESTAMPTZ,         -- UTC timestamp when pending promotion unlocks (NOW() + 48h)
   
   -- Role & Security
@@ -31,6 +37,12 @@ CREATE TABLE IF NOT EXISTS members (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Migration support for existing deployments
+ALTER TABLE members ADD COLUMN IF NOT EXISTS weekend_bedtime_local VARCHAR(5);
+ALTER TABLE members ADD COLUMN IF NOT EXISTS weekend_wake_time_local VARCHAR(5);
+ALTER TABLE members ADD COLUMN IF NOT EXISTS pending_weekend_bedtime_local VARCHAR(5);
+ALTER TABLE members ADD COLUMN IF NOT EXISTS pending_weekend_wake_time_local VARCHAR(5);
 
 -- 2. Push Subscriptions Table (Supports multi-device per member)
 CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -49,7 +61,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 CREATE TABLE IF NOT EXISTS notification_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-  notification_type TEXT NOT NULL,          -- 'WIND_DOWN_30M' | 'BEDTIME_HIT'
+  notification_type TEXT NOT NULL,          -- 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY'
   local_date DATE NOT NULL,                 -- Sleeper's local date (YYYY-MM-DD)
   dispatched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(member_id, notification_type, local_date)
@@ -95,10 +107,10 @@ CREATE POLICY "Service role full access on notification_logs" ON notification_lo
 -- ==============================================================================
 -- Seed Initial Demo Members (Cross-Timezone Community)
 -- ==============================================================================
-INSERT INTO members (discord_username, discord_handle, avatar_url, journal_url, bedtime_local, wake_time_local, timezone, role)
+INSERT INTO members (discord_username, discord_handle, avatar_url, journal_url, bedtime_local, wake_time_local, timezone, weekend_bedtime_local, weekend_wake_time_local, role)
 VALUES
-  ('Aoi', 'aoi_jp', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aoi', 'https://discord.com/channels/123456789/987654321', '23:30', '07:30', 'Asia/Tokyo', 'member'),
-  ('SarahK', 'sarah_ny', 'https://api.dicebear.com/7.x/bottts/svg?seed=SarahK', 'https://discord.com/channels/123456789/987654322', '22:45', '06:45', 'America/New_York', 'member'),
-  ('Marcus', 'marcus_ldn', 'https://api.dicebear.com/7.x/bottts/svg?seed=Marcus', 'https://discord.com/channels/123456789/987654323', '23:00', '07:00', 'Europe/London', 'moderator'),
-  ('Arjun', 'arjun_in', 'https://api.dicebear.com/7.x/bottts/svg?seed=Arjun', 'https://discord.com/channels/123456789/987654324', '00:15', '08:00', 'Asia/Kolkata', 'member')
+  ('Aoi', 'aoi_jp', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aoi', 'https://discord.com/channels/123456789/987654321', '23:30', '07:30', 'Asia/Tokyo', '00:30', '09:00', 'member'),
+  ('SarahK', 'sarah_ny', 'https://api.dicebear.com/7.x/bottts/svg?seed=SarahK', 'https://discord.com/channels/123456789/987654322', '22:45', '06:45', 'America/New_York', '23:45', '08:30', 'member'),
+  ('Marcus', 'marcus_ldn', 'https://api.dicebear.com/7.x/bottts/svg?seed=Marcus', 'https://discord.com/channels/123456789/987654323', '23:00', '07:00', 'Europe/London', NULL, NULL, 'moderator'),
+  ('Arjun', 'arjun_in', 'https://api.dicebear.com/7.x/bottts/svg?seed=Arjun', 'https://discord.com/channels/123456789/987654324', '00:15', '08:00', 'Asia/Kolkata', '01:30', '09:30', 'member')
 ON CONFLICT DO NOTHING;

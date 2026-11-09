@@ -81,9 +81,13 @@ export async function executeNotificationDispatcher(options: {
           bedtime_local: activeMember.bedtime_local,
           wake_time_local: activeMember.wake_time_local,
           timezone: activeMember.timezone,
+          weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
+          weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
           pending_bedtime_local: null,
           pending_wake_time_local: null,
           pending_timezone: null,
+          pending_weekend_bedtime_local: null,
+          pending_weekend_wake_time_local: null,
           pending_effective_at: null,
           updated_at: nowUtc.toISO(),
         })
@@ -211,7 +215,7 @@ export async function executeNotificationDispatcher(options: {
           for (const sub of personalSubs) {
             const sent = await deliverPush(sub, {
               title: '🕯️ Z Catchers: Wind-Down Time',
-              body: `30 minutes until your bedtime (${member.bedtime_local}). Start wrapping up!`,
+              body: `30 minutes until your bedtime (${state.formattedSleeperTime}). Start wrapping up!`,
               url: member.journal_url,
             });
             if (sent) results.windDownDispatched++;
@@ -245,7 +249,7 @@ export async function executeNotificationDispatcher(options: {
           for (const sub of personalSubs) {
             const sent = await deliverPush(sub, {
               title: "🌙 Time to Catch Some Z's!",
-              body: `It's ${member.bedtime_local}. Head to your Discord journal and check in for the night.`,
+              body: `It's ${state.formattedSleeperTime}. Head to your Discord journal and check in for the night.`,
               url: member.journal_url,
             });
             if (sent) results.bedtimeHitDispatched++;
@@ -302,7 +306,9 @@ export async function executeNotificationDispatcher(options: {
 
           // Dispatch C: Discord Community Webhook Broadcast (Phase 3.2)
           if (!options.dryRun) {
-            const webhookRes = await sendBedtimeDiscordWebhook(member, member.streak_days || 0);
+            const webhookRes = await sendBedtimeDiscordWebhook(member, member.streak_days || 0, {
+              effectiveBedtime: state.formattedSleeperTime,
+            });
             if (webhookRes.success) {
               results.discordWebhooksCount++;
               results.details.discordWebhooksDispatched.push(member.discord_username);

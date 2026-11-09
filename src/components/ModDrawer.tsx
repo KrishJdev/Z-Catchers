@@ -95,6 +95,8 @@ export function ModDrawer({
   const [editBedtime, setEditBedtime] = useState('');
   const [editWakeTime, setEditWakeTime] = useState('');
   const [editTimezone, setEditTimezone] = useState('');
+  const [editWeekendBedtime, setEditWeekendBedtime] = useState('');
+  const [editWeekendWakeTime, setEditWeekendWakeTime] = useState('');
   const [editJournalUrl, setEditJournalUrl] = useState('');
   const [editHandle, setEditHandle] = useState('');
   const [editRole, setEditRole] = useState<'member' | 'moderator'>('member');
@@ -110,6 +112,8 @@ export function ModDrawer({
   const [newBedtime, setNewBedtime] = useState('23:00');
   const [newWakeTime, setNewWakeTime] = useState('07:00');
   const [newTimezone, setNewTimezone] = useState(viewerTimezone || 'UTC');
+  const [newWeekendBedtime, setNewWeekendBedtime] = useState('');
+  const [newWeekendWakeTime, setNewWeekendWakeTime] = useState('');
   const [newRole, setNewRole] = useState<'member' | 'moderator'>('member');
   const [newPin, setNewPin] = useState('');
 
@@ -410,6 +414,8 @@ export function ModDrawer({
     setEditBedtime(member.bedtime_local);
     setEditWakeTime(member.wake_time_local);
     setEditTimezone(member.timezone);
+    setEditWeekendBedtime(member.weekend_bedtime_local || '');
+    setEditWeekendWakeTime(member.weekend_wake_time_local || '');
     setEditJournalUrl(member.journal_url);
     setEditHandle(member.discord_handle || '');
     setEditRole(member.role);
@@ -424,6 +430,16 @@ export function ModDrawer({
 
     if (!TIME_FORMAT_REGEX.test(editBedtime.trim())) {
       setErrorMessage('Bedtime must be in 24h "HH:mm" format (e.g. "23:30").');
+      return;
+    }
+
+    if (editWeekendBedtime.trim() && !TIME_FORMAT_REGEX.test(editWeekendBedtime.trim())) {
+      setErrorMessage('Weekend bedtime must be in 24h "HH:mm" format (e.g. "00:30").');
+      return;
+    }
+
+    if (editWeekendWakeTime.trim() && !TIME_FORMAT_REGEX.test(editWeekendWakeTime.trim())) {
+      setErrorMessage('Weekend wake time must be in 24h "HH:mm" format (e.g. "09:00").');
       return;
     }
 
@@ -447,6 +463,8 @@ export function ModDrawer({
           bedtime_local: editBedtime.trim(),
           wake_time_local: editWakeTime.trim() || '07:00',
           timezone: editTimezone.trim(),
+          weekend_bedtime_local: editWeekendBedtime.trim() || null,
+          weekend_wake_time_local: editWeekendWakeTime.trim() || null,
           journal_url: editJournalUrl.trim(),
           discord_handle: editHandle.trim() || null,
           role: editRole,
@@ -566,6 +584,16 @@ export function ModDrawer({
       return;
     }
 
+    if (newWeekendBedtime.trim() && !TIME_FORMAT_REGEX.test(newWeekendBedtime.trim())) {
+      setErrorMessage('Weekend bedtime must be in 24h "HH:mm" format (e.g. "00:30").');
+      return;
+    }
+
+    if (newWeekendWakeTime.trim() && !TIME_FORMAT_REGEX.test(newWeekendWakeTime.trim())) {
+      setErrorMessage('Weekend wake time must be in 24h "HH:mm" format (e.g. "09:00").');
+      return;
+    }
+
     if (newPin.trim() && !/^\d{4,6}$/.test(newPin.trim())) {
       setErrorMessage('Initial PIN must be 4 to 6 digits (or leave blank for member to claim).');
       return;
@@ -588,6 +616,8 @@ export function ModDrawer({
           bedtime_local: newBedtime.trim(),
           wake_time_local: newWakeTime.trim() || '07:00',
           timezone: newTimezone.trim(),
+          weekend_bedtime_local: newWeekendBedtime.trim() || null,
+          weekend_wake_time_local: newWeekendWakeTime.trim() || null,
           role: newRole,
           pin: newPin.trim() || null,
         }),
@@ -603,6 +633,8 @@ export function ModDrawer({
       setNewUsername('');
       setNewHandle('');
       setNewJournalUrl('');
+      setNewWeekendBedtime('');
+      setNewWeekendWakeTime('');
       setNewPin('');
       setActiveTab('roster');
       await fetchModRoster(passcode);
@@ -864,6 +896,38 @@ export function ModDrawer({
                     </div>
                   </div>
 
+                  {/* Weekend Hours Grid */}
+                  <div className="rounded-xl border border-night-border/70 bg-night-surface/50 p-2.5 space-y-2">
+                    <span className="text-[11px] font-bold text-cream-secondary flex items-center gap-1.5">
+                      <span>🌙</span>
+                      <span>Weekend Hours (Friday &amp; Saturday Nights - Optional)</span>
+                    </span>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="text-[10px] font-medium text-cream-muted">
+                          Weekend Bedtime (24h)
+                        </label>
+                        <input
+                          type="time"
+                          value={editWeekendBedtime}
+                          onChange={(e) => setEditWeekendBedtime(e.target.value)}
+                          className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-medium text-cream-muted">
+                          Weekend Wake Time (24h)
+                        </label>
+                        <input
+                          type="time"
+                          value={editWeekendWakeTime}
+                          onChange={(e) => setEditWeekendWakeTime(e.target.value)}
+                          className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="text-[11px] font-semibold text-cream-muted">
                       Timezone (IANA Region)
@@ -1088,10 +1152,12 @@ export function ModDrawer({
                               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                                 <span className="text-cream-muted">
                                   Current: <strong className="text-cream-secondary">{member.bedtime_local}</strong> ({member.timezone.split('/').pop()?.replace(/_/g, ' ')})
+                                  {member.weekend_bedtime_local && <span> | Weekend: <strong className="text-cream-secondary">{member.weekend_bedtime_local}</strong></span>}
                                 </span>
                                 <span className="text-cream-muted">→</span>
                                 <span className="text-status-amber">
-                                  Requested: <strong>{member.pending_bedtime_local}</strong> ({member.pending_timezone?.split('/').pop()?.replace(/_/g, ' ') || member.timezone})
+                                  Requested: <strong>{member.pending_bedtime_local || member.bedtime_local}</strong> ({member.pending_timezone?.split('/').pop()?.replace(/_/g, ' ') || member.timezone})
+                                  {member.pending_weekend_bedtime_local && <span> | Weekend: <strong className="text-status-amber">{member.pending_weekend_bedtime_local}</strong></span>}
                                 </span>
                               </div>
 
@@ -1199,6 +1265,11 @@ export function ModDrawer({
 
                           <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-cream-muted">
                             <span>Bedtime: <strong className="text-cream-secondary">{member.bedtime_local}</strong></span>
+                            {member.weekend_bedtime_local && (
+                              <span className="rounded bg-status-amber/15 border border-status-amber/30 px-1.5 py-0.2 text-[10px] font-semibold text-status-amber">
+                                🌙 Fri/Sat: {member.weekend_bedtime_local}
+                              </span>
+                            )}
                             <span>•</span>
                             <span>{member.timezone.split('/').pop()?.replace(/_/g, ' ')}</span>
                             <span>•</span>
@@ -1337,6 +1408,38 @@ export function ModDrawer({
                       onChange={(e) => setNewWakeTime(e.target.value)}
                       className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
                     />
+                  </div>
+                </div>
+
+                {/* Weekend Hours Grid */}
+                <div className="rounded-xl border border-night-border/70 bg-night-surface/50 p-2.5 space-y-2">
+                  <span className="text-[11px] font-bold text-cream-secondary flex items-center gap-1.5">
+                    <span>🌙</span>
+                    <span>Weekend Hours (Friday &amp; Saturday Nights - Optional)</span>
+                  </span>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-[10px] font-medium text-cream-muted">
+                        Weekend Bedtime (24h)
+                      </label>
+                      <input
+                        type="time"
+                        value={newWeekendBedtime}
+                        onChange={(e) => setNewWeekendBedtime(e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-medium text-cream-muted">
+                        Weekend Wake Time (24h)
+                      </label>
+                      <input
+                        type="time"
+                        value={newWeekendWakeTime}
+                        onChange={(e) => setNewWeekendWakeTime(e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
 

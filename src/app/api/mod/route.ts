@@ -51,9 +51,13 @@ export async function GET(request: Request) {
             bedtime_local: activeMember.bedtime_local,
             wake_time_local: activeMember.wake_time_local,
             timezone: activeMember.timezone,
+            weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
+            weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
             pending_bedtime_local: null,
             pending_wake_time_local: null,
             pending_timezone: null,
+            pending_weekend_bedtime_local: null,
+            pending_weekend_wake_time_local: null,
             pending_effective_at: null,
             updated_at: DateTime.utc().toISO() as string,
           })
@@ -121,22 +125,35 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Member not found' }, { status: 404 });
       }
 
-      if (!member.pending_effective_at || !member.pending_bedtime_local) {
+      if (!member.pending_effective_at || (!member.pending_bedtime_local && !member.pending_weekend_bedtime_local)) {
         return NextResponse.json(
           { error: 'Member does not have an active pending schedule change.' },
           { status: 400 }
         );
       }
 
+      const nextWeekendBedtime =
+        member.pending_weekend_bedtime_local !== undefined
+          ? member.pending_weekend_bedtime_local
+          : member.weekend_bedtime_local;
+      const nextWeekendWakeTime =
+        member.pending_weekend_wake_time_local !== undefined
+          ? member.pending_weekend_wake_time_local
+          : member.weekend_wake_time_local;
+
       const { data: updated, error: updateErr } = await supabaseAdmin
         .from('members')
         .update({
-          bedtime_local: member.pending_bedtime_local,
+          bedtime_local: member.pending_bedtime_local || member.bedtime_local,
           wake_time_local: member.pending_wake_time_local || member.wake_time_local,
           timezone: member.pending_timezone || member.timezone,
+          weekend_bedtime_local: nextWeekendBedtime,
+          weekend_wake_time_local: nextWeekendWakeTime,
           pending_bedtime_local: null,
           pending_wake_time_local: null,
           pending_timezone: null,
+          pending_weekend_bedtime_local: null,
+          pending_weekend_wake_time_local: null,
           pending_effective_at: null,
           updated_at: DateTime.utc().toISO() as string,
         })
@@ -168,6 +185,8 @@ export async function POST(request: Request) {
           pending_bedtime_local: null,
           pending_wake_time_local: null,
           pending_timezone: null,
+          pending_weekend_bedtime_local: null,
+          pending_weekend_wake_time_local: null,
           pending_effective_at: null,
           updated_at: DateTime.utc().toISO() as string,
         })
@@ -196,6 +215,8 @@ export async function POST(request: Request) {
         bedtime_local,
         wake_time_local,
         timezone,
+        weekend_bedtime_local,
+        weekend_wake_time_local,
         role,
       } = body;
 
@@ -234,6 +255,28 @@ export async function POST(request: Request) {
         );
       }
 
+      if (
+        weekend_bedtime_local &&
+        weekend_bedtime_local.trim() !== '' &&
+        !TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim())
+      ) {
+        return NextResponse.json(
+          { error: 'Weekend bedtime must be in "HH:mm" format (e.g. "00:30").' },
+          { status: 400 }
+        );
+      }
+
+      if (
+        weekend_wake_time_local &&
+        weekend_wake_time_local.trim() !== '' &&
+        !TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim())
+      ) {
+        return NextResponse.json(
+          { error: 'Weekend wake time must be in "HH:mm" format (e.g. "09:00").' },
+          { status: 400 }
+        );
+      }
+
       if (timezone && !DateTime.now().setZone(timezone.trim()).isValid) {
         return NextResponse.json(
           { error: `Invalid IANA timezone "${timezone}".` },
@@ -266,6 +309,20 @@ export async function POST(request: Request) {
         updates.timezone = timezone.trim();
         updates.pending_timezone = null;
       }
+      if (weekend_bedtime_local !== undefined) {
+        updates.weekend_bedtime_local =
+          weekend_bedtime_local && weekend_bedtime_local.trim() !== ''
+            ? weekend_bedtime_local.trim()
+            : null;
+        updates.pending_weekend_bedtime_local = null;
+      }
+      if (weekend_wake_time_local !== undefined) {
+        updates.weekend_wake_time_local =
+          weekend_wake_time_local && weekend_wake_time_local.trim() !== ''
+            ? weekend_wake_time_local.trim()
+            : null;
+        updates.pending_weekend_wake_time_local = null;
+      }
 
       const { data: updated, error: updateErr } = await supabaseAdmin
         .from('members')
@@ -294,6 +351,8 @@ export async function POST(request: Request) {
         bedtime_local,
         wake_time_local = '07:00',
         timezone,
+        weekend_bedtime_local,
+        weekend_wake_time_local,
         role = 'member',
         pin,
       } = body;
@@ -326,6 +385,28 @@ export async function POST(request: Request) {
         );
       }
 
+      if (
+        weekend_bedtime_local &&
+        weekend_bedtime_local.trim() !== '' &&
+        !TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim())
+      ) {
+        return NextResponse.json(
+          { error: 'Weekend bedtime must be in "HH:mm" format (e.g. "00:30").' },
+          { status: 400 }
+        );
+      }
+
+      if (
+        weekend_wake_time_local &&
+        weekend_wake_time_local.trim() !== '' &&
+        !TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim())
+      ) {
+        return NextResponse.json(
+          { error: 'Weekend wake time must be in "HH:mm" format (e.g. "09:00").' },
+          { status: 400 }
+        );
+      }
+
       if (!DateTime.now().setZone(timezone.trim()).isValid) {
         return NextResponse.json(
           { error: `Invalid IANA timezone "${timezone}".` },
@@ -349,6 +430,8 @@ export async function POST(request: Request) {
           bedtime_local: bedtime_local.trim(),
           wake_time_local: wake_time_local.trim(),
           timezone: timezone.trim(),
+          weekend_bedtime_local: weekend_bedtime_local?.trim() || null,
+          weekend_wake_time_local: weekend_wake_time_local?.trim() || null,
           role: role === 'moderator' ? 'moderator' : 'member',
           passcode_hash,
           is_active: true,

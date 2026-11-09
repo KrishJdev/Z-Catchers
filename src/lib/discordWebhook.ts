@@ -132,7 +132,7 @@ export async function sendDiscordWebhook(
 export async function sendBedtimeDiscordWebhook(
   member: Member,
   streakDays: number = 0,
-  options: { webhookUrl?: string | null } = {}
+  options: { webhookUrl?: string | null; effectiveBedtime?: string } = {}
 ): Promise<WebhookSendResult> {
   const zoneName = member.timezone.split('/').pop()?.replace(/_/g, ' ') || member.timezone;
   const milestone = getStreakMilestoneBadge(streakDays);
@@ -141,15 +141,17 @@ export async function sendBedtimeDiscordWebhook(
       ? `${streakDays} consecutive day${streakDays === 1 ? '' : 's'} on track ${milestone?.icon || '🔥'}`
       : 'Starting fresh tonight';
 
+  const displayBedtime = options.effectiveBedtime || member.bedtime_local;
+
   const embed: DiscordEmbed = {
     title: `🚨 Bedtime Alert: ${member.discord_username}`,
-    description: `It's **${member.bedtime_local}** in **${zoneName}**! Friends in awake timezones, make sure ${member.discord_username} logs off and catches some rest. 🦊💤`,
+    description: `It's **${displayBedtime}** in **${zoneName}**! Friends in awake timezones, make sure ${member.discord_username} logs off and catches some rest. 🦊💤`,
     url: member.journal_url,
     color: DISCORD_EMBED_COLORS.CORAL_NAG,
     fields: [
       {
         name: '🛌 Bedtime (Local Time)',
-        value: `\`${member.bedtime_local}\` (${zoneName})`,
+        value: `\`${displayBedtime}\` (${zoneName})`,
         inline: true,
       },
       {

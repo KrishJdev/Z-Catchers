@@ -19,6 +19,8 @@ export async function POST(request: Request) {
       bedtime_local,
       wake_time_local = '07:00',
       timezone,
+      weekend_bedtime_local,
+      weekend_wake_time_local,
       mod_passcode,
     } = body;
 
@@ -111,16 +113,50 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    if (
+      weekend_bedtime_local &&
+      weekend_bedtime_local.trim() !== '' &&
+      !TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim())
+    ) {
+      return NextResponse.json(
+        { error: 'Weekend bedtime must be in 24-hour "HH:mm" format (e.g. "00:30").' },
+        { status: 400 }
+      );
+    }
+    if (
+      weekend_wake_time_local &&
+      weekend_wake_time_local.trim() !== '' &&
+      !TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim())
+    ) {
+      return NextResponse.json(
+        { error: 'Weekend wake time must be in 24-hour "HH:mm" format (e.g. "09:00").' },
+        { status: 400 }
+      );
+    }
 
     // 6. Check for Schedule Changes vs Immediate Profile Changes
     const targetBedtime = bedtime_local || currentMember.bedtime_local;
     const targetWakeTime = wake_time_local || currentMember.wake_time_local;
     const targetTimezone = timezone || currentMember.timezone;
+    const targetWeekendBedtime =
+      weekend_bedtime_local !== undefined
+        ? weekend_bedtime_local && weekend_bedtime_local.trim() !== ''
+          ? weekend_bedtime_local.trim()
+          : null
+        : (currentMember.weekend_bedtime_local || null);
+    const targetWeekendWakeTime =
+      weekend_wake_time_local !== undefined
+        ? weekend_wake_time_local && weekend_wake_time_local.trim() !== ''
+          ? weekend_wake_time_local.trim()
+          : null
+        : (currentMember.weekend_wake_time_local || null);
 
     const scheduleHasChanged =
       targetBedtime !== currentMember.bedtime_local ||
       targetTimezone !== currentMember.timezone ||
-      targetWakeTime !== currentMember.wake_time_local;
+      targetWakeTime !== currentMember.wake_time_local ||
+      targetWeekendBedtime !== (currentMember.weekend_bedtime_local || null) ||
+      targetWeekendWakeTime !== (currentMember.weekend_wake_time_local || null);
 
     const updates: Partial<Member> = {
       discord_username: discord_username?.trim() || currentMember.discord_username,
@@ -142,9 +178,13 @@ export async function POST(request: Request) {
         updates.bedtime_local = targetBedtime;
         updates.wake_time_local = targetWakeTime;
         updates.timezone = targetTimezone;
+        updates.weekend_bedtime_local = targetWeekendBedtime;
+        updates.weekend_wake_time_local = targetWeekendWakeTime;
         updates.pending_bedtime_local = null;
         updates.pending_wake_time_local = null;
         updates.pending_timezone = null;
+        updates.pending_weekend_bedtime_local = null;
+        updates.pending_weekend_wake_time_local = null;
         updates.pending_effective_at = null;
       } else {
         // Enforce 48-Hour Cooldown Rule for regular member edits
@@ -152,6 +192,8 @@ export async function POST(request: Request) {
         updates.pending_bedtime_local = targetBedtime;
         updates.pending_wake_time_local = targetWakeTime;
         updates.pending_timezone = targetTimezone;
+        updates.pending_weekend_bedtime_local = targetWeekendBedtime;
+        updates.pending_weekend_wake_time_local = targetWeekendWakeTime;
         updates.pending_effective_at = effectiveAt.toISO() as string;
         cooldownApplied = true;
         pendingEffectiveAt = effectiveAt.toISO() as string;
