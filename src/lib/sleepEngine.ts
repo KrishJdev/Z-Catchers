@@ -16,7 +16,10 @@ export interface MemberState {
 /**
  * Checks and promotes pending schedule if 48-hour cooldown has elapsed.
  */
-export function checkCooldownPromotion(member: Member): {
+export function checkCooldownPromotion(
+  member: Member,
+  nowUtc = DateTime.utc()
+): {
   promoted: boolean;
   activeMember: Member;
 } {
@@ -24,10 +27,9 @@ export function checkCooldownPromotion(member: Member): {
     return { promoted: false, activeMember: member };
   }
 
-  const now = DateTime.utc();
   const effectiveAt = DateTime.fromISO(member.pending_effective_at, { zone: 'utc' });
 
-  if (now >= effectiveAt) {
+  if (nowUtc >= effectiveAt) {
     const updated: Member = {
       ...member,
       bedtime_local: member.pending_bedtime_local || member.bedtime_local,

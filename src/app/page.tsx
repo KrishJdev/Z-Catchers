@@ -8,7 +8,13 @@ import { MemberCard } from '@/components/MemberCard';
 import { FoxMascot } from '@/components/FoxMascot';
 import { MyScheduleModal } from '@/components/MyScheduleModal';
 import { ModDrawer } from '@/components/ModDrawer';
+import { PushModal } from '@/components/PushModal';
 import { computeMemberState, MemberState } from '@/lib/sleepEngine';
+import {
+  registerServiceWorker,
+  getExistingSubscription,
+  isPushSupported,
+} from '@/lib/pushClient';
 import type { Member } from '@/lib/db';
 import {
   ShieldAlert,
@@ -19,8 +25,7 @@ import {
   Clock,
   Shield,
   RefreshCw,
-  X,
-  ExternalLink,
+  Bell,
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -31,8 +36,8 @@ export default function HomePage() {
   const [isSleepShieldActive, setIsSleepShieldActive] = useState(false);
   const [tick, setTick] = useState(0);
 
-  // Dialog / Modal states
-  const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | null>(null);
+  // Dialog / Modal states: 'schedule' | 'mod' | 'push' | null
+  const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | 'push' | null>(null);
 
   // Detect viewer's local timezone
   useEffect(() => {
@@ -41,6 +46,19 @@ export default function HomePage() {
       if (detected) setViewerTimezone(detected);
     } catch {
       setViewerTimezone('UTC');
+    }
+  }, []);
+
+  // Register service worker and inspect existing push subscription
+  useEffect(() => {
+    if (isPushSupported()) {
+      registerServiceWorker().then(() => {
+        getExistingSubscription().then((sub) => {
+          if (sub) {
+            setIsPushEnabled(true);
+          }
+        });
+      });
     }
   }, []);
 
@@ -106,17 +124,8 @@ export default function HomePage() {
     return { nagNow, windingDown, awake, sleeping };
   }, [members, viewerTimezone, tick]);
 
-  const handleEnablePush = async () => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      try {
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-          setIsPushEnabled(true);
-        }
-      } catch (err) {
-        console.error('Error requesting push permission:', err);
-      }
-    }
+  const handleOpenPushModal = () => {
+    setActiveModal('push');
   };
 
   return (
@@ -124,7 +133,7 @@ export default function HomePage() {
       <Header
         viewerTimezone={viewerTimezone}
         isPushEnabled={isPushEnabled}
-        onTogglePush={handleEnablePush}
+        onTogglePush={handleOpenPushModal}
         isSleepShieldActive={isSleepShieldActive}
         onToggleSleepShield={() => setIsSleepShieldActive((prev) => !prev)}
         onOpenSchedule={() => setActiveModal('schedule')}
@@ -132,7 +141,7 @@ export default function HomePage() {
       />
 
       <div className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6 pb-28 md:pb-12">
-        <PwaBanner onEnablePush={handleEnablePush} isPushGranted={isPushEnabled} />
+        <PwaBanner onEnablePush={handleOpenPushModal} isPushGranted={isPushEnabled} />
 
         {/* Contextual Sleepy Fox Status Banner */}
         <section className="mb-6 rounded-2xl border border-night-border/80 bg-night-surface/90 p-4 shadow-lg backdrop-blur-sm sm:p-5">
@@ -272,6 +281,17 @@ export default function HomePage() {
         </button>
 
         <button
+          onClick={() => setActiveModal('push')}
+          className={`flex flex-col items-center gap-1 transition-colors ${
+            isPushEnabled ? 'text-status-sage' : 'text-cream-muted hover:text-cream-secondary'
+          }`}
+          title="Bedtime Alerts"
+        >
+          <Bell className="h-5 w-5" />
+          <span className="text-[10px] font-medium">Alerts</span>
+        </button>
+
+        <button
           onClick={() => setActiveModal('mod')}
           className="flex flex-col items-center gap-1 text-cream-muted transition-colors hover:text-cream-secondary"
           title="Moderator Drawer"
@@ -288,6 +308,16 @@ export default function HomePage() {
         members={members}
         viewerTimezone={viewerTimezone}
         onRefreshRoster={fetchRoster}
+      />
+
+      {/* Push Notification Settings & Sleep Shield Modal (Phase 1.5 & 1.6) */}
+      <PushModal
+        isOpen={activeModal === 'push'}
+        onClose={() => setActiveModal(null)}
+        members={members}
+        isPushEnabled={isPushEnabled}
+        onPushStateChanged={setIsPushEnabled}
+        onOpenScheduleModal={() => setActiveModal('schedule')}
       />
 
       {/* Passcode-Protected Moderator Drawer (Phase 2) */}

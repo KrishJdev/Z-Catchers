@@ -20,6 +20,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
+import { setStoredMemberId } from '@/lib/pushClient';
+
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 
 interface MyScheduleModalProps {
@@ -178,6 +180,9 @@ export function MyScheduleModal({
     }
 
     // Client-side quick check: will be strictly verified on server during submit
+    if (selectedMemberId) {
+      setStoredMemberId(selectedMemberId);
+    }
     setIsUnlocked(true);
   };
 
@@ -233,6 +238,9 @@ export function MyScheduleModal({
       }
 
       setSuccessMessage(data.message);
+      if (activeMember?.id) {
+        setStoredMemberId(activeMember.id);
+      }
       await onRefreshRoster();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Network error';
@@ -266,6 +274,9 @@ export function MyScheduleModal({
       }
 
       setSuccessMessage(data.message);
+      if (activeMember?.id) {
+        setStoredMemberId(activeMember.id);
+      }
       await onRefreshRoster();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Network error';
@@ -327,6 +338,7 @@ export function MyScheduleModal({
       setTab('claim');
       if (data.member?.id) {
         setSelectedMemberId(data.member.id);
+        setStoredMemberId(data.member.id);
         setIsUnlocked(true);
       }
     } catch (err: unknown) {
