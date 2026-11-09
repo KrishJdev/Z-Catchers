@@ -123,3 +123,15 @@ Whenever you complete a milestone from `PROJECT_SPEC.md`:
 * **Active Working Branch:** All development work, file edits, testing, and commits must be conducted directly on the `krish` branch.
 * **Target Integration Branch:** `dev` is the repository's default branch on GitHub. Pull Requests opened from `krish` target `dev`.
 * **Production Branch:** `main` is reserved for tagged releases and production-ready deployments merged from `dev`.
+
+---
+
+## 8. Mandatory Handoff Protocol (`HANDOFF.md`)
+
+* **Rule:** At the conclusion of **every single task, milestone, or user session**, the agent MUST update `HANDOFF.md` in the root directory before concluding their turn.
+* **Required Handoff Content:**
+  1. **Metadata & Status:** Update the timestamp, current active branch (`krish`), latest commit hash, and build verification status (`npx tsc --noEmit`).
+  2. **Work Completed in Current Task:** Detailed, bulleted changelog of what was built, files modified/created, and issues resolved.
+  3. **Task & Jira Status:** Update the Jira task/epic table showing which items are DONE, IN PROGRESS, or TODO.
+  4. **Immediate Next Steps:** State clearly and specifically what the next agent or session should implement next (e.g., the exact file paths and logic required).
+* **Never Skip:** An agent's turn or task is **incomplete** if `HANDOFF.md` has not been refreshed to document the current state of the repository.
