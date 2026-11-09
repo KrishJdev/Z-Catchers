@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { verifyModPasscode, hashPin, sanitizeMember } from '@/lib/auth';
+import { DEMO_SEED_FINGERPRINTS, isDemoSeedMember } from '@/lib/demoSeed';
 import { checkCooldownPromotion } from '@/lib/sleepEngine';
 import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import { DateTime } from 'luxon';
@@ -547,21 +548,19 @@ export async function POST(request: Request) {
 
     // 9. Purge Demo Seed Members ('Aoi', 'SarahK', 'Marcus', 'Arjun')
     if (action === 'purge_seed_members') {
-      const seedNames = ['Aoi', 'SarahK', 'Marcus', 'Arjun'];
-      const seedHandles = ['aoi_jp', 'sarah_ny', 'marcus_ldn', 'arjun_in'];
+      const seedNames = DEMO_SEED_FINGERPRINTS.map((s) => s.discord_username);
 
-      // Match demo profiles specifically by name AND demo handle to protect real users
+      // Match demo profiles specifically by name, handle, and dummy demo journal URL to protect real users
       const { data: candidates, error: findErr } = await supabaseAdmin
         .from('members')
-        .select('id, discord_username, discord_handle')
-        .in('discord_username', seedNames)
-        .in('discord_handle', seedHandles);
+        .select('id, discord_username, discord_handle, journal_url')
+        .in('discord_username', seedNames);
 
       if (findErr) {
         return NextResponse.json({ error: findErr.message }, { status: 500 });
       }
 
-      const seedIds = (candidates || []).map((m: { id: string }) => m.id);
+      const seedIds = (candidates || []).filter(isDemoSeedMember).map((m: { id: string }) => m.id);
       if (seedIds.length === 0) {
         return NextResponse.json({
           success: true,

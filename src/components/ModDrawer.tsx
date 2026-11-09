@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FoxMascot } from './FoxMascot';
 import { Member } from '@/lib/db';
+import { isDemoSeedMember } from '@/lib/demoSeed';
 import { DateTime } from 'luxon';
 import {
   X,
@@ -630,8 +631,7 @@ export function ModDrawer({
   };
 
   const hasDemoMembers = useMemo(() => {
-    const demoSet = new Set(['Aoi', 'SarahK', 'Marcus', 'Arjun']);
-    return modMembers.some((m: Member) => demoSet.has(m.discord_username));
+    return modMembers.some(isDemoSeedMember);
   }, [modMembers]);
 
   const handlePurgeDemoMembers = async () => {
