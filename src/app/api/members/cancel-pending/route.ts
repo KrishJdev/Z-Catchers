@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
-import { verifyPin } from '@/lib/auth';
+import { verifyPin, verifyModPasscode } from '@/lib/auth';
 import { DateTime } from 'luxon';
 
 export async function POST(request: Request) {
@@ -24,10 +24,7 @@ export async function POST(request: Request) {
 
     const member = memberData as Member;
 
-    const isModerator =
-      mod_passcode &&
-      process.env.MOD_SECRET_PASSCODE &&
-      mod_passcode === process.env.MOD_SECRET_PASSCODE;
+    const isModerator = verifyModPasscode(mod_passcode);
 
     if (!isModerator && member.passcode_hash) {
       if (!pin || !verifyPin(pin, member.passcode_hash)) {

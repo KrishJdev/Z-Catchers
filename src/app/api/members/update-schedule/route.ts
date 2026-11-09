@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
-import { hashPin, verifyPin } from '@/lib/auth';
+import { hashPin, verifyPin, verifyModPasscode } from '@/lib/auth';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -40,10 +40,7 @@ export async function POST(request: Request) {
     const currentMember = memberData as Member;
 
     // 2. PIN verification / Claiming profile
-    const isModeratorOverride =
-      mod_passcode &&
-      process.env.MOD_SECRET_PASSCODE &&
-      mod_passcode === process.env.MOD_SECRET_PASSCODE;
+    const isModeratorOverride = verifyModPasscode(mod_passcode);
 
     let updatedPasscodeHash = currentMember.passcode_hash;
 

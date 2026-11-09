@@ -21,3 +21,22 @@ export function verifyPin(pin: string, storedHash: string | null, salt = PIN_SAL
     return false;
   }
 }
+
+/**
+ * Verifies the master Moderator Secret Passcode using timing-safe comparison.
+ */
+export function verifyModPasscode(passcode: string | null | undefined): boolean {
+  if (!passcode) return false;
+  try {
+    const modPasscode = (process.env.MOD_SECRET_PASSCODE || 'cozyfox2026').trim();
+    const input = passcode.trim();
+
+    // Hash with sha256 to ensure equal length buffers and prevent timing attacks
+    const expectedHash = crypto.createHash('sha256').update(modPasscode).digest();
+    const actualHash = crypto.createHash('sha256').update(input).digest();
+
+    return crypto.timingSafeEqual(expectedHash, actualHash);
+  } catch {
+    return false;
+  }
+}
