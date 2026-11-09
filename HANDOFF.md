@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-09T22:20:00+05:30  
+> **Last Updated:** 2026-11-09T22:38:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `fee9f22`  
+> **Latest Commit:** `f8ddcb2`  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing)
 
 ---
@@ -22,9 +22,13 @@ In an international Discord server with members spanning US, Europe, India, and 
    * 🚨 **Nag Now! (Bedtime Hit):** Within 0 to 60 minutes after their bedtime. Awake friends are prompted to open their Discord journal and nag them to sleep.
    * 🌙 **Winding Down:** Within 60 minutes before bedtime. Cozy wind-down state.
    * ☀️ **Wide Awake:** Daytime or well before wind-down.
-   * 💤 **Asleep (Zzz):** 60 to 480 minutes (8 hours) after bedtime.
+   * 💤 **Asleep (Zzz):** 60 to 480 minutes (8 hours) after bedtime, or early check-in.
 3. **Anti-Dodge Governance (48-Hour Cooldown):** To prevent members from pushing back their bedtime right before midnight to avoid being nagged, any self-service schedule change is queued in a **48-hour pending state** before taking effect. Moderators can instantly override or approve pending changes via a passcode-protected drawer.
-4. **Sleep Shield Guarantee:** Awake members receive nag alerts to check on friends, but the system **never** sends notifications to anyone currently inside their personal 8-hour sleep window.
+4. **Sleep Shield Guarantee & Early Check-In ("I'm In Bed" Safe Button):**
+   * Members heading to bed early can tap `"I'm in Bed"` to safely silence outgoing community nag notifications and personal bedtime alarms for that night.
+   * Awake members receive nag alerts to check on friends, but the system **never** sends notifications to anyone currently inside their personal 8-hour sleep window or who has safely checked in.
+5. **Sleep Consistency Streaks & Mascot Badges:** Consistent on-time bedtimes unlock celebratory Sleepy Fox milestone badges (Cozy Kit 🥉, Dream Fox 🥈, Night Guardian 🥇, Grand Slumber Fox 👑).
+6. **Buddy Watchlist System:** Members can star their closest friends (`⭐`) to filter the den down to their core accountability circle.
 
 ---
 
@@ -33,12 +37,13 @@ In an international Discord server with members spanning US, Europe, India, and 
 | Layer | Technology | Details / Notes |
 |---|---|---|
 | **Framework** | Next.js 15 (App Router) + React 19 | Server & Client components, App directory structure |
-| **Language** | TypeScript 5.7 (Strict mode) | Strict typing across all entities and calculations |
+| **Language** | TypeScript 5.7 (Strict mode) | Strict typing across all entities, calculations, and state machines |
 | **Styling & Tokens** | Tailwind CSS 3.4 | Warm Dark low-blue-light palette (`#120F0D` night bg, `#1C1714` surface, `#F5EBE1` cream text) |
 | **Icons** | Lucide React | Clean, minimalist icons matching dark aesthetic |
 | **Timezone Math** | Luxon 3.5 | Strict IANA timezone math with DST resilience and midnight wrap-around support |
 | **Database** | Supabase (PostgreSQL) | Managed tables: `members`, `push_subscriptions`, `notification_logs` |
 | **Push Notifications** | Web Push API (`web-push` npm) | VAPID key pairs, multi-device support per member, service worker deep linking |
+| **Deployment & Cron** | Vercel Cron (`vercel.json`) | 1-minute automated trigger targeting `/api/cron/dispatch-notifications` |
 | **Issue Tracking** | Jira Software Cloud & GitHub | Project key `ZC`, two-way syncing and transition scripts |
 
 ---
@@ -97,33 +102,42 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Commit `4339402`:**
   * Integrated `ModDrawer` and `MyScheduleModal` into main dashboard `src/app/page.tsx`.
   * Linked desktop top Header command bar buttons (`"My Schedule"`, `"Mod Panel"`) and mobile bottom navigation tabs (`"My Time"`, `"Mod"`) directly to open the respective modals.
-  * Added active badge indicators and auto-refresh on modal close.
 
-### Phase 4: Web Push Notification Engine & 1-Minute Cron Dispatcher (Current Session)
-* **Web Push Engine & Service Worker (`ZC-6` / Phase 1.5):**
-  * Enhanced `public/sw.js` with `skipWaiting()`, `clients.claim()`, rich notification formatting (badge, mascot icon, vibration pattern), and `notificationclick` deep linking directly to Discord journal threads or app window.
-  * Generated high-resolution PWA icons from vector SVG: `public/icons/icon-192x192.png`, `public/icons/icon-512x512.png`, `public/icons/badge-72x72.png`.
-  * Implemented `src/lib/pushServer.ts` with typed error handling and auto-pruning detection for HTTP 404/410 expired subscriptions.
-  * Implemented `src/lib/pushClient.ts` with VAPID ArrayBuffer conversion, service worker registration, push subscription, unsubscribe, and local storage synchronization.
-  * Created Push API routes:
-    * `POST /api/push/subscribe` — Links device push subscription to member profile in `push_subscriptions`.
-    * `POST /api/push/unsubscribe` — Removes device endpoint from `push_subscriptions`.
-    * `POST /api/push/test` — Sends real-time test notification to verify device delivery.
-  * Built `src/components/PushModal.tsx` allowing community members to link their profile, configure personal/community alert preferences, view Sleep Shield status, and trigger test alerts.
-  * Wired `Header.tsx`, `PwaBanner.tsx`, and mobile bottom navigation bar in `src/app/page.tsx` to automatically register the service worker on mount, inspect existing subscriptions, and open `PushModal`.
-  * Updated `MyScheduleModal.tsx` to automatically store and sync claimed member ID with active push subscriptions.
-* **1-Minute Cron Dispatcher & Sleep Shield Guardrail (`ZC-7` / Phase 1.6):**
-  * Implemented pure dispatcher logic in `src/lib/cronDispatcher.ts`:
-    * Step 1: Self-healing 48-hour schedule cooldown promotion before notification evaluation.
-    * Step 2: Idempotent T-30m wind-down trigger (`WIND_DOWN_30M`) using `notification_logs`.
-    * Step 3: Idempotent T-0m bedtime hit trigger (`BEDTIME_HIT`) using `notification_logs`.
-    * Step 4: Personal push dispatch to the sleeper.
-    * Step 5: **Strict Sleep Shield Enforcement**: Checks every peer's status in their own local timezone. If peer is asleep (`SLEEPING` bucket, 60m to 480m after bedtime) or winding down within 15m of bedtime, nag notifications are **strictly suppressed**.
-    * Step 6: Automatic database pruning of dead push subscriptions (HTTP 404/410).
-  * Created API endpoints `/api/cron/dispatch-notifications/route.ts` and `/api/cron/route.ts` supporting GET and POST, dry-run mode, and secret token authorization.
-  * Built automated verification suites:
-    * `scripts/test-push-and-cron.mjs` — Verifies minute windows, Sleep Shield suppression filtering, and 48h cooldown promotion.
-    * `scripts/test-e2e-api-endpoints.mjs` — Live test against Supabase database checking member retrieval, push subscription upsert/delete, unique constraint idempotency in `notification_logs`, and live Sleep Shield calculation.
+### Phase 4: Web Push Notification Engine & 1-Minute Cron Dispatcher
+* **Commit `fee9f22` / `223da1d` (ZC-6, ZC-7):**
+  * Enhanced `public/sw.js` with `skipWaiting()`, `clients.claim()`, rich notification formatting (badge, mascot icon, vibration pattern), and `notificationclick` deep linking directly to Discord journal threads.
+  * Implemented `src/lib/pushServer.ts` and `src/lib/pushClient.ts` with VAPID subscription and auto-pruning.
+  * Built `src/components/PushModal.tsx` for alert preferences and Sleep Shield status inspection.
+  * Built 1-minute cron notification dispatcher in `src/lib/cronDispatcher.ts` and `/api/cron/dispatch-notifications`.
+
+### Phase 5: "I'm In Bed" Safe Button, Sleep Streaks, Buddy Watchlist & Vercel Cron (Commit `f8ddcb2`)
+* **"I'm In Bed" Safe Button & Anti-Spam Check-In (`ZC-8` / Phase 2):**
+  * Created `POST /api/members/in-bed` and `GET /api/members/in-bed`:
+    * Enables one-tap check-in marking member `is_in_bed: true` for their local timezone date (`IN_BED_EARLY` in `notification_logs`).
+    * Supports cancellation / undoing check-in (`action: 'cancel'`).
+  * Updated `src/lib/cronDispatcher.ts`:
+    * When member has checked in early via "I'm in Bed", personal wind-down & bedtime notifications are suppressed.
+    * Outgoing community nag push notifications to friends are **strictly suppressed** (anti-spam guarantee).
+  * Updated `src/lib/sleepEngine.ts`:
+    * `computeMemberState()` accepts `isInBed`. Early check-in immediately moves member into `SLEEPING` bucket with Sleep Shield active.
+* **Sleep Consistency Streaks & Mascot Badges (`ZC-11` / Phase 3.1):**
+  * Implemented pure `calculateSleepStreak(checkinDates, sleeperNow)` in `src/lib/sleepEngine.ts` calculating consecutive check-in days.
+  * Implemented `getStreakMilestoneBadge()` awarding visual mascot badges:
+    * 👑 30-Day Master: Grand Slumber Fox
+    * 🥇 14-Day Guard: Night Guardian Fox
+    * 🥈 7-Day Dreamer: Dream Weaver Fox
+    * 🥉 3-Day Cozy: Cozy Den Kit
+    * 🔥 1-Day: First Snooze
+  * Displayed badge and streak pill on `MemberCard.tsx` and inside `MyScheduleModal.tsx`.
+* **Selective Buddy Watchlist System (Phase 2):**
+  * Added star toggle (`⭐`) to every member card, persisting starred members in localStorage.
+  * Added dashboard filter pill: `"All Den (N)"` vs `"Starred Buddies (M)"`.
+* **Vercel Cron Deployment (`vercel.json`):**
+  * Added `vercel.json` configuring 1-minute cron trigger to `/api/cron/dispatch-notifications`.
+* **Verification Suite (`scripts/test-in-bed-and-streaks.mjs`):**
+  * Unit tested streak counting across contiguous dates, gap dates, and today/yesterday boundaries.
+  * Verified state machine transitions from `WINDING_DOWN` / `BEDTIME_NOW` to `SLEEPING` on early check-in.
+  * Live tested Supabase database idempotency for `IN_BED_EARLY`.
 
 ---
 
@@ -148,6 +162,7 @@ d:\Projects\Z Catchers\
 ├── scripts/
 │   ├── create-and-sync-issues.mjs      # Creates ZC-1 to ZC-12 issues in Jira
 │   ├── test-e2e-api-endpoints.mjs      # Live DB & Sleep Shield integration tests
+│   ├── test-in-bed-and-streaks.mjs     # Check-in, anti-spam & streak unit tests
 │   ├── test-push-and-cron.mjs          # Push engine & cron Sleep Shield tests
 │   ├── test-schedule-cooldown.mjs      # Verification tests for 48h cooldown logic
 │   └── transition-jira-issue.mjs       # Script invoked by GitHub Action to transition issues
@@ -159,8 +174,10 @@ d:\Projects\Z Catchers\
 │   │   │   │   └── dispatch-notifications/
 │   │   │   │       └── route.ts        # 1-minute cron notification dispatcher
 │   │   │   ├── members/
-│   │   │   │   ├── route.ts            # GET roster (with auto 48h promotion), POST member
+│   │   │   │   ├── route.ts            # GET roster (with streaks & checkins), POST member
 │   │   │   │   ├── cancel-pending/     # POST cancel pending schedule change
+│   │   │   │   ├── in-bed/
+│   │   │   │   │   └── route.ts        # POST / GET "I'm in Bed" check-in & undo
 │   │   │   │   └── update-schedule/    # POST request schedule change (48h queue)
 │   │   │   ├── mod/
 │   │   │   │   ├── route.ts            # Moderator action dispatcher (approve, reject, pin reset)
@@ -175,26 +192,27 @@ d:\Projects\Z Catchers\
 │   ├── components/
 │   │   ├── FoxMascot.tsx               # Minimalist Sleepy Fox mascot vector states
 │   │   ├── Header.tsx                  # Top desktop command bar & mobile top bar
-│   │   ├── MemberCard.tsx              # Dual-timezone member card with countdown & nag button
+│   │   ├── MemberCard.tsx              # Dual-timezone member card, streak badge, "I'm in Bed" button & Star
 │   │   ├── ModDrawer.tsx               # Moderator bottom sheet / dialog with passcode lock
-│   │   ├── MyScheduleModal.tsx         # Self-service edit modal with PIN verification
+│   │   ├── MyScheduleModal.tsx         # Self-service edit modal with check-in card & PIN verification
 │   │   ├── PushModal.tsx               # Push notification preferences & Sleep Shield modal
 │   │   ├── PwaBanner.tsx               # iOS/Android PWA install instructions & push gate
 │   │   └── StatusBucket.tsx            # Bucket container (Nag Now, Winding Down, Awake, Sleeping)
 │   └── lib/
 │       ├── auth.ts                     # Moderator passcode & PIN hashing/verification
-│       ├── cronDispatcher.ts           # Core cron dispatch & Sleep Shield engine
+│       ├── cronDispatcher.ts           # Core cron dispatch, early check-in suppression & Sleep Shield engine
 │       ├── db.ts                       # Supabase client & TypeScript data models
 │       ├── pushClient.ts               # Client-side Web Push & service worker registration
 │       ├── pushServer.ts               # Web Push VAPID helper functions & error handling
-│       └── sleepEngine.ts              # Pure Luxon timezone calculations & bucket classifier
+│       └── sleepEngine.ts              # Luxon timezone calculations, streaks & milestone badges
 ├── AGENT_RULES.md                      # Hard guardrails & architectural constraints for AI agents
 ├── AGENTS.md                           # Multi-agent directives & handoff protocol
 ├── BACKEND_TZ_PWA_SPEC.md              # Technical specification for backend, timezones, & PWA
 ├── DESIGN_SYSTEM.md                    # Visual tokens, Warm Dark palette, & mascot specs
 ├── HANDOFF.md                          # (This file) Complete handoff & project state log
 ├── PROJECT_SPEC.md                     # Master project roadmap & Jira milestone specifications
-└── tailwind.config.ts                  # Tailwind configuration with warm dark colors
+├── tailwind.config.ts                  # Tailwind configuration with warm dark colors
+└── vercel.json                         # Vercel 1-minute automated cron deployment config
 ```
 
 ---
@@ -208,25 +226,24 @@ d:\Projects\Z Catchers\
 | **ZC-3** | Phase 1.2: Luxon Sleep Engine & Cross-Timezone Calculations | DONE | Commit `a7d7d29` |
 | **ZC-4** | Phase 1.3: Warm Dark Mobile Dashboard UI & Status Buckets | DONE | Commit `733ea23` |
 | **ZC-5** | Phase 1.4: Self-Service Schedule Edit Modal & 48h Cooldown | DONE | Commit `46025db` |
-| **ZC-6** | Phase 1.5: Web Push Notification Engine & Service Worker | **DONE** | Current Session |
-| **ZC-7** | Phase 1.6: 1-Minute Cron Dispatcher & Sleep Shield Guardrail | **DONE** | Current Session |
-| **ZC-8** | Epic: Phase 2 Moderation & Anti-Dodge Controls | IN PROGRESS | Ongoing |
+| **ZC-6** | Phase 1.5: Web Push Notification Engine & Service Worker | DONE | Commit `fee9f22` |
+| **ZC-7** | Phase 1.6: 1-Minute Cron Dispatcher & Sleep Shield Guardrail | DONE | Commit `fee9f22` |
+| **ZC-8** | Epic: Phase 2 Moderation & Anti-Dodge Controls | **DONE** | Commit `f8ddcb2` |
 | **ZC-9** | Phase 2.1: Passcode-Protected Moderator Drawer (`ModDrawer.tsx`)| DONE | Commit `d66de1f` / `4339402` |
 | **ZC-10**| Phase 2.2: Instant Cooldown Override & Roster Admin API | DONE | Commit `a3fc7fa` |
-| **ZC-11**| Epic: Phase 3 Sleep Streaks, Badges & Discord Webhooks | TODO | Phase 3 |
+| **ZC-11**| Epic: Phase 3 Sleep Streaks, Badges & Discord Webhooks | **IN PROGRESS** | Commit `f8ddcb2` |
 
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-Phase 1 MVP is now fully complete (ZC-1 through ZC-7, plus ZC-9 and ZC-10 from Phase 2). The next priorities for development are:
+Phase 1 and Phase 2 are complete. Phase 3 is underway with Sleep Streaks and Milestone Badges implemented.
 
-1. **Jira Issue ZC-11 (Epic: Phase 3 Sleep Streaks, Badges & Discord Webhooks):**
-   * **Sleep Streaks:** Track consecutive days where bedtime was honored (check-in via Discord journal or app).
-   * **Discord Webhook Notifications:** Post periodic den summaries or bedtime callouts into a designated community channel via Discord incoming webhooks.
-   * **Mascot Badges:** Add visual achievement badges for 3-day, 7-day, and 30-day consistent bedtime streaks on `MemberCard.tsx`.
-2. **Cron Scheduling Deployment:**
-   * Configure `vercel.json` crons or an external cron caller (e.g. GitHub Actions schedule or cron-job.org) hitting `/api/cron/dispatch-notifications` every 1 minute with `CRON_SECRET`.
+1. **Phase 3.2: Automated Discord Channel Webhooks (`ZC-11`):**
+   * Implement automated Discord Webhook dispatches to post embeds in a designated Discord announcement channel when bedtime hits or morning wake-up digests are generated.
+   * Add webhook URL configuration in `ModDrawer.tsx` or environment variables (`DISCORD_COMMUNITY_WEBHOOK_URL`).
+2. **"Nagged!" Assist Counter (Phase 3):**
+   * Add a counter tracking how many community members clicked "Nag in Discord Journal" for each sleeper on a given night (`"3 friends checked in tonight"`).
 3. **Verification Checklist:**
    * Always verify `npx tsc --noEmit` and `npm run build` pass with 0 errors.
    * Always keep changes on branch `krish`.
@@ -239,6 +256,6 @@ Phase 1 MVP is now fully complete (ZC-1 through ZC-7, plus ZC-9 and ZC-10 from P
 * **Branch:** Always commit to `krish`. Do not push directly to `main` or `dev`.
 * **Date Math:** Always use `luxon`. Never use native JS `new Date().getTimezoneOffset()`.
 * **Cooldown:** Regular members can NEVER immediately change their schedule. Changes take 48 hours. Only moderator passcode bypasses this.
-* **Sleep Shield:** Never notify a user who is within 8 hours after their bedtime (or within 15 minutes before).
+* **Sleep Shield:** Never notify a user who is within 8 hours after their bedtime (or within 15 minutes before, or who has checked into bed early).
 * **Discord URLs:** Must match `^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$`.
 * **Handoff:** Update `HANDOFF.md` at the conclusion of every turn/task.
