@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-09T22:38:00+05:30  
+> **Last Updated:** 2026-11-09T23:18:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `f8ddcb2`  
+> **Latest Commit:** `d06d81f`  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing)
 
 ---
@@ -139,6 +139,20 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * Verified state machine transitions from `WINDING_DOWN` / `BEDTIME_NOW` to `SLEEPING` on early check-in.
   * Live tested Supabase database idempotency for `IN_BED_EARLY`.
 
+### Phase 6: CodeRabbit AI Code Review Integration (Commit `d06d81f`)
+* **CodeRabbit Configuration (`.coderabbit.yaml`):**
+  * Configured `.coderabbit.yaml` adhering to CodeRabbit v2 schema (`https://coderabbit.ai/integrations/schema.v2.json`).
+  * Set up automated code review triggers on PRs targeting `dev`, `main`, and `krish` branches.
+  * Embedded non-negotiable architectural commandments (`AGENT_RULES.md`) directly into `path_instructions`:
+    * `src/lib/sleepEngine.ts`: Luxon `DateTime` only, no native JS `getTimezoneOffset()`, midnight wrap-around safety.
+    * `src/app/api/members/**`: 48-Hour Cooldown queue enforcement, 4-digit PIN authentication, Discord journal URL regex validation.
+    * `src/app/api/mod/**`: `MOD_SECRET_PASSCODE` authorization checks.
+    * `src/app/api/cron/**`: Sleep Shield guarantee (never ping sleeping members), idempotency via `notification_logs`.
+    * `src/components/**`: Warm Dark low-blue-light design system (`#120F0D`, `#1C1714`, `#F5EBE1`), responsive dual-layout (mobile stack + desktop grid).
+    * `src/lib/pushServer.ts`: VAPID security & dead token handling.
+  * Enabled static analysis tools: `github-checks`, `gitleaks` (Betterleaks secret detection), `dotenvLint`, `markdownlint`, `reactDoctor` (React correctness & a11y), and `osvScanner` (vulnerability scanning).
+  * Connected Jira knowledge base (`project_keys: ["ZC"]`) and coding guidelines scanner for `AGENTS.md`, `AGENT_RULES.md`, `DESIGN_SYSTEM.md`, `BACKEND_TZ_PWA_SPEC.md`, and `PROJECT_SPEC.md`.
+
 ---
 
 ## 5. Current File Tree & Key Components
@@ -205,6 +219,7 @@ d:\Projects\Z Catchers\
 │       ├── pushClient.ts               # Client-side Web Push & service worker registration
 │       ├── pushServer.ts               # Web Push VAPID helper functions & error handling
 │       └── sleepEngine.ts              # Luxon timezone calculations, streaks & milestone badges
+├── .coderabbit.yaml                    # CodeRabbit AI code review configuration & guardrails
 ├── AGENT_RULES.md                      # Hard guardrails & architectural constraints for AI agents
 ├── AGENTS.md                           # Multi-agent directives & handoff protocol
 ├── BACKEND_TZ_PWA_SPEC.md              # Technical specification for backend, timezones, & PWA
