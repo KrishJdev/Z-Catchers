@@ -1,10 +1,20 @@
 import { DateTime } from 'luxon';
-import {
-  DISCORD_WEBHOOK_REGEX,
-  validateDiscordWebhookUrl,
-  DISCORD_EMBED_COLORS,
-} from '../src/lib/discordWebhook';
 import { createClient } from '@supabase/supabase-js';
+
+export const DISCORD_WEBHOOK_REGEX =
+  /^https:\/\/(ptb\.|canary\.)?discord\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+$/;
+
+export function validateDiscordWebhookUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  return DISCORD_WEBHOOK_REGEX.test(url.trim());
+}
+
+export const DISCORD_EMBED_COLORS = {
+  CORAL_NAG: 14711391, // #E07A5F (Bedtime Hit / Nag Window)
+  AMBER_COZY: 16032353, // #F4A261 (Wind-Down / Warning)
+  SAGE_REST: 8500122, // #81B29A (Morning / Goodnight / Safe In Bed)
+  SLUMBER_NIGHT: 4014171, // #3D405B (Asleep / Sleep Shield Active)
+};
 
 console.log('🧪 Starting Discord Webhook & Nag Assist Counter Verification...\n');
 

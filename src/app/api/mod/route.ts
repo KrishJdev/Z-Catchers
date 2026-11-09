@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
-import { verifyModPasscode, hashPin } from '@/lib/auth';
+import { verifyModPasscode, hashPin, sanitizeMember } from '@/lib/auth';
 import { checkCooldownPromotion } from '@/lib/sleepEngine';
 import { DateTime } from 'luxon';
 
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
           })
           .eq('id', member.id);
       }
-      processedMembers.push(activeMember);
+      processedMembers.push(sanitizeMember(activeMember));
     }
 
     return NextResponse.json({
@@ -168,7 +168,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message: `Approved schedule change for ${member.discord_username} immediately!`,
-        member: updated,
+        member: sanitizeMember(updated as Member),
       });
     }
 
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message: 'Pending schedule change cancelled.',
-        member: updated,
+        member: sanitizeMember(updated as Member),
       });
     }
 
@@ -338,7 +338,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message: `Member ${updated.discord_username} updated immediately!`,
-        member: updated,
+        member: sanitizeMember(updated as Member),
       });
     }
 
@@ -446,7 +446,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message: `Member ${data.discord_username} created successfully!`,
-        member: data,
+        member: sanitizeMember(data as Member),
       }, { status: 201 });
     }
 
@@ -477,7 +477,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message: `Member status set to ${is_active ? 'Active' : 'Deactivated'}.`,
-        member: updated,
+        member: sanitizeMember(updated as Member),
       });
     }
 
@@ -518,7 +518,7 @@ export async function POST(request: Request) {
         message: passcode_hash
           ? 'Member PIN reset successfully.'
           : 'Member PIN cleared. Member may now claim their profile with a new PIN.',
-        member: updated,
+        member: sanitizeMember(updated as Member),
       });
     }
 

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import type { Member } from '@/lib/db';
 
 const PIN_SALT = process.env.PIN_SALT || 'z_catchers_salt_2026_cozy_den';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'z_catchers_session_secret_2026_warm_dark';
@@ -116,5 +117,17 @@ export function getRequestSessionMemberId(request: Request): string | null {
   }
 
   return null;
+}
+
+/**
+ * Strips sensitive authentication credentials (passcode_hash) from a Member record
+ * and provides a safe boolean indicator `has_pin`.
+ */
+export function sanitizeMember(member: Member): Member {
+  const { passcode_hash, ...rest } = member;
+  return {
+    ...rest,
+    has_pin: Boolean(passcode_hash),
+  };
 }
 

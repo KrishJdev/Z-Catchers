@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
-import { hashPin, verifyPin, verifyModPasscode } from '@/lib/auth';
+import { hashPin, verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -219,7 +219,7 @@ export async function POST(request: Request) {
       success: true,
       cooldown_applied: cooldownApplied,
       pending_effective_at: pendingEffectiveAt,
-      member: updatedMember,
+      member: sanitizeMember(updatedMember as Member),
       message: cooldownApplied
         ? 'Accountability Cooldown Active: Your new bedtime will take effect in 48 hours. Profile links updated immediately.'
         : 'Profile updated successfully!',

@@ -119,7 +119,8 @@ export function MyScheduleModal({
       setSuccessMessage(null);
       setPin('');
       // If member has no PIN, auto-unlock so they can set initial PIN
-      setIsUnlocked(!activeMember.passcode_hash);
+      const isClaimed = Boolean(activeMember.has_pin ?? activeMember.passcode_hash);
+      setIsUnlocked(!isClaimed);
     } else if (currentUser) {
       setSelectedMemberId(currentUser.id);
     } else if (members.length > 0 && !selectedMemberId && tab === 'claim') {
@@ -230,7 +231,8 @@ export function MyScheduleModal({
       return;
     }
 
-    if (!activeMember?.passcode_hash && (!pin || pin.length < 4)) {
+    const isClaimed = Boolean(activeMember?.has_pin ?? activeMember?.passcode_hash);
+    if (!isClaimed && (!pin || pin.length < 4)) {
       setErrorMessage('Please create a 4-digit PIN to claim and secure your profile.');
       return;
     }
@@ -529,7 +531,7 @@ export function MyScheduleModal({
             )}
 
             {/* PIN Unlock Section (If Claimed & Not Yet Unlocked) */}
-            {activeMember?.passcode_hash && !isUnlocked ? (
+            {(activeMember?.has_pin ?? Boolean(activeMember?.passcode_hash)) && !isUnlocked ? (
               <form
                 onSubmit={handleUnlockProfile}
                 className="rounded-2xl border border-night-border bg-night-elevated/70 p-4 space-y-3"
@@ -625,7 +627,7 @@ export function MyScheduleModal({
 
                 <form onSubmit={handleSaveProfile} className="space-y-3.5">
                   {/* Unclaimed Notice (If setting initial PIN) */}
-                  {!activeMember?.passcode_hash && (
+                  {!(activeMember?.has_pin ?? Boolean(activeMember?.passcode_hash)) && (
                     <div className="rounded-xl border border-status-sage/30 bg-status-sage/10 p-3 text-xs text-cream-secondary">
                       <p className="font-semibold text-status-sage flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5" />
@@ -840,7 +842,7 @@ export function MyScheduleModal({
                 {/* 4-Digit PIN Input (if claiming or updating) */}
                 <div>
                   <label className="block text-xs font-medium text-cream-secondary mb-1">
-                    {!activeMember?.passcode_hash
+                    {!(activeMember?.has_pin ?? Boolean(activeMember?.passcode_hash))
                       ? 'Create 4-Digit PIN (to secure profile)'
                       : 'Confirm Your 4-Digit PIN'}
                   </label>

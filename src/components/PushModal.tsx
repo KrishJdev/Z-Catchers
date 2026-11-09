@@ -62,8 +62,8 @@ export function PushModal({
       const storedId = getStoredMemberId();
       if (storedId) {
         setSelectedMemberId(storedId);
-      } else if (members.length > 0) {
-        setSelectedMemberId(members[0].id);
+      } else {
+        setSelectedMemberId('');
       }
     }
   }, [currentUser, members, isOpen]);
@@ -75,7 +75,7 @@ export function PushModal({
   const permission = getNotificationPermission();
 
   const handleEnablePush = async () => {
-    if (!currentUser && !selectedMemberId) {
+    if (!currentUser) {
       setFeedback({
         type: 'error',
         message: 'Please log in to your community profile so your Sleep Shield can be calculated.',

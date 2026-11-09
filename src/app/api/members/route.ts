@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase, supabaseAdmin, Member } from '@/lib/db';
 import { checkCooldownPromotion, calculateSleepStreak } from '@/lib/sleepEngine';
-import { hashPin } from '@/lib/auth';
+import { hashPin, sanitizeMember } from '@/lib/auth';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -83,7 +83,7 @@ export async function GET() {
       const nag_assists_count = nagAssistsByMemberAndDate.get(`${activeMember.id}_${localDateStr}`) || 0;
 
       processedMembers.push({
-        ...activeMember,
+        ...sanitizeMember(activeMember),
         is_in_bed,
         streak_days,
         nag_assists_count,
@@ -153,7 +153,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ member: data }, { status: 201 });
+    return NextResponse.json({ member: sanitizeMember(data as Member) }, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error';
     return NextResponse.json({ error: message }, { status: 500 });

@@ -65,7 +65,8 @@ export function LoginModal({
   if (!isOpen) return null;
 
   const selectedMember = members.find((m) => m.id === selectedMemberId);
-  const isProfileUnclaimed = selectedMember && !selectedMember.passcode_hash;
+  const isProfileUnclaimed =
+    selectedMember && !(selectedMember.has_pin ?? Boolean(selectedMember.passcode_hash));
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -18,6 +18,7 @@ import {
   getStoredMemberId,
   getStoredAuthMember,
   setStoredAuthMember,
+  getStoredAuthToken,
 } from '@/lib/pushClient';
 import type { Member } from '@/lib/db';
 import {
@@ -164,13 +165,19 @@ export default function HomePage() {
   const handleCheckIn = async (memberId: string) => {
     try {
       setIsCheckingIn(true);
+      const token = getStoredAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/api/members/in-bed', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ memberId, action: 'check_in' }),
       });
       if (res.ok) {
         await fetchRoster();
+      } else if (res.status === 401) {
+        setActiveModal('login');
       }
     } catch (err) {
       console.error('Failed to check in:', err);
@@ -183,13 +190,19 @@ export default function HomePage() {
   const handleCancelInBed = async (memberId: string) => {
     try {
       setIsCheckingIn(true);
+      const token = getStoredAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/api/members/in-bed', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ memberId, action: 'cancel' }),
       });
       if (res.ok) {
         await fetchRoster();
+      } else if (res.status === 401) {
+        setActiveModal('login');
       }
     } catch (err) {
       console.error('Failed to cancel check-in:', err);

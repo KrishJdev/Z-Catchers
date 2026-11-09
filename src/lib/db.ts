@@ -35,7 +35,8 @@ export interface Member {
   pending_weekend_wake_time_local?: string | null;
   pending_effective_at: string | null; // ISO timestamp
   role: 'member' | 'moderator';
-  passcode_hash: string | null;
+  passcode_hash?: string | null;
+  has_pin?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;

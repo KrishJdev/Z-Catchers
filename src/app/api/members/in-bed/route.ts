@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { DateTime } from 'luxon';
-import { verifyPin } from '@/lib/auth';
+import { verifyPin, getRequestSessionMemberId } from '@/lib/auth';
 import { calculateSleepStreak } from '@/lib/sleepEngine';
 
 export async function GET(request: Request) {
@@ -72,12 +72,33 @@ export async function POST(request: Request) {
 
     const member = rawMember as Member;
 
-    // Optional PIN verification if provided
-    if (pin && member.passcode_hash) {
-      const valid = verifyPin(pin.trim(), member.passcode_hash);
-      if (!valid) {
-        return NextResponse.json({ error: 'Invalid 4-digit PIN' }, { status: 401 });
+    // Security Gate:
+    // 1. Session must match target memberId, OR
+    // 2. A valid PIN must be provided matching member's passcode_hash.
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const isSessionMatch = sessionMemberId && sessionMemberId === member.id;
+    const isPinMatch = pin && member.passcode_hash && verifyPin(pin.trim(), member.passcode_hash);
+
+    if (!isSessionMatch && !isPinMatch) {
+      if (sessionMemberId && sessionMemberId !== member.id) {
+        return NextResponse.json(
+          {
+            error: 'Forbidden. You cannot check in or modify bedtime status for another member.',
+            code: 'FORBIDDEN',
+          },
+          { status: 403 }
+        );
       }
+
+      return NextResponse.json(
+        {
+          error: member.passcode_hash
+            ? 'Authentication required. Please log in with your 4-digit PIN before checking in.'
+            : 'Please claim your profile with a 4-digit PIN before checking in.',
+          code: 'UNAUTHORIZED',
+        },
+        { status: 401 }
+      );
     }
 
     const nowUtc = DateTime.utc();

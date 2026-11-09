@@ -1273,8 +1273,8 @@ export function ModDrawer({
                             <span>•</span>
                             <span>{member.timezone.split('/').pop()?.replace(/_/g, ' ')}</span>
                             <span>•</span>
-                            <span className={member.passcode_hash ? 'text-status-sage' : 'text-status-amber'}>
-                              {member.passcode_hash ? 'PIN Set' : 'Unclaimed'}
+                            <span className={(member.has_pin ?? Boolean(member.passcode_hash)) ? 'text-status-sage' : 'text-status-amber'}>
+                              {(member.has_pin ?? Boolean(member.passcode_hash)) ? 'PIN Set' : 'Unclaimed'}
                             </span>
                           </div>
                         </div>

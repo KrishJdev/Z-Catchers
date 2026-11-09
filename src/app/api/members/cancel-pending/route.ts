@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
-import { verifyPin, verifyModPasscode } from '@/lib/auth';
+import { verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
 import { DateTime } from 'luxon';
 
 export async function POST(request: Request) {
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Pending schedule change cancelled. Existing schedule remains active.',
-      member: updatedMember,
+      member: sanitizeMember(updatedMember as Member),
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown server error';

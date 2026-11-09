@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db';
-import { getRequestSessionMemberId } from '@/lib/auth';
+import { getRequestSessionMemberId, verifyPin } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
@@ -8,6 +8,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const {
       member_id,
+      pin,
       subscription,
       notify_personal = true,
       notify_community = true,
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
     // Verify member exists in database
     const { data: member, error: memberErr } = await supabaseAdmin
       .from('members')
-      .select('id, discord_username, timezone')
+      .select('id, discord_username, timezone, passcode_hash')
       .eq('id', effectiveMemberId)
       .eq('is_active', true)
       .single();
@@ -58,6 +59,21 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Member not found or inactive.' },
         { status: 404 }
+      );
+    }
+
+    // Security Gate:
+    // Must be authenticated via session OR provide valid PIN matching member's passcode_hash
+    const isSessionMatch = Boolean(sessionMemberId && sessionMemberId === member.id);
+    const isPinMatch = Boolean(pin && member.passcode_hash && verifyPin(pin.trim(), member.passcode_hash));
+
+    if (!isSessionMatch && !isPinMatch) {
+      return NextResponse.json(
+        {
+          error: 'Authentication required. Please log in or provide your 4-digit PIN to link push notifications.',
+          code: 'UNAUTHORIZED',
+        },
+        { status: 401 }
       );
     }
 
