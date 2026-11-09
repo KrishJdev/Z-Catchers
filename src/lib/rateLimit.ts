@@ -8,7 +8,13 @@ interface RateLimitEntry {
   resetAt: number;
 }
 
-const pinRateLimits = new Map<string, RateLimitEntry>();
+// Preserve rate limit map on globalThis across Next.js module reloads and chunks
+const globalForRateLimit = globalThis as unknown as {
+  __pinRateLimits?: Map<string, RateLimitEntry>;
+};
+
+const pinRateLimits = globalForRateLimit.__pinRateLimits || new Map<string, RateLimitEntry>();
+globalForRateLimit.__pinRateLimits = pinRateLimits;
 
 // Purge expired entries periodically every 5 minutes
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
@@ -55,7 +61,9 @@ export function checkPinRateLimit(
   windowMs = 15 * 60 * 1000
 ): RateLimitResult {
   const now = Date.now();
-  const keys = [`ip:${ip}`, `target:${targetId}`];
+  const keys: string[] = [];
+  if (ip && ip.trim()) keys.push(`ip:${ip.trim()}`);
+  if (targetId && targetId.trim()) keys.push(`target:${targetId.trim()}`);
 
   for (const key of keys) {
     const entry = pinRateLimits.get(key);
@@ -79,7 +87,9 @@ export function recordPinFailure(
   windowMs = 15 * 60 * 1000
 ): void {
   const now = Date.now();
-  const keys = [`ip:${ip}`, `target:${targetId}`];
+  const keys: string[] = [];
+  if (ip && ip.trim()) keys.push(`ip:${ip.trim()}`);
+  if (targetId && targetId.trim()) keys.push(`target:${targetId.trim()}`);
 
   for (const key of keys) {
     const entry = pinRateLimits.get(key);
@@ -92,9 +102,18 @@ export function recordPinFailure(
 }
 
 /**
- * Clears failed attempts upon successful verification.
+ * Clears failed attempts upon successful verification for the target member.
+ * Preserves IP failure count to prevent attackers from clearing IP rate limits with valid credentials.
  */
 export function resetPinFailure(ip: string, targetId: string): void {
-  pinRateLimits.delete(`ip:${ip}`);
-  pinRateLimits.delete(`target:${targetId}`);
+  if (targetId && targetId.trim()) {
+    pinRateLimits.delete(`target:${targetId.trim()}`);
+  }
+}
+
+/**
+ * Reset all rate limit state (primarily for automated testing).
+ */
+export function clearAllPinRateLimits(): void {
+  pinRateLimits.clear();
 }

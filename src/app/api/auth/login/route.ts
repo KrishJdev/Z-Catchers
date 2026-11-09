@@ -59,6 +59,20 @@ export async function POST(request: Request) {
 
     const currentMember = member as Member;
 
+    // Apply shared per-member attempt limit before PIN verification/claiming
+    const memberRateCheck = checkPinRateLimit(clientIp, currentMember.id);
+    if (!memberRateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many failed PIN attempts. Please wait ${memberRateCheck.retryAfterSeconds} seconds before trying again.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(memberRateCheck.retryAfterSeconds) },
+        }
+      );
+    }
+
     // 2. PIN validation or first-time claim
     if (!currentMember.passcode_hash) {
       // Require trusted authorization before enrolling/claiming unconfigured moderator accounts
@@ -66,6 +80,9 @@ export async function POST(request: Request) {
         const isModAuthorized = verifyModPasscode(mod_passcode);
         if (!isModAuthorized) {
           recordPinFailure(clientIp, currentMember.id);
+          if (targetIdentifier && targetIdentifier !== currentMember.id) {
+            recordPinFailure(clientIp, targetIdentifier);
+          }
           return NextResponse.json(
             { error: 'Claiming an initial moderator profile requires the moderator secret passcode.' },
             { status: 403 }
@@ -90,14 +107,23 @@ export async function POST(request: Request) {
       }
       currentMember.passcode_hash = newHash;
       resetPinFailure(clientIp, currentMember.id);
+      if (targetIdentifier && targetIdentifier !== currentMember.id) {
+        resetPinFailure(clientIp, targetIdentifier);
+      }
     } else {
       // Verify existing PIN
       const isMatch = verifyPin(cleanPin, currentMember.passcode_hash);
       if (!isMatch) {
         recordPinFailure(clientIp, currentMember.id);
+        if (targetIdentifier && targetIdentifier !== currentMember.id) {
+          recordPinFailure(clientIp, targetIdentifier);
+        }
         return NextResponse.json({ error: 'Invalid PIN. Please check your PIN and try again.' }, { status: 401 });
       }
       resetPinFailure(clientIp, currentMember.id);
+      if (targetIdentifier && targetIdentifier !== currentMember.id) {
+        resetPinFailure(clientIp, targetIdentifier);
+      }
     }
 
     // 3. Generate session token

@@ -27,7 +27,14 @@ export async function POST(request: Request) {
 
     const isModerator = verifyModPasscode(mod_passcode);
 
-    if (!isModerator && member.passcode_hash) {
+    if (!isModerator) {
+      if (!member.passcode_hash) {
+        return NextResponse.json(
+          { error: 'PIN protection is required to cancel pending schedule changes.' },
+          { status: 403 }
+        );
+      }
+
       const clientIp = getClientIp(request);
       const rateCheck = checkPinRateLimit(clientIp, member.id);
       if (!rateCheck.allowed) {

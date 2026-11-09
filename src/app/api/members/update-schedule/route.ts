@@ -50,8 +50,22 @@ export async function POST(request: Request) {
 
     if (!isModeratorOverride) {
       const clientIp = getClientIp(request);
+      const rateCheck = checkPinRateLimit(clientIp, currentMember.id);
+      if (!rateCheck.allowed) {
+        return NextResponse.json(
+          {
+            error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+          },
+          {
+            status: 429,
+            headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+          }
+        );
+      }
+
       if (!currentMember.passcode_hash) {
         if (currentMember.role === 'moderator') {
+          recordPinFailure(clientIp, currentMember.id);
           return NextResponse.json(
             { error: 'Claiming an initial moderator profile requires moderator authorization.' },
             { status: 403 }
@@ -65,21 +79,9 @@ export async function POST(request: Request) {
           );
         }
         updatedPasscodeHash = hashPin(pin.trim());
+        resetPinFailure(clientIp, currentMember.id);
       } else {
         // Profile already claimed: verify PIN with rate limit protection
-        const rateCheck = checkPinRateLimit(clientIp, currentMember.id);
-        if (!rateCheck.allowed) {
-          return NextResponse.json(
-            {
-              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-            },
-            {
-              status: 429,
-              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-            }
-          );
-        }
-
         if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), currentMember.passcode_hash)) {
           recordPinFailure(clientIp, currentMember.id);
           return NextResponse.json(
