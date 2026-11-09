@@ -530,19 +530,81 @@ export function MyScheduleModal({
               </form>
             ) : (
               /* Profile Edit Form (Unlocked or Unclaimed) */
-              <form onSubmit={handleSaveProfile} className="space-y-3.5">
-                {/* Unclaimed Notice (If setting initial PIN) */}
-                {!activeMember?.passcode_hash && (
-                  <div className="rounded-xl border border-status-sage/30 bg-status-sage/10 p-3 text-xs text-cream-secondary">
-                    <p className="font-semibold text-status-sage flex items-center gap-1.5">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Unclaimed Profile: Choose a 4-Digit PIN</span>
+              <div className="space-y-4">
+                {/* Nightly Bedtime Check-In & Streak Card */}
+                {activeMember && (
+                  <div className="rounded-2xl border border-status-amber/40 bg-status-amber/10 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-status-amber" />
+                        <span className="text-xs font-bold text-cream-primary">
+                          Nightly Bedtime Check-In
+                        </span>
+                      </div>
+                      {activeMember.streak_days && activeMember.streak_days > 0 ? (
+                        <span className="rounded-full bg-status-amber/20 px-2.5 py-0.5 text-[11px] font-bold text-status-amber border border-status-amber/40">
+                          🔥 {activeMember.streak_days} Day Streak
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-cream-muted">0 day streak</span>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-cream-secondary leading-relaxed">
+                      {activeMember.is_in_bed
+                        ? "✓ You're safely checked in for tonight. Sleep Shield is active and community nag alerts are suppressed!"
+                        : "Heading to bed now? Tapping 'I'm in Bed' silences community nag alerts for tonight and builds your sleep streak."}
                     </p>
-                    <p className="mt-1 text-[11px]">
-                      Create a 4-digit PIN below to claim this profile and secure your bedtime schedule.
-                    </p>
+
+                    <div className="flex gap-2">
+                      {activeMember.is_in_bed ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await fetch('/api/members/in-bed', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ memberId: activeMember.id, action: 'cancel' }),
+                            });
+                            await onRefreshRoster();
+                          }}
+                          className="flex-1 min-h-[38px] rounded-xl border border-night-border bg-night-surface text-xs font-medium text-cream-muted hover:text-status-coral transition-colors"
+                        >
+                          Wake Up / Undo Check-In
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await fetch('/api/members/in-bed', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ memberId: activeMember.id, action: 'check_in' }),
+                            });
+                            await onRefreshRoster();
+                          }}
+                          className="flex-1 min-h-[40px] rounded-xl bg-status-amber text-xs font-bold text-night-bg hover:bg-status-amber/90 transition-all shadow"
+                        >
+                          🛏️ I&apos;m in Bed Now (Mute Nags)
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
+
+                <form onSubmit={handleSaveProfile} className="space-y-3.5">
+                  {/* Unclaimed Notice (If setting initial PIN) */}
+                  {!activeMember?.passcode_hash && (
+                    <div className="rounded-xl border border-status-sage/30 bg-status-sage/10 p-3 text-xs text-cream-secondary">
+                      <p className="font-semibold text-status-sage flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Unclaimed Profile: Choose a 4-Digit PIN</span>
+                      </p>
+                      <p className="mt-1 text-[11px]">
+                        Create a 4-digit PIN below to claim this profile and secure your bedtime schedule.
+                      </p>
+                    </div>
+                  )}
 
                 {/* Discord Username */}
                 <div>
@@ -723,6 +785,7 @@ export function MyScheduleModal({
                   </button>
                 </div>
               </form>
+              </div>
             )}
           </div>
         )}

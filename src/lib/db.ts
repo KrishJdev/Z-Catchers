@@ -35,6 +35,9 @@ export interface Member {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Dynamic runtime properties (hydrated by /api/members)
+  is_in_bed?: boolean;
+  streak_days?: number;
 }
 
 export interface PushSubscriptionRecord {
@@ -52,7 +55,7 @@ export interface PushSubscriptionRecord {
 export interface NotificationLog {
   id: string;
   member_id: string;
-  notification_type: 'WIND_DOWN_30M' | 'BEDTIME_HIT';
+  notification_type: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY';
   local_date: string; // "YYYY-MM-DD"
   dispatched_at: string;
 }

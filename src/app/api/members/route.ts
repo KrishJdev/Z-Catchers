@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabase, supabaseAdmin, Member } from '@/lib/db';
-import { checkCooldownPromotion } from '@/lib/sleepEngine';
+import { checkCooldownPromotion, calculateSleepStreak } from '@/lib/sleepEngine';
 import { hashPin } from '@/lib/auth';
+import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 
@@ -17,10 +18,27 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Process self-healing cooldown promotions
+    const nowUtc = DateTime.utc();
+
+    // Query recent check-ins for streak calculation and today's status
+    const sixtyDaysAgo = nowUtc.minus({ days: 60 }).toISODate();
+    const { data: inBedLogs } = await supabaseAdmin
+      .from('notification_logs')
+      .select('member_id, local_date')
+      .eq('notification_type', 'IN_BED_EARLY')
+      .gte('local_date', sixtyDaysAgo || '2026-01-01');
+
+    const checkinsByMember = new Map<string, string[]>();
+    for (const log of (inBedLogs || []) as { member_id: string; local_date: string }[]) {
+      const dates = checkinsByMember.get(log.member_id) || [];
+      dates.push(log.local_date);
+      checkinsByMember.set(log.member_id, dates);
+    }
+
+    // Process self-healing cooldown promotions and calculate streaks
     const processedMembers: Member[] = [];
     for (const member of (members as Member[]) || []) {
-      const { promoted, activeMember } = checkCooldownPromotion(member);
+      const { promoted, activeMember } = checkCooldownPromotion(member, nowUtc);
       if (promoted) {
         // Update DB in background with supabaseAdmin
         await supabaseAdmin
@@ -33,11 +51,22 @@ export async function GET() {
             pending_wake_time_local: null,
             pending_timezone: null,
             pending_effective_at: null,
-            updated_at: new Date().toISOString(),
+            updated_at: nowUtc.toISO(),
           })
           .eq('id', member.id);
       }
-      processedMembers.push(activeMember);
+
+      // Check-in & streak computation
+      const sleeperNow = nowUtc.setZone(activeMember.timezone);
+      const memberCheckins = checkinsByMember.get(activeMember.id) || [];
+      const is_in_bed = memberCheckins.includes(sleeperNow.toISODate() || '');
+      const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);
+
+      processedMembers.push({
+        ...activeMember,
+        is_in_bed,
+        streak_days,
+      });
     }
 
     return NextResponse.json({ members: processedMembers });

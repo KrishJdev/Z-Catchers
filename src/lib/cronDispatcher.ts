@@ -25,9 +25,10 @@ export interface DispatchResults {
  * Executes the 1-minute cron notification dispatcher.
  * Enforces:
  * 1. Self-healing 48-hour schedule cooldown promotion.
- * 2. Idempotent T-30m and T-0m triggers via notification_logs.
- * 3. Non-negotiable Sleep Shield guardrail (never wake sleeping or winding down members).
- * 4. Auto-pruning of expired push subscriptions (HTTP 404/410).
+ * 2. Early "I'm in Bed" Safe Button check-in suppression (anti-spam guarantee).
+ * 3. Idempotent T-30m and T-0m triggers via notification_logs.
+ * 4. Non-negotiable Sleep Shield guardrail (never wake sleeping or winding down members).
+ * 5. Auto-pruning of expired push subscriptions (HTTP 404/410).
  */
 export async function executeNotificationDispatcher(options: {
   dryRun?: boolean;
@@ -66,7 +67,7 @@ export async function executeNotificationDispatcher(options: {
   // 2. Perform self-healing 48-hour cooldown promotions
   const activeMembers: Member[] = [];
   for (const m of rawMembers as Member[]) {
-    const { promoted, activeMember } = checkCooldownPromotion(m);
+    const { promoted, activeMember } = checkCooldownPromotion(m, nowUtc);
     if (promoted && !options.dryRun) {
       results.promotionsCount++;
       await supabaseAdmin
@@ -134,10 +135,10 @@ export async function executeNotificationDispatcher(options: {
     return true;
   };
 
-  // Helper to check idempotency log
+  // Helper to check idempotency / status log
   const hasBeenDispatched = async (
     memberId: string,
-    notificationType: 'WIND_DOWN_30M' | 'BEDTIME_HIT',
+    notificationType: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY',
     localDate: string
   ): Promise<boolean> => {
     const { data } = await supabaseAdmin
@@ -174,12 +175,15 @@ export async function executeNotificationDispatcher(options: {
       continue;
     }
 
-    const state = computeMemberState(member, member.timezone, nowUtc);
     const sleeperNow = nowUtc.setZone(member.timezone);
     const localDate = sleeperNow.toISODate(); // "YYYY-MM-DD"
 
     if (!localDate) continue;
 
+    // Check if sleeper has checked in early via "I'm in Bed" Safe Button for tonight
+    const alreadyInBed = await hasBeenDispatched(member.id, 'IN_BED_EARLY', localDate);
+
+    const state = computeMemberState(member, member.timezone, nowUtc, alreadyInBed);
     const diff = state.diffMinutes;
 
     // Check 1: T-Minus 30 Minutes Window (WIND_DOWN_30M)
@@ -187,22 +191,30 @@ export async function executeNotificationDispatcher(options: {
     const isWindDownWindow = diff >= -32 && diff <= -28;
 
     if (isWindDownWindow) {
-      const alreadySent = await hasBeenDispatched(member.id, 'WIND_DOWN_30M', localDate);
-      if (!alreadySent) {
-        const memberSubs = subscriptionsByMember.get(member.id) || [];
-        const personalSubs = memberSubs.filter((s) => s.notify_personal);
+      if (alreadyInBed) {
+        // Sleeper is already safely in bed! Suppress wind-down notification
+        results.sleepShieldSuppressionsCount++;
+        results.details.suppressedDueToSleepShield.push(
+          `${member.discord_username} (Wind-down skipped: already checked in as in bed)`
+        );
+      } else {
+        const alreadySent = await hasBeenDispatched(member.id, 'WIND_DOWN_30M', localDate);
+        if (!alreadySent) {
+          const memberSubs = subscriptionsByMember.get(member.id) || [];
+          const personalSubs = memberSubs.filter((s) => s.notify_personal);
 
-        for (const sub of personalSubs) {
-          const sent = await deliverPush(sub, {
-            title: '🕯️ Z Catchers: Wind-Down Time',
-            body: `30 minutes until your bedtime (${member.bedtime_local}). Start wrapping up!`,
-            url: member.journal_url,
-          });
-          if (sent) results.windDownDispatched++;
+          for (const sub of personalSubs) {
+            const sent = await deliverPush(sub, {
+              title: '🕯️ Z Catchers: Wind-Down Time',
+              body: `30 minutes until your bedtime (${member.bedtime_local}). Start wrapping up!`,
+              url: member.journal_url,
+            });
+            if (sent) results.windDownDispatched++;
+          }
+
+          results.details.windDownRecipients.push(member.discord_username);
+          await recordDispatch(member.id, 'WIND_DOWN_30M', localDate);
         }
-
-        results.details.windDownRecipients.push(member.discord_username);
-        await recordDispatch(member.id, 'WIND_DOWN_30M', localDate);
       }
     }
 
@@ -211,64 +223,80 @@ export async function executeNotificationDispatcher(options: {
     const isBedtimeHitWindow = diff >= 0 && diff <= 4;
 
     if (isBedtimeHitWindow) {
-      const alreadySent = await hasBeenDispatched(member.id, 'BEDTIME_HIT', localDate);
-      if (!alreadySent) {
-        // Dispatch A: To the sleeper member (personal notification)
-        const memberSubs = subscriptionsByMember.get(member.id) || [];
-        const personalSubs = memberSubs.filter((s) => s.notify_personal);
+      if (alreadyInBed) {
+        // ANTI-SPAM GUARANTEE: Member checked in early via Safe Button!
+        // Suppress personal bedtime hit AND suppress community nag notifications!
+        results.sleepShieldSuppressionsCount++;
+        results.details.suppressedDueToSleepShield.push(
+          `${member.discord_username} (Checked in early via Safe Button — nag alerts suppressed)`
+        );
+      } else {
+        const alreadySent = await hasBeenDispatched(member.id, 'BEDTIME_HIT', localDate);
+        if (!alreadySent) {
+          // Dispatch A: To the sleeper member (personal notification)
+          const memberSubs = subscriptionsByMember.get(member.id) || [];
+          const personalSubs = memberSubs.filter((s) => s.notify_personal);
 
-        for (const sub of personalSubs) {
-          const sent = await deliverPush(sub, {
-            title: "🌙 Time to Catch Some Z's!",
-            body: `It's ${member.bedtime_local}. Head to your Discord journal and check in for the night.`,
-            url: member.journal_url,
-          });
-          if (sent) results.bedtimeHitDispatched++;
-        }
-        results.details.bedtimeRecipients.push(member.discord_username);
-
-        // Dispatch B: To the community friends (STRICTLY GUARDED BY SLEEP SHIELD)
-        for (const peer of activeMembers) {
-          if (peer.id === member.id) continue;
-
-          const peerSubs = subscriptionsByMember.get(peer.id) || [];
-          const communitySubs = peerSubs.filter((s) => s.notify_community);
-          if (communitySubs.length === 0) continue;
-
-          // Check Sleep Shield for peer
-          const peerState = computeMemberState(peer, peer.timezone, nowUtc);
-
-          // SLEEP SHIELD GUARDRAIL:
-          // 1. Peer is in SLEEPING bucket (isSleepShieldActive = true, 60m to 480m after bedtime)
-          // 2. Peer is winding down within 15 minutes before their own bedtime (-15 <= diff < 0)
-          const isPeerShieldActive =
-            peerState.isSleepShieldActive ||
-            peerState.bucket === 'SLEEPING' ||
-            (peerState.diffMinutes >= -15 && peerState.diffMinutes < 0);
-
-          if (isPeerShieldActive) {
-            results.sleepShieldSuppressionsCount++;
-            results.details.suppressedDueToSleepShield.push(
-              `${peer.discord_username} (Shield Active: ${peerState.bucket}, diff: ${Math.round(
-                peerState.diffMinutes
-              )}m)`
-            );
-            continue; // STRICTLY SKIP SLEEPING PEER!
-          }
-
-          // Peer is awake and safe to receive nag notification!
-          for (const sub of communitySubs) {
+          for (const sub of personalSubs) {
             const sent = await deliverPush(sub, {
-              title: `🔔 Z Catchers Alert: ${member.discord_username}`,
-              body: `It's ${member.discord_username}'s bedtime! Tap to jump into their Discord journal and tell them to sleep.`,
+              title: "🌙 Time to Catch Some Z's!",
+              body: `It's ${member.bedtime_local}. Head to your Discord journal and check in for the night.`,
               url: member.journal_url,
             });
-            if (sent) results.communityNagsDispatched++;
+            if (sent) results.bedtimeHitDispatched++;
           }
-          results.details.communityNagRecipients.push(peer.discord_username);
-        }
+          results.details.bedtimeRecipients.push(member.discord_username);
 
-        await recordDispatch(member.id, 'BEDTIME_HIT', localDate);
+          // Dispatch B: To the community friends (STRICTLY GUARDED BY SLEEP SHIELD)
+          for (const peer of activeMembers) {
+            if (peer.id === member.id) continue;
+
+            const peerSubs = subscriptionsByMember.get(peer.id) || [];
+            const communitySubs = peerSubs.filter((s) => s.notify_community);
+            if (communitySubs.length === 0) continue;
+
+            // Check if peer is in bed or sleep shielded
+            const peerNow = nowUtc.setZone(peer.timezone);
+            const peerLocalDate = peerNow.toISODate();
+            const peerInBed = peerLocalDate
+              ? await hasBeenDispatched(peer.id, 'IN_BED_EARLY', peerLocalDate)
+              : false;
+
+            const peerState = computeMemberState(peer, peer.timezone, nowUtc, peerInBed);
+
+            // SLEEP SHIELD GUARDRAIL:
+            // 1. Peer is in SLEEPING bucket (isSleepShieldActive = true, or checked in early)
+            // 2. Peer is winding down within 15 minutes before their own bedtime (-15 <= diff < 0)
+            const isPeerShieldActive =
+              peerState.isSleepShieldActive ||
+              peerState.bucket === 'SLEEPING' ||
+              peerInBed ||
+              (peerState.diffMinutes >= -15 && peerState.diffMinutes < 0);
+
+            if (isPeerShieldActive) {
+              results.sleepShieldSuppressionsCount++;
+              results.details.suppressedDueToSleepShield.push(
+                `${peer.discord_username} (Shield Active: ${peerState.bucket}, diff: ${Math.round(
+                  peerState.diffMinutes
+                )}m)`
+              );
+              continue; // STRICTLY SKIP SLEEPING PEER!
+            }
+
+            // Peer is awake and safe to receive nag notification!
+            for (const sub of communitySubs) {
+              const sent = await deliverPush(sub, {
+                title: `🔔 Z Catchers Alert: ${member.discord_username}`,
+                body: `It's ${member.discord_username}'s bedtime! Tap to jump into their Discord journal and tell them to sleep.`,
+                url: member.journal_url,
+              });
+              if (sent) results.communityNagsDispatched++;
+            }
+            results.details.communityNagRecipients.push(peer.discord_username);
+          }
+
+          await recordDispatch(member.id, 'BEDTIME_HIT', localDate);
+        }
       }
     }
   }

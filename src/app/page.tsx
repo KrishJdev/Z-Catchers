@@ -14,6 +14,7 @@ import {
   registerServiceWorker,
   getExistingSubscription,
   isPushSupported,
+  getStoredMemberId,
 } from '@/lib/pushClient';
 import type { Member } from '@/lib/db';
 import {
@@ -26,7 +27,11 @@ import {
   Shield,
   RefreshCw,
   Bell,
+  Star,
+  Users,
 } from 'lucide-react';
+
+const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
 
 export default function HomePage() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -35,6 +40,16 @@ export default function HomePage() {
   const [isPushEnabled, setIsPushEnabled] = useState(false);
   const [isSleepShieldActive, setIsSleepShieldActive] = useState(false);
   const [tick, setTick] = useState(0);
+
+  // Claimed member profile ID from localStorage
+  const [claimedMemberId, setClaimedMemberId] = useState<string | null>(null);
+
+  // Starred accountability buddies
+  const [starredMembers, setStarredMembers] = useState<string[]>([]);
+  const [buddyFilter, setBuddyFilter] = useState<'all' | 'buddies'>('all');
+
+  // Check-in loading indicator
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
 
   // Dialog / Modal states: 'schedule' | 'mod' | 'push' | null
   const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | 'push' | null>(null);
@@ -48,6 +63,21 @@ export default function HomePage() {
       setViewerTimezone('UTC');
     }
   }, []);
+
+  // Sync claimed member ID & starred buddies from localStorage
+  useEffect(() => {
+    try {
+      const storedId = getStoredMemberId();
+      if (storedId) setClaimedMemberId(storedId);
+
+      const storedStarred = localStorage.getItem(STORAGE_KEY_STARRED);
+      if (storedStarred) {
+        setStarredMembers(JSON.parse(storedStarred));
+      }
+    } catch (err) {
+      console.warn('Failed to load local settings:', err);
+    }
+  }, [activeModal]);
 
   // Register service worker and inspect existing push subscription
   useEffect(() => {
@@ -89,6 +119,78 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Toggle buddy star
+  const handleToggleStar = (memberId: string) => {
+    setStarredMembers((prev) => {
+      const next = prev.includes(memberId)
+        ? prev.filter((id) => id !== memberId)
+        : [...prev, memberId];
+      try {
+        localStorage.setItem(STORAGE_KEY_STARRED, JSON.stringify(next));
+      } catch (err) {
+        console.warn('Failed to save starred buddies:', err);
+      }
+      return next;
+    });
+  };
+
+  // "I'm in Bed" Check-In Safe Button handler
+  const handleCheckIn = async (memberId: string) => {
+    try {
+      setIsCheckingIn(true);
+      const res = await fetch('/api/members/in-bed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId, action: 'check_in' }),
+      });
+      if (res.ok) {
+        await fetchRoster();
+      }
+    } catch (err) {
+      console.error('Failed to check in:', err);
+    } finally {
+      setIsCheckingIn(false);
+    }
+  };
+
+  // Cancel "I'm in Bed" check-in handler
+  const handleCancelInBed = async (memberId: string) => {
+    try {
+      setIsCheckingIn(true);
+      const res = await fetch('/api/members/in-bed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId, action: 'cancel' }),
+      });
+      if (res.ok) {
+        await fetchRoster();
+      }
+    } catch (err) {
+      console.error('Failed to cancel check-in:', err);
+    } finally {
+      setIsCheckingIn(false);
+    }
+  };
+
+  // Claimed member profile & state
+  const claimedMember = useMemo(() => {
+    if (!claimedMemberId) return null;
+    return members.find((m) => m.id === claimedMemberId) || null;
+  }, [members, claimedMemberId]);
+
+  const claimedMemberState = useMemo(() => {
+    if (!claimedMember) return null;
+    return computeMemberState(claimedMember, viewerTimezone);
+  }, [claimedMember, viewerTimezone, tick]);
+
+  // Filtered members list based on buddy filter
+  const displayedMembers = useMemo(() => {
+    if (buddyFilter === 'buddies') {
+      return members.filter((m) => starredMembers.includes(m.id));
+    }
+    return members;
+  }, [members, buddyFilter, starredMembers]);
+
   // Categorize members into buckets based on viewer timezone & current clock
   const categorized = useMemo(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -99,7 +201,7 @@ export default function HomePage() {
     const awake: { member: Member; state: MemberState }[] = [];
     const sleeping: { member: Member; state: MemberState }[] = [];
 
-    for (const member of members) {
+    for (const member of displayedMembers) {
       const state = computeMemberState(member, viewerTimezone);
       switch (state.bucket) {
         case 'BEDTIME_NOW':
@@ -122,7 +224,7 @@ export default function HomePage() {
     windingDown.sort((a, b) => b.state.diffMinutes - a.state.diffMinutes);
 
     return { nagNow, windingDown, awake, sleeping };
-  }, [members, viewerTimezone, tick]);
+  }, [displayedMembers, viewerTimezone, tick]);
 
   const handleOpenPushModal = () => {
     setActiveModal('push');
@@ -147,34 +249,84 @@ export default function HomePage() {
         <section className="mb-6 rounded-2xl border border-night-border/80 bg-night-surface/90 p-4 shadow-lg backdrop-blur-sm sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3.5">
-              {categorized.nagNow.length > 0 ? (
+              {claimedMember?.is_in_bed ? (
+                <FoxMascot state="sleeping" size={42} />
+              ) : categorized.nagNow.length > 0 ? (
                 <FoxMascot state="alert" size={42} className="animate-pulse" />
               ) : categorized.windingDown.length > 0 ? (
                 <FoxMascot state="lantern" size={42} />
               ) : (
                 <FoxMascot state="sleeping" size={42} />
               )}
+
               <div>
-                <h2 className="text-sm font-bold tracking-wide text-cream-primary sm:text-base">
-                  {categorized.nagNow.length > 0
-                    ? `Bedtime Alert: ${categorized.nagNow.length} friend${
-                        categorized.nagNow.length > 1 ? 's' : ''
-                      } hit bedtime!`
-                    : categorized.windingDown.length > 0
-                    ? `Winding Down: ${categorized.windingDown.length} friend${
-                        categorized.windingDown.length > 1 ? 's' : ''
-                      } heading to bed soon`
-                    : 'The Fox Den is Peaceful'}
-                </h2>
-                <p className="text-xs text-cream-secondary sm:text-sm">
-                  {categorized.nagNow.length > 0
-                    ? 'Check their Discord journal threads to nag them off screens and into bed.'
-                    : categorized.windingDown.length > 0
-                    ? 'Say your goodnights and remind them to turn down blue light.'
-                    : isSleepShieldActive
-                    ? 'Your personal Sleep Shield is active. Community nag notifications are suppressed.'
-                    : 'All friends are currently wide awake or resting safely in their sleep windows.'}
-                </p>
+                {/* Dynamic personalized greeting if viewer is claimed and near bedtime */}
+                {claimedMember && claimedMember.is_in_bed ? (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div>
+                      <h2 className="text-sm font-bold tracking-wide text-status-sage sm:text-base">
+                        Goodnight, {claimedMember.discord_username}! 🌙
+                      </h2>
+                      <p className="text-xs text-cream-secondary sm:text-sm">
+                        You&apos;re safely tucked in. Sleep Shield active; community nags are suppressed.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleCancelInBed(claimedMember.id)}
+                      disabled={isCheckingIn}
+                      className="text-xs text-cream-muted underline hover:text-cream-secondary"
+                    >
+                      Undo
+                    </button>
+                  </div>
+                ) : claimedMember &&
+                  claimedMemberState &&
+                  (claimedMemberState.bucket === 'BEDTIME_NOW' ||
+                    claimedMemberState.bucket === 'WINDING_DOWN' ||
+                    (claimedMemberState.diffMinutes >= -180 && claimedMemberState.diffMinutes < 0)) ? (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div>
+                      <h2 className="text-sm font-bold tracking-wide text-status-amber sm:text-base">
+                        {claimedMemberState.bucket === 'BEDTIME_NOW'
+                          ? `Bedtime Hit for you, ${claimedMember.discord_username}!`
+                          : `Wind-Down Time, ${claimedMember.discord_username}!`}
+                      </h2>
+                      <p className="text-xs text-cream-secondary sm:text-sm">
+                        Heading to sleep? Tap to silence outgoing community nag alerts for tonight.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleCheckIn(claimedMember.id)}
+                      disabled={isCheckingIn}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-status-amber px-3.5 py-1.5 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 active:scale-95 transition-all"
+                    >
+                      <span>🛏️ I&apos;m in Bed (Goodnight)</span>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <h2 className="text-sm font-bold tracking-wide text-cream-primary sm:text-base">
+                      {categorized.nagNow.length > 0
+                        ? `Bedtime Alert: ${categorized.nagNow.length} friend${
+                            categorized.nagNow.length > 1 ? 's' : ''
+                          } hit bedtime!`
+                        : categorized.windingDown.length > 0
+                        ? `Winding Down: ${categorized.windingDown.length} friend${
+                            categorized.windingDown.length > 1 ? 's' : ''
+                          } heading to bed soon`
+                        : 'The Fox Den is Peaceful'}
+                    </h2>
+                    <p className="text-xs text-cream-secondary sm:text-sm">
+                      {categorized.nagNow.length > 0
+                        ? 'Check their Discord journal threads to nag them off screens and into bed.'
+                        : categorized.windingDown.length > 0
+                        ? 'Say your goodnights and remind them to turn down blue light.'
+                        : isSleepShieldActive
+                        ? 'Your personal Sleep Shield is active. Community nag notifications are suppressed.'
+                        : 'All friends are currently wide awake or resting safely in their sleep windows.'}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -195,10 +347,66 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* Buddy Filter & Quick Navigation Bar */}
+        <div className="mb-4 flex items-center justify-between flex-wrap gap-2.5">
+          <div className="flex items-center rounded-xl bg-night-surface p-1 border border-night-border/80">
+            <button
+              onClick={() => setBuddyFilter('all')}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
+                buddyFilter === 'all'
+                  ? 'bg-night-elevated text-cream-primary'
+                  : 'text-cream-muted hover:text-cream-secondary'
+              }`}
+            >
+              <Users className="h-3.5 w-3.5" />
+              <span>All Den ({members.length})</span>
+            </button>
+            <button
+              onClick={() => setBuddyFilter('buddies')}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
+                buddyFilter === 'buddies'
+                  ? 'bg-status-amber/20 text-status-amber border border-status-amber/40'
+                  : 'text-cream-muted hover:text-cream-secondary'
+              }`}
+            >
+              <Star
+                className={`h-3.5 w-3.5 ${
+                  buddyFilter === 'buddies' ? 'fill-status-amber text-status-amber' : ''
+                }`}
+              />
+              <span>Starred Buddies ({starredMembers.length})</span>
+            </button>
+          </div>
+
+          {!claimedMember && (
+            <button
+              onClick={() => setActiveModal('schedule')}
+              className="text-xs text-status-amber hover:underline flex items-center gap-1 font-medium"
+            >
+              <span>Claim your profile to track streaks & check in</span>
+              <span>→</span>
+            </button>
+          )}
+        </div>
+
         {loading ? (
           <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 text-cream-muted">
             <RefreshCw className="h-6 w-6 animate-spin text-status-amber" />
             <p className="text-xs">Gathering community foxes from across timezones...</p>
+          </div>
+        ) : displayedMembers.length === 0 && buddyFilter === 'buddies' ? (
+          <div className="flex min-h-[200px] flex-col items-center justify-center rounded-2xl border border-dashed border-night-border bg-night-surface/50 p-6 text-center text-cream-muted">
+            <Star className="h-8 w-8 text-status-amber/60 mb-2" />
+            <p className="text-sm font-semibold text-cream-primary">No Starred Buddies Yet</p>
+            <p className="text-xs max-w-sm mt-1 text-cream-secondary">
+              Click the star icon ⭐ on any friend&apos;s card to add them to your priority accountability watchlist.
+            </p>
+            <button
+              onClick={() => setBuddyFilter('all')}
+              className="mt-3 rounded-lg bg-night-elevated px-3 py-1.5 text-xs font-medium text-status-amber hover:bg-night-border"
+            >
+              Show All Members
+            </button>
           </div>
         ) : (
           <>
@@ -212,7 +420,17 @@ export default function HomePage() {
               showEmptyState={false}
             >
               {categorized.nagNow.map(({ member, state }) => (
-                <MemberCard key={member.id} member={member} state={state} />
+                <MemberCard
+                  key={member.id}
+                  member={member}
+                  state={state}
+                  currentMemberId={claimedMemberId}
+                  isStarred={starredMembers.includes(member.id)}
+                  onToggleStar={handleToggleStar}
+                  onCheckIn={handleCheckIn}
+                  onCancelInBed={handleCancelInBed}
+                  isCheckingIn={isCheckingIn}
+                />
               ))}
             </StatusBucket>
 
@@ -226,7 +444,17 @@ export default function HomePage() {
               showEmptyState={false}
             >
               {categorized.windingDown.map(({ member, state }) => (
-                <MemberCard key={member.id} member={member} state={state} />
+                <MemberCard
+                  key={member.id}
+                  member={member}
+                  state={state}
+                  currentMemberId={claimedMemberId}
+                  isStarred={starredMembers.includes(member.id)}
+                  onToggleStar={handleToggleStar}
+                  onCheckIn={handleCheckIn}
+                  onCancelInBed={handleCancelInBed}
+                  isCheckingIn={isCheckingIn}
+                />
               ))}
             </StatusBucket>
 
@@ -239,7 +467,17 @@ export default function HomePage() {
               defaultExpanded={true}
             >
               {categorized.awake.map(({ member, state }) => (
-                <MemberCard key={member.id} member={member} state={state} />
+                <MemberCard
+                  key={member.id}
+                  member={member}
+                  state={state}
+                  currentMemberId={claimedMemberId}
+                  isStarred={starredMembers.includes(member.id)}
+                  onToggleStar={handleToggleStar}
+                  onCheckIn={handleCheckIn}
+                  onCancelInBed={handleCancelInBed}
+                  isCheckingIn={isCheckingIn}
+                />
               ))}
             </StatusBucket>
 
@@ -254,7 +492,17 @@ export default function HomePage() {
               emptyMessage="No members currently asleep."
             >
               {categorized.sleeping.map(({ member, state }) => (
-                <MemberCard key={member.id} member={member} state={state} />
+                <MemberCard
+                  key={member.id}
+                  member={member}
+                  state={state}
+                  currentMemberId={claimedMemberId}
+                  isStarred={starredMembers.includes(member.id)}
+                  onToggleStar={handleToggleStar}
+                  onCheckIn={handleCheckIn}
+                  onCancelInBed={handleCancelInBed}
+                  isCheckingIn={isCheckingIn}
+                />
               ))}
             </StatusBucket>
           </>
@@ -301,7 +549,7 @@ export default function HomePage() {
         </button>
       </nav>
 
-      {/* Self-Service My Schedule Modal (Phase 1.4) */}
+      {/* Self-Service My Schedule Modal (Phase 1.4 & Check-In) */}
       <MyScheduleModal
         isOpen={activeModal === 'schedule'}
         onClose={() => setActiveModal(null)}
