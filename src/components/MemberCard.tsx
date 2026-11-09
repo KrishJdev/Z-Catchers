@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ExternalLink,
   ShieldAlert,
@@ -9,6 +9,7 @@ import {
   Sun,
   Star,
   CheckCircle2,
+  Users,
 } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import type { MemberState } from '@/lib/sleepEngine';
@@ -37,6 +38,32 @@ export function MemberCard({
   const { bucket, formattedViewerTime, formattedSleeperTime, pendingNotice, streakMilestone } = state;
   const isViewer = Boolean(currentMemberId && member.id === currentMemberId);
   const isInBed = Boolean(member.is_in_bed || state.checkedInEarly);
+
+  // Local Nag Assist State
+  const [localNagCount, setLocalNagCount] = useState<number>(member.nag_assists_count || 0);
+  const [hasNagged, setHasNagged] = useState(false);
+
+  useEffect(() => {
+    if (typeof member.nag_assists_count === 'number') {
+      setLocalNagCount(member.nag_assists_count);
+    }
+  }, [member.nag_assists_count]);
+
+  const handleNagJournalClick = async () => {
+    if (!hasNagged) {
+      setHasNagged(true);
+      setLocalNagCount((prev) => prev + 1);
+      try {
+        await fetch('/api/members/nag-assist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sleeper_id: member.id }),
+        });
+      } catch (e) {
+        // Non-blocking assist error
+      }
+    }
+  };
 
   // Safe fallback avatar
   const avatarUrl =
@@ -180,15 +207,30 @@ export function MemberCard({
               )}
             </div>
           )}
+
+          {/* Nagged Assist Counter */}
+          {localNagCount > 0 && (
+            <div className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-status-coral/30 bg-status-coral/10 px-3 py-1.5 text-xs font-semibold text-status-coral">
+              <Users className="h-3.5 w-3.5" />
+              <span>
+                {hasNagged
+                  ? localNagCount === 1
+                    ? 'You nagged tonight! 🦊'
+                    : `You & ${localNagCount - 1} friend${localNagCount - 1 === 1 ? '' : 's'} nagged tonight 🦊`
+                  : `${localNagCount} friend${localNagCount === 1 ? '' : 's'} checked in tonight`}
+              </span>
+            </div>
+          )}
         </div>
 
         <a
           href={member.journal_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-3.5 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-coral font-semibold text-night-bg transition-opacity hover:opacity-90"
+          onClick={handleNagJournalClick}
+          className="mt-3.5 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-coral font-semibold text-night-bg transition-all hover:opacity-90 active:scale-[0.98]"
         >
-          <span>Nag in Discord Journal</span>
+          <span>{hasNagged ? 'Nagged! Reopen Journal' : 'Nag in Discord Journal'}</span>
           <ExternalLink className="h-4 w-4" />
         </a>
       </div>
@@ -254,9 +296,10 @@ export function MemberCard({
           href={member.journal_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-3.5 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-night-elevated font-medium text-status-amber transition-colors hover:bg-status-amber/15"
+          onClick={handleNagJournalClick}
+          className="mt-3.5 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-night-elevated font-medium text-status-amber transition-colors hover:bg-status-amber/15 active:scale-[0.98]"
         >
-          <span>Say Goodnight in Journal</span>
+          <span>{hasNagged ? 'Noted! Reopen Journal' : 'Say Goodnight in Journal'}</span>
           <ExternalLink className="h-4 w-4" />
         </a>
       </div>

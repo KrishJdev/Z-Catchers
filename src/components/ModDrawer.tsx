@@ -26,9 +26,12 @@ import {
   Edit2,
   ChevronRight,
   ShieldAlert,
+  Radio,
+  Send,
 } from 'lucide-react';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
+const DISCORD_WEBHOOK_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const POPULAR_TIMEZONES = [
@@ -68,8 +71,19 @@ export function ModDrawer({
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
-  // Tab navigation: 'pending' | 'roster' | 'add'
-  const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'add'>('pending');
+  // Tab navigation: 'pending' | 'roster' | 'add' | 'webhook'
+  const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'add' | 'webhook'>('pending');
+
+  // Webhook Tab state
+  const [webhookUrlInput, setWebhookUrlInput] = useState('');
+  const [webhookConfigured, setWebhookConfigured] = useState<boolean | null>(null);
+  const [maskedWebhookUrl, setMaskedWebhookUrl] = useState<string | null>(null);
+  const [testingWebhook, setTestingWebhook] = useState(false);
+  const [sendingDigest, setSendingDigest] = useState(false);
+  const [webhookStatusMessage, setWebhookStatusMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   // Moderator roster data (includes inactive and pending members)
   const [modMembers, setModMembers] = useState<Member[]>([]);
@@ -135,14 +149,30 @@ export function ModDrawer({
     }
   }, []);
 
-  // When unlocked and modal is open, load roster
+  const fetchWebhookStatus = useCallback(async (code: string) => {
+    try {
+      const res = await fetch('/api/mod/webhook', {
+        headers: { 'x-mod-passcode': code },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWebhookConfigured(data.configured);
+        setMaskedWebhookUrl(data.maskedUrl);
+      }
+    } catch (err) {
+      console.error('Failed to load webhook status:', err);
+    }
+  }, []);
+
+  // When unlocked and modal is open, load roster & webhook status
   useEffect(() => {
     if (isOpen && isUnlocked && passcode) {
       fetchModRoster(passcode);
+      fetchWebhookStatus(passcode);
       setErrorMessage(null);
       setSuccessMessage(null);
     }
-  }, [isOpen, isUnlocked, passcode, fetchModRoster]);
+  }, [isOpen, isUnlocked, passcode, fetchModRoster, fetchWebhookStatus]);
 
   // Handle Passcode Unlock
   const handleUnlock = async (e: React.FormEvent) => {
@@ -177,10 +207,104 @@ export function ModDrawer({
       }
       setSuccessMessage('Moderator panel unlocked!');
       await fetchModRoster(passcode.trim());
+      await fetchWebhookStatus(passcode.trim());
     } catch {
       setErrorMessage('Network error while verifying passcode.');
     } finally {
       setVerifying(false);
+    }
+  };
+
+  // Webhook action handlers
+  const handleSendTestWebhook = async () => {
+    const targetUrl = webhookUrlInput.trim();
+    if (targetUrl && !DISCORD_WEBHOOK_REGEX.test(targetUrl)) {
+      setWebhookStatusMessage({
+        type: 'error',
+        text: 'Custom URL must match: https://discord.com/api/webhooks/ID/TOKEN',
+      });
+      return;
+    }
+
+    setTestingWebhook(true);
+    setWebhookStatusMessage(null);
+
+    try {
+      const res = await fetch('/api/mod/webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'test',
+          passcode,
+          webhook_url: targetUrl || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setWebhookStatusMessage({
+          type: 'error',
+          text: data.error || 'Failed to dispatch test webhook.',
+        });
+      } else {
+        setWebhookStatusMessage({
+          type: 'success',
+          text: data.message || 'Test embed sent successfully to Discord channel! 🦊',
+        });
+      }
+    } catch {
+      setWebhookStatusMessage({
+        type: 'error',
+        text: 'Network error communicating with webhook endpoint.',
+      });
+    } finally {
+      setTestingWebhook(false);
+    }
+  };
+
+  const handleSendMorningDigest = async () => {
+    const targetUrl = webhookUrlInput.trim();
+    if (targetUrl && !DISCORD_WEBHOOK_REGEX.test(targetUrl)) {
+      setWebhookStatusMessage({
+        type: 'error',
+        text: 'Custom URL must match: https://discord.com/api/webhooks/ID/TOKEN',
+      });
+      return;
+    }
+
+    setSendingDigest(true);
+    setWebhookStatusMessage(null);
+
+    try {
+      const res = await fetch('/api/mod/webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'digest',
+          passcode,
+          webhook_url: targetUrl || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setWebhookStatusMessage({
+          type: 'error',
+          text: data.error || 'Failed to send morning digest.',
+        });
+      } else {
+        setWebhookStatusMessage({
+          type: 'success',
+          text: data.message || 'Morning slumber digest posted to Discord! ☀️',
+        });
+      }
+    } catch {
+      setWebhookStatusMessage({
+        type: 'error',
+        text: 'Network error posting morning digest.',
+      });
+    } finally {
+      setSendingDigest(false);
     }
   };
 
@@ -669,6 +793,24 @@ export function ModDrawer({
               >
                 <UserPlus className="h-3.5 w-3.5" />
                 <span>Add Member</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('webhook');
+                  setEditingMember(null);
+                  setPinResetMember(null);
+                  if (passcode) fetchWebhookStatus(passcode);
+                }}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 font-semibold transition-all ${
+                  activeTab === 'webhook'
+                    ? 'bg-status-amber text-night-bg shadow-sm'
+                    : 'text-cream-muted hover:text-cream-primary'
+                }`}
+              >
+                <Radio className="h-3.5 w-3.5" />
+                <span>Discord Webhook</span>
               </button>
             </div>
 
@@ -1265,6 +1407,146 @@ export function ModDrawer({
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* Tab 4 View: Discord Webhook Broadcast Controls */}
+            {activeTab === 'webhook' && !editingMember && !pinResetMember && (
+              <div className="mt-4 space-y-4">
+                <div className="rounded-2xl border border-night-border bg-night-elevated p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-xl border border-status-amber/30 bg-night-surface p-2.5">
+                      <Radio className="h-6 w-6 text-status-amber" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-sm font-bold text-cream-primary">
+                        Automated Discord Channel Webhooks
+                      </h3>
+                      <p className="mt-1 text-xs text-cream-muted leading-relaxed">
+                        Broadcasts automated bedtime alerts into your server announcement channel when a member hits their bedtime (and hasn&apos;t checked in early). Also generates morning wake-up slumber digests celebrating active sleep streaks.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Webhook Configuration Status */}
+                  <div className="mt-4 rounded-xl border border-night-border/80 bg-night-surface p-3.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-cream-secondary">
+                        Server Environment Integration:
+                      </span>
+                      {webhookConfigured ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-status-sage/40 bg-status-sage/15 px-2.5 py-0.5 font-bold text-status-sage">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>Connected</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-night-border bg-night-elevated px-2.5 py-0.5 font-medium text-cream-muted">
+                          <span>Not in Env (Optional override below)</span>
+                        </span>
+                      )}
+                    </div>
+                    {maskedWebhookUrl && (
+                      <p className="mt-2 font-mono text-[11px] text-cream-muted break-all">
+                        {maskedWebhookUrl}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Test & Trigger Controls */}
+                <div className="rounded-2xl border border-night-border bg-night-elevated p-4 space-y-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-cream-muted">
+                    Test Webhook Delivery
+                  </h4>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-cream-muted">
+                      Custom Webhook URL Override (Optional)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder={
+                        maskedWebhookUrl
+                          ? 'Using server env webhook (or paste custom URL here)'
+                          : 'https://discord.com/api/webhooks/...'
+                      }
+                      value={webhookUrlInput}
+                      onChange={(e) => setWebhookUrlInput(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs font-mono text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
+                    />
+                    <p className="mt-1 text-[10px] text-cream-muted">
+                      Must match format: <code className="text-status-amber">https://discord.com/api/webhooks/ID/TOKEN</code>
+                    </p>
+                  </div>
+
+                  {webhookStatusMessage && (
+                    <div
+                      className={`flex items-start gap-2 rounded-xl border p-3 text-xs ${
+                        webhookStatusMessage.type === 'success'
+                          ? 'border-status-sage/40 bg-status-sage/10 text-status-sage'
+                          : 'border-status-coral/40 bg-status-coral/10 text-status-coral'
+                      }`}
+                    >
+                      {webhookStatusMessage.type === 'success' ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                      )}
+                      <span>{webhookStatusMessage.text}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleSendTestWebhook}
+                      disabled={testingWebhook || sendingDigest}
+                      className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-status-amber px-3 text-xs font-bold text-night-bg transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                      {testingWebhook ? (
+                        <>
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          <span>Dispatching Test...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-3.5 w-3.5" />
+                          <span>Send Test Bedtime Embed</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSendMorningDigest}
+                      disabled={testingWebhook || sendingDigest}
+                      className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-status-sage/40 bg-status-sage/15 px-3 text-xs font-bold text-status-sage transition-colors hover:bg-status-sage/25 disabled:opacity-50"
+                    >
+                      {sendingDigest ? (
+                        <>
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          <span>Broadcasting Digest...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-3.5 w-3.5" />
+                          <span>Post Morning Digest Now</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Guardrails note */}
+                <div className="rounded-xl border border-status-amber/20 bg-status-amber/5 p-3 text-xs text-cream-secondary space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-status-amber">
+                    <Shield className="h-3.5 w-3.5" />
+                    <span>Sleep Shield & Anti-Spam Guarantee</span>
+                  </div>
+                  <p className="text-[11px] text-cream-muted leading-relaxed">
+                    Bedtime embeds are only dispatched for sleepers who have not checked into bed early. Personal push alerts remain strictly muted during the 8-hour sleep window.
+                  </p>
+                </div>
+              </div>
             )}
           </div>
         )}

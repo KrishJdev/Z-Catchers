@@ -35,6 +35,20 @@ export async function GET() {
       checkinsByMember.set(log.member_id, dates);
     }
 
+    // Query recent nag assists for today's active count
+    const twoDaysAgo = nowUtc.minus({ days: 2 }).toISODate();
+    const { data: nagLogs } = await supabaseAdmin
+      .from('notification_logs')
+      .select('member_id, local_date')
+      .like('notification_type', 'NAG_ASSIST:%')
+      .gte('local_date', twoDaysAgo || '2026-01-01');
+
+    const nagAssistsByMemberAndDate = new Map<string, number>();
+    for (const log of (nagLogs || []) as { member_id: string; local_date: string }[]) {
+      const key = `${log.member_id}_${log.local_date}`;
+      nagAssistsByMemberAndDate.set(key, (nagAssistsByMemberAndDate.get(key) || 0) + 1);
+    }
+
     // Process self-healing cooldown promotions and calculate streaks
     const processedMembers: Member[] = [];
     for (const member of (members as Member[]) || []) {
@@ -58,14 +72,17 @@ export async function GET() {
 
       // Check-in & streak computation
       const sleeperNow = nowUtc.setZone(activeMember.timezone);
+      const localDateStr = sleeperNow.toISODate() || '';
       const memberCheckins = checkinsByMember.get(activeMember.id) || [];
-      const is_in_bed = memberCheckins.includes(sleeperNow.toISODate() || '');
+      const is_in_bed = memberCheckins.includes(localDateStr);
       const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);
+      const nag_assists_count = nagAssistsByMemberAndDate.get(`${activeMember.id}_${localDateStr}`) || 0;
 
       processedMembers.push({
         ...activeMember,
         is_in_bed,
         streak_days,
+        nag_assists_count,
       });
     }
 

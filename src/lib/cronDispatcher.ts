@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import { supabaseAdmin, Member, PushSubscriptionRecord } from '@/lib/db';
 import { checkCooldownPromotion, computeMemberState } from '@/lib/sleepEngine';
 import { sendPushNotification } from '@/lib/pushServer';
+import { sendBedtimeDiscordWebhook } from '@/lib/discordWebhook';
 
 export interface DispatchResults {
   timestamp: string;
@@ -10,12 +11,14 @@ export interface DispatchResults {
   windDownDispatched: number;
   bedtimeHitDispatched: number;
   communityNagsDispatched: number;
+  discordWebhooksCount: number;
   sleepShieldSuppressionsCount: number;
   prunedSubscriptionsCount: number;
   details: {
     windDownRecipients: string[];
     bedtimeRecipients: string[];
     communityNagRecipients: string[];
+    discordWebhooksDispatched: string[];
     suppressedDueToSleepShield: string[];
     errors: string[];
   };
@@ -42,12 +45,14 @@ export async function executeNotificationDispatcher(options: {
     windDownDispatched: 0,
     bedtimeHitDispatched: 0,
     communityNagsDispatched: 0,
+    discordWebhooksCount: 0,
     sleepShieldSuppressionsCount: 0,
     prunedSubscriptionsCount: 0,
     details: {
       windDownRecipients: [],
       bedtimeRecipients: [],
       communityNagRecipients: [],
+      discordWebhooksDispatched: [],
       suppressedDueToSleepShield: [],
       errors: [],
     },
@@ -293,6 +298,17 @@ export async function executeNotificationDispatcher(options: {
               if (sent) results.communityNagsDispatched++;
             }
             results.details.communityNagRecipients.push(peer.discord_username);
+          }
+
+          // Dispatch C: Discord Community Webhook Broadcast (Phase 3.2)
+          if (!options.dryRun) {
+            const webhookRes = await sendBedtimeDiscordWebhook(member, member.streak_days || 0);
+            if (webhookRes.success) {
+              results.discordWebhooksCount++;
+              results.details.discordWebhooksDispatched.push(member.discord_username);
+            } else if (webhookRes.error && !webhookRes.error.includes('not configured')) {
+              results.details.errors.push(`Discord Webhook (${member.discord_username}): ${webhookRes.error}`);
+            }
           }
 
           await recordDispatch(member.id, 'BEDTIME_HIT', localDate);

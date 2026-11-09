@@ -38,6 +38,7 @@ export interface Member {
   // Dynamic runtime properties (hydrated by /api/members)
   is_in_bed?: boolean;
   streak_days?: number;
+  nag_assists_count?: number;
 }
 
 export interface PushSubscriptionRecord {
