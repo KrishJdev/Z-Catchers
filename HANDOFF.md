@@ -1,11 +1,11 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T00:59:00+05:30  
+> **Last Updated:** 2026-11-10T01:23:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `c17bd61`  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 20 routes | All security & sleep tests passing)
+> **Latest Commit:** `75101e8`  
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | Next.js production build passing with 21 routes | All auth, security & E2E tests passing)
 
 ---
 
@@ -222,6 +222,28 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Updated Environment Template (`.env.example`):**
   * Documented `CRON_SECRET`, `DISCORD_COMMUNITY_WEBHOOK_URL`, `SESSION_SECRET`, and `PIN_SALT`.
 
+### Phase 12: Self-Service Profile Registration & Username PIN Authentication (Commit `75101e8`)
+* **Self-Service Registration Engine (`src/app/api/members/route.ts`, `src/app/api/auth/register/route.ts`):**
+  * Enables friends to directly register their own profiles with username, Discord handle, bedtime, wake time, timezone (auto-detected), Discord journal link, optional weekend sleep schedule, and 4-to-6 digit numeric PIN.
+  * Enforces case-insensitive username uniqueness check (`discord_username ILIKE $1`) preventing duplicate or conflicting profiles.
+  * Implements resilient insertion fallback: gracefully saves member record even if optional weekend schema columns are not yet applied in the database schema cache.
+  * Generates 30-day HMAC-SHA256 session token and sets HttpOnly `zcatchers_session` cookie; returns sanitized profile and session token for immediate automatic authentication without an extra manual claim step.
+* **Username-Based Authentication (`src/app/api/auth/login/route.ts`):**
+  * Supports authenticating by either case-insensitive `username` or `member_id` alongside the 4-to-6 digit numeric PIN.
+  * Allows first-time PIN claiming for legacy or unclaimed profiles; verifies PIN with salted SHA-256 for claimed members.
+* **Pre-Seeded Data Cleanup & Admin Tools:**
+  * Purged the 4 initial demo seed profiles (`Aoi`, `SarahK`, `Marcus`, `Arjun`) from the live Supabase database.
+  * Added `scripts/purge-demo-members.mjs` and `scripts/seed-demo-members.mjs` for one-command maintenance.
+  * Added `purge_seed_members` action in `src/app/api/mod/route.ts` and surfaced a "Purge Demo Profiles" button in `ModDrawer.tsx` with confirmation dialog.
+* **Warm Dark Empty State & Onboarding UX (`src/app/page.tsx`, `src/components/LoginModal.tsx`, `src/components/Header.tsx`):**
+  * Built empty den onboarding hero on `page.tsx`: when `members.length === 0`, displays a welcoming card with Sleepy Fox mascot and a 1-click CTA button `"Join Den & Create Profile"`.
+  * Redesigned `LoginModal.tsx` with segmented tabs: `"Log In"` (username input or roster picker + PIN) and `"Join Den (Create Profile)"` (complete onboarding form with auto-detected timezone, live bedtime preview, and sample journal URL button).
+  * Enhanced `Header.tsx`: surfaces `"Join Den"` (accent amber button) and `"Log In"` buttons when unauthenticated; displays `@username` session pill when logged in.
+  * Mobile Bottom Navigation: added Join/Profile tab for direct access on mobile devices.
+* **Verification & Test Suite:**
+  * Created `scripts/test-signup-and-profiles.mjs` validating self-service registration, PIN hashing, case-insensitive lookup, duplicate username rejection, and session token validation.
+  * Updated `test-e2e-api-endpoints.mjs`, `test-in-bed-and-streaks.mjs`, and `test-discord-webhook-and-assists.mjs` to dynamically create and clean up temporary test records, ensuring 100% test pass rates on clean/empty databases.
+
 ---
 
 ## 5. Current File Tree & Key Components
@@ -340,8 +362,9 @@ All core features, Phase 10 security hardening, and Phase 11 PWA reliability/cro
 1. **Production Environment Configuration:**
    * Set required production environment variables: `DISCORD_COMMUNITY_WEBHOOK_URL`, `CRON_SECRET`, `MOD_SECRET_PASSCODE`, `SESSION_SECRET`, `PIN_SALT`.
    * Configure 1-minute cron ping (e.g. cron-job.org or GitHub Actions fallback) if deploying on Vercel Hobby.
-2. **Community Roster Preparation:**
-   * Replace or claim the 4 seed profiles (`Aoi`, `SarahK`, `Marcus`, `Arjun`) in Supabase with actual community members.
+2. **Community Roster & Friend Onboarding:**
+   * Demo profiles have been purged from Supabase. Friends can now visit the app URL directly, click **"Join Den"**, input their username, local bedtime, auto-detected timezone, Discord journal thread link, and 4-digit PIN.
+   * To restore demo seed profiles for staging/testing at any time, run `node --env-file=.env.local scripts/seed-demo-members.mjs`.
 
 
 
