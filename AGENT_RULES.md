@@ -115,3 +115,11 @@ Whenever you complete a milestone from `PROJECT_SPEC.md`:
 1. **Type & Build Check:** Run `tsc --noEmit` (or `npm run build`) and fix any TypeScript or bundling errors immediately.
 2. **Timezone Sanity Check:** Verify that the seed data includes members in at least 4 distinct timezones (including `Asia/Kolkata` for half-hour UTC offsets like $\text{UTC}+5\text{:}30$) and confirm their status buckets render accurately.
 3. **Responsive & Mascot Verification:** Ensure both mobile viewport (< 768px) and desktop viewport (≥ 768px) render cleanly with the Fox mascot visible and multi-column grid functioning properly.
+
+---
+
+## 7. Git & Branching Protocol
+
+* **Active Working Branch:** All development work, file edits, testing, and commits must be conducted directly on the `krish` branch.
+* **Target Integration Branch:** `dev` is the repository's default branch on GitHub. Pull Requests opened from `krish` target `dev`.
+* **Production Branch:** `main` is reserved for tagged releases and production-ready deployments merged from `dev`.
