@@ -3,8 +3,8 @@ const JIRA_EMAIL = process.env.JIRA_EMAIL || 'krish.jaiswal2182003@gmail.com';
 const JIRA_TOKEN = process.env.JIRA_TOKEN;
 
 if (!JIRA_TOKEN) {
-  console.error('No JIRA_TOKEN set.');
-  process.exit(1);
+  console.log('No JIRA_TOKEN set. If running locally, set JIRA_TOKEN to execute Jira transition.');
+  process.exit(0);
 }
 
 const authHeader = 'Basic ' + Buffer.from(`${JIRA_EMAIL}:${JIRA_TOKEN}`).toString('base64');
