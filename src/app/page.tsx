@@ -7,6 +7,7 @@ import { StatusBucket } from '@/components/StatusBucket';
 import { MemberCard } from '@/components/MemberCard';
 import { FoxMascot } from '@/components/FoxMascot';
 import { MyScheduleModal } from '@/components/MyScheduleModal';
+import { ModDrawer } from '@/components/ModDrawer';
 import { computeMemberState, MemberState } from '@/lib/sleepEngine';
 import type { Member } from '@/lib/db';
 import {
@@ -289,49 +290,13 @@ export default function HomePage() {
         onRefreshRoster={fetchRoster}
       />
 
-      {/* Moderator Panel Placeholder (Phase 2) */}
-      {activeModal === 'mod' && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/80 backdrop-blur-md md:items-center p-0 md:p-4">
-          <div
-            className="w-full max-w-lg rounded-t-3xl border-t border-night-border bg-night-surface p-6 shadow-2xl md:rounded-2xl md:border"
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="flex items-center justify-between border-b border-night-border pb-4">
-              <div className="flex items-center gap-2.5">
-                <FoxMascot state="logo" size={28} />
-                <h3 className="text-base font-bold text-cream-primary">Moderator Panel</h3>
-              </div>
-              <button
-                onClick={() => setActiveModal(null)}
-                className="rounded-lg p-1 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-4">
-              <p className="text-xs text-cream-secondary">
-                Enter the moderator secret passcode to approve pending 48-hour cooldowns, add new
-                members, or edit journal URLs instantly.
-              </p>
-              <div className="rounded-xl border border-night-border bg-night-elevated p-3 text-xs text-cream-muted">
-                Moderator authorization workflow configured via <code className="text-status-amber">/api/mod</code> (Phase 2).
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setActiveModal(null)}
-                className="w-full rounded-xl bg-night-elevated px-4 py-2.5 text-xs font-semibold text-cream-primary transition-colors hover:bg-night-border md:w-auto"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Passcode-Protected Moderator Drawer (Phase 2) */}
+      <ModDrawer
+        isOpen={activeModal === 'mod'}
+        onClose={() => setActiveModal(null)}
+        viewerTimezone={viewerTimezone}
+        onRosterChanged={fetchRoster}
+      />
     </main>
   );
 }
