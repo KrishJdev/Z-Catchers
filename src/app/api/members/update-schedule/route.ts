@@ -45,6 +45,7 @@ export async function POST(request: Request) {
 
     // 2. PIN verification / Claiming profile
     const isModeratorOverride = verifyModPasscode(mod_passcode);
+    const isFirstTimeClaim = !isModeratorOverride && !currentMember.passcode_hash;
 
     let updatedPasscodeHash = currentMember.passcode_hash;
 
@@ -228,17 +229,30 @@ export async function POST(request: Request) {
     }
 
     // 7. Persist to Supabase
-    const { data: updatedMember, error: updateError } = await supabaseAdmin
+    let updateQuery = supabaseAdmin
       .from('members')
       .update(updates)
-      .eq('id', member_id)
+      .eq('id', member_id);
+
+    // Conditional atomic CAS update if claiming an unconfigured profile
+    if (isFirstTimeClaim) {
+      updateQuery = updateQuery.is('passcode_hash', null);
+    }
+
+    const { data: updatedMember, error: updateError } = await updateQuery
       .select('*')
-      .single();
+      .maybeSingle();
 
     if (updateError || !updatedMember) {
       return NextResponse.json(
-        { error: updateError?.message || 'Failed to update member' },
-        { status: 500 }
+        {
+          error:
+            updateError?.message ||
+            (isFirstTimeClaim
+              ? 'Profile has already been claimed or could not be updated. Please try logging in.'
+              : 'Failed to update member'),
+        },
+        { status: updateError ? 500 : isFirstTimeClaim ? 409 : 500 }
       );
     }
 
