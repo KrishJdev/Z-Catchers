@@ -644,14 +644,27 @@ export function MyScheduleModal({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-medium text-cream-secondary">
-                      Discord Journal Thread URL
+                      Discord Journal Thread / Channel URL
                     </label>
-                    <span className="text-[10px] text-status-sage font-medium">⚡ Instant Update</span>
+                    <div className="flex items-center gap-2">
+                      {isJournalValid && journalUrl.trim() && (
+                        <a
+                          href={journalUrl.trim()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] text-status-amber hover:underline"
+                        >
+                          <span>Test link</span>
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                      <span className="text-[10px] text-status-sage font-medium">⚡ Instant Update</span>
+                    </div>
                   </div>
                   <input
                     type="url"
                     required
-                    placeholder="https://discord.com/channels/{guild}/{thread}"
+                    placeholder="https://discord.com/channels/{guild}/{channel_or_thread}"
                     value={journalUrl}
                     onChange={(e) => setJournalUrl(e.target.value)}
                     className={`w-full min-h-[44px] rounded-xl border px-3 py-2 text-xs text-cream-primary outline-none transition-colors ${
@@ -660,11 +673,18 @@ export function MyScheduleModal({
                         : 'border-status-coral bg-status-coral/10 focus:border-status-coral'
                     }`}
                   />
-                  {!isJournalValid && (
+                  {!isJournalValid ? (
                     <p className="mt-1 text-[11px] text-status-coral">
-                      Must match: https://discord.com/channels/123.../456...
+                      Must match format: https://discord.com/channels/123456789/987654321
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-cream-muted leading-relaxed">
+                      Friends who tap <strong>&quot;Nag in Discord Journal&quot;</strong> on your card will be redirected straight to this channel or thread in Discord.
                     </p>
                   )}
+                  <p className="mt-0.5 text-[10px] text-cream-muted/70">
+                    💡 In Discord, right-click (or tap and hold on mobile) your journal channel/thread and choose <strong>Copy Link</strong>.
+                  </p>
                 </div>
 
                 {/* Bedtime & Wake Time Grid */}
@@ -841,17 +861,36 @@ export function MyScheduleModal({
 
             {/* Journal URL */}
             <div>
-              <label className="block text-xs font-medium text-cream-secondary mb-1">
-                Discord Journal Thread URL
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-cream-secondary">
+                  Discord Journal Thread / Channel URL
+                </label>
+                {journalUrl.trim() && DISCORD_JOURNAL_REGEX.test(journalUrl.trim()) && (
+                  <a
+                    href={journalUrl.trim()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] text-status-amber hover:underline"
+                  >
+                    <span>Test link</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
               <input
                 type="url"
                 required
-                placeholder="https://discord.com/channels/123.../456..."
+                placeholder="https://discord.com/channels/123456789/987654321"
                 value={journalUrl}
                 onChange={(e) => setJournalUrl(e.target.value)}
                 className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
               />
+              <p className="mt-1 text-[11px] text-cream-muted leading-relaxed">
+                When your bedtime hits, friends will click to jump directly into your Discord journal thread to keep you accountable.
+              </p>
+              <p className="mt-0.5 text-[10px] text-cream-muted/70">
+                💡 In Discord, right-click (or tap and hold on mobile) your journal thread and select <strong>Copy Link</strong>.
+              </p>
             </div>
 
             {/* Bedtime & Wake Time */}
