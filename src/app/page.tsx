@@ -6,6 +6,7 @@ import { PwaBanner } from '@/components/PwaBanner';
 import { StatusBucket } from '@/components/StatusBucket';
 import { MemberCard } from '@/components/MemberCard';
 import { FoxMascot } from '@/components/FoxMascot';
+import { MyScheduleModal } from '@/components/MyScheduleModal';
 import { computeMemberState, MemberState } from '@/lib/sleepEngine';
 import type { Member } from '@/lib/db';
 import {
@@ -279,8 +280,17 @@ export default function HomePage() {
         </button>
       </nav>
 
-      {/* Responsive Modal Dual-Pattern: Centered Dialog on Desktop (≥ 768px), Bottom Sheet on Mobile (< 768px) */}
-      {activeModal && (
+      {/* Self-Service My Schedule Modal (Phase 1.4) */}
+      <MyScheduleModal
+        isOpen={activeModal === 'schedule'}
+        onClose={() => setActiveModal(null)}
+        members={members}
+        viewerTimezone={viewerTimezone}
+        onRefreshRoster={fetchRoster}
+      />
+
+      {/* Moderator Panel Placeholder (Phase 2) */}
+      {activeModal === 'mod' && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/80 backdrop-blur-md md:items-center p-0 md:p-4">
           <div
             className="w-full max-w-lg rounded-t-3xl border-t border-night-border bg-night-surface p-6 shadow-2xl md:rounded-2xl md:border"
@@ -290,9 +300,7 @@ export default function HomePage() {
             <div className="flex items-center justify-between border-b border-night-border pb-4">
               <div className="flex items-center gap-2.5">
                 <FoxMascot state="logo" size={28} />
-                <h3 className="text-base font-bold text-cream-primary">
-                  {activeModal === 'schedule' ? 'My Bedtime Schedule' : 'Moderator Panel'}
-                </h3>
+                <h3 className="text-base font-bold text-cream-primary">Moderator Panel</h3>
               </div>
               <button
                 onClick={() => setActiveModal(null)}
@@ -303,32 +311,13 @@ export default function HomePage() {
             </div>
 
             <div className="mt-4 space-y-4">
-              {activeModal === 'schedule' ? (
-                <>
-                  <div className="rounded-xl border border-status-amber/30 bg-status-amber/10 p-3.5 text-xs leading-relaxed text-cream-secondary">
-                    <p className="font-semibold text-status-amber">
-                      🛡️ 48-Hour Accountability Cooldown
-                    </p>
-                    <p className="mt-1">
-                      Changing your bedtime or timezone takes 48 hours to activate so no one can dodge
-                      their bedtime at the last minute. Discord journal link edits are immediate.
-                    </p>
-                  </div>
-                  <p className="text-xs text-cream-muted">
-                    Full self-service PIN claiming & schedule update form is available via Milestone 4.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs text-cream-secondary">
-                    Enter the moderator secret passcode to approve pending 48-hour cooldowns, add
-                    new members, or edit journal URLs instantly.
-                  </p>
-                  <div className="rounded-xl border border-night-border bg-night-elevated p-3 text-xs text-cream-muted">
-                    Moderator authorization workflow configured via <code className="text-status-amber">/api/mod</code>.
-                  </div>
-                </>
-              )}
+              <p className="text-xs text-cream-secondary">
+                Enter the moderator secret passcode to approve pending 48-hour cooldowns, add new
+                members, or edit journal URLs instantly.
+              </p>
+              <div className="rounded-xl border border-night-border bg-night-elevated p-3 text-xs text-cream-muted">
+                Moderator authorization workflow configured via <code className="text-status-amber">/api/mod</code> (Phase 2).
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end">

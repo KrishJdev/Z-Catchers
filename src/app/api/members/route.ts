@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase, supabaseAdmin, Member } from '@/lib/db';
 import { checkCooldownPromotion } from '@/lib/sleepEngine';
+import { hashPin } from '@/lib/auth';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
       bedtime_local,
       wake_time_local = '07:00',
       timezone,
+      pin,
     } = body;
 
     if (!discord_username || !journal_url || !bedtime_local || !timezone) {
@@ -65,23 +67,30 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!DISCORD_JOURNAL_REGEX.test(journal_url)) {
+    if (!DISCORD_JOURNAL_REGEX.test(journal_url.trim())) {
       return NextResponse.json(
         { error: 'Invalid Discord journal thread URL. Must match https://discord.com/channels/...' },
         { status: 400 }
       );
     }
 
+    const passcode_hash = pin && /^\d{4,6}$/.test(pin.trim()) ? hashPin(pin.trim()) : null;
+    const avatar_url = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+      discord_username.trim()
+    )}`;
+
     const { data, error } = await supabaseAdmin
       .from('members')
       .insert({
-        discord_username,
-        discord_handle: discord_handle || null,
-        journal_url,
-        bedtime_local,
-        wake_time_local,
-        timezone,
+        discord_username: discord_username.trim(),
+        discord_handle: discord_handle?.trim() || null,
+        avatar_url,
+        journal_url: journal_url.trim(),
+        bedtime_local: bedtime_local.trim(),
+        wake_time_local: wake_time_local.trim(),
+        timezone: timezone.trim(),
         role: 'member',
+        passcode_hash,
       })
       .select()
       .single();

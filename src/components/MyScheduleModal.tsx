@@ -1,0 +1,862 @@
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { FoxMascot } from './FoxMascot';
+import { Member } from '@/lib/db';
+import { DateTime } from 'luxon';
+import {
+  X,
+  Lock,
+  Unlock,
+  Clock,
+  ExternalLink,
+  AlertTriangle,
+  CheckCircle2,
+  Calendar,
+  Sparkles,
+  Shield,
+  UserCheck,
+  UserPlus,
+  RefreshCw,
+} from 'lucide-react';
+
+const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
+
+interface MyScheduleModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  members: Member[];
+  viewerTimezone: string;
+  onRefreshRoster: () => Promise<void>;
+}
+
+// Curated list of popular IANA timezones spanning global regions
+const POPULAR_TIMEZONES = [
+  'America/Los_Angeles', // US Pacific
+  'America/Denver', // US Mountain
+  'America/Chicago', // US Central
+  'America/New_York', // US Eastern
+  'America/Sao_Paulo', // Brazil
+  'Europe/London', // UK / GMT
+  'Europe/Paris', // Central Europe
+  'Europe/Berlin', // Germany
+  'Africa/Cairo', // Egypt
+  'Asia/Dubai', // UAE
+  'Asia/Kolkata', // India (UTC+5:30)
+  'Asia/Singapore', // Singapore
+  'Asia/Tokyo', // Japan
+  'Australia/Sydney', // Eastern Australia
+  'Pacific/Auckland', // New Zealand
+  'UTC',
+];
+
+export function MyScheduleModal({
+  isOpen,
+  onClose,
+  members,
+  viewerTimezone,
+  onRefreshRoster,
+}: MyScheduleModalProps) {
+  const [tab, setTab] = useState<'claim' | 'new'>('claim');
+
+  // Selected existing member ID
+  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
+  const [pin, setPin] = useState<string>('');
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
+
+  // Form fields for editing
+  const [username, setUsername] = useState<string>('');
+  const [handle, setHandle] = useState<string>('');
+  const [journalUrl, setJournalUrl] = useState<string>('');
+  const [bedtime, setBedtime] = useState<string>('23:00');
+  const [wakeTime, setWakeTime] = useState<string>('07:00');
+  const [timezone, setTimezone] = useState<string>(viewerTimezone || 'UTC');
+
+  // New member specific fields
+  const [newMemberPin, setNewMemberPin] = useState<string>('');
+
+  // UI state
+  const [loading, setLoading] = useState<boolean>(false);
+  const [cancelLoading, setCancelLoading] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Active selected member object
+  const activeMember = useMemo(
+    () => members.find((m) => m.id === selectedMemberId),
+    [members, selectedMemberId]
+  );
+
+  // Sync selected member data into form fields when selected
+  useEffect(() => {
+    if (activeMember) {
+      setUsername(activeMember.discord_username);
+      setHandle(activeMember.discord_handle || '');
+      setJournalUrl(activeMember.journal_url);
+      setBedtime(activeMember.bedtime_local);
+      setWakeTime(activeMember.wake_time_local);
+      setTimezone(activeMember.timezone);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      setPin('');
+      // If member has no PIN, auto-unlock so they can set initial PIN
+      setIsUnlocked(!activeMember.passcode_hash);
+    } else if (members.length > 0 && !selectedMemberId && tab === 'claim') {
+      setSelectedMemberId(members[0].id);
+    }
+  }, [activeMember, members, selectedMemberId, tab]);
+
+  // Reset states when modal is opened/closed
+  useEffect(() => {
+    if (isOpen) {
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      if (members.length > 0 && !selectedMemberId) {
+        setSelectedMemberId(members[0].id);
+      }
+    } else {
+      setIsUnlocked(false);
+      setPin('');
+      setNewMemberPin('');
+    }
+  }, [isOpen, members, selectedMemberId]);
+
+  if (!isOpen) return null;
+
+  // Validate journal URL
+  const isJournalValid = journalUrl.trim() === '' || DISCORD_JOURNAL_REGEX.test(journalUrl.trim());
+
+  // Check if schedule (bedtime, wake time, timezone) has changed from active values
+  const hasScheduleChanged = activeMember
+    ? bedtime !== activeMember.bedtime_local ||
+      timezone !== activeMember.timezone ||
+      wakeTime !== activeMember.wake_time_local
+    : false;
+
+  // Check if pending cooldown is currently active on selected member
+  const pendingCooldownNotice = useMemo(() => {
+    if (!activeMember || !activeMember.pending_effective_at) return null;
+    const now = DateTime.utc();
+    const effectiveAt = DateTime.fromISO(activeMember.pending_effective_at, { zone: 'utc' });
+    if (now >= effectiveAt) return null;
+
+    const remainingHours = Math.max(0, Math.floor(effectiveAt.diff(now, 'hours').hours));
+    const remainingMins = Math.max(0, Math.floor(effectiveAt.diff(now, 'minutes').minutes % 60));
+
+    return {
+      pendingBedtime: activeMember.pending_bedtime_local,
+      pendingTimezone: activeMember.pending_timezone,
+      remainingHours,
+      remainingMins,
+      effectiveDate: effectiveAt.setZone(viewerTimezone).toFormat('LLL d, h:mm a'),
+    };
+  }, [activeMember, viewerTimezone]);
+
+  // Preview bedtime converted to viewer timezone
+  const previewTime = useMemo(() => {
+    try {
+      const [h, m] = bedtime.split(':').map(Number);
+      const nowInTz = DateTime.now().setZone(timezone);
+      const dt = nowInTz.set({ hour: h || 0, minute: m || 0, second: 0 });
+      return {
+        sleeper: dt.toFormat('h:mm a'),
+        viewer: dt.setZone(viewerTimezone).toFormat('h:mm a'),
+      };
+    } catch {
+      return { sleeper: bedtime, viewer: bedtime };
+    }
+  }, [bedtime, timezone, viewerTimezone]);
+
+  // Handle PIN Unlock
+  const handleUnlockProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (!pin || pin.length < 4) {
+      setErrorMessage('Please enter your 4-digit PIN.');
+      return;
+    }
+
+    // Client-side quick check: will be strictly verified on server during submit
+    setIsUnlocked(true);
+  };
+
+  // Handle Schedule & Profile Update Submission
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (!isJournalValid || !journalUrl.trim()) {
+      setErrorMessage(
+        'Please enter a valid Discord Journal Thread URL: https://discord.com/channels/{guild}/{thread}'
+      );
+      return;
+    }
+
+    if (!username.trim()) {
+      setErrorMessage('Please enter your Discord display name.');
+      return;
+    }
+
+    if (!activeMember?.passcode_hash && (!pin || pin.length < 4)) {
+      setErrorMessage('Please create a 4-digit PIN to claim and secure your profile.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/members/update-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          member_id: activeMember?.id,
+          pin: pin.trim(),
+          discord_username: username.trim(),
+          discord_handle: handle.trim() || null,
+          journal_url: journalUrl.trim(),
+          bedtime_local: bedtime.trim(),
+          wake_time_local: wakeTime.trim(),
+          timezone: timezone.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMessage(data.error || 'Failed to update schedule.');
+        if (res.status === 401) {
+          setIsUnlocked(false);
+        }
+        return;
+      }
+
+      setSuccessMessage(data.message);
+      await onRefreshRoster();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Network error';
+      setErrorMessage(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle Cancel Pending Cooldown
+  const handleCancelPending = async () => {
+    if (!activeMember) return;
+    setCancelLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch('/api/members/cancel-pending', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          member_id: activeMember.id,
+          pin: pin.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMessage(data.error || 'Failed to cancel pending schedule change.');
+        return;
+      }
+
+      setSuccessMessage(data.message);
+      await onRefreshRoster();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Network error';
+      setErrorMessage(msg);
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
+  // Handle New Member Registration
+  const handleRegisterNewMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (!username.trim()) {
+      setErrorMessage('Please enter your Discord display name.');
+      return;
+    }
+
+    if (!journalUrl.trim() || !DISCORD_JOURNAL_REGEX.test(journalUrl.trim())) {
+      setErrorMessage(
+        'Please enter a valid Discord Journal Thread URL: https://discord.com/channels/{guild}/{thread}'
+      );
+      return;
+    }
+
+    if (!newMemberPin || newMemberPin.length < 4) {
+      setErrorMessage('Please choose a 4-digit PIN to protect your profile.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          discord_username: username.trim(),
+          discord_handle: handle.trim() || null,
+          journal_url: journalUrl.trim(),
+          bedtime_local: bedtime.trim(),
+          wake_time_local: wakeTime.trim(),
+          timezone: timezone.trim(),
+          pin: newMemberPin.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMessage(data.error || 'Failed to register new profile.');
+        return;
+      }
+
+      setSuccessMessage('Welcome to Z Catchers! Your bedtime schedule is active.');
+      await onRefreshRoster();
+      setTab('claim');
+      if (data.member?.id) {
+        setSelectedMemberId(data.member.id);
+        setIsUnlocked(true);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Network error';
+      setErrorMessage(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/85 backdrop-blur-md p-0 md:items-center md:p-4">
+      <div
+        className="relative flex w-full max-w-lg flex-col rounded-t-3xl border-t border-night-border bg-night-surface p-5 shadow-2xl max-h-[90vh] overflow-y-auto md:rounded-2xl md:border md:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-schedule-title"
+      >
+        {/* Mobile handle indicator */}
+        <div className="mx-auto mb-3 h-1 w-12 rounded-full bg-night-border md:hidden" />
+
+        {/* Modal Header */}
+        <div className="flex items-center justify-between border-b border-night-border pb-4">
+          <div className="flex items-center gap-3">
+            <FoxMascot state="lantern" size={32} />
+            <div>
+              <h2
+                id="modal-schedule-title"
+                className="text-base font-bold text-cream-primary sm:text-lg"
+              >
+                My Bedtime Schedule
+              </h2>
+              <p className="text-xs text-cream-secondary">
+                Self-service accountability & bedtime controls
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl p-2 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary"
+            aria-label="Close modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Navigation Tabs: Edit Existing vs Join Roster */}
+        <div className="mt-4 flex rounded-xl bg-night-elevated p-1">
+          <button
+            type="button"
+            onClick={() => {
+              setTab('claim');
+              setErrorMessage(null);
+            }}
+            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all ${
+              tab === 'claim'
+                ? 'bg-night-surface text-status-amber shadow'
+                : 'text-cream-muted hover:text-cream-secondary'
+            }`}
+          >
+            <UserCheck className="h-3.5 w-3.5" />
+            <span>My Profile</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTab('new');
+              setErrorMessage(null);
+              setUsername('');
+              setHandle('');
+              setJournalUrl('');
+              setBedtime('23:00');
+              setWakeTime('07:00');
+              setTimezone(viewerTimezone || 'UTC');
+            }}
+            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all ${
+              tab === 'new'
+                ? 'bg-night-surface text-status-amber shadow'
+                : 'text-cream-muted hover:text-cream-secondary'
+            }`}
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            <span>Join Roster</span>
+          </button>
+        </div>
+
+        {/* Feedback alerts */}
+        {errorMessage && (
+          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <p className="flex-1">{errorMessage}</p>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-status-sage/40 bg-status-sage/10 p-3 text-xs text-status-sage">
+            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+            <p className="flex-1">{successMessage}</p>
+          </div>
+        )}
+
+        {/* TAB 1: Edit Profile / Claim Existing */}
+        {tab === 'claim' && (
+          <div className="mt-4 space-y-4">
+            {/* Member selector */}
+            <div>
+              <label className="block text-xs font-medium text-cream-secondary mb-1.5">
+                Select Your Profile
+              </label>
+              <select
+                value={selectedMemberId}
+                onChange={(e) => {
+                  setSelectedMemberId(e.target.value);
+                  setIsUnlocked(false);
+                }}
+                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber transition-colors"
+              >
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.discord_username} ({m.timezone}) • Bedtime: {m.bedtime_local}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Active pending cooldown alert banner (if exists) */}
+            {pendingCooldownNotice && (
+              <div className="rounded-xl border border-dashed border-status-amber/60 bg-status-amber/10 p-3.5 text-xs">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-1">
+                    <p className="font-semibold text-status-amber flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>Pending Cooldown Queue</span>
+                    </p>
+                    <p className="text-cream-secondary">
+                      Shifting to{' '}
+                      <span className="font-bold text-cream-primary">
+                        {pendingCooldownNotice.pendingBedtime} ({pendingCooldownNotice.pendingTimezone})
+                      </span>{' '}
+                      in{' '}
+                      <span className="font-bold text-status-amber">
+                        {pendingCooldownNotice.remainingHours}h {pendingCooldownNotice.remainingMins}m
+                      </span>{' '}
+                      ({pendingCooldownNotice.effectiveDate})
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelPending}
+                    disabled={cancelLoading}
+                    className="shrink-0 rounded-lg border border-night-border bg-night-surface px-2.5 py-1 text-[11px] font-medium text-cream-muted hover:text-status-coral hover:border-status-coral/40 transition-colors"
+                  >
+                    {cancelLoading ? 'Cancelling...' : 'Cancel Shift'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* PIN Unlock Section (If Claimed & Not Yet Unlocked) */}
+            {activeMember?.passcode_hash && !isUnlocked ? (
+              <form
+                onSubmit={handleUnlockProfile}
+                className="rounded-2xl border border-night-border bg-night-elevated/70 p-4 space-y-3"
+              >
+                <div className="flex items-center gap-2 text-cream-primary font-medium text-xs">
+                  <Lock className="h-4 w-4 text-status-amber" />
+                  <span>Enter 4-Digit PIN to Edit Profile</span>
+                </div>
+                <p className="text-[11px] text-cream-muted leading-relaxed">
+                  Your PIN guarantees accountability so no one else can change your bedtime or Discord link.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="Enter PIN"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                    className="flex-1 min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-center text-sm tracking-widest text-cream-primary outline-none focus:border-status-amber"
+                  />
+                  <button
+                    type="submit"
+                    className="min-h-[44px] rounded-xl bg-status-amber px-5 text-xs font-semibold text-night-bg hover:bg-status-amber/90 transition-colors"
+                  >
+                    Unlock
+                  </button>
+                </div>
+              </form>
+            ) : (
+              /* Profile Edit Form (Unlocked or Unclaimed) */
+              <form onSubmit={handleSaveProfile} className="space-y-3.5">
+                {/* Unclaimed Notice (If setting initial PIN) */}
+                {!activeMember?.passcode_hash && (
+                  <div className="rounded-xl border border-status-sage/30 bg-status-sage/10 p-3 text-xs text-cream-secondary">
+                    <p className="font-semibold text-status-sage flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>Unclaimed Profile: Choose a 4-Digit PIN</span>
+                    </p>
+                    <p className="mt-1 text-[11px]">
+                      Create a 4-digit PIN below to claim this profile and secure your bedtime schedule.
+                    </p>
+                  </div>
+                )}
+
+                {/* Discord Username */}
+                <div>
+                  <label className="block text-xs font-medium text-cream-secondary mb-1">
+                    Discord Display Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+                  />
+                </div>
+
+                {/* Discord Handle */}
+                <div>
+                  <label className="block text-xs font-medium text-cream-secondary mb-1">
+                    Discord Handle <span className="text-cream-muted">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="@username or user ID"
+                    value={handle}
+                    onChange={(e) => setHandle(e.target.value)}
+                    className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+                  />
+                </div>
+
+                {/* Discord Journal Link with live regex validation */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-cream-secondary">
+                      Discord Journal Thread URL
+                    </label>
+                    <span className="text-[10px] text-status-sage font-medium">⚡ Instant Update</span>
+                  </div>
+                  <input
+                    type="url"
+                    required
+                    placeholder="https://discord.com/channels/{guild}/{thread}"
+                    value={journalUrl}
+                    onChange={(e) => setJournalUrl(e.target.value)}
+                    className={`w-full min-h-[44px] rounded-xl border px-3 py-2 text-xs text-cream-primary outline-none transition-colors ${
+                      isJournalValid
+                        ? 'border-night-border bg-night-elevated focus:border-status-amber'
+                        : 'border-status-coral bg-status-coral/10 focus:border-status-coral'
+                    }`}
+                  />
+                  {!isJournalValid && (
+                    <p className="mt-1 text-[11px] text-status-coral">
+                      Must match: https://discord.com/channels/123.../456...
+                    </p>
+                  )}
+                </div>
+
+                {/* Bedtime & Wake Time Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-cream-secondary mb-1">
+                      Local Bedtime (24h)
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={bedtime}
+                      onChange={(e) => setBedtime(e.target.value)}
+                      className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-cream-secondary mb-1">
+                      Wake Time (24h)
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={wakeTime}
+                      onChange={(e) => setWakeTime(e.target.value)}
+                      className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                    />
+                  </div>
+                </div>
+
+                {/* Timezone Selector */}
+                <div>
+                  <label className="block text-xs font-medium text-cream-secondary mb-1">
+                    Your Timezone (IANA)
+                  </label>
+                  <select
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+                  >
+                    {viewerTimezone && !POPULAR_TIMEZONES.includes(viewerTimezone) && (
+                      <option value={viewerTimezone}>Detected: {viewerTimezone}</option>
+                    )}
+                    {POPULAR_TIMEZONES.map((tz) => (
+                      <option key={tz} value={tz}>
+                        {tz}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Live Dual-Time Preview Pill */}
+                <div className="rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs flex items-center justify-between text-cream-secondary">
+                  <span>
+                    Your Time: <strong className="text-cream-primary">{previewTime.sleeper}</strong>
+                  </span>
+                  <span>
+                    Viewer Time: <strong className="text-status-amber">{previewTime.viewer}</strong>
+                  </span>
+                </div>
+
+                {/* 4-Digit PIN Input (if claiming or updating) */}
+                <div>
+                  <label className="block text-xs font-medium text-cream-secondary mb-1">
+                    {!activeMember?.passcode_hash
+                      ? 'Create 4-Digit PIN (to secure profile)'
+                      : 'Confirm Your 4-Digit PIN'}
+                  </label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    required
+                    placeholder="4-digit PIN"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                    className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+                  />
+                </div>
+
+                {/* 48-Hour Cooldown Warning Callout (Mandatory per Spec Section 6.2) */}
+                {hasScheduleChanged ? (
+                  <div className="rounded-xl border border-status-amber/30 bg-status-amber/10 p-3 text-xs text-cream-secondary leading-relaxed">
+                    <p className="font-semibold text-status-amber flex items-center gap-1.5">
+                      <Shield className="h-3.5 w-3.5" />
+                      <span>Accountability Cooldown (48 Hours)</span>
+                    </p>
+                    <p className="mt-1">
+                      Changing your bedtime or timezone takes 48 hours to take effect so nobody can dodge
+                      their bedtime at the last minute. Updating your Discord Journal link is instant.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-status-sage/30 bg-status-sage/10 p-2.5 text-xs text-status-sage flex items-center gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                    <span>Bedtime matches active schedule. Updates to journal link will apply immediately.</span>
+                  </div>
+                )}
+
+                {/* Save Button */}
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsUnlocked(false)}
+                    className="min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-4 text-xs font-semibold text-cream-secondary hover:text-cream-primary transition-colors"
+                  >
+                    Lock
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading || !isJournalValid}
+                    className="flex-1 min-h-[44px] rounded-xl bg-status-amber font-semibold text-xs text-night-bg hover:bg-status-amber/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : hasScheduleChanged ? (
+                      <span>Queue 48h Schedule Change</span>
+                    ) : (
+                      <span>Save Profile Changes</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: Join Roster (New Member Registration) */}
+        {tab === 'new' && (
+          <form onSubmit={handleRegisterNewMember} className="mt-4 space-y-3.5">
+            <div className="rounded-xl border border-status-amber/30 bg-status-amber/10 p-3 text-xs text-cream-secondary leading-relaxed">
+              <p className="font-semibold text-status-amber flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>Join the Z Catchers Den</span>
+              </p>
+              <p className="mt-1">
+                Your initial bedtime will activate immediately. Once created, future schedule edits will
+                enter the 48-hour accountability cooldown queue.
+              </p>
+            </div>
+
+            {/* Username */}
+            <div>
+              <label className="block text-xs font-medium text-cream-secondary mb-1">
+                Discord Display Name
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Alex"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+              />
+            </div>
+
+            {/* Handle */}
+            <div>
+              <label className="block text-xs font-medium text-cream-secondary mb-1">
+                Discord Handle <span className="text-cream-muted">(optional)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="@username or user ID"
+                value={handle}
+                onChange={(e) => setHandle(e.target.value)}
+                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+              />
+            </div>
+
+            {/* Journal URL */}
+            <div>
+              <label className="block text-xs font-medium text-cream-secondary mb-1">
+                Discord Journal Thread URL
+              </label>
+              <input
+                type="url"
+                required
+                placeholder="https://discord.com/channels/123.../456..."
+                value={journalUrl}
+                onChange={(e) => setJournalUrl(e.target.value)}
+                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+              />
+            </div>
+
+            {/* Bedtime & Wake Time */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-cream-secondary mb-1">
+                  Bedtime (24h)
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={bedtime}
+                  onChange={(e) => setBedtime(e.target.value)}
+                  className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-cream-secondary mb-1">
+                  Wake Time (24h)
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={wakeTime}
+                  onChange={(e) => setWakeTime(e.target.value)}
+                  className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                />
+              </div>
+            </div>
+
+            {/* Timezone */}
+            <div>
+              <label className="block text-xs font-medium text-cream-secondary mb-1">
+                Timezone (IANA)
+              </label>
+              <select
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+              >
+                {viewerTimezone && !POPULAR_TIMEZONES.includes(viewerTimezone) && (
+                  <option value={viewerTimezone}>Detected: {viewerTimezone}</option>
+                )}
+                {POPULAR_TIMEZONES.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 4-digit PIN */}
+            <div>
+              <label className="block text-xs font-medium text-cream-secondary mb-1">
+                Choose a 4-Digit PIN
+              </label>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                required
+                placeholder="4-digit PIN"
+                value={newMemberPin}
+                onChange={(e) => setNewMemberPin(e.target.value.replace(/\D/g, ''))}
+                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+              />
+            </div>
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full min-h-[44px] rounded-xl bg-status-amber font-semibold text-xs text-night-bg hover:bg-status-amber/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 mt-4"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Joining Den...</span>
+                </>
+              ) : (
+                <span>Join Z Catchers 🦊</span>
+              )}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
