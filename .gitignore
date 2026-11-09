@@ -23,6 +23,7 @@ yarn-error.log*
 pnpm-debug.log*
 
 # System & IDE files
+*.tsbuildinfo
 .DS_Store
 Thumbs.db
 .vscode/

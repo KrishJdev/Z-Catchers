@@ -26,6 +26,10 @@ const config: Config = {
           sage: "#6B9E78",
           slumber: "#5B6B94",
         },
+        fox: {
+          rust: "#E07A5F",
+          amber: "#F4A261",
+        },
       },
     },
   },

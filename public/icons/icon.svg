@@ -1,6 +1,52 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="128" fill="#120F0D"/>
-  <path d="M360 280c-77.3 0-140-62.7-140-140 0-24.3 6.2-47.2 17.2-67.2C150.3 87.2 88 163.6 88 256c0 106 86 192 192 192 92.4 0 168.8-62.3 183.2-149.2C443.2 286.8 402.3 280 360 280z" fill="#E59843"/>
-  <circle cx="370" cy="150" r="12" fill="#E59843" opacity="0.8"/>
-  <circle cx="410" cy="210" r="8" fill="#E59843" opacity="0.6"/>
+  <defs>
+    <linearGradient id="foxFur" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F4A261" />
+      <stop offset="100%" stop-color="#E07A5F" />
+    </linearGradient>
+    <linearGradient id="moonGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F4A261" />
+      <stop offset="100%" stop-color="#E59843" />
+    </linearGradient>
+  </defs>
+  <!-- Background Squircle -->
+  <rect width="512" height="512" rx="128" fill="#120F0D" />
+  
+  <!-- Subtle Bedtime Crescent Moon in Background -->
+  <path d="M380 200c-66.3 0-120-53.7-120-120 0-15.6 3-30.5 8.4-44.2C194.2 50.1 140 119.7 140 204c0 97.2 78.8 176 176 176 72.8 0 135.2-44.3 161.4-107.5C453.8 288.5 418.5 300 380 300c-55.2 0-100-44.8-100-100z" fill="url(#moonGlow)" opacity="0.18" />
+
+  <!-- Floating Gentle 'Zzz' -->
+  <g fill="#F5EBE1" opacity="0.75" font-family="system-ui, -apple-system, sans-serif" font-weight="bold">
+    <text x="350" y="150" font-size="34">Z</text>
+    <text x="385" y="115" font-size="26">z</text>
+    <text x="415" y="90" font-size="20">z</text>
+  </g>
+
+  <!-- Curled Sleeping Fox Mascot -->
+  <g id="sleeping-fox">
+    <!-- Body & Fluffy Curled Tail -->
+    <path d="M256 390c-75 0-136-50-136-112 0-38 23-72 58-92 18-10 38-16 60-16 48 0 92 24 116 62 14 22 22 47 22 74 0 46-54 84-120 84z" fill="url(#foxFur)" />
+    
+    <!-- Tail Wrap with Cream Tip -->
+    <path d="M140 330c-20-25-28-55-24-82 5 22 20 48 44 65 30 22 72 37 116 37 40 0 76-12 100-32-26 38-84 62-146 62-38 0-68-15-90-50z" fill="#E07A5F" opacity="0.8" />
+    <path d="M120 270c-2 15 1 30 8 44 8-10 18-20 32-28-8-12-14-24-16-36-12 4-21 12-24 20z" fill="#F5EBE1" />
+
+    <!-- Sleeping Fox Head (Resting on paws) -->
+    <circle cx="280" cy="275" r="62" fill="url(#foxFur)" />
+    
+    <!-- Fox Ears -->
+    <polygon points="235,240 215,175 270,220" fill="#E07A5F" />
+    <polygon points="240,230 225,188 265,218" fill="#26201B" />
+    
+    <polygon points="315,230 350,170 340,235" fill="#E07A5F" />
+    <polygon points="320,225 342,185 335,230" fill="#26201B" />
+
+    <!-- Cream Cheeks & Snout -->
+    <path d="M235 285c10-18 35-25 45-25s35 7 45 25c-8 18-25 30-45 30s-37-12-45-30z" fill="#F5EBE1" />
+    <!-- Sleeping Eyes (Curved happy shut lines) -->
+    <path d="M248 274c4 4 10 4 14 0" stroke="#1C1714" stroke-width="3.5" stroke-linecap="round" fill="none" />
+    <path d="M298 274c4 4 10 4 14 0" stroke="#1C1714" stroke-width="3.5" stroke-linecap="round" fill="none" />
+    <!-- Cute Dark Espresso Nose -->
+    <ellipse cx="280" cy="292" rx="6" ry="4.5" fill="#1C1714" />
+  </g>
 </svg>

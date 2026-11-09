@@ -5,16 +5,32 @@ import { Header } from '@/components/Header';
 import { PwaBanner } from '@/components/PwaBanner';
 import { StatusBucket } from '@/components/StatusBucket';
 import { MemberCard } from '@/components/MemberCard';
+import { FoxMascot } from '@/components/FoxMascot';
 import { computeMemberState, MemberState } from '@/lib/sleepEngine';
 import type { Member } from '@/lib/db';
-import { ShieldAlert, Sparkles, Sun, Moon, Home, Clock, Shield, RefreshCw } from 'lucide-react';
+import {
+  ShieldAlert,
+  Sparkles,
+  Sun,
+  Moon,
+  Home,
+  Clock,
+  Shield,
+  RefreshCw,
+  X,
+  ExternalLink,
+} from 'lucide-react';
 
 export default function HomePage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewerTimezone, setViewerTimezone] = useState<string>('UTC');
   const [isPushEnabled, setIsPushEnabled] = useState(false);
+  const [isSleepShieldActive, setIsSleepShieldActive] = useState(false);
   const [tick, setTick] = useState(0);
+
+  // Dialog / Modal states
+  const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | null>(null);
 
   // Detect viewer's local timezone
   useEffect(() => {
@@ -102,20 +118,76 @@ export default function HomePage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col">
+    <main className="flex min-h-screen flex-col bg-night-bg">
       <Header
         viewerTimezone={viewerTimezone}
         isPushEnabled={isPushEnabled}
         onTogglePush={handleEnablePush}
+        isSleepShieldActive={isSleepShieldActive}
+        onToggleSleepShield={() => setIsSleepShieldActive((prev) => !prev)}
+        onOpenSchedule={() => setActiveModal('schedule')}
+        onOpenMod={() => setActiveModal('mod')}
       />
 
-      <div className="flex-1 px-4 py-3">
+      <div className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6 pb-28 md:pb-12">
         <PwaBanner onEnablePush={handleEnablePush} isPushGranted={isPushEnabled} />
+
+        {/* Contextual Sleepy Fox Status Banner */}
+        <section className="mb-6 rounded-2xl border border-night-border/80 bg-night-surface/90 p-4 shadow-lg backdrop-blur-sm sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3.5">
+              {categorized.nagNow.length > 0 ? (
+                <FoxMascot state="alert" size={42} className="animate-pulse" />
+              ) : categorized.windingDown.length > 0 ? (
+                <FoxMascot state="lantern" size={42} />
+              ) : (
+                <FoxMascot state="sleeping" size={42} />
+              )}
+              <div>
+                <h2 className="text-sm font-bold tracking-wide text-cream-primary sm:text-base">
+                  {categorized.nagNow.length > 0
+                    ? `Bedtime Alert: ${categorized.nagNow.length} friend${
+                        categorized.nagNow.length > 1 ? 's' : ''
+                      } hit bedtime!`
+                    : categorized.windingDown.length > 0
+                    ? `Winding Down: ${categorized.windingDown.length} friend${
+                        categorized.windingDown.length > 1 ? 's' : ''
+                      } heading to bed soon`
+                    : 'The Fox Den is Peaceful'}
+                </h2>
+                <p className="text-xs text-cream-secondary sm:text-sm">
+                  {categorized.nagNow.length > 0
+                    ? 'Check their Discord journal threads to nag them off screens and into bed.'
+                    : categorized.windingDown.length > 0
+                    ? 'Say your goodnights and remind them to turn down blue light.'
+                    : isSleepShieldActive
+                    ? 'Your personal Sleep Shield is active. Community nag notifications are suppressed.'
+                    : 'All friends are currently wide awake or resting safely in their sleep windows.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick summary counters */}
+            <div className="flex items-center gap-2 self-start rounded-xl bg-night-elevated px-3 py-1.5 text-xs font-medium text-cream-secondary sm:self-auto">
+              <span className="text-status-coral font-bold tabular-nums">
+                {categorized.nagNow.length} Nag
+              </span>
+              <span>•</span>
+              <span className="text-status-amber font-bold tabular-nums">
+                {categorized.windingDown.length} Wind
+              </span>
+              <span>•</span>
+              <span className="text-status-slumber font-bold tabular-nums">
+                {categorized.sleeping.length} Asleep
+              </span>
+            </div>
+          </div>
+        </section>
 
         {loading ? (
           <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 text-cream-muted">
             <RefreshCw className="h-6 w-6 animate-spin text-status-amber" />
-            <p className="text-xs">Loading community schedule...</p>
+            <p className="text-xs">Gathering community foxes from across timezones...</p>
           </div>
         ) : (
           <>
@@ -126,6 +198,7 @@ export default function HomePage() {
               accentColor="text-status-coral"
               icon={<ShieldAlert className="h-4 w-4 text-status-coral animate-pulse" />}
               defaultExpanded={true}
+              showEmptyState={false}
             >
               {categorized.nagNow.map(({ member, state }) => (
                 <MemberCard key={member.id} member={member} state={state} />
@@ -139,6 +212,7 @@ export default function HomePage() {
               accentColor="text-status-amber"
               icon={<Sparkles className="h-4 w-4 text-status-amber" />}
               defaultExpanded={true}
+              showEmptyState={false}
             >
               {categorized.windingDown.map(({ member, state }) => (
                 <MemberCard key={member.id} member={member} state={state} />
@@ -164,7 +238,9 @@ export default function HomePage() {
               count={categorized.sleeping.length}
               accentColor="text-status-slumber"
               icon={<Moon className="h-4 w-4 text-status-slumber" />}
-              defaultExpanded={false}
+              defaultExpanded={categorized.awake.length === 0}
+              showEmptyState={true}
+              emptyMessage="No members currently asleep."
             >
               {categorized.sleeping.map(({ member, state }) => (
                 <MemberCard key={member.id} member={member} state={state} />
@@ -174,8 +250,8 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Sticky Bottom Navigation (Mobile ergonomics) */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto flex h-16 max-w-[480px] items-center justify-around border-t border-night-border bg-night-surface/95 px-6 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
+      {/* Sticky Bottom Navigation (Mobile Viewports Only: < 768px) */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto flex h-16 w-full items-center justify-around border-t border-night-border bg-night-surface/95 px-6 backdrop-blur-md pb-[env(safe-area-inset-bottom)] md:hidden">
         <button
           className="flex flex-col items-center gap-1 text-status-amber"
           title="Roster"
@@ -185,7 +261,7 @@ export default function HomePage() {
         </button>
 
         <button
-          onClick={() => alert('My Schedule modal will open here in Phase 1!')}
+          onClick={() => setActiveModal('schedule')}
           className="flex flex-col items-center gap-1 text-cream-muted transition-colors hover:text-cream-secondary"
           title="My Bedtime"
         >
@@ -194,7 +270,7 @@ export default function HomePage() {
         </button>
 
         <button
-          onClick={() => alert('Moderator controls drawer will open here!')}
+          onClick={() => setActiveModal('mod')}
           className="flex flex-col items-center gap-1 text-cream-muted transition-colors hover:text-cream-secondary"
           title="Moderator Drawer"
         >
@@ -202,6 +278,71 @@ export default function HomePage() {
           <span className="text-[10px] font-medium">Mod</span>
         </button>
       </nav>
+
+      {/* Responsive Modal Dual-Pattern: Centered Dialog on Desktop (≥ 768px), Bottom Sheet on Mobile (< 768px) */}
+      {activeModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/80 backdrop-blur-md md:items-center p-0 md:p-4">
+          <div
+            className="w-full max-w-lg rounded-t-3xl border-t border-night-border bg-night-surface p-6 shadow-2xl md:rounded-2xl md:border"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center justify-between border-b border-night-border pb-4">
+              <div className="flex items-center gap-2.5">
+                <FoxMascot state="logo" size={28} />
+                <h3 className="text-base font-bold text-cream-primary">
+                  {activeModal === 'schedule' ? 'My Bedtime Schedule' : 'Moderator Panel'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-lg p-1 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {activeModal === 'schedule' ? (
+                <>
+                  <div className="rounded-xl border border-status-amber/30 bg-status-amber/10 p-3.5 text-xs leading-relaxed text-cream-secondary">
+                    <p className="font-semibold text-status-amber">
+                      🛡️ 48-Hour Accountability Cooldown
+                    </p>
+                    <p className="mt-1">
+                      Changing your bedtime or timezone takes 48 hours to activate so no one can dodge
+                      their bedtime at the last minute. Discord journal link edits are immediate.
+                    </p>
+                  </div>
+                  <p className="text-xs text-cream-muted">
+                    Full self-service PIN claiming & schedule update form is available via Milestone 4.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-cream-secondary">
+                    Enter the moderator secret passcode to approve pending 48-hour cooldowns, add
+                    new members, or edit journal URLs instantly.
+                  </p>
+                  <div className="rounded-xl border border-night-border bg-night-elevated p-3 text-xs text-cream-muted">
+                    Moderator authorization workflow configured via <code className="text-status-amber">/api/mod</code>.
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="w-full rounded-xl bg-night-elevated px-4 py-2.5 text-xs font-semibold text-cream-primary transition-colors hover:bg-night-border md:w-auto"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

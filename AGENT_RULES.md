@@ -8,9 +8,9 @@
 ## 1. Source of Truth Hierarchy
 
 Always cross-reference these specification documents in the root directory before writing code:
-1. `PROJECT_SPEC.md` — Master product vision, phased roadmap, and milestone execution order.
+1. `PROJECT_SPEC.md` — Master product vision, phased roadmap, responsive architecture, and milestone execution order.
 2. `BACKEND_TZ_PWA_SPEC.md` — Exact SQL schema, `luxon` timezone algorithms, Sleep Shield logic, and Service Worker setup.
-3. `DESIGN_SYSTEM.md` *(if present)* — Warm Dark low-blue-light color tokens and mobile component states.
+3. `DESIGN_SYSTEM.md` — Warm Dark low-blue-light color tokens, responsive desktop + mobile PWA specifications, and Sleepy Fox mascot guidelines.
 
 **Rule:** Never invent your own database columns, status bucket definitions, or timezone math when they are already explicitly defined in `BACKEND_TZ_PWA_SPEC.md`.
 
@@ -23,13 +23,13 @@ Maintain a flat, predictable Next.js (App Router + TypeScript) project structure
 ```text
 z-catchers/
 ├── public/
-│   ├── manifest.json          # PWA manifest (standalone, #120F0D theme)
+│   ├── manifest.json          # PWA manifest (standalone, #120F0D theme, fox icon)
 │   ├── sw.js                  # Service worker for Web Push & Discord deep-linking
-│   └── icons/                 # App & notification badge icons
+│   └── icons/                 # Sleepy Fox app icons & notification badges
 ├── src/
 │   ├── app/
-│   │   ├── layout.tsx         # Root layout (Warm Dark bg, PWA meta tags)
-│   │   ├── page.tsx           # Main mobile-first Roster Dashboard
+│   │   ├── layout.tsx         # Responsive root layout (Warm Dark bg, PWA meta tags)
+│   │   ├── page.tsx           # Responsive Dashboard (Mobile PWA + Desktop Grid)
 │   │   ├── globals.css        # Tailwind imports & custom Warm Dark CSS variables
 │   │   └── api/
 │   │       ├── members/       # GET roster, POST schedule update (48h cooldown)
@@ -37,11 +37,12 @@ z-catchers/
 │   │       ├── push/          # POST subscribe/unsubscribe & test push
 │   │       └── cron/          # GET/POST 1-minute notification dispatcher
 │   ├── components/
-│   │   ├── Header.tsx         # Branding, detected viewer TZ, push status pill
-│   │   ├── StatusBucket.tsx   # Collapsible group (Nag Now, Winding Down, Awake, Sleeping)
+│   │   ├── Header.tsx         # Fox mascot logo, live clock, shield toggle, command bar
+│   │   ├── FoxMascot.tsx      # Vector Fox Mascot (logo, lantern, alert bell, sleeping den)
+│   │   ├── StatusBucket.tsx   # Responsive grid (Nag Now, Winding Down, Awake, Sleeping)
 │   │   ├── MemberCard.tsx     # Dual-time display, cooldown badge, Discord deep-link CTA
-│   │   ├── MyScheduleModal.tsx# Self-service profile edit & 48h cooldown warning
-│   │   ├── ModDrawer.tsx      # Passcode-protected moderator controls
+│   │   ├── MyScheduleModal.tsx# Self-service profile edit (dialog on desktop, sheet on mobile)
+│   │   ├── ModDrawer.tsx      # Moderator controls (dialog on desktop, sheet on mobile)
 │   │   └── PwaBanner.tsx      # iOS/Android "Add to Home Screen" & Push permission gate
 │   └── lib/
 │       ├── db.ts              # Database client (Supabase / Prisma / SQLite)
@@ -76,16 +77,27 @@ z-catchers/
 
 ---
 
-## 4. UI, Styling & Mobile-First Rules
+## 4. UI, Styling & Responsive Layout Rules
 
-1. **Strict Warm Dark Palette:**
+1. **Strict Warm Dark Palette with Fox Accents:**
    * Never use pure white (`#FFFFFF`), harsh black (`#000000`), or default Tailwind blue (`blue-500`/`blue-600`).
-   * Use deep espresso backgrounds (`#120F0D`, `#1C1714`), soft cream primary text (`#F5EBE1`), muted warm grey secondary text (`#B0A295`), warm amber accents (`#E59843`), and coral alerts (`#D96B52`).
-2. **Mobile-First Viewport Constraint:**
-   * Constrain the main application shell to `max-w-[480px] mx-auto min-h-screen` so desktop viewers experience the exact same clean mobile layout without awkward stretched cards.
-   * All interactive buttons (especially `"Nag in Journal ↗"`) must have a minimum touch target height of $\ge 44\text{px}$.
-3. **Zero Clutter:**
-   * Do not add charts, sleep quality graphs, multi-page analytics, or noisy animations. The app is used right before sleep and must remain calm and legible in a dark room.
+   * Use deep espresso backgrounds (`#120F0D`, `#1C1714`), soft cream primary text (`#F5EBE1`), muted warm grey secondary text (`#B0A295`), warm amber accents (`#E59843`), coral alerts (`#D96B52`), and fox mascot accents (`#E07A5F` terracotta rust, `#F4A261` golden amber).
+
+2. **True Responsive Dual-Layout (Desktop Website + Mobile PWA):**
+   * **FORBIDDEN:** Never constrain the entire desktop app shell to a narrow mobile container (such as locking the layout to `max-w-md` or `max-w-[480px]`).
+   * **REQUIRED Mobile View (< 768px):** Retain a single-column vertical stack, thumb-friendly bottom navigation bar (`h-16`), and slide-up bottom sheets for modals. Minimum touch target height $\ge 44\text{px}$.
+   * **REQUIRED Desktop & Tablet View (≥ 768px / 1024px+):**
+     * Expand the main container to `max-w-7xl mx-auto px-6 lg:px-8 py-6`.
+     * Render the top navigation as a full-width Command Bar displaying the Fox logo, live local clock, viewer timezone pill, Sleep Shield toggle, and quick-action buttons (`"My Schedule"`, `"Mod Panel"`, `"Notification Settings"`).
+     * Render status buckets across the full desktop width using a responsive multi-column CSS Grid: `grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4` for `MemberCard` components.
+     * Render modals as centered dialogs (`max-w-lg`) with backdrop blur (`backdrop-blur-md bg-night-bg/80`).
+
+3. **"Z Catchers" Sleepy Fox Mascot Identity:**
+   * Integrate the cozy, minimalist Fox mascot into brand logo headers, contextual status banners (yawning/lantern when winding down, alert bell when bedtime hits), and empty bucket states (*"Every fox in this den is fast asleep"*).
+   * Update PWA manifest icons and push notification badges to feature the Fox mascot.
+
+4. **Zero Clutter:**
+   * Do not add charts, sleep quality graphs, multi-page analytics, or noisy animations. The app is used late at night and must remain calm and legible in a dark room.
 
 ---
 
@@ -102,4 +114,4 @@ z-catchers/
 Whenever you complete a milestone from `PROJECT_SPEC.md`:
 1. **Type & Build Check:** Run `tsc --noEmit` (or `npm run build`) and fix any TypeScript or bundling errors immediately.
 2. **Timezone Sanity Check:** Verify that the seed data includes members in at least 4 distinct timezones (including `Asia/Kolkata` for half-hour UTC offsets like $\text{UTC}+5\text{:}30$) and confirm their status buckets render accurately.
-3. **Self-Contained Commits:** Complete one milestone at a time and summarize what was built before moving to the next.
+3. **Responsive & Mascot Verification:** Ensure both mobile viewport (< 768px) and desktop viewport (≥ 768px) render cleanly with the Fox mascot visible and multi-column grid functioning properly.

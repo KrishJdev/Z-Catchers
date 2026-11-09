@@ -33,8 +33,10 @@ Z Catchers converts everyone's schedule into the viewer's local time, triggers a
 ## 📚 Technical Documentation & Specifications
 
 Detailed blueprints are available in this repository:
-- [Master Specification & Execution Plan](./antigravity_master_spec_execution_plan.md)
-- [Backend, Timezone & PWA Technical Reference](./backend_timezone_pwa_technical_spec.md)
+- [Agent Rules & Guardrails](./AGENT_RULES.md)
+- [Master Specification & Execution Plan](./PROJECT_SPEC.md)
+- [Backend, Timezone & PWA Technical Reference](./BACKEND_TZ_PWA_SPEC.md)
+- [Design System & UI Specification](./DESIGN_SYSTEM.md)
 
 ---
 
