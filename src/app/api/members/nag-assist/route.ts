@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { getRequestSessionMemberId } from '@/lib/auth';
 import { DateTime } from 'luxon';
+import { toValidLuxonZone } from '@/lib/timezone';
 import crypto from 'crypto';
 
 /**
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
 
     // 3. Compute sleeper's current local date with Luxon
     const nowUtc = DateTime.utc();
-    const sleeperLocalNow = nowUtc.setZone((sleeper as Member).timezone);
+    const sleeperLocalNow = nowUtc.setZone(toValidLuxonZone((sleeper as Member).timezone));
     const localDate = sleeperLocalNow.toISODate();
 
     if (!localDate) {
@@ -122,7 +123,7 @@ export async function GET(request: Request) {
     }
 
     const nowUtc = DateTime.utc();
-    const localDate = nowUtc.setZone(sleeper.timezone).toISODate();
+    const localDate = nowUtc.setZone(toValidLuxonZone(sleeper.timezone)).toISODate();
 
     const { count } = await supabaseAdmin
       .from('notification_logs')

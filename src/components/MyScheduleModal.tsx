@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 
 import { setStoredMemberId, setStoredAuthToken, setStoredAuthMember } from '@/lib/pushClient';
+import { GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 
@@ -33,26 +34,6 @@ interface MyScheduleModalProps {
   onRefreshRoster: () => Promise<void>;
   currentUser?: Member | null;
 }
-
-// Curated list of popular IANA timezones spanning global regions
-const POPULAR_TIMEZONES = [
-  'America/Los_Angeles', // US Pacific
-  'America/Denver', // US Mountain
-  'America/Chicago', // US Central
-  'America/New_York', // US Eastern
-  'America/Sao_Paulo', // Brazil
-  'Europe/London', // UK / GMT
-  'Europe/Paris', // Central Europe
-  'Europe/Berlin', // Germany
-  'Africa/Cairo', // Egypt
-  'Asia/Dubai', // UAE
-  'Asia/Kolkata', // India (UTC+5:30)
-  'Asia/Singapore', // Singapore
-  'Asia/Tokyo', // Japan
-  'Australia/Sydney', // Eastern Australia
-  'Pacific/Auckland', // New Zealand
-  'UTC',
-];
 
 export function MyScheduleModal({
   isOpen,
@@ -75,7 +56,7 @@ export function MyScheduleModal({
   const [journalUrl, setJournalUrl] = useState<string>('');
   const [bedtime, setBedtime] = useState<string>('23:00');
   const [wakeTime, setWakeTime] = useState<string>('07:00');
-  const [timezone, setTimezone] = useState<string>(viewerTimezone || 'UTC');
+  const [timezone, setTimezone] = useState<string>(formatGmtOffset(viewerTimezone));
 
   // Weekend hours (Friday & Saturday nights)
   const [enableWeekendHours, setEnableWeekendHours] = useState<boolean>(false);
@@ -105,7 +86,7 @@ export function MyScheduleModal({
       setJournalUrl(activeMember.journal_url);
       setBedtime(activeMember.bedtime_local);
       setWakeTime(activeMember.wake_time_local);
-      setTimezone(activeMember.timezone);
+      setTimezone(formatGmtOffset(activeMember.timezone));
       if (activeMember.weekend_bedtime_local) {
         setEnableWeekendHours(true);
         setWeekendBedtime(activeMember.weekend_bedtime_local);
@@ -153,7 +134,7 @@ export function MyScheduleModal({
   // Check if schedule (bedtime, wake time, timezone, weekend hours) has changed from active values
   const hasScheduleChanged = activeMember
     ? bedtime !== activeMember.bedtime_local ||
-      timezone !== activeMember.timezone ||
+      formatGmtOffset(timezone) !== formatGmtOffset(activeMember.timezone) ||
       wakeTime !== activeMember.wake_time_local ||
       (enableWeekendHours
         ? weekendBedtime !== (activeMember.weekend_bedtime_local || '') ||
@@ -177,7 +158,7 @@ export function MyScheduleModal({
       pendingTimezone: activeMember.pending_timezone,
       remainingHours,
       remainingMins,
-      effectiveDate: effectiveAt.setZone(viewerTimezone).toFormat('LLL d, h:mm a'),
+      effectiveDate: effectiveAt.setZone(toValidLuxonZone(viewerTimezone)).toFormat('LLL d, h:mm a'),
     };
   }, [activeMember, viewerTimezone]);
 
@@ -185,11 +166,11 @@ export function MyScheduleModal({
   const previewTime = useMemo(() => {
     try {
       const [h, m] = bedtime.split(':').map(Number);
-      const nowInTz = DateTime.now().setZone(timezone);
+      const nowInTz = DateTime.now().setZone(toValidLuxonZone(timezone));
       const dt = nowInTz.set({ hour: h || 0, minute: m || 0, second: 0 });
       return {
         sleeper: dt.toFormat('h:mm a'),
-        viewer: dt.setZone(viewerTimezone).toFormat('h:mm a'),
+        viewer: dt.setZone(toValidLuxonZone(viewerTimezone)).toFormat('h:mm a'),
       };
     } catch {
       return { sleeper: bedtime, viewer: bedtime };
@@ -450,7 +431,7 @@ export function MyScheduleModal({
               setJournalUrl('');
               setBedtime('23:00');
               setWakeTime('07:00');
-              setTimezone(viewerTimezone || 'UTC');
+              setTimezone(formatGmtOffset(viewerTimezone));
             }}
             className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all ${
               tab === 'new'
@@ -496,7 +477,7 @@ export function MyScheduleModal({
               >
                 {members.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.discord_username} ({m.timezone}) • Bedtime: {m.bedtime_local}
+                    {m.discord_username} ({formatGmtOffset(m.timezone)}) • Bedtime: {m.bedtime_local}
                   </option>
                 ))}
               </select>
@@ -514,7 +495,7 @@ export function MyScheduleModal({
                     <p className="text-cream-secondary">
                       Shifting to{' '}
                       <span className="font-bold text-cream-primary">
-                        {pendingCooldownNotice.pendingBedtime} ({pendingCooldownNotice.pendingTimezone})
+                        {pendingCooldownNotice.pendingBedtime} ({formatGmtOffset(pendingCooldownNotice.pendingTimezone || activeMember?.timezone)})
                         {pendingCooldownNotice.pendingWeekendBedtime ? ` • Weekend: ${pendingCooldownNotice.pendingWeekendBedtime}` : ''}
                       </span>{' '}
                       in{' '}
@@ -751,17 +732,17 @@ export function MyScheduleModal({
                 {/* Timezone Selector */}
                 <div>
                   <label className="block text-xs font-medium text-cream-secondary mb-1">
-                    Your Timezone (IANA)
+                    Your Timezone (GMT Offset)
                   </label>
                   <select
                     value={timezone}
                     onChange={(e) => setTimezone(e.target.value)}
                     className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
                   >
-                    {viewerTimezone && !POPULAR_TIMEZONES.includes(viewerTimezone) && (
-                      <option value={viewerTimezone}>Detected: {viewerTimezone}</option>
+                    {!GMT_OFFSETS.includes(timezone as any) && (
+                      <option value={timezone}>{formatGmtOffset(timezone)}</option>
                     )}
-                    {POPULAR_TIMEZONES.map((tz) => (
+                    {GMT_OFFSETS.map((tz) => (
                       <option key={tz} value={tz}>
                         {tz}
                       </option>
@@ -1023,17 +1004,17 @@ export function MyScheduleModal({
             {/* Timezone */}
             <div>
               <label className="block text-xs font-medium text-cream-secondary mb-1">
-                Timezone (IANA)
+                Timezone (GMT Offset)
               </label>
               <select
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
                 className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
               >
-                {viewerTimezone && !POPULAR_TIMEZONES.includes(viewerTimezone) && (
-                  <option value={viewerTimezone}>Detected: {viewerTimezone}</option>
+                {!GMT_OFFSETS.includes(timezone as any) && (
+                  <option value={timezone}>{formatGmtOffset(timezone)}</option>
                 )}
-                {POPULAR_TIMEZONES.map((tz) => (
+                {GMT_OFFSETS.map((tz) => (
                   <option key={tz} value={tz}>
                     {tz}
                   </option>

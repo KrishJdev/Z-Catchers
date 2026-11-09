@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { FoxMascot } from './FoxMascot';
 import { Member } from '@/lib/db';
+import { formatGmtOffset } from '@/lib/timezone';
 import {
   X,
   Bell,
@@ -253,8 +254,7 @@ export function PushModal({
                     </span>
                   </div>
                   <p className="text-[11px] text-cream-secondary">
-                    Bedtime: {currentUser.bedtime_local} in{' '}
-                    {currentUser.timezone.split('/').pop()?.replace(/_/g, ' ')}
+                    Bedtime: {currentUser.bedtime_local} ({formatGmtOffset(currentUser.timezone)})
                   </p>
                 </div>
               </div>

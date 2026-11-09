@@ -11,6 +11,7 @@ import { ModDrawer } from '@/components/ModDrawer';
 import { PushModal } from '@/components/PushModal';
 import { LoginModal } from '@/components/LoginModal';
 import { computeMemberState, MemberState } from '@/lib/sleepEngine';
+import { formatGmtOffset } from '@/lib/timezone';
 import {
   registerServiceWorker,
   getExistingSubscription,
@@ -42,7 +43,7 @@ const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
 export default function HomePage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewerTimezone, setViewerTimezone] = useState<string>('UTC');
+  const [viewerTimezone, setViewerTimezone] = useState<string>('GMT+00:00');
   const [isPushEnabled, setIsPushEnabled] = useState(false);
   const [isSleepShieldActive, setIsSleepShieldActive] = useState(false);
   const [tick, setTick] = useState(0);
@@ -67,13 +68,14 @@ export default function HomePage() {
     setActiveModal('login');
   };
 
-  // Detect viewer's local timezone
+  // Detect viewer's local timezone (formatted as GMT offset to prevent disclosing physical location)
   useEffect(() => {
     try {
       const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (detected) setViewerTimezone(detected);
+      if (detected) setViewerTimezone(formatGmtOffset(detected));
+      else setViewerTimezone('GMT+00:00');
     } catch {
-      setViewerTimezone('UTC');
+      setViewerTimezone('GMT+00:00');
     }
   }, []);
 

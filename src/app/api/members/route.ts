@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase, supabaseAdmin, Member } from '@/lib/db';
 import { checkCooldownPromotion, calculateSleepStreak } from '@/lib/sleepEngine';
 import { hashPin, sanitizeMember, createSessionToken } from '@/lib/auth';
+import { toValidLuxonZone, isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -75,7 +76,7 @@ export async function GET() {
       }
 
       // Check-in & streak computation
-      const sleeperNow = nowUtc.setZone(activeMember.timezone);
+      const sleeperNow = nowUtc.setZone(toValidLuxonZone(activeMember.timezone));
       const localDateStr = sleeperNow.toISODate() || '';
       const memberCheckins = checkinsByMember.get(activeMember.id) || [];
       const is_in_bed = memberCheckins.includes(localDateStr);
@@ -162,9 +163,9 @@ export async function POST(request: Request) {
 
     // Validate Timezone
     const cleanTz = String(timezone).trim();
-    if (!DateTime.now().setZone(cleanTz).isValid) {
+    if (!isValidTimezone(cleanTz)) {
       return NextResponse.json(
-        { error: 'Invalid timezone identifier. Please select a valid timezone.' },
+        { error: 'Invalid timezone identifier. Please select a valid GMT offset (e.g. "GMT+05:30").' },
         { status: 400 }
       );
     }
@@ -181,7 +182,7 @@ export async function POST(request: Request) {
       journal_url: cleanJournal,
       bedtime_local: bedtime_local.trim(),
       wake_time_local: wake_time_local.trim(),
-      timezone: cleanTz,
+      timezone: formatGmtOffset(cleanTz),
       role: 'member',
       passcode_hash,
     };

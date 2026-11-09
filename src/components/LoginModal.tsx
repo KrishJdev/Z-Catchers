@@ -25,27 +25,9 @@ import {
   setStoredAuthMember,
   clearAuthSession,
 } from '@/lib/pushClient';
+import { GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
-
-const POPULAR_TIMEZONES = [
-  'America/Los_Angeles',
-  'America/Denver',
-  'America/Chicago',
-  'America/New_York',
-  'America/Sao_Paulo',
-  'Europe/London',
-  'Europe/Paris',
-  'Europe/Berlin',
-  'Africa/Cairo',
-  'Asia/Dubai',
-  'Asia/Kolkata',
-  'Asia/Singapore',
-  'Asia/Tokyo',
-  'Australia/Sydney',
-  'Pacific/Auckland',
-  'UTC',
-];
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -83,7 +65,7 @@ export function LoginModal({
   const [regHandle, setRegHandle] = useState<string>('');
   const [regBedtime, setRegBedtime] = useState<string>('23:00');
   const [regWakeTime, setRegWakeTime] = useState<string>('07:00');
-  const [regTimezone, setRegTimezone] = useState<string>(viewerTimezone || 'UTC');
+  const [regTimezone, setRegTimezone] = useState<string>(formatGmtOffset(viewerTimezone));
   const [regEnableWeekend, setRegEnableWeekend] = useState<boolean>(false);
   const [regWeekendBedtime, setRegWeekendBedtime] = useState<string>('00:30');
   const [regWeekendWakeTime, setRegWeekendWakeTime] = useState<string>('09:00');
@@ -103,8 +85,8 @@ export function LoginModal({
       setPin('');
       setRegPin('');
       setTab(initialTab);
-      if (viewerTimezone && viewerTimezone !== 'UTC') {
-        setRegTimezone(viewerTimezone);
+      if (viewerTimezone) {
+        setRegTimezone(formatGmtOffset(viewerTimezone));
       }
       if (currentUser) {
         setSelectedMemberId(currentUser.id);
@@ -119,11 +101,13 @@ export function LoginModal({
   const bedtimePreview = useMemo(() => {
     try {
       const [h, m] = regBedtime.split(':').map(Number);
-      const dt = DateTime.now().setZone(regTimezone).set({ hour: h || 0, minute: m || 0, second: 0 });
+      const sleeperZone = toValidLuxonZone(regTimezone);
+      const viewerZone = toValidLuxonZone(viewerTimezone);
+      const dt = DateTime.now().setZone(sleeperZone).set({ hour: h || 0, minute: m || 0, second: 0 });
       return {
         sleeper: dt.toFormat('h:mm a'),
-        viewer: dt.setZone(viewerTimezone).toFormat('h:mm a'),
-        sameZone: regTimezone === viewerTimezone,
+        viewer: dt.setZone(viewerZone).toFormat('h:mm a'),
+        sameZone: formatGmtOffset(regTimezone) === formatGmtOffset(viewerTimezone),
       };
     } catch {
       return { sleeper: regBedtime, viewer: regBedtime, sameZone: true };
@@ -409,7 +393,7 @@ export function LoginModal({
                     </span>
                   </div>
                   <p className="text-xs text-cream-secondary">
-                    Bedtime: {currentUser.bedtime_local} ({currentUser.timezone.split('/').pop()?.replace(/_/g, ' ')})
+                    Bedtime: {currentUser.bedtime_local} ({formatGmtOffset(currentUser.timezone)})
                   </p>
                 </div>
               </div>
@@ -492,8 +476,7 @@ export function LoginModal({
                 >
                   {members.map((m) => (
                     <option key={m.id} value={m.id} className="bg-night-surface">
-                      {m.discord_username} ({m.bedtime_local} in{' '}
-                      {m.timezone.split('/').pop()?.replace(/_/g, ' ')})
+                      {m.discord_username} ({m.bedtime_local} • {formatGmtOffset(m.timezone)})
                     </option>
                   ))}
                 </select>
@@ -596,10 +579,10 @@ export function LoginModal({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-semibold text-cream-primary">
-                  Your Timezone <span className="text-status-amber">*</span>
+                  Your Timezone (GMT Offset) <span className="text-status-amber">*</span>
                 </label>
                 <span className="text-[10px] text-cream-muted">
-                  Auto-detected: {viewerTimezone.split('/').pop()?.replace(/_/g, ' ')}
+                  Auto-detected: {formatGmtOffset(viewerTimezone)}
                 </span>
               </div>
               <select
@@ -607,10 +590,10 @@ export function LoginModal({
                 onChange={(e) => setRegTimezone(e.target.value)}
                 className="w-full appearance-none rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
               >
-                {!POPULAR_TIMEZONES.includes(regTimezone) && (
-                  <option value={regTimezone}>{regTimezone} (Local)</option>
+                {!GMT_OFFSETS.includes(regTimezone as any) && (
+                  <option value={regTimezone}>{formatGmtOffset(regTimezone)}</option>
                 )}
-                {POPULAR_TIMEZONES.map((tz) => (
+                {GMT_OFFSETS.map((tz) => (
                   <option key={tz} value={tz}>
                     {tz}
                   </option>

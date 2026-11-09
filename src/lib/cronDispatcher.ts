@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon';
 import { supabaseAdmin, Member, PushSubscriptionRecord } from '@/lib/db';
 import { checkCooldownPromotion, computeMemberState } from '@/lib/sleepEngine';
+import { toValidLuxonZone } from '@/lib/timezone';
 import { sendPushNotification } from '@/lib/pushServer';
 import { sendBedtimeDiscordWebhook } from '@/lib/discordWebhook';
 
@@ -197,7 +198,7 @@ export async function executeNotificationDispatcher(options: {
       continue;
     }
 
-    const sleeperNow = nowUtc.setZone(member.timezone);
+    const sleeperNow = nowUtc.setZone(toValidLuxonZone(member.timezone));
     const localDate = sleeperNow.toISODate(); // "YYYY-MM-DD"
 
     if (!localDate) continue;
@@ -278,7 +279,7 @@ export async function executeNotificationDispatcher(options: {
             if (communitySubs.length === 0) continue;
 
             // Check if peer is in bed or sleep shielded
-            const peerNow = nowUtc.setZone(peer.timezone);
+            const peerNow = nowUtc.setZone(toValidLuxonZone(peer.timezone));
             const peerLocalDate = peerNow.toISODate();
             const peerInBed = peerLocalDate
               ? hasBeenDispatched(peer.id, 'IN_BED_EARLY', peerLocalDate)

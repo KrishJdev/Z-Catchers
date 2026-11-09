@@ -34,24 +34,7 @@ const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channel
 const DISCORD_WEBHOOK_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-const POPULAR_TIMEZONES = [
-  'America/Los_Angeles',
-  'America/Denver',
-  'America/Chicago',
-  'America/New_York',
-  'America/Sao_Paulo',
-  'Europe/London',
-  'Europe/Paris',
-  'Europe/Berlin',
-  'Africa/Cairo',
-  'Asia/Dubai',
-  'Asia/Kolkata',
-  'Asia/Singapore',
-  'Asia/Tokyo',
-  'Australia/Sydney',
-  'Pacific/Auckland',
-  'UTC',
-];
+import { GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
 
 interface ModDrawerProps {
   isOpen: boolean;
@@ -111,7 +94,7 @@ export function ModDrawer({
   const [newJournalUrl, setNewJournalUrl] = useState('');
   const [newBedtime, setNewBedtime] = useState('23:00');
   const [newWakeTime, setNewWakeTime] = useState('07:00');
-  const [newTimezone, setNewTimezone] = useState(viewerTimezone || 'UTC');
+  const [newTimezone, setNewTimezone] = useState(formatGmtOffset(viewerTimezone));
   const [newWeekendBedtime, setNewWeekendBedtime] = useState('');
   const [newWeekendWakeTime, setNewWeekendWakeTime] = useState('');
   const [newRole, setNewRole] = useState<'member' | 'moderator'>('member');
@@ -413,7 +396,7 @@ export function ModDrawer({
     setEditingMember(member);
     setEditBedtime(member.bedtime_local);
     setEditWakeTime(member.wake_time_local);
-    setEditTimezone(member.timezone);
+    setEditTimezone(formatGmtOffset(member.timezone));
     setEditWeekendBedtime(member.weekend_bedtime_local || '');
     setEditWeekendWakeTime(member.weekend_wake_time_local || '');
     setEditJournalUrl(member.journal_url);
@@ -970,21 +953,21 @@ export function ModDrawer({
 
                   <div>
                     <label className="text-[11px] font-semibold text-cream-muted">
-                      Timezone (IANA Region)
+                      Timezone (GMT Offset)
                     </label>
                     <select
                       value={editTimezone}
                       onChange={(e) => setEditTimezone(e.target.value)}
                       className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
                     >
-                      {POPULAR_TIMEZONES.map((tz) => (
+                      {!GMT_OFFSETS.includes(editTimezone as any) && (
+                        <option value={editTimezone}>{formatGmtOffset(editTimezone)}</option>
+                      )}
+                      {GMT_OFFSETS.map((tz) => (
                         <option key={tz} value={tz}>
                           {tz}
                         </option>
                       ))}
-                      {!POPULAR_TIMEZONES.includes(editTimezone) && (
-                        <option value={editTimezone}>{editTimezone}</option>
-                      )}
                     </select>
                   </div>
 
@@ -1191,12 +1174,12 @@ export function ModDrawer({
 
                               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                                 <span className="text-cream-muted">
-                                  Current: <strong className="text-cream-secondary">{member.bedtime_local}</strong> ({member.timezone.split('/').pop()?.replace(/_/g, ' ')})
+                                  Current: <strong className="text-cream-secondary">{member.bedtime_local}</strong> ({formatGmtOffset(member.timezone)})
                                   {member.weekend_bedtime_local && <span> | Weekend: <strong className="text-cream-secondary">{member.weekend_bedtime_local}</strong></span>}
                                 </span>
                                 <span className="text-cream-muted">→</span>
                                 <span className="text-status-amber">
-                                  Requested: <strong>{member.pending_bedtime_local || member.bedtime_local}</strong> ({member.pending_timezone?.split('/').pop()?.replace(/_/g, ' ') || member.timezone})
+                                  Requested: <strong>{member.pending_bedtime_local || member.bedtime_local}</strong> ({formatGmtOffset(member.pending_timezone || member.timezone)})
                                   {member.pending_weekend_bedtime_local && <span> | Weekend: <strong className="text-status-amber">{member.pending_weekend_bedtime_local}</strong></span>}
                                 </span>
                               </div>
@@ -1331,7 +1314,7 @@ export function ModDrawer({
                               </span>
                             )}
                             <span>•</span>
-                            <span>{member.timezone.split('/').pop()?.replace(/_/g, ' ')}</span>
+                            <span>{formatGmtOffset(member.timezone)}</span>
                             <span>•</span>
                             <span className={(member.has_pin ?? Boolean(member.passcode_hash)) ? 'text-status-sage' : 'text-status-amber'}>
                               {(member.has_pin ?? Boolean(member.passcode_hash)) ? 'PIN Set' : 'Unclaimed'}
@@ -1506,14 +1489,17 @@ export function ModDrawer({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="text-[11px] font-semibold text-cream-muted">
-                      Timezone (IANA Region) *
+                      Timezone (GMT Offset) *
                     </label>
                     <select
                       value={newTimezone}
                       onChange={(e) => setNewTimezone(e.target.value)}
                       className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
                     >
-                      {POPULAR_TIMEZONES.map((tz) => (
+                      {!GMT_OFFSETS.includes(newTimezone as any) && (
+                        <option value={newTimezone}>{formatGmtOffset(newTimezone)}</option>
+                      )}
+                      {GMT_OFFSETS.map((tz) => (
                         <option key={tz} value={tz}>
                           {tz}
                         </option>

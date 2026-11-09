@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { Bell, BellOff, Clock, Shield, Moon, KeyRound, UserCheck, UserPlus } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import { FoxMascot } from '@/components/FoxMascot';
+import { DateTime } from 'luxon';
+import { toValidLuxonZone, formatGmtOffset } from '@/lib/timezone';
 
 interface HeaderProps {
   viewerTimezone: string;
@@ -33,14 +35,8 @@ export function Header({
   useEffect(() => {
     const updateTime = () => {
       try {
-        const now = new Date();
-        const formatted = new Intl.DateTimeFormat('en-US', {
-          timeZone: viewerTimezone,
-          hour: 'numeric',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: true,
-        }).format(now);
+        const zone = toValidLuxonZone(viewerTimezone);
+        const formatted = DateTime.now().setZone(zone).toFormat('h:mm:ss a');
         setCurrentTimeStr(formatted);
       } catch {
         setCurrentTimeStr('');
@@ -52,8 +48,7 @@ export function Header({
     return () => clearInterval(interval);
   }, [viewerTimezone]);
 
-  const timezoneDisplayName =
-    viewerTimezone.split('/').pop()?.replace(/_/g, ' ') || viewerTimezone;
+  const timezoneDisplayName = formatGmtOffset(viewerTimezone);
 
   return (
     <header className="sticky top-0 z-40 border-b border-night-border bg-night-bg/95 backdrop-blur-md">

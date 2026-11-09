@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import type { MemberState } from '@/lib/sleepEngine';
+import { formatGmtOffset } from '@/lib/timezone';
 
 interface MemberCardProps {
   member: Member;
@@ -148,7 +149,7 @@ export function MemberCard({
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap text-xs text-cream-secondary">
-          <span>{formattedSleeperTime} local ({member.timezone.split('/').pop()?.replace(/_/g, ' ')})</span>
+          <span>{formattedSleeperTime} local ({formatGmtOffset(member.timezone)})</span>
           {state.isWeekendSchedule && (
             <span
               className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.2 text-[10px] font-semibold text-status-amber border border-status-amber/30"

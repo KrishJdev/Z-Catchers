@@ -3,6 +3,7 @@ import { supabaseAdmin, Member } from '@/lib/db';
 import { DateTime } from 'luxon';
 import { verifyPin, getRequestSessionMemberId } from '@/lib/auth';
 import { calculateSleepStreak } from '@/lib/sleepEngine';
+import { toValidLuxonZone } from '@/lib/timezone';
 
 export async function GET(request: Request) {
   try {
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    const sleeperNow = DateTime.utc().setZone(member.timezone);
+    const sleeperNow = DateTime.utc().setZone(toValidLuxonZone(member.timezone));
     const todayStr = sleeperNow.toISODate();
 
     // Fetch member's recent check-ins
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
     }
 
     const nowUtc = DateTime.utc();
-    const sleeperNow = nowUtc.setZone(member.timezone);
+    const sleeperNow = nowUtc.setZone(toValidLuxonZone(member.timezone));
     const localDate = sleeperNow.toISODate();
 
     if (!localDate) {

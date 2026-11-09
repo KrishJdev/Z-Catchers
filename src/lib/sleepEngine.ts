@@ -1,6 +1,118 @@
 import { DateTime } from 'luxon';
 import type { Member } from './db';
 
+/**
+ * Standard list of global GMT / UTC offsets spanning all inhabited timezones (-12:00 to +14:00).
+ * Replaces city / location names so community members do not have to disclose their physical location.
+ */
+export const GMT_OFFSETS = [
+  'GMT-12:00',
+  'GMT-11:00',
+  'GMT-10:00',
+  'GMT-09:30',
+  'GMT-09:00',
+  'GMT-08:00',
+  'GMT-07:00',
+  'GMT-06:00',
+  'GMT-05:00',
+  'GMT-04:00',
+  'GMT-03:30',
+  'GMT-03:00',
+  'GMT-02:00',
+  'GMT-01:00',
+  'GMT+00:00',
+  'GMT+01:00',
+  'GMT+02:00',
+  'GMT+03:00',
+  'GMT+03:30',
+  'GMT+04:00',
+  'GMT+04:30',
+  'GMT+05:00',
+  'GMT+05:30',
+  'GMT+05:45',
+  'GMT+06:00',
+  'GMT+06:30',
+  'GMT+07:00',
+  'GMT+08:00',
+  'GMT+08:45',
+  'GMT+09:00',
+  'GMT+09:30',
+  'GMT+10:00',
+  'GMT+10:30',
+  'GMT+11:00',
+  'GMT+12:00',
+  'GMT+12:45',
+  'GMT+13:00',
+  'GMT+14:00',
+] as const;
+
+export type GmtOffset = (typeof GMT_OFFSETS)[number];
+
+/**
+ * Translates any timezone identifier (GMT offset, bare offset, or legacy IANA string)
+ * into a specifier that Luxon's `DateTime.setZone()` natively supports (e.g. `UTC+05:30`).
+ */
+export function toValidLuxonZone(zoneStr: string | null | undefined): string {
+  if (!zoneStr) return 'UTC';
+  const clean = zoneStr.trim();
+  if (/^GMT$/i.test(clean) || /^UTC$/i.test(clean)) return 'UTC';
+
+  // Format: GMT+05:30, GMT-5, GMT+5:30
+  const gmtMatch = clean.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/i);
+  if (gmtMatch) {
+    const sign = gmtMatch[1];
+    const hours = parseInt(gmtMatch[2], 10);
+    const mins = gmtMatch[3] ? parseInt(gmtMatch[3], 10) : 0;
+    if (hours > 14 || mins >= 60) return 'invalid';
+    return `UTC${sign}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  }
+
+  // Bare offset format: +05:30, -05:00, +5, -8
+  const offsetMatch = clean.match(/^([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (offsetMatch) {
+    const sign = offsetMatch[1];
+    const hours = parseInt(offsetMatch[2], 10);
+    const mins = offsetMatch[3] ? parseInt(offsetMatch[3], 10) : 0;
+    if (hours > 14 || mins >= 60) return 'invalid';
+    return `UTC${sign}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  }
+
+  // UTC offset format: UTC+05:30, UTC-5
+  const utcMatch = clean.match(/^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/i);
+  if (utcMatch) {
+    const sign = utcMatch[1];
+    const hours = parseInt(utcMatch[2], 10);
+    const mins = utcMatch[3] ? parseInt(utcMatch[3], 10) : 0;
+    if (hours > 14 || mins >= 60) return 'invalid';
+    return `UTC${sign}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  }
+
+  return clean;
+}
+
+/**
+ * Validates whether the given string represents a valid timezone (GMT offset or IANA zone).
+ */
+export function isValidTimezone(zoneStr: string | null | undefined): boolean {
+  if (!zoneStr || typeof zoneStr !== 'string') return false;
+  const luxonZone = toValidLuxonZone(zoneStr);
+  if (luxonZone === 'invalid') return false;
+  return DateTime.now().setZone(luxonZone).isValid;
+}
+
+/**
+ * Converts any timezone identifier (including legacy IANA city names) into a
+ * privacy-friendly standard `GMT±HH:mm` representation.
+ */
+export function formatGmtOffset(zoneStr: string | null | undefined): string {
+  if (!zoneStr) return 'GMT+00:00';
+  const clean = zoneStr.trim();
+  const luxonZone = toValidLuxonZone(clean);
+  const dt = DateTime.now().setZone(luxonZone);
+  if (!dt.isValid) return clean.startsWith('GMT') ? clean : 'GMT+00:00';
+  return `GMT${dt.toFormat('ZZ')}`;
+}
+
 export type SleepBucket = 'BEDTIME_NOW' | 'WINDING_DOWN' | 'SLEEPING' | 'AWAKE';
 
 export interface StreakMilestone {
@@ -226,12 +338,15 @@ export function computeMemberState(
   nowUtc = DateTime.utc(),
   isInBed?: boolean
 ): MemberState {
-  // Validate IANA timezone or fallback
-  const sleeperZone = DateTime.now().setZone(member.timezone).isValid
-    ? member.timezone
+  // Validate timezone (supports GMT offsets and IANA) or fallback
+  const normalizedSleeperZone = toValidLuxonZone(member.timezone);
+  const normalizedViewerZone = toValidLuxonZone(viewerTz);
+
+  const sleeperZone = DateTime.now().setZone(normalizedSleeperZone).isValid
+    ? normalizedSleeperZone
     : 'UTC';
-  const targetViewerZone = DateTime.now().setZone(viewerTz).isValid
-    ? viewerTz
+  const targetViewerZone = DateTime.now().setZone(normalizedViewerZone).isValid
+    ? normalizedViewerZone
     : 'UTC';
 
   const sleeperNow = nowUtc.setZone(sleeperZone);

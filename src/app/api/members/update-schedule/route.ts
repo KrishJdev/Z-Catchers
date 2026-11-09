@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { hashPin, verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
+import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -90,11 +91,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // 4. Validate Timezone (Must be a valid Luxon/IANA timezone)
+    // 4. Validate Timezone (Must be a valid GMT offset or IANA timezone)
     if (timezone) {
-      if (!DateTime.now().setZone(timezone).isValid) {
+      if (!isValidTimezone(timezone)) {
         return NextResponse.json(
-          { error: `Invalid IANA timezone "${timezone}". Example: "America/New_York"` },
+          { error: `Invalid timezone "${timezone}". Please select a valid GMT offset (e.g. "GMT+05:30").` },
           { status: 400 }
         );
       }
@@ -137,7 +138,7 @@ export async function POST(request: Request) {
     // 6. Check for Schedule Changes vs Immediate Profile Changes
     const targetBedtime = bedtime_local || currentMember.bedtime_local;
     const targetWakeTime = wake_time_local || currentMember.wake_time_local;
-    const targetTimezone = timezone || currentMember.timezone;
+    const targetTimezone = timezone ? formatGmtOffset(timezone) : currentMember.timezone;
     const targetWeekendBedtime =
       weekend_bedtime_local !== undefined
         ? weekend_bedtime_local && weekend_bedtime_local.trim() !== ''

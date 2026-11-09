@@ -1,5 +1,6 @@
 import type { Member } from '@/lib/db';
 import { getStreakMilestoneBadge } from '@/lib/sleepEngine';
+import { formatGmtOffset } from '@/lib/timezone';
 
 /**
  * Valid Discord incoming webhook endpoint regex.
@@ -134,7 +135,7 @@ export async function sendBedtimeDiscordWebhook(
   streakDays: number = 0,
   options: { webhookUrl?: string | null; effectiveBedtime?: string } = {}
 ): Promise<WebhookSendResult> {
-  const zoneName = member.timezone.split('/').pop()?.replace(/_/g, ' ') || member.timezone;
+  const zoneName = formatGmtOffset(member.timezone);
   const milestone = getStreakMilestoneBadge(streakDays);
   const streakText =
     streakDays > 0

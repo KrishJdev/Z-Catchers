@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { verifyModPasscode, hashPin, sanitizeMember } from '@/lib/auth';
 import { checkCooldownPromotion } from '@/lib/sleepEngine';
+import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -277,9 +278,9 @@ export async function POST(request: Request) {
         );
       }
 
-      if (timezone && !DateTime.now().setZone(timezone.trim()).isValid) {
+      if (timezone && !isValidTimezone(timezone.trim())) {
         return NextResponse.json(
-          { error: `Invalid IANA timezone "${timezone}".` },
+          { error: `Invalid timezone "${timezone}". Please select a valid GMT offset (e.g. "GMT+05:30").` },
           { status: 400 }
         );
       }
@@ -306,7 +307,7 @@ export async function POST(request: Request) {
         updates.pending_wake_time_local = null;
       }
       if (timezone) {
-        updates.timezone = timezone.trim();
+        updates.timezone = formatGmtOffset(timezone.trim());
         updates.pending_timezone = null;
       }
       if (weekend_bedtime_local !== undefined) {
@@ -407,9 +408,9 @@ export async function POST(request: Request) {
         );
       }
 
-      if (!DateTime.now().setZone(timezone.trim()).isValid) {
+      if (!isValidTimezone(timezone.trim())) {
         return NextResponse.json(
-          { error: `Invalid IANA timezone "${timezone}".` },
+          { error: `Invalid timezone "${timezone}". Please select a valid GMT offset (e.g. "GMT+05:30").` },
           { status: 400 }
         );
       }
@@ -429,7 +430,7 @@ export async function POST(request: Request) {
           journal_url: journal_url.trim(),
           bedtime_local: bedtime_local.trim(),
           wake_time_local: wake_time_local.trim(),
-          timezone: timezone.trim(),
+          timezone: formatGmtOffset(timezone.trim()),
           weekend_bedtime_local: weekend_bedtime_local?.trim() || null,
           weekend_wake_time_local: weekend_wake_time_local?.trim() || null,
           role: role === 'moderator' ? 'moderator' : 'member',
