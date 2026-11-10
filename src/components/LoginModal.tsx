@@ -21,6 +21,12 @@ export interface LoginModalProps {
   onRefreshRoster?: () => Promise<void>;
 }
 
+/**
+ * Backward-compatibility modal shim that redirects modal triggers to the standalone `/join` route.
+ *
+ * @param props - Login modal properties
+ * @returns Null (redirects imperatively)
+ */
 export function LoginModal({
   isOpen,
   onClose,

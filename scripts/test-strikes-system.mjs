@@ -14,9 +14,16 @@ import {
   resolveMemberStrikeCounts,
   updateMemberStrikeCounts,
   getNightlyStrikeLog,
+  getNightlyStrikeLogsBatch,
   getRecentEligibleStrikeLog,
+  getRecentEligibleStrikeLogsBatch,
   saveNightlyStrikeLog,
 } from '../src/lib/strikes.ts';
+import {
+  checkVoteRateLimitPersistent,
+  recordVoteAttemptPersistent,
+  checkPinRateLimitSync,
+} from '../src/lib/rateLimit.ts';
 
 console.log('🧪 Starting Monthly Strikes & Metastrikes Accountability System Verification...\n');
 
@@ -370,6 +377,60 @@ async function run() {
   assert(clearedLog === null, 'Log is cleanly removed from store');
   const postClearCounts = await resolveMemberStrikeCounts(dummyMember);
   assert(postClearCounts.strikes_used === 2, 'Strikes decremented back to 2 upon clearing strike');
+
+  console.log('\n--- 7. Batched Queries, Voter Rate Limiting & Precedence ---');
+  // 7A: Batched Nightly Strike Logs Retrieval
+  const batchRequests = [
+    { targetMemberId: dummyMember.id, sleepCycleDate: '2026-11-10' },
+    { targetMemberId: 'non-existent-member', sleepCycleDate: '2026-11-10' },
+  ];
+  const batchLogs = await getNightlyStrikeLogsBatch(batchRequests);
+  assert(batchLogs instanceof Map, 'getNightlyStrikeLogsBatch returns a Map');
+  assert(batchLogs.has(`${dummyMember.id}_2026-11-10`), 'Contains requested member strike log');
+  assert(!batchLogs.has('non-existent-member_2026-11-10'), 'Does not contain missing member');
+
+  // 7B: Batched Recent Eligible Strikes Retrieval (<24h)
+  const now = DateTime.utc();
+  await saveNightlyStrikeLog({
+    id: 'batch-recent-1',
+    target_member_id: 'batch-sleeper-1',
+    sleep_cycle_date: '2026-11-11',
+    record_type: 'strike',
+    voter_ids: ['voter-x', 'voter-y'],
+    created_at: now.minus({ hours: 2 }).toISO(),
+    updated_at: now.minus({ hours: 2 }).toISO(),
+  });
+  await saveNightlyStrikeLog({
+    id: 'batch-recent-2',
+    target_member_id: 'batch-sleeper-2',
+    sleep_cycle_date: '2026-11-09',
+    record_type: 'strike',
+    voter_ids: ['voter-x', 'voter-y'],
+    created_at: now.minus({ hours: 26 }).toISO(), // Expired (>24h)
+    updated_at: now.minus({ hours: 26 }).toISO(),
+  });
+
+  const recentBatch = await getRecentEligibleStrikeLogsBatch(['batch-sleeper-1', 'batch-sleeper-2'], now);
+  assert(recentBatch.has('batch-sleeper-1'), 'Batched recent strikes includes strike within 24h');
+  assert(recentBatch.get('batch-sleeper-1')?.id === 'batch-recent-1', 'Resolves correct strike log ID');
+  assert(!recentBatch.has('batch-sleeper-2'), 'Batched recent strikes excludes strike older than 24h');
+
+  // 7C: Voter-scoped persistent rate limiting isolation
+  const voterKey = 'voter-isolated-test-1';
+  const initialVoterCheck = await checkVoteRateLimitPersistent(voterKey, 3, 60000);
+  assert(initialVoterCheck.allowed === true, 'Initial voter rate limit check is allowed');
+
+  await recordVoteAttemptPersistent(voterKey, 60000);
+  await recordVoteAttemptPersistent(voterKey, 60000);
+  await recordVoteAttemptPersistent(voterKey, 60000);
+
+  const blockedVoterCheck = await checkVoteRateLimitPersistent(voterKey, 3, 60000);
+  assert(blockedVoterCheck.allowed === false, 'Voter blocked after exceeding max attempts');
+  assert(blockedVoterCheck.retryAfterSeconds > 0, 'Returns retryAfterSeconds');
+
+  // Confirm PIN rate limiting is NOT affected by voter counter
+  const pinCheck = checkPinRateLimitSync('127.0.0.1', voterKey);
+  assert(pinCheck.allowed === true, 'PIN rate limit remains allowed and unaffected by voter rate limit');
 
   console.log('\n======================================================');
   if (failed) {

@@ -20,6 +20,13 @@ interface PwaBannerProps {
 const STORAGE_KEY_PWA_DISMISSED = 'zcatchers_pwa_banner_dismissed_at';
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * Progressive Web App installation prompt banner for mobile devices.
+ * Handles Android/Chromium beforeinstallprompt events, iOS Add to Home Screen instructions, and 7-day dismissal cooldowns.
+ *
+ * @param props - Banner properties with onEnablePush and isPushGranted
+ * @returns React JSX banner element or null if dismissed or running in standalone mode
+ */
 export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
   const [isDismissed, setIsDismissed] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);

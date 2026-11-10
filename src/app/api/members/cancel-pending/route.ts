@@ -4,6 +4,13 @@ import { verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
 import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
+/**
+ * POST: Cancel a member's pending schedule changes during the 48-hour cooldown window.
+ * Requires member PIN authentication or moderator passcode override.
+ *
+ * @param request - Incoming HTTP request with member_id and PIN or mod_passcode
+ * @returns JSON response confirming cancellation of pending schedule changes
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();

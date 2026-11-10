@@ -9,6 +9,13 @@ import {
   sendMorningDigestDiscordWebhook,
 } from '@/lib/discordWebhook';
 
+/**
+ * Helper to verify moderator authorization via x-mod-passcode header, body passcode, or moderator session cookie.
+ *
+ * @param request - Incoming HTTP request
+ * @param bodyPasscode - Optional passcode passed in JSON request body
+ * @returns True if authorized as moderator, false otherwise
+ */
 async function isAuthorizedMod(request: Request, bodyPasscode?: string): Promise<boolean> {
   // 1. Check direct passcode header or body
   const headerPasscode = request.headers.get('x-mod-passcode');
@@ -40,6 +47,13 @@ async function isAuthorizedMod(request: Request, bodyPasscode?: string): Promise
   return false;
 }
 
+/**
+ * GET: Retrieve Discord community webhook configuration status with masked token.
+ * Requires moderator authorization.
+ *
+ * @param request - Incoming HTTP request with moderator credentials
+ * @returns JSON response with configuration status and masked webhook URL
+ */
 export async function GET(request: Request) {
   try {
     const isAuthed = await isAuthorizedMod(request);
@@ -68,6 +82,13 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * POST: Send a test Discord webhook message or trigger morning digest dispatch.
+ * Requires moderator authorization.
+ *
+ * @param request - Incoming HTTP request with moderator passcode and action
+ * @returns JSON response confirming webhook action result
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));

@@ -153,15 +153,33 @@ interface InMemoryWeekendHours {
 }
 const memoryWeekendHours = new Map<string, InMemoryWeekendHours>();
 
+/**
+ * Retrieves in-memory weekend schedule hours for a member (used in testing or pre-migration fallbacks).
+ *
+ * @param memberId - Target member UUID
+ * @returns Cached weekend schedule hours or undefined
+ */
 export function getInMemoryWeekendHours(memberId: string): InMemoryWeekendHours | undefined {
   return memoryWeekendHours.get(memberId);
 }
 
+/**
+ * Stores in-memory weekend schedule hours for a member.
+ *
+ * @param memberId - Target member UUID
+ * @param hours - Weekend bedtime and wake time definitions
+ */
 export function setInMemoryWeekendHours(memberId: string, hours: InMemoryWeekendHours): void {
   const current = memoryWeekendHours.get(memberId) || {};
   memoryWeekendHours.set(memberId, { ...current, ...hours });
 }
 
+/**
+ * Hydrates a Member object with in-memory weekend schedule hours if absent from database columns.
+ *
+ * @param member - Target member entity
+ * @returns Hydrated member entity
+ */
 export function hydrateMemberWeekendHours(member: Member): Member {
   const fallback = memoryWeekendHours.get(member.id);
   if (!fallback) return member;
@@ -183,6 +201,11 @@ export function hydrateMemberWeekendHours(member: Member): Member {
  */
 let knownMemberColumns: Set<string> | null = null;
 
+/**
+ * Queries Supabase to detect existing column names on the members table to prevent insert/update errors.
+ *
+ * @returns Set of detected column names
+ */
 export async function getExistingMemberColumns(): Promise<Set<string>> {
   if (knownMemberColumns && knownMemberColumns.size > 0) {
     return knownMemberColumns;

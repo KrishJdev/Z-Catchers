@@ -9,6 +9,12 @@ import { formatGmtOffset } from '@/lib/timezone';
 export const DISCORD_WEBHOOK_REGEX =
   /^https:\/\/(ptb\.|canary\.)?discord\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+$/;
 
+/**
+ * Validates whether a given URL matches the official Discord webhook regex pattern.
+ *
+ * @param url - Webhook URL to validate
+ * @returns True if valid Discord webhook URL, false otherwise
+ */
 export function validateDiscordWebhookUrl(url: string | null | undefined): boolean {
   if (!url || typeof url !== 'string') return false;
   return DISCORD_WEBHOOK_REGEX.test(url.trim());

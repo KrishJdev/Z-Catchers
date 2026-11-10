@@ -128,6 +128,11 @@ async function run() {
       subscribeRouteContent.includes('existingSub?.notify_community ?? true'),
       '/api/push/subscribe preserves existing notification preferences when omitted'
     );
+    assert(
+      subscribeRouteContent.includes('oldSubPrefs') &&
+      subscribeRouteContent.includes('existingSub = oldSubPrefs'),
+      '/api/push/subscribe preserves preferences from rotated old_endpoint'
+    );
 
     // -------------------------------------------------------------
     // 4. PwaBanner Component Verification

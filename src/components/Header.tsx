@@ -20,6 +20,13 @@ interface HeaderProps {
   onLogout?: () => void;
 }
 
+/**
+ * Primary desktop and tablet navigation header.
+ * Displays brand logo, live local clock, viewer timezone, push settings, schedule modal trigger, and session controls.
+ *
+ * @param props - Header configuration and callback properties
+ * @returns React JSX header element
+ */
 export function Header({
   viewerTimezone,
   isPushEnabled,

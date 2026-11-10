@@ -37,6 +37,13 @@ interface MyScheduleModalProps {
   onLogout?: () => void;
 }
 
+/**
+ * Modal dialog enabling members to update bedtime/wake schedules, manage pending 48-hour changes,
+ * view active cooldowns, or log out of their session.
+ *
+ * @param props - Modal properties including members roster, timezone, and callbacks
+ * @returns React JSX modal dialog element
+ */
 export function MyScheduleModal({
   isOpen,
   onClose,

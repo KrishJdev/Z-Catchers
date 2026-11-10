@@ -40,26 +40,50 @@ export async function resolveMemberStrikeCounts(
   strike_cycle_month: string;
   reset: boolean;
 }> {
-  // Check in-memory store first (reflects latest updates in tests and serverless cache)
+  // When Supabase is configured and the member row has count columns, give the fetched member row precedence.
+  // When Supabase is unconfigured (unit/mock tests) or columns are missing, fall back to in-memory store.
   const fallback = memoryStore.memberCounts.get(member.id);
-  let strikes_used =
-    typeof fallback?.strikes_used === 'number'
-      ? fallback.strikes_used
-      : typeof member.strikes_count === 'number'
-      ? member.strikes_count
-      : typeof member.strikes_used === 'number'
-      ? member.strikes_used
-      : 0;
-  let metastrikes_used =
-    typeof fallback?.metastrikes_used === 'number'
-      ? fallback.metastrikes_used
-      : typeof member.metastrikes_count === 'number'
-      ? member.metastrikes_count
-      : typeof member.metastrikes_used === 'number'
-      ? member.metastrikes_used
-      : 0;
-  let strike_cycle_month =
-    fallback?.strike_cycle_month || member.strike_cycle_month || '2026-01';
+  const hasMemberCounts =
+    typeof member.strikes_count === 'number' || typeof member.strikes_used === 'number';
+
+  let strikes_used: number;
+  let metastrikes_used: number;
+  let strike_cycle_month: string;
+
+  if (isSupabaseConfigured && hasMemberCounts) {
+    strikes_used =
+      typeof member.strikes_count === 'number'
+        ? member.strikes_count
+        : typeof member.strikes_used === 'number'
+        ? member.strikes_used
+        : 0;
+    metastrikes_used =
+      typeof member.metastrikes_count === 'number'
+        ? member.metastrikes_count
+        : typeof member.metastrikes_used === 'number'
+        ? member.metastrikes_used
+        : 0;
+    strike_cycle_month = member.strike_cycle_month || fallback?.strike_cycle_month || '2026-01';
+  } else {
+    strikes_used =
+      typeof fallback?.strikes_used === 'number'
+        ? fallback.strikes_used
+        : typeof member.strikes_count === 'number'
+        ? member.strikes_count
+        : typeof member.strikes_used === 'number'
+        ? member.strikes_used
+        : 0;
+    metastrikes_used =
+      typeof fallback?.metastrikes_used === 'number'
+        ? fallback.metastrikes_used
+        : typeof member.metastrikes_count === 'number'
+        ? member.metastrikes_count
+        : typeof member.metastrikes_used === 'number'
+        ? member.metastrikes_used
+        : 0;
+    strike_cycle_month =
+      fallback?.strike_cycle_month || member.strike_cycle_month || '2026-01';
+  }
 
   const dummyMember: Member = {
     ...member,
@@ -184,6 +208,7 @@ export async function getNightlyStrikeLogsBatch(
   if (!requests.length) return result;
 
   const targetMemberIds = Array.from(new Set(requests.map((r) => r.targetMemberId)));
+  const cycleDates = Array.from(new Set(requests.map((r) => r.sleepCycleDate)));
   const requestedKeySet = new Set(requests.map((r) => getStrikeLogKey(r.targetMemberId, r.sleepCycleDate)));
 
   if (isSupabaseConfigured) {
@@ -191,7 +216,8 @@ export async function getNightlyStrikeLogsBatch(
       const { data, error } = await supabaseAdmin
         .from('nightly_strike_logs')
         .select('*')
-        .in('target_member_id', targetMemberIds);
+        .in('target_member_id', targetMemberIds)
+        .in('sleep_cycle_date', cycleDates);
 
       if (!error && Array.isArray(data)) {
         for (const row of data) {
@@ -289,6 +315,84 @@ export async function getRecentEligibleStrikeLog(
   }
 
   return bestCandidate;
+}
+
+/**
+ * Resolves recent strike logs for multiple members eligible for retroactive conversion within 24 hours.
+ * Uses a single batched query filtered by target_member_id, record_type='strike', and created_at within 24 hours.
+ * Avoids any monthly-reset writes on this retrieval path and groups results in memory per member.
+ *
+ * @param targetMemberIds - List of member IDs to retrieve recent eligible strikes for
+ * @param nowUtc - Current UTC DateTime (defaults to DateTime.utc())
+ * @returns Map of targetMemberId to the most recent eligible NightlyStrikeLog
+ */
+export async function getRecentEligibleStrikeLogsBatch(
+  targetMemberIds: string[],
+  nowUtc = DateTime.utc()
+): Promise<Map<string, NightlyStrikeLog>> {
+  const result = new Map<string, NightlyStrikeLog>();
+  if (!targetMemberIds.length) return result;
+
+  const uniqueIds = Array.from(new Set(targetMemberIds));
+  const sinceIso = nowUtc.minus({ hours: 24 }).toISO();
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('nightly_strike_logs')
+        .select('*')
+        .in('target_member_id', uniqueIds)
+        .eq('record_type', 'strike')
+        .gte('created_at', sinceIso)
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          if (!result.has(row.target_member_id)) {
+            const createdAt = DateTime.fromISO(row.created_at, { zone: 'utc' });
+            if (nowUtc.diff(createdAt, 'hours').hours <= 24) {
+              const parsedLog: NightlyStrikeLog = {
+                id: row.id,
+                target_member_id: row.target_member_id,
+                sleep_cycle_date: row.sleep_cycle_date,
+                record_type: row.record_type as StrikeRecordType,
+                voter_ids: Array.isArray(row.voter_ids) ? row.voter_ids : [],
+                reason: row.reason || null,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+              };
+              result.set(row.target_member_id, parsedLog);
+            }
+          }
+        }
+      }
+    } catch {
+      // Fall through to memory store
+    }
+  }
+
+  // Populate from in-memory store for any members missing or when unconfigured
+  for (const memberId of uniqueIds) {
+    if (!result.has(memberId)) {
+      let bestCandidate: NightlyStrikeLog | null = null;
+      let bestTime = 0;
+      for (const log of memoryStore.logs.values()) {
+        if (log.target_member_id === memberId && log.record_type === 'strike') {
+          const createdAt = DateTime.fromISO(log.created_at, { zone: 'utc' });
+          const ageHours = nowUtc.diff(createdAt, 'hours').hours;
+          if (ageHours <= 24 && createdAt.toMillis() > bestTime) {
+            bestTime = createdAt.toMillis();
+            bestCandidate = log;
+          }
+        }
+      }
+      if (bestCandidate) {
+        result.set(memberId, bestCandidate);
+      }
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -455,6 +559,7 @@ export async function recordStrikeVote(
   const counts = await resolveMemberStrikeCounts(targetMember, nowUtc);
 
   // Atomic cross-instance vote recording with optimistic concurrency
+  let lastDbError: { message?: string; code?: string } | null = null;
   if (isSupabaseConfigured) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const existingLog = await getNightlyStrikeLog(targetMember.id, cycleDate);
@@ -508,7 +613,7 @@ export async function recordStrikeVote(
               .maybeSingle();
 
             if (updateErr) {
-              // DB table or schema limitation -> break to in-memory fallback
+              lastDbError = updateErr;
               break;
             }
 
@@ -546,7 +651,8 @@ export async function recordStrikeVote(
               votesCount: updatedVoterIds.length,
               strikesUsed: newStrikesUsed,
             };
-          } catch {
+          } catch (err: unknown) {
+            lastDbError = { message: err instanceof Error ? err.message : 'Database update exception' };
             break;
           }
         }
@@ -575,6 +681,7 @@ export async function recordStrikeVote(
               // Concurrent insert won race, retry loop to add vote to newly created row
               continue;
             }
+            lastDbError = insertErr;
             break;
           }
 
@@ -599,10 +706,22 @@ export async function recordStrikeVote(
               strikesUsed: counts.strikes_used,
             };
           }
-        } catch {
+        } catch (err: unknown) {
+          lastDbError = { message: err instanceof Error ? err.message : 'Database insert exception' };
           break;
         }
       }
+    }
+
+    // When Supabase is configured, return failure instead of silent memory-only fallback,
+    // unless the table does not exist (unmigrated database code 42P01).
+    if (lastDbError?.code !== '42P01') {
+      return {
+        success: false,
+        error:
+          lastDbError?.message ||
+          'Failed to record strike vote due to database error or exhausted retries. Please try again.',
+      };
     }
   }
 

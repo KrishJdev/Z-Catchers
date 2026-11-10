@@ -131,8 +131,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // If an old endpoint was rotated, prune the old record (scoped to member.id)
+    // If an old endpoint was rotated, capture its preferences before pruning (scoped to member.id)
+    let oldSubPrefs: { notify_personal?: boolean; notify_community?: boolean } | null = null;
     if (old_endpoint && old_endpoint !== subscription.endpoint) {
+      const { data: oldData } = await supabaseAdmin
+        .from('push_subscriptions')
+        .select('notify_personal, notify_community')
+        .eq('endpoint', old_endpoint)
+        .eq('member_id', member.id)
+        .maybeSingle();
+
+      if (oldData) {
+        oldSubPrefs = oldData;
+      }
+
       await supabaseAdmin
         .from('push_subscriptions')
         .delete()
@@ -140,7 +152,7 @@ export async function POST(request: Request) {
         .eq('member_id', member.id);
     }
 
-    // Preserve existing preferences when omitted in request (e.g. background health sync)
+    // Preserve existing preferences when omitted in request (e.g. background health sync or endpoint rotation)
     let existingSub: { notify_personal?: boolean; notify_community?: boolean } | null = null;
     if (
       notify_personal === undefined ||
@@ -155,6 +167,8 @@ export async function POST(request: Request) {
         .maybeSingle();
       if (data) {
         existingSub = data;
+      } else if (oldSubPrefs) {
+        existingSub = oldSubPrefs;
       }
     }
 

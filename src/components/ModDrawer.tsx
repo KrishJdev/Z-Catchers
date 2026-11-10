@@ -44,6 +44,14 @@ interface ModDrawerProps {
   onRosterChanged: () => Promise<void>;
 }
 
+/**
+ * Moderator administration drawer.
+ * Provides privileged schedule overrides, manual strike & metastrike adjustments,
+ * strike log clearing, and Discord community webhook management.
+ *
+ * @param props - Component props with isOpen, onClose, viewerTimezone, and onRosterChanged
+ * @returns React JSX slide-over drawer element
+ */
 export function ModDrawer({
   isOpen,
   onClose,

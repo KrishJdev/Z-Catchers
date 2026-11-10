@@ -15,6 +15,13 @@ interface StatusBucketProps {
   children: React.ReactNode;
 }
 
+/**
+ * Collapsible section bucket component grouping members by sleep status (Asleep, Winding Down, Nag Now, etc.).
+ * Includes count pills, Warm Dark theme accents, and Sleepy Fox empty state illustrations.
+ *
+ * @param props - Status bucket configuration properties and children cards
+ * @returns React JSX collapsible bucket element
+ */
 export function StatusBucket({
   title,
   count,

@@ -39,6 +39,13 @@ interface PushModalProps {
   onLogout?: () => void;
 }
 
+/**
+ * Push notifications preference configuration modal.
+ * Configures personal bedtime reminders, community alerts, and Sleep Shield protections.
+ *
+ * @param props - Push modal properties including member profile and notification state
+ * @returns React JSX modal dialog element
+ */
 export function PushModal({
   isOpen,
   onClose,

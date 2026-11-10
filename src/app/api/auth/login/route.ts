@@ -8,6 +8,13 @@ import {
   resetPinFailurePersistent,
 } from '@/lib/rateLimit';
 
+/**
+ * POST: Authenticate member session via PIN or moderator passcode.
+ * Enforces persistent serverless sliding-window rate limiting per IP and target profile.
+ *
+ * @param request - Incoming HTTP request containing member_id/username and pin
+ * @returns JSON response with session cookie and authenticated member object
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();

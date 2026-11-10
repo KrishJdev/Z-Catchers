@@ -3,7 +3,7 @@ import { supabaseAdmin, Member } from '@/lib/db';
 import { resolveMemberStrikeCounts, getNightlyStrikeLog, recordStrikeVote } from '@/lib/strikes';
 import { getSleepCycleDate } from '@/lib/sleepEngine';
 import { getRequestSessionMemberId } from '@/lib/auth';
-import { getClientIp, checkPinRateLimitPersistent } from '@/lib/rateLimit';
+import { checkVoteRateLimitPersistent, recordVoteAttemptPersistent } from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
 /**
@@ -66,11 +66,13 @@ export async function GET(request: Request) {
 }
 
 /**
- * POST /api/members/strikes or /api/members/strike
- *
- * Community 2-Vote Strike Verification:
+ * POST: Community 2-Vote Strike Verification.
  * Allows two distinct community members to verify and confirm a strike against
  * a member only after the 5-minute bedtime grace period has passed without an in-bed check-in.
+ * Enforces authenticated voter verification and voter-scoped rate limiting.
+ *
+ * @param request - Incoming HTTP request with target_member_id in JSON body
+ * @returns JSON response containing vote status, strike count, and updated strike log
  */
 export async function POST(request: Request) {
   try {
@@ -122,12 +124,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const clientIp = getClientIp(request);
-    const rateCheck = await checkPinRateLimitPersistent(clientIp, targetMemberId);
+    // Enforce voter-scoped rate limiting (isolated from PIN failures and shared IPs)
+    const rateCheck = await checkVoteRateLimitPersistent(sessionVoterId);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
-          error: `Too many requests. Please wait ${rateCheck.retryAfterSeconds} seconds.`,
+          error: `Too many vote attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before voting again.`,
         },
         {
           status: 429,
@@ -135,6 +137,7 @@ export async function POST(request: Request) {
         }
       );
     }
+    await recordVoteAttemptPersistent(sessionVoterId);
 
     // Fetch target member
     const { data: targetMember, error: targetErr } = await supabaseAdmin

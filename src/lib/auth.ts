@@ -1,6 +1,12 @@
 import crypto from 'crypto';
 import type { Member } from '@/lib/db';
 
+/**
+ * Retrieves the cryptographic salt used for PIN hashing from the PIN_SALT environment variable.
+ * Throws in production if missing; falls back to dev salt in development mode.
+ *
+ * @returns Secret salt string
+ */
 export function getPinSalt(): string {
   const isProd = process.env.NODE_ENV === 'production';
   const salt = process.env.PIN_SALT;
@@ -13,6 +19,12 @@ export function getPinSalt(): string {
   return salt;
 }
 
+/**
+ * Retrieves the secret used for signing session tokens from SESSION_SECRET environment variable.
+ * Throws in production if missing; falls back to dev secret in development mode.
+ *
+ * @returns Secret session string
+ */
 export function getSessionSecret(): string {
   const isProd = process.env.NODE_ENV === 'production';
   const secret = process.env.SESSION_SECRET;

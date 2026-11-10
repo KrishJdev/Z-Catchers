@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 
+/**
+ * Helper to construct a logout response that clears the zcatchers_session HTTP-only cookie.
+ *
+ * @returns NextResponse with expired session cookie
+ */
 function createLogoutResponse() {
   const response = NextResponse.json({
     success: true,
@@ -21,10 +26,20 @@ function createLogoutResponse() {
   return response;
 }
 
+/**
+ * POST: Terminate member session by clearing authentication cookies.
+ *
+ * @returns NextResponse confirming logout
+ */
 export async function POST() {
   return createLogoutResponse();
 }
 
+/**
+ * GET: Terminate member session by clearing authentication cookies (browser fallback).
+ *
+ * @returns NextResponse confirming logout
+ */
 export async function GET() {
   return createLogoutResponse();
 }

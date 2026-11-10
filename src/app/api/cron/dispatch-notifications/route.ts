@@ -2,6 +2,12 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { executeNotificationDispatcher } from '@/lib/cronDispatcher';
 
+/**
+ * Validates timing-safe authorization against CRON_SECRET from Bearer token or x-cron-secret header.
+ *
+ * @param request - Incoming HTTP request
+ * @returns True if authorized, false otherwise
+ */
 function isAuthorized(request: Request): boolean {
   const isProd = process.env.NODE_ENV === 'production';
   const cronSecret = process.env.CRON_SECRET?.trim();
@@ -39,6 +45,12 @@ function isAuthorized(request: Request): boolean {
   }
 }
 
+/**
+ * GET: Trigger scheduled notification dispatch cycle (invoked by Vercel Cron or monitoring tasks).
+ *
+ * @param request - Incoming HTTP request with authorization headers
+ * @returns JSON response with dispatch results
+ */
 export async function GET(request: Request) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized cron request.' }, { status: 401 });
@@ -60,6 +72,12 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * POST: Trigger scheduled notification dispatch cycle via HTTP POST body.
+ *
+ * @param request - Incoming HTTP request with optional dry_run or member_id parameters
+ * @returns JSON response with dispatch results
+ */
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized cron request.' }, { status: 401 });

@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T01:58:00+05:30  
+> **Last Updated:** 2026-11-11T02:40:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `da04397` (in `krish`)  
+> **Latest Commit:** `pending-commit` (in `krish`)  
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
@@ -68,6 +68,28 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 38: PR #16 Code Review Remediations, Batched Strike Queries & Docstring Coverage
+* **Isolated Voter Rate Limiting (`src/app/api/members/strikes/route.ts`, `src/lib/rateLimit.ts`):**
+  * Replaced the shared IP and target PIN-failure rate-limit check in the strike-voting flow with persistent voter counter `checkVoteRateLimitPersistent` and `recordVoteAttemptPersistent` keyed directly to the authenticated voter (`vote:voter:${voterId}`).
+  * Removed `getClientIp` from `/api/members/strikes/route.ts` as it is no longer used, ensuring strike vote tracking neither reads nor modifies shared IP or PIN failure counters.
+* **Push Subscription Endpoint Rotation Preference Fallback (`src/app/api/push/subscribe/route.ts`):**
+  * Updated endpoint-rotation flow (`old_endpoint && old_endpoint !== subscription.endpoint`) to query and store the old subscription row's `notify_personal` and `notify_community` preferences before deleting it.
+  * When no existing preferences are found for the new rotated endpoint, falls back to the saved old preferences so omitted flags during background health sync or device token refresh strictly preserve the member's customized notification settings.
+* **Database Consistency & Concurrency Failure Guard (`src/lib/strikes.ts`):**
+  * In `recordStrikeVote`, returned failure when Supabase retry loop exhausts or encounters database errors, preventing unpersisted votes from being incorrectly reported as successful.
+  * Preserved in-memory fallback exclusively for unconfigured environments (unit tests) and unmigrated table schemas (Postgres error code `42P01`).
+* **Row Count Precedence in `resolveMemberStrikeCounts` (`src/lib/strikes.ts`):**
+  * Updated `resolveMemberStrikeCounts` so fetched database member rows take precedence over stale serverless in-memory caches (`memoryStore.memberCounts`) when Supabase is configured and the row contains count columns (`strikes_count` / `strikes_used`).
+  * Preserved memoryStore fallback for unconfigured environments and offline testing suites.
+* **Batched Roster Recent Strikes & Query Date Filtering (`src/lib/strikes.ts`, `src/app/api/members/route.ts`):**
+  * Updated `getNightlyStrikeLogsBatch` to collect distinct requested `sleepCycleDate` values and filter Supabase queries by both `target_member_id` and `sleep_cycle_date`, preserving `requestedKeySet` filtering.
+  * Implemented `getRecentEligibleStrikeLogsBatch` to query recent strikes within 24 hours in a single batched query across all roster members, grouping in memory per member with zero N+1 database roundtrips and zero monthly-reset write side-effects.
+* **100% Docstring Coverage Across Codebase (`src/app/api/...`, `src/components/...`, `src/lib/...`):**
+  * Authored comprehensive JSDoc docstrings for all exported and helper functions missing documentation (`/api/auth/login`, `/api/auth/logout`, `/api/auth/me`, `/api/cron/dispatch-notifications`, `/api/members/cancel-pending`, `/api/members/in-bed`, `/api/members/nag-assist`, `/api/mod/webhook`, `/api/push/test`, `BottomNav`, `FoxMascot`, `Header`, `LoginModal`, `ModDrawer`, `MyScheduleModal`, `PushModal`, `PwaBanner`, `StatusBucket`, `auth.ts`, `db.ts`, `discordWebhook.ts`, `rateLimit.ts`), completely satisfying the pre-merge check threshold.
+* **Test Verification & Regression Suites (`scripts/test-strikes-system.mjs`, `scripts/test-phase1-pwa-push.mjs`):**
+  * Added Section 7 tests in `test-strikes-system.mjs` verifying `getNightlyStrikeLogsBatch` cycle date filtering, `getRecentEligibleStrikeLogsBatch` 24h window filtering, and voter rate limiting isolation from PIN rate limits.
+  * Added assertion in `test-phase1-pwa-push.mjs` verifying preference preservation across endpoint rotation. All test suites passed cleanly.
 
 ### Phase 37: Automated Code Review Remediations, Security Hardening & Concurrency Protection
 * **Batched Roster Database Lookups & Required Timezone (`src/app/api/members/route.ts`):**

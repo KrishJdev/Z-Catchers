@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Lazy initialization of Supabase client for rate limit persistence
 let cachedSupabase: any = null;
+
+/**
+ * Lazy initialization of Supabase client for rate limit persistence.
+ * Returns null if Supabase environment variables are missing.
+ *
+ * @returns SupabaseClient instance or null
+ */
 function getSupabase() {
   if (cachedSupabase) return cachedSupabase;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -346,7 +352,128 @@ export async function clearAllPinRateLimitsPersistent(): Promise<void> {
   }
 }
 
+/**
+ * Synchronously clears in-memory rate limit caches and asynchronously purges
+ * the persistent rate limit entries table. Primarily used in automated testing suites.
+ */
 export function clearAllPinRateLimits(): void {
   pinRateLimits.clear();
   clearAllPinRateLimitsPersistent().catch(() => {});
+}
+
+/**
+ * Sliding window rate limit check for strike voting actions keyed to the authenticated voter.
+ * Ensures strike voting attempts are isolated from shared IP and PIN failure counters.
+ *
+ * @param voterId - ID of authenticated voter
+ * @param maxAttempts - Maximum voting attempts permitted within the window (default 10)
+ * @param windowMs - Sliding rate limit window in milliseconds (default 1 minute)
+ * @returns Rate limit evaluation result with allowed boolean and retryAfterSeconds
+ */
+export async function checkVoteRateLimitPersistent(
+  voterId: string,
+  maxAttempts = 10,
+  windowMs = 60 * 1000
+): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+  const cleanVoterId = voterId ? voterId.trim() : '';
+  if (!cleanVoterId) return { allowed: true, retryAfterSeconds: 0 };
+  const key = `vote:voter:${cleanVoterId}`;
+
+  const now = Date.now();
+  const entry = pinRateLimits.get(key);
+  if (entry && now < entry.resetAt) {
+    if (entry.attempts >= maxAttempts) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+      return { allowed: false, retryAfterSeconds };
+    }
+  }
+
+  try {
+    const client = getSupabase();
+    if (!client) return { allowed: true, retryAfterSeconds: 0 };
+
+    const nowIso = new Date().toISOString();
+    const { data, error } = await client
+      .from('rate_limit_entries')
+      .select('attempts, reset_at')
+      .eq('key', key)
+      .gt('reset_at', nowIso)
+      .maybeSingle();
+
+    if (!error && data) {
+      if (data.attempts >= maxAttempts) {
+        const resetMs = new Date(data.reset_at).getTime();
+        const retryAfterSeconds = Math.max(1, Math.ceil((resetMs - now) / 1000));
+        pinRateLimits.set(key, { attempts: data.attempts, resetAt: resetMs });
+        return { allowed: false, retryAfterSeconds };
+      }
+    }
+  } catch {
+    // Graceful fallback to in-memory state
+  }
+
+  return { allowed: true, retryAfterSeconds: 0 };
+}
+
+/**
+ * Records a strike vote attempt against the authenticated voter's persistent rate limit counter.
+ * Does not read or modify shared IP or target PIN-failure counters.
+ *
+ * @param voterId - ID of authenticated voter
+ * @param windowMs - Sliding rate limit window in milliseconds (default 1 minute)
+ */
+export async function recordVoteAttemptPersistent(
+  voterId: string,
+  windowMs = 60 * 1000
+): Promise<void> {
+  const cleanVoterId = voterId ? voterId.trim() : '';
+  if (!cleanVoterId) return;
+  const key = `vote:voter:${cleanVoterId}`;
+
+  const nowMs = Date.now();
+  const resetAtMs = nowMs + windowMs;
+  const resetAtIso = new Date(resetAtMs).toISOString();
+
+  // Local memory cache
+  const entry = pinRateLimits.get(key);
+  if (!entry || nowMs > entry.resetAt) {
+    pinRateLimits.set(key, { attempts: 1, resetAt: resetAtMs });
+  } else {
+    entry.attempts += 1;
+  }
+
+  // Supabase persistence
+  try {
+    const client = getSupabase();
+    if (!client) return;
+
+    const { data: existing } = await client
+      .from('rate_limit_entries')
+      .select('attempts, reset_at')
+      .eq('key', key)
+      .maybeSingle();
+
+    if (existing && new Date(existing.reset_at).getTime() > nowMs) {
+      await client
+        .from('rate_limit_entries')
+        .update({
+          attempts: existing.attempts + 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('key', key);
+    } else {
+      await client.from('rate_limit_entries').upsert(
+        {
+          key,
+          target_member_id: cleanVoterId,
+          attempts: 1,
+          reset_at: resetAtIso,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'key' }
+      );
+    }
+  } catch {
+    // Non-blocking in case table is temporarily unavailable
+  }
 }

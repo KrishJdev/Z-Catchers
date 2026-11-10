@@ -15,7 +15,7 @@ import {
   resolveMemberStrikeCounts,
   getNightlyStrikeLogsBatch,
   getStrikeLogKey,
-  getRecentEligibleStrikeLog,
+  getRecentEligibleStrikeLogsBatch,
 } from '@/lib/strikes';
 import { DateTime } from 'luxon';
 
@@ -121,8 +121,8 @@ export async function GET(request: Request) {
       });
     }
 
-    // Batched resolution: resolve member strike counts in parallel and batch query nightly strike logs
-    const [strikeInfos, strikeLogsMap, recentStrikes] = await Promise.all([
+    // Batched resolution: resolve member strike counts in parallel and batch query nightly & recent strike logs
+    const [strikeInfos, strikeLogsMap, recentStrikesMap] = await Promise.all([
       Promise.all(memberItems.map((item) => resolveMemberStrikeCounts(item.hydratedMember, nowUtc))),
       getNightlyStrikeLogsBatch(
         memberItems.map((item) => ({
@@ -130,7 +130,10 @@ export async function GET(request: Request) {
           sleepCycleDate: item.localDateStr,
         }))
       ),
-      Promise.all(memberItems.map((item) => getRecentEligibleStrikeLog(item.hydratedMember.id, nowUtc))),
+      getRecentEligibleStrikeLogsBatch(
+        memberItems.map((item) => item.hydratedMember.id),
+        nowUtc
+      ),
     ]);
 
     const processedMembers: Member[] = memberItems.map((item, index) => {
@@ -140,7 +143,7 @@ export async function GET(request: Request) {
       const is_metastrike_active = tonightLog?.record_type === 'metastrike';
       const metastrike_reason = tonightLog?.reason || null;
       const has_voted_strike = Boolean(sessionMemberId && tonightLog?.voter_ids?.includes(sessionMemberId));
-      const convertibleLog = recentStrikes[index] || null;
+      const convertibleLog = recentStrikesMap.get(item.hydratedMember.id) || null;
 
       return {
         ...sanitizeMember(item.hydratedMember),

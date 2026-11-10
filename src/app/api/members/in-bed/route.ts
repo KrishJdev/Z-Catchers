@@ -11,6 +11,12 @@ import {
   resetPinFailurePersistent,
 } from '@/lib/rateLimit';
 
+/**
+ * GET: Retrieve member's in-bed status and current sleep streak for their active sleep cycle date.
+ *
+ * @param request - Incoming HTTP request with memberId query parameter
+ * @returns JSON response with check-in status, streak count, and sleep cycle date
+ */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -58,6 +64,13 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * POST: Record an "I'm in Bed" check-in or cancel an existing check-in for tonight's sleep cycle.
+ * Requires member PIN authentication or valid session cookie.
+ *
+ * @param request - Incoming HTTP request with memberId, action, and optional PIN
+ * @returns JSON response with updated in-bed status and recalculated streak days
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();

@@ -12,6 +12,13 @@ interface BottomNavProps {
   isModerator?: boolean;
 }
 
+/**
+ * Mobile bottom navigation bar supporting quick tab switching between Roster, Schedule, Alerts, and Mod drawer.
+ * Fully styled with Warm Dark design tokens and safe-area padding for mobile viewports.
+ *
+ * @param props - Component props with activeTab, onChangeTab, isPushEnabled, and isModerator
+ * @returns React JSX element
+ */
 export function BottomNav({
   activeTab,
   onChangeTab,
