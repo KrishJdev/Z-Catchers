@@ -1,14 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T01:32:00+05:30  
+> **Last Updated:** 2026-11-11T01:33:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `0b8c4d5` (in `krish`)  
+> **Latest Commit:** `010acea` (in `krish`)  
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `test-pin-rate-limiting.mjs` passed | `node scripts/test-strikes-system.mjs` 26/26 passed | `node scripts/test-logout-flow.mjs` 18/18 passed | Dev server active on `http://192.168.1.3:3000`)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `node scripts/test-phase1-pwa-push.mjs` 25/25 passed | `node scripts/test-strikes-system.mjs` 26/26 passed | `node scripts/test-logout-flow.mjs` 18/18 passed | Dev server active on `http://192.168.1.3:3000`)
 
 ---
 
@@ -85,6 +85,10 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * Replaced shared global `'mod_admin'` and `'mod_passcode_gate'` rate limit target buckets with isolated keys scoped per client IP (`mod_ip:${ip}`) and session member (`mod_member:${sessionMemberId}`), mitigating cross-tenant DoS attacks.
   * Updated `resetPinFailurePersistent` to clear corresponding IP-scoped keys for moderator operations while preserving client IP attempt counters during regular member PIN resets to prevent brute-forcing.
   * In `/api/mod` `clear_strike_log` action, added explicit 404 response when target member is not found and validated `cycleDate` before invoking `modClearStrikeLog`.
+* **Push Subscription Health-Sync Preference Preservation (`src/lib/pushClient.ts`, `src/app/api/push/subscribe/route.ts`, `scripts/test-phase1-pwa-push.mjs`):**
+  * Verified review comment regarding health-sync requests omitting notification preferences: confirmed `/api/push/subscribe` queries existing preferences for the endpoint and preserves `notify_personal` and `notify_community` whenever fields are omitted or nullish, while retaining default `true` for new subscriptions.
+  * Hardened null-safety defense in `/api/push/subscribe` (`undefined || null` checks for both preferences).
+  * Added regression test assertion to `scripts/test-phase1-pwa-push.mjs` verifying preference preservation logic. All Phase 1 PWA tests passing.
 * **Safe Push Subscription Old-Endpoint Cleanup & Session-Gated Unsubscription (`src/app/api/push/subscribe/route.ts`, `src/app/api/push/unsubscribe/route.ts`):**
   * In `/api/push/subscribe`, scoped `old_endpoint` rotation cleanup deletion query strictly to `member.id`, preventing accidental deletion of other members' subscriptions sharing endpoints.
   * Preserved existing `notify_personal` and `notify_community` notification preferences when request fields are omitted during health sync or token refreshes.

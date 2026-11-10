@@ -836,7 +836,7 @@ export async function convertStrikeToMetastrike(
   if (!existingLog || existingLog.record_type !== 'strike') {
     return {
       success: false,
-      error: 'No active strike was found for tonight to convert.',
+      error: 'No active strike was found to convert.',
     };
   }
 

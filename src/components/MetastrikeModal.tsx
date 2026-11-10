@@ -60,7 +60,13 @@ export function MetastrikeModal({
         body: JSON.stringify({
           member_id: member.id,
           action: mode === 'convert_retroactive' ? 'convert_retroactive' : 'proactive',
-          sleep_cycle_date: mode === 'convert_retroactive' ? (member.convertible_strike_log?.sleep_cycle_date || member.tonight_strike_log?.sleep_cycle_date) : undefined,
+          sleep_cycle_date:
+            mode === 'convert_retroactive'
+              ? member.convertible_strike_log?.sleep_cycle_date ||
+                (member.tonight_strike_log?.record_type === 'strike'
+                  ? member.tonight_strike_log.sleep_cycle_date
+                  : undefined)
+              : undefined,
           reason: effectiveReason,
         }),
       });
@@ -164,7 +170,7 @@ export function MetastrikeModal({
           <div className="rounded-xl border border-night-border bg-night-elevated/40 p-3 text-[11px] text-cream-muted leading-relaxed">
             {mode === 'convert_retroactive' ? (
               <p>
-                🔄 <strong>24-Hour Swap Guarantee:</strong> This converts tonight&apos;s 2-vote strike into an excused Metastrike pass, reducing your strike count by 1 and using 1 of your 3 monthly Metastrikes.
+                🔄 <strong>24-Hour Swap Guarantee:</strong> This converts your recent 2-vote strike into an excused Metastrike pass, reducing your strike count by 1 and using 1 of your 3 monthly Metastrikes.
               </p>
             ) : (
               <p>

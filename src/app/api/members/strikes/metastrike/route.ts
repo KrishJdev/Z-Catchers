@@ -149,7 +149,10 @@ export async function POST(request: Request) {
     const cycleDate = getSleepCycleDate(member, nowUtc);
 
     if (action === 'convert_retroactive') {
-      let targetCycleDate = sleep_cycle_date;
+      let targetCycleDate =
+        typeof sleep_cycle_date === 'string' && sleep_cycle_date.trim()
+          ? sleep_cycle_date.trim()
+          : undefined;
       if (!targetCycleDate) {
         const eligibleStrike = await getRecentEligibleStrikeLog(member.id, nowUtc);
         targetCycleDate = eligibleStrike ? eligibleStrike.sleep_cycle_date : cycleDate;
