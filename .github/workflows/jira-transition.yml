@@ -1,0 +1,52 @@
+name: Jira Issue Transition
+
+on:
+  push:
+    branches:
+      - krish
+    paths:
+      - '.jira-transition'
+  workflow_dispatch:
+    inputs:
+      issue_key:
+        description: 'Jira Issue Key (e.g. ZC-5)'
+        required: true
+        default: 'ZC-5'
+      target_status:
+        description: 'Target Status (e.g. "in progress" or "done")'
+        required: true
+        default: 'in progress'
+
+jobs:
+  transition:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Transition Jira Issue
+        env:
+          JIRA_DOMAIN: krishjaiswal2182003.atlassian.net
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ISSUE_KEY: ${{ github.event.inputs.issue_key }}
+          INPUT_TARGET_STATUS: ${{ github.event.inputs.target_status }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            node scripts/transition-jira-issue.mjs "$INPUT_ISSUE_KEY" "$INPUT_TARGET_STATUS"
+          else
+            cat .jira-transition
+            while IFS= read -r line || [ -n "$line" ]; do
+              [ -z "$line" ] && continue
+              ISSUE_KEY=$(echo "$line" | awk '{print $1}')
+              TARGET_STATUS=$(echo "$line" | cut -d' ' -f2-)
+              echo "Processing Jira transition: $ISSUE_KEY -> $TARGET_STATUS"
+              node scripts/transition-jira-issue.mjs "$ISSUE_KEY" "$TARGET_STATUS" || true
+            done < .jira-transition
+          fi
