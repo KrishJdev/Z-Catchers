@@ -1,14 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T01:15:00+05:30  
+> **Last Updated:** 2026-11-11T01:30:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `3ba3662` (in `krish`)  
+> **Latest Commit:** `9f758e5` (in `krish`)  
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `test-strikes-system.mjs` 26/26 passed | `test-logout-flow.mjs` 18/18 passed | `test-pin-rate-limiting.mjs` passed | Dev server active on `http://192.168.1.3:3000`)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `node scripts/test-strikes-system.mjs` 26/26 passed | `node scripts/test-logout-flow.mjs` 18/18 passed | Dev server active on `http://192.168.1.3:3000`)
 
 ---
 
@@ -91,7 +91,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * In `/api/push/unsubscribe`, disallowed request body `member_id` from authorizing member-wide unsubscription; strictly requires `sessionMemberId` while preserving endpoint-specific unsubscription.
 * **Low-Blue-Light Warm Dark UI Tokens & Viewport Zoom Accessibility (`src/app/layout.tsx`, `src/components/MemberCard.tsx`, `src/app/page.tsx`):**
   * In `src/app/layout.tsx`, updated `viewport` `maximumScale: 5` to allow low-vision users to zoom up to 500% while preserving `initialScale: 1` and preventing iOS auto-zoom on 16px inputs.
-  * In `src/components/MemberCard.tsx`, replaced raw hex colors `#F4A261` with Tailwind token `status-amber` and `#A89F91` / `#C8B6A6` with `cream-muted`.
+  * In `src/components/MemberCard.tsx`, replaced raw hex colors `#F4A261` with Tailwind token `status-amber` and `#A89F91` / `#C8B6A6` with `cream-muted` across status-pill configurations and icons. Verified and confirmed status pill styles are fully tokenized.
   * In `src/app/page.tsx`, updated background `/api/auth/me` session check: when server responds with `authenticated === false`, executes `clearAuthSession()`, clears `currentUser` and `claimedMemberId`, and redirects to `/join`.
 * **Cross-Instance Concurrency, Notification Guard & Monthly Reset Sync (`src/lib/strikes.ts`):**
   * In monthly reset, replaced direct Supabase update with `updateMemberStrikeCounts(member.id, 0, 0, strike_cycle_month)` to keep in-memory store and database synchronized across both `strikes_used`/`strikes_count` and `metastrikes_used`/`metastrikes_count` alias pairs.
