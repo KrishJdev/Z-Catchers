@@ -707,7 +707,8 @@ export function ModDrawer({
                 type="button"
                 onClick={handleLock}
                 title="Lock moderator session"
-                className="flex items-center gap-1 rounded-lg border border-night-border bg-night-elevated px-2.5 py-1 text-xs text-cream-secondary transition-colors hover:text-status-coral hover:border-status-coral/40"
+                aria-label="Lock moderator session"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-lg border border-night-border bg-night-elevated px-2.5 py-1 text-xs text-cream-secondary transition-colors hover:text-status-coral hover:border-status-coral/40"
               >
                 <Lock className="h-3.5 w-3.5 text-cream-muted" />
                 <span className="hidden sm:inline">Lock</span>
@@ -716,7 +717,9 @@ export function ModDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-1.5 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary"
+              title="Close moderator panel"
+              aria-label="Close moderator panel"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary"
             >
               <X className="h-5 w-5" />
             </button>
@@ -807,7 +810,7 @@ export function ModDrawer({
                     className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
                       activeTab === 'pending'
                         ? 'bg-night-bg text-status-amber'
-                        : 'bg-status-coral text-white'
+                        : 'bg-status-coral text-cream-primary'
                     }`}
                   >
                     {pendingMembers.length}
@@ -882,7 +885,9 @@ export function ModDrawer({
                   <button
                     type="button"
                     onClick={() => setEditingMember(null)}
-                    className="rounded p-1 text-cream-muted hover:text-cream-primary"
+                    title="Close edit form"
+                    aria-label="Close edit form"
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded p-1 text-cream-muted hover:text-cream-primary"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -1055,7 +1060,9 @@ export function ModDrawer({
                   <button
                     type="button"
                     onClick={() => setPinResetMember(null)}
-                    className="rounded p-1 text-cream-muted hover:text-cream-primary"
+                    title="Close PIN form"
+                    aria-label="Close PIN form"
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded p-1 text-cream-muted hover:text-cream-primary"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -1091,7 +1098,7 @@ export function ModDrawer({
                     <button
                       type="submit"
                       disabled={actionLoadingId === 'reset-pin'}
-                      className="flex items-center gap-1.5 rounded-xl bg-status-coral px-4 py-2 text-xs font-bold text-white hover:opacity-95 disabled:opacity-50"
+                      className="flex items-center gap-1.5 rounded-xl bg-status-coral px-4 py-2 text-xs font-bold text-cream-primary hover:opacity-95 disabled:opacity-50"
                     >
                       {actionLoadingId === 'reset-pin' ? (
                         <>
@@ -1330,7 +1337,8 @@ export function ModDrawer({
                           target="_blank"
                           rel="noopener noreferrer"
                           title="Open Discord Journal Thread"
-                          className="rounded-lg p-1.5 text-cream-muted hover:bg-night-border hover:text-cream-primary"
+                          aria-label={`Open Discord Journal Thread for ${member.discord_username}`}
+                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 text-cream-muted transition-colors hover:bg-night-border hover:text-cream-primary"
                         >
                           <ExternalLink className="h-4 w-4" />
                         </a>
@@ -1339,7 +1347,8 @@ export function ModDrawer({
                           type="button"
                           onClick={() => setPinResetMember(member)}
                           title="Reset or clear PIN"
-                          className="rounded-lg p-1.5 text-cream-muted hover:bg-night-border hover:text-status-amber"
+                          aria-label={`Reset or clear PIN for ${member.discord_username}`}
+                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 text-cream-muted transition-colors hover:bg-night-border hover:text-status-amber"
                         >
                           <KeyRound className="h-4 w-4" />
                         </button>
@@ -1348,7 +1357,8 @@ export function ModDrawer({
                           type="button"
                           onClick={() => startEditMember(member)}
                           title="Edit member schedule immediately"
-                          className="rounded-lg p-1.5 text-cream-muted hover:bg-night-border hover:text-cream-primary"
+                          aria-label={`Edit schedule for ${member.discord_username}`}
+                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 text-cream-muted transition-colors hover:bg-night-border hover:text-cream-primary"
                         >
                           <Edit2 className="h-4 w-4" />
                         </button>
@@ -1358,7 +1368,8 @@ export function ModDrawer({
                           onClick={() => handleToggleActive(member)}
                           disabled={actionLoadingId === `toggle-${member.id}`}
                           title={member.is_active ? 'Deactivate member' : 'Reactivate member'}
-                          className={`rounded-lg p-1.5 transition-colors ${
+                          aria-label={`${member.is_active ? 'Deactivate' : 'Reactivate'} member ${member.discord_username}`}
+                          className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 transition-colors ${
                             member.is_active
                               ? 'text-cream-muted hover:bg-night-border hover:text-status-coral'
                               : 'text-status-sage hover:bg-night-border'
