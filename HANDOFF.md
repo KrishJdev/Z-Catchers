@@ -1,13 +1,13 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T23:38:00+05:30  
+> **Last Updated:** 2026-11-11T00:05:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `ec2cb5d` (in `krish`)  
+> **Latest Commit:** `ac191d0` (in `krish`)  
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 static & dynamic routes generated | All unit, live E2E, strike voting, 24h metastrikes, serverless rate limiting, PWA phone robustness, and auth test suites passing)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `test-logout-flow.mjs` 18/18 passed | Dev server active on `http://192.168.1.3:3000`)
 
 ---
 
@@ -67,6 +67,31 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 36: Ubiquitous Member Log Out & Auth Session De-identification
+* **Ubiquitous Log Out Access in Header Navigation (`src/components/Header.tsx`):**
+  * Added `LogOut` icon button right alongside the `@username` member profile badge.
+  * Formatted with Warm Dark styling (`hover:border-status-coral/40 hover:bg-status-coral/10 hover:text-status-coral`) and standard 44px min touch target.
+  * Responsive layout: displays `[icon] Log Out` on desktop/tablet (`sm:`) and compact touch-friendly icon on mobile viewports.
+  * Unauthenticated state polish: made "Log In" accessible across all screen sizes.
+* **Dual Log Out Touchpoints in My Schedule Modal (`src/components/MyScheduleModal.tsx`):**
+  * Header Log Out button: positioned directly beside the modal close (`X`) button for fast 1-tap exit.
+  * Dedicated "Account & Session Management" card inside the "My Profile" tab: displays authenticated fox avatar, username, and a full-width `"Log Out of Fox Den"` button, accessible regardless of whether the profile edit form is locked or unlocked with PIN.
+* **Profile Badge Quick Log Out in Alerts Modal (`src/components/PushModal.tsx`):**
+  * Added a secondary Log Out action within the active user badge in `PushModal.tsx`, allowing members managing notifications to log out directly.
+* **Session Cleanup Orchestration & Redirect (`src/app/page.tsx`):**
+  * Implemented `handleLogout` orchestrator:
+    1. Invokes `/api/auth/logout` endpoint to expire the HttpOnly `zcatchers_session` cookie.
+    2. Calls `clearAuthSession()` in `src/lib/pushClient.ts` to purge `zcatchers_auth_token`, `zcatchers_auth_member`, and `zcatchers_member_id` from `localStorage`.
+    3. Resets component session states (`currentUser`, `claimedMemberId`, `activeModal`).
+    4. Triggers user-facing toast feedback and routes directly to `/join` onboarding.
+* **Hardened Logout API Endpoint (`src/app/api/auth/logout/route.ts`):**
+  * Added dual method handling (`POST` and `GET`) to eliminate 405 Method Not Allowed exceptions.
+  * Hardened cookie deletion with both `maxAge: 0` and `expires: new Date(0)`.
+* **Verification & Automated Test Suite (`scripts/test-logout-flow.mjs`):**
+  * Created `scripts/test-logout-flow.mjs` verifying 18 automated checks across Header, Schedule modal, Push modal, page controller, API route, and cookie deletion. 18/18 checks passing.
+  * `npx tsc --noEmit`: clean (0 errors).
+  * `npm run build`: 26/26 routes compiled cleanly.
 
 ### Phase 35: PWA Phone Robustness, Safe Areas, Keyboard dvh & Mobile Offline Resilience
 * **iOS Notch & Dynamic Island Safe-Area Clipping Fix (`src/components/Header.tsx`, `src/app/join/page.tsx`):**
@@ -427,21 +452,20 @@ d:\Projects\Z Catchers\
 | **ZC-19**| Phase 3: Sleep Engine, IANA Timezone Math & Idempotent Cron | **DONE** | Phase 33 |
 | **ZC-20**| Phase 4: Community Accountability Mechanics & Serverless Security | **DONE** | Phase 34 |
 | **ZC-21**| Phase 35: PWA Phone Robustness, Safe Areas, Keyboard dvh & Offline Resilience | **DONE** | Phase 35 |
+| **ZC-22**| Phase 36: Ubiquitous Member Log Out & Auth Session De-identification | **DONE** | Commit `ac191d0` |
 
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
 1. **Commit and Push to `krish` Branch:**
-   * Stage all modified and untracked files on branch `krish`.
-   * Commit with descriptive commit message:
-     `feat(accountability): implement 2-vote community strikes, 24h metastrikes, and persistent serverless rate limiting`
-   * Push branch `krish` to `origin/krish`.
+   * Stage all changes on branch `krish`.
+   * Push branch `krish` to `origin/krish` (`git push origin krish`).
 
 2. **Pull Request & Integration:**
    * Create or update Pull Request targeting `dev` from `krish` (`krish` → `dev`).
    * Verify CI, automated test suites, and CodeRabbit on `dev`.
 
 3. **Verification Checklist:**
-   * Verify `npx tsc --noEmit` (0 errors) and `npm run build` (26/26 routes) before pushing.
-   * Verify test suites pass: `node scripts/test-pin-rate-limiting.mjs`, `node --env-file=.env.local scripts/test-phase1-security.mjs`, `node scripts/test-strikes-system.mjs`, `node --env-file=.env.local scripts/test-in-bed-and-streaks.mjs`.
+   * Verify `npx tsc --noEmit` (0 errors) and `npm run build` (26/26 routes).
+   * Verify `node scripts/test-logout-flow.mjs` (18/18 checks pass).
