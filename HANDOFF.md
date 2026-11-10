@@ -4,6 +4,9 @@
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
+> **Latest Commit:** `ec2cb5d` (in `krish`)  
+> **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
+> **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 static & dynamic routes generated | All unit, live E2E, strike voting, 24h metastrikes, serverless rate limiting, PWA phone robustness, and auth test suites passing)
 
 ---
