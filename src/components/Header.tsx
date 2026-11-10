@@ -51,7 +51,7 @@ export function Header({
   const timezoneDisplayName = formatGmtOffset(viewerTimezone);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-night-border bg-night-bg/95 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-night-border bg-night-bg/95 backdrop-blur-md pt-[env(safe-area-inset-top,0px)]">
       <div className="mx-auto flex items-center justify-between px-4 py-3 sm:px-6 lg:px-8 max-w-7xl">
         {/* Left side: Fox icon + "Z Catchers" with detected timezone as tiny muted subtitle directly underneath */}
         <div className="flex items-center gap-2.5 shrink-0">

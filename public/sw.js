@@ -219,6 +219,10 @@ self.addEventListener('push', function (event) {
       vibrate: [200, 100, 200],
       tag: data.tag || 'zcatchers-alert',
       renotify: true,
+      actions: data.actions || [
+        { action: 'in_bed', title: "🛌 I'm in Bed" },
+        { action: 'open_journal', title: '💬 Nag in Discord' },
+      ],
       data: {
         url: data.url || '/',
         timestamp: Date.now(),
@@ -237,7 +241,17 @@ self.addEventListener('push', function (event) {
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
   const rawUrl = (event.notification.data && event.notification.data.url) || '/';
-  const targetUrl = new URL(rawUrl, self.location.origin).href;
+  
+  let targetActionUrl = rawUrl;
+  if (event.action === 'in_bed') {
+    targetActionUrl = '/?action=in-bed';
+  } else if (event.action === 'open_journal') {
+    if (rawUrl && rawUrl.includes('discord.com')) {
+      targetActionUrl = rawUrl;
+    }
+  }
+
+  const targetUrl = new URL(targetActionUrl, self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
@@ -260,7 +274,7 @@ self.addEventListener('notificationclick', function (event) {
             client.postMessage({
               type: 'NOTIFICATION_ACTION',
               url: targetUrl,
-              action: rawUrl.includes('action=in-bed') ? 'in-bed' : undefined,
+              action: targetActionUrl.includes('action=in-bed') ? 'in-bed' : undefined,
             });
           }
           return;

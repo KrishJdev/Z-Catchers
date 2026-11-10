@@ -16,6 +16,26 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior-y: contain;
+}
+
+/* Eliminate 300ms mobile touch delay and fast-tap highlight flashes */
+html,
+body,
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent accidental text selection during button and navigation taps */
+button,
+nav {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Enforce minimum font size of 16px on all inputs, selects, and textareas across the project */

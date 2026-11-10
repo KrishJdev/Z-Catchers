@@ -245,7 +245,7 @@ export default function JoinPage() {
     !(selectedMember.has_pin ?? Boolean(selectedMember.passcode_hash));
 
   return (
-    <main className="min-h-[100dvh] bg-night-bg flex flex-col items-center justify-center px-4 py-8 sm:py-12 pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
+    <main className="min-h-[100dvh] bg-night-bg flex flex-col items-center justify-center px-4 py-8 sm:py-12 pt-[calc(2rem+env(safe-area-inset-top,0px))] pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))]">
       {/* Centered Brand Header with Sleepy Fox Mascot */}
       <div className="flex flex-col items-center text-center mb-6 animate-fade-in">
         <div className="rounded-2xl bg-night-surface p-3 border border-night-border shadow-lg">

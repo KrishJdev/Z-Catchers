@@ -38,12 +38,14 @@ import {
 } from 'lucide-react';
 
 const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
+const STORAGE_KEY_CACHED_ROSTER = 'zcatchers_cached_roster';
 
 export default function HomePage() {
   const router = useRouter();
   const [isSessionChecked, setIsSessionChecked] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
   const [viewerTimezone, setViewerTimezone] = useState<string>('GMT+00:00');
   const [isPushEnabled, setIsPushEnabled] = useState(false);
   const [isSleepShieldActive, setIsSleepShieldActive] = useState(false);
@@ -176,20 +178,77 @@ export default function HomePage() {
     }
   }, [activeModal]);
 
-  // Fetch roster
+  // Fetch roster with offline localStorage snapshot caching and fallback
   const fetchRoster = useCallback(async () => {
     try {
       const res = await fetch('/api/members');
       if (res.ok) {
         const json = await res.json();
-        if (json.members) setMembers(json.members);
+        if (json.members) {
+          setMembers(json.members);
+          try {
+            localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(json.members));
+          } catch {
+            // Ignore quota errors
+          }
+        }
       }
     } catch (err) {
       console.error('Failed to load roster:', err);
+      // Offline fallback: hydrate from cached snapshot if available
+      try {
+        const cached = localStorage.getItem(STORAGE_KEY_CACHED_ROSTER);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMembers((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Preload cached roster snapshot on initial mount & track online/offline connectivity
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY_CACHED_ROSTER);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMembers((prev) => (prev.length === 0 ? parsed : prev));
+          setLoading(false);
+        }
+      }
+    } catch {
+      // Ignore
+    }
+
+    if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') {
+      setIsOffline(!navigator.onLine);
+    }
+
+    const handleOnline = () => {
+      setIsOffline(false);
+      fetchRoster();
+      syncPushSubscriptionHealth().catch(() => {});
+    };
+
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [fetchRoster]);
 
   useEffect(() => {
     if (isSessionChecked) {
@@ -264,6 +323,12 @@ export default function HomePage() {
           if (member) {
             await handleCheckIn(member.id);
           }
+        } else if (action === 'schedule') {
+          url.searchParams.delete('action');
+          const cleanedUrl = url.pathname + (url.search ? url.search : '') + url.hash;
+          window.history.replaceState({}, '', cleanedUrl);
+          setActiveModal('schedule');
+          setMobileTab('schedule');
         }
       } catch (err) {
         console.warn('Failed to parse or process deep link action:', err);
@@ -514,6 +579,18 @@ export default function HomePage() {
     return { nagNow, windingDown, awake, sleeping };
   }, [displayedMembers, viewerTimezone, tick]);
 
+  // Home Screen App Badging API: Sync overdue friend count to mobile PWA icon
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
+      const overdueCount = categorized.nagNow.length;
+      if (overdueCount > 0) {
+        navigator.setAppBadge(overdueCount).catch(() => {});
+      } else if ('clearAppBadge' in navigator) {
+        navigator.clearAppBadge().catch(() => {});
+      }
+    }
+  }, [categorized.nagNow.length]);
+
   const handleOpenPushModal = () => {
     setActiveModal('push');
     setMobileTab('alerts');
@@ -568,6 +645,22 @@ export default function HomePage() {
               className="ml-3 text-cream-muted hover:text-cream-primary"
             >
               ✕
+            </button>
+          </div>
+        )}
+
+        {/* Offline Connectivity Notification Banner */}
+        {isOffline && (
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-night-border bg-night-surface px-4 py-2.5 text-xs text-cream-secondary shadow-md animate-fade-in">
+            <div className="flex items-center gap-2.5">
+              <span className="h-2 w-2 rounded-full bg-status-amber animate-pulse shrink-0" />
+              <span>You are offline • Showing cached Fox Den times</span>
+            </div>
+            <button
+              onClick={() => fetchRoster()}
+              className="text-xs font-semibold text-status-amber hover:underline ml-2"
+            >
+              Retry
             </button>
           </div>
         )}

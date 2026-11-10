@@ -75,7 +75,7 @@ export function MetastrikeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night-bg/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-md rounded-2xl border border-night-border bg-night-surface p-5 sm:p-6 shadow-2xl">
+      <div className="relative w-full max-w-md rounded-2xl border border-night-border bg-night-surface p-5 sm:p-6 shadow-2xl max-h-[90dvh] overflow-y-auto">
         {/* Close Button */}
         <button
           onClick={onClose}

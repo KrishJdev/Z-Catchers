@@ -747,7 +747,7 @@ export function ModDrawer({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/85 backdrop-blur-md p-0 md:items-center md:p-4">
       <div
-        className="relative flex w-full max-w-2xl lg:max-w-3xl flex-col rounded-t-3xl border-t border-night-border bg-night-surface p-5 shadow-2xl max-h-[92vh] overflow-y-auto md:rounded-2xl md:border md:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-6"
+        className="relative flex w-full max-w-2xl lg:max-w-3xl flex-col rounded-t-3xl border-t border-night-border bg-night-surface p-5 shadow-2xl max-h-[92dvh] overflow-y-auto md:rounded-2xl md:border md:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-6"
         role="dialog"
         aria-modal="true"
         aria-labelledby="mod-panel-title"

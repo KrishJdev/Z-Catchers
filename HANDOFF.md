@@ -1,13 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T22:21:00+05:30  
+> **Last Updated:** 2026-11-10T23:38:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `239af8b` (in `krish`)  
-> **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
-> **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 static & dynamic routes generated | All unit, live E2E, strike voting, 24h metastrikes, serverless rate limiting, and auth test suites passing)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 static & dynamic routes generated | All unit, live E2E, strike voting, 24h metastrikes, serverless rate limiting, PWA phone robustness, and auth test suites passing)
 
 ---
 
@@ -67,6 +64,38 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 35: PWA Phone Robustness, Safe Areas, Keyboard dvh & Mobile Offline Resilience
+* **iOS Notch & Dynamic Island Safe-Area Clipping Fix (`src/components/Header.tsx`, `src/app/join/page.tsx`):**
+  * Added `pt-[env(safe-area-inset-top,0px)]` to the sticky `<header>` container in `Header.tsx`, preventing iPhone status bar clocks, battery badges, and Dynamic Islands from overlapping the Sleepy Fox icon and "Z Catchers" brand wordmark.
+  * Added top safe area spacing to `/join/page.tsx` (`pt-[calc(2rem+env(safe-area-inset-top,0px))]`).
+* **Virtual Keyboard Avoidance via Dynamic Viewport Height (`dvh`):**
+  * Upgraded slide-up bottom sheet containers across `PushModal.tsx`, `MyScheduleModal.tsx`, `ModDrawer.tsx`, and `MetastrikeModal.tsx` from static `vh` to `max-h-[90dvh]` / `max-h-[92dvh]`.
+  * Allows bottom sheets to dynamically contract when mobile software keyboards open, ensuring input fields and submission buttons stay accessible without being pushed off-screen.
+* **Warm Dark Palette Compliance in Bottom Navigation (`src/components/BottomNav.tsx`):**
+  * Eliminated cool slate-blue hex tokens (`#12141c` and `#262936`).
+  * Re-anchored bottom navigation to official Warm Dark tokens: `bg-[#1C1714]/95`, `border-t border-[#332B24]`, and `ring-[#1C1714]`.
+* **Touch Ergonomics & Double-Tap Latency Elimination (`src/app/globals.css`):**
+  * Applied `touch-action: manipulation;` across `html, body, button, a, input, select, textarea`, eliminating the standard 300ms mobile browser double-tap zoom delay for immediate button responsiveness.
+  * Added `-webkit-tap-highlight-color: transparent;` to eliminate default gray/blue tap flashes.
+  * Added `overscroll-behavior-y: contain;` to prevent elastic scroll bounces from flashing white browser backgrounds.
+  * Added `user-select: none;` on buttons and bottom navigation to prevent accidental text selections during fast taps.
+* **Interactive Push Notification Actions in Service Worker (`public/sw.js`):**
+  * Added interactive lockscreen notification action buttons to `showNotification`: `"🛌 I'm in Bed"` (`in_bed`) and `"💬 Nag in Discord"` (`open_journal`).
+  * Enhanced `notificationclick` to parse `event.action`, route `in_bed` directly to `/?action=in-bed`, and route `open_journal` straight to the member's Discord journal thread.
+* **Expanded Web App Manifest Shortcuts (`public/manifest.json`, `src/app/page.tsx`):**
+  * Added 1-tap **"My Schedule"** home screen long-press shortcut pointing to `/?action=schedule`.
+  * Wired up `processDeepLinkAction` in `page.tsx` to automatically trigger `setActiveModal('schedule')`.
+* **Offline Roster Caching, Connectivity Banner & App Badging API (`src/app/page.tsx`):**
+  * Implemented localStorage snapshot caching (`STORAGE_KEY_CACHED_ROSTER = 'zcatchers_cached_roster'`) in `fetchRoster` to immediately hydrate the den roster during cold boots or when offline.
+  * Added real-time network connectivity listeners (`online`/`offline`) with a gentle Warm Dark offline notification banner: *"You are offline • Showing cached Fox Den times"*.
+  * Automated silent background roster and push health re-sync when network reconnects.
+  * Integrated mobile Home Screen **App Badging API** (`navigator.setAppBadge` / `clearAppBadge`) syncing the active overdue nag count (`categorized.nagNow.length`) directly to the PWA icon.
+* **Verification:**
+  * Created `scripts/test-phase35-pwa-phone-robustness.mjs`: 15/15 checks passed cleanly.
+  * Verified all existing test suites: `test-phase1-pwa-push.mjs` (25/25), `test-phase2-mobile-touch-ux.mjs` (28/28), `test-weekend-hours.mjs` (32/32), `test-strikes-system.mjs` (24/24).
+  * `npx tsc --noEmit`: 0 errors.
+  * `npm run build`: 26/26 static & dynamic pages successfully compiled.
 
 ### Phase 29: Mobile Layout Bugfixes & Standalone Onboarding Flow (`/join`)
 * **Standalone Onboarding & Join Page (`src/app/join/page.tsx`):**
@@ -285,6 +314,7 @@ d:\Projects\Z Catchers\
 │   ├── test-phase1-pwa-push.mjs        # 25-check suite for SW lifecycle, manifest, and multi-device push
 │   ├── test-phase1-security.mjs        # Credential stripping & Phase 1 auth tests
 │   ├── test-phase2-mobile-touch-ux.mjs # 28-check suite for BottomNav, 100dvh, iOS input zoom, and touch UX
+│   ├── test-phase35-pwa-phone-robustness.mjs # 15-check suite for notch insets, dvh sheets, warm tokens, badging & offline
 │   ├── test-pin-rate-limiting.mjs      # Shared per-member & per-IP rate limiting tests
 │   ├── test-push-and-cron.mjs          # Push engine & cron Sleep Shield tests
 │   ├── test-schedule-cooldown.mjs      # Verification tests for 48h cooldown logic
@@ -393,6 +423,7 @@ d:\Projects\Z Catchers\
 | **ZC-18**| Phase 2: Mobile Navigation, Standalone Onboarding & Touch UX | **DONE** | Phase 32 |
 | **ZC-19**| Phase 3: Sleep Engine, IANA Timezone Math & Idempotent Cron | **DONE** | Phase 33 |
 | **ZC-20**| Phase 4: Community Accountability Mechanics & Serverless Security | **DONE** | Phase 34 |
+| **ZC-21**| Phase 35: PWA Phone Robustness, Safe Areas, Keyboard dvh & Offline Resilience | **DONE** | Phase 35 |
 
 ---
 
