@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T14:46:00+05:30  
+> **Last Updated:** 2026-11-10T15:15:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `5cac7fb`  
+> **Latest Commit:** `9cc8c4b`  
 > **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` 21/21 routes | All auth, rate limit, and security tests passing)
 
@@ -363,6 +363,21 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * Explicitly documented that concurrent overlapping dispatcher executions observing an empty prefetch log simultaneously can dispatch duplicates unless serialized or guarded by distributed atomic claims.
 * **Vercel Pro Native Cron Configuration Guidance (`HANDOFF.md`):**
   * Expanded deployment configuration guide to explicitly differentiate Vercel Pro operators (who can change `vercel.json` cron expression to `"schedule": "* * * * *"` for native 1-minute scheduling and redeploy) from Vercel Hobby operators (who require external HTTP schedulers like cron-job.org or EasyCron due to Hobby's 1-per-day cron limit).
+
+### Phase 22: Implementation of Remaining CodeRabbit Group D Findings (Commit `9cc8c4b`)
+* **CI/CD Jira Diagnostics & Failure Reporting (`scripts/transition-jira-issue.mjs`):**
+  * Gated `debugJira()` diagnostic output behind `process.env.JIRA_DEBUG === '1'` to prevent sensitive issue summaries and emails from leaking into public CI action logs.
+  * Replaced silent `return;` exits on transition fetch errors and missing transitions with thrown `Error`s, ensuring caller `.catch()` sets exit code 1.
+* **Member Bedtime & Wake Time HH:mm Validation (`src/app/api/members/route.ts`):**
+  * Added strict 24-hour time format regex check (`^([01]\d|2[0-3]):[0-5]\d$`) across `bedtime_local`, `wake_time_local`, `weekend_bedtime_local`, and `weekend_wake_time_local` on member registration before database insertion.
+* **In-Bed Check-In Session Credentials & Error Handling (`src/components/MyScheduleModal.tsx`):**
+  * Added `credentials: 'include'` and safe try/catch error logging to `/api/members/in-bed` check-in and cancel requests to ensure session cookies are passed reliably.
+* **Push Login Trigger Event Object Fix (`src/components/PushModal.tsx`):**
+  * Wrapped `onOpenLogin` call in a clean zero-argument closure `() => onOpenLogin()` to prevent the DOM `MouseEvent` from being passed as the tab parameter.
+* **Verification:**
+  * `npx tsc --noEmit`: 0 errors.
+  * `npm run build`: 21/21 routes compiled cleanly.
+  * Full test suite passing cleanly across rate limits, weekend hours, and demo seed fingerprinting.
 
 ---
 
