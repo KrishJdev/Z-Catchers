@@ -28,7 +28,6 @@ reviews:
     drafts: false
     base_branches:
       - "dev"
-      - "main"
       - "krish"
 
   path_filters:
