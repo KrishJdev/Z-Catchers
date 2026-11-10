@@ -10,13 +10,25 @@ import {
 } from '@/lib/db';
 import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
 import { hashPin, sanitizeMember, createSessionToken, getRequestSessionMemberId } from '@/lib/auth';
-import { toValidLuxonZone, isValidTimezone, formatGmtOffset, detectUserTimezone } from '@/lib/timezone';
-import { resolveMemberStrikeCounts, getNightlyStrikeLog } from '@/lib/strikes';
+import { toValidLuxonZone, isValidTimezone, formatGmtOffset } from '@/lib/timezone';
+import {
+  resolveMemberStrikeCounts,
+  getNightlyStrikeLogsBatch,
+  getStrikeLogKey,
+  getRecentEligibleStrikeLog,
+} from '@/lib/strikes';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/**
+ * GET: Fetch community roster with hydrated sleep states, streaks, assists, and strike statuses.
+ * Uses batched queries for member strike logs and parallel count resolution.
+ *
+ * @param request - Incoming HTTP request with optional session token
+ * @returns JSON response containing list of processed active members
+ */
 export async function GET(request: Request) {
   try {
     const sessionMemberId = getRequestSessionMemberId(request);
@@ -61,8 +73,15 @@ export async function GET(request: Request) {
       nagAssistsByMemberAndDate.set(key, (nagAssistsByMemberAndDate.get(key) || 0) + 1);
     }
 
-    // Process self-healing cooldown promotions and calculate streaks
-    const processedMembers: Member[] = [];
+    // Process self-healing cooldown promotions and prepare member metrics
+    const memberItems: {
+      hydratedMember: Member;
+      localDateStr: string;
+      is_in_bed: boolean;
+      streak_days: number;
+      nag_assists_count: number;
+    }[] = [];
+
     for (const member of (members as Member[]) || []) {
       const { promoted, activeMember } = checkCooldownPromotion(member, nowUtc);
       if (promoted) {
@@ -93,29 +112,53 @@ export async function GET(request: Request) {
       const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);
       const nag_assists_count = nagAssistsByMemberAndDate.get(`${hydratedMember.id}_${localDateStr}`) || 0;
 
-      // Strikes & Metastrikes resolution (handles lazy monthly resets)
-      const strikeInfo = await resolveMemberStrikeCounts(hydratedMember, nowUtc);
-      const tonightLog = await getNightlyStrikeLog(hydratedMember.id, localDateStr);
-      const is_metastrike_active = tonightLog?.record_type === 'metastrike';
-      const metastrike_reason = tonightLog?.reason || null;
-      const has_voted_strike = Boolean(sessionMemberId && tonightLog?.voter_ids?.includes(sessionMemberId));
-
-      processedMembers.push({
-        ...sanitizeMember(hydratedMember),
+      memberItems.push({
+        hydratedMember,
+        localDateStr,
         is_in_bed,
         streak_days,
         nag_assists_count,
+      });
+    }
+
+    // Batched resolution: resolve member strike counts in parallel and batch query nightly strike logs
+    const [strikeInfos, strikeLogsMap, recentStrikes] = await Promise.all([
+      Promise.all(memberItems.map((item) => resolveMemberStrikeCounts(item.hydratedMember, nowUtc))),
+      getNightlyStrikeLogsBatch(
+        memberItems.map((item) => ({
+          targetMemberId: item.hydratedMember.id,
+          sleepCycleDate: item.localDateStr,
+        }))
+      ),
+      Promise.all(memberItems.map((item) => getRecentEligibleStrikeLog(item.hydratedMember.id, nowUtc))),
+    ]);
+
+    const processedMembers: Member[] = memberItems.map((item, index) => {
+      const strikeInfo = strikeInfos[index];
+      const logKey = getStrikeLogKey(item.hydratedMember.id, item.localDateStr);
+      const tonightLog = strikeLogsMap.get(logKey) || null;
+      const is_metastrike_active = tonightLog?.record_type === 'metastrike';
+      const metastrike_reason = tonightLog?.reason || null;
+      const has_voted_strike = Boolean(sessionMemberId && tonightLog?.voter_ids?.includes(sessionMemberId));
+      const convertibleLog = recentStrikes[index] || null;
+
+      return {
+        ...sanitizeMember(item.hydratedMember),
+        is_in_bed: item.is_in_bed,
+        streak_days: item.streak_days,
+        nag_assists_count: item.nag_assists_count,
         strikes_used: strikeInfo.strikes_used,
         strikes_count: strikeInfo.strikes_used,
         metastrikes_used: strikeInfo.metastrikes_used,
         metastrikes_count: strikeInfo.metastrikes_used,
         strike_cycle_month: strikeInfo.strike_cycle_month,
         tonight_strike_log: tonightLog,
+        convertible_strike_log: convertibleLog,
         is_metastrike_active,
         metastrike_reason,
         has_voted_strike,
-      });
-    }
+      };
+    });
 
     return NextResponse.json({ members: processedMembers });
   } catch (err: unknown) {
@@ -124,6 +167,13 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * POST: Create a new community member profile with validated sleep schedule and PIN.
+ * Timezone detection must be performed by the client and provided as a non-empty string.
+ *
+ * @param request - Incoming HTTP request containing new member payload
+ * @returns JSON response with created member record and auth cookie
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -187,8 +237,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate Timezone (auto-detects IANA timezone if not provided)
-    const cleanTz = timezone && String(timezone).trim() ? String(timezone).trim() : detectUserTimezone();
+    // Validate Timezone (must be provided by client; no server fallback)
+    if (!timezone || !String(timezone).trim()) {
+      return NextResponse.json(
+        { error: 'Timezone is required. Please provide a valid IANA timezone (e.g. "Europe/Athens", "America/New_York", "Asia/Kolkata").' },
+        { status: 400 }
+      );
+    }
+
+    const cleanTz = String(timezone).trim();
     if (!isValidTimezone(cleanTz)) {
       return NextResponse.json(
         { error: `Invalid timezone identifier "${cleanTz}". Please provide a valid IANA timezone (e.g. "Europe/Athens", "America/New_York", "Asia/Kolkata").` },

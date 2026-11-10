@@ -6,7 +6,7 @@ import {
   insertMemberSafe,
   hydrateMemberWeekendHours,
 } from '@/lib/db';
-import { verifyModPasscode, hashPin, sanitizeMember, verifyModeratorAuthorization } from '@/lib/auth';
+import { verifyModPasscode, hashPin, sanitizeMember, verifyModeratorAuthorization, getRequestSessionMemberId } from '@/lib/auth';
 import {
   getClientIp,
   checkPinRateLimitPersistent,
@@ -23,12 +23,18 @@ const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channel
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
- * GET: Fetch all members (including inactive and pending schedules) for moderator view
+ * GET: Fetch all members (including inactive and pending schedules) for moderator view.
+ *
+ * @param request - Incoming HTTP request with moderator credentials or session
+ * @returns JSON response containing list of all members
  */
 export async function GET(request: Request) {
   try {
     const clientIp = getClientIp(request);
-    const rateCheck = await checkPinRateLimitPersistent(clientIp, 'mod_admin');
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const modTarget = sessionMemberId ? `mod_member:${sessionMemberId}` : `mod_ip:${clientIp}`;
+
+    const rateCheck = await checkPinRateLimitPersistent(clientIp, modTarget);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
@@ -43,14 +49,14 @@ export async function GET(request: Request) {
 
     const authResult = await verifyModeratorAuthorization(request);
     if (!authResult.authorized) {
-      await recordPinFailurePersistent(clientIp, 'mod_admin');
+      await recordPinFailurePersistent(clientIp, modTarget);
       return NextResponse.json(
         { error: authResult.error || 'Unauthorized: Invalid moderator passcode or session.' },
         { status: 401 }
       );
     }
 
-    await resetPinFailurePersistent(clientIp, 'mod_admin');
+    await resetPinFailurePersistent(clientIp, modTarget);
 
     // Fetch all members with service role (includes is_active = false)
     const { data: members, error } = await supabaseAdmin
@@ -114,10 +120,19 @@ export async function GET(request: Request) {
  * - 'reset_pin': Reset or clear a member's 4-digit PIN
  * - 'delete_member': Permanently remove a member
  */
+/**
+ * POST: Execute moderator administration actions.
+ *
+ * @param request - Incoming HTTP request with action name, moderator credentials, and action payload
+ * @returns JSON response with action execution results
+ */
 export async function POST(request: Request) {
   try {
     const clientIp = getClientIp(request);
-    const rateCheck = await checkPinRateLimitPersistent(clientIp, 'mod_admin');
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const modTarget = sessionMemberId ? `mod_member:${sessionMemberId}` : `mod_ip:${clientIp}`;
+
+    const rateCheck = await checkPinRateLimitPersistent(clientIp, modTarget);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
@@ -135,14 +150,14 @@ export async function POST(request: Request) {
 
     const authResult = await verifyModeratorAuthorization(request, mod_passcode, pin);
     if (!authResult.authorized) {
-      await recordPinFailurePersistent(clientIp, 'mod_admin');
+      await recordPinFailurePersistent(clientIp, modTarget);
       return NextResponse.json(
         { error: authResult.error || 'Unauthorized: Invalid moderator secret passcode or session.' },
         { status: 401 }
       );
     }
 
-    await resetPinFailurePersistent(clientIp, 'mod_admin');
+    await resetPinFailurePersistent(clientIp, modTarget);
 
     // 1. Verify Passcode action
     if (action === 'verify') {
@@ -634,14 +649,21 @@ export async function POST(request: Request) {
 
       let cycleDate = sleep_cycle_date;
       if (!cycleDate) {
-        const { data: member } = await supabaseAdmin
+        const { data: member, error: memberErr } = await supabaseAdmin
           .from('members')
           .select('*')
           .eq('id', member_id)
-          .single();
-        if (member) {
-          cycleDate = getSleepCycleDate(member as Member, DateTime.utc());
+          .maybeSingle();
+
+        if (memberErr || !member) {
+          return NextResponse.json({ error: 'Member not found' }, { status: 404 });
         }
+
+        cycleDate = getSleepCycleDate(member as Member, DateTime.utc());
+      }
+
+      if (!cycleDate) {
+        return NextResponse.json({ error: 'Could not resolve sleep cycle date' }, { status: 400 });
       }
 
       const result = await modClearStrikeLog(member_id, cycleDate);

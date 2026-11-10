@@ -22,6 +22,13 @@ const PRESET_REASONS = [
   'Health / Not Feeling Well',
 ];
 
+/**
+ * Modal dialog for activating a proactive excused pass or converting an eligible
+ * recent strike to a retroactive Metastrike.
+ *
+ * @param props - Dialog state and action handlers
+ * @returns Rendered Metastrike modal
+ */
 export function MetastrikeModal({
   isOpen,
   onClose,
@@ -53,6 +60,7 @@ export function MetastrikeModal({
         body: JSON.stringify({
           member_id: member.id,
           action: mode === 'convert_retroactive' ? 'convert_retroactive' : 'proactive',
+          sleep_cycle_date: mode === 'convert_retroactive' ? (member.convertible_strike_log?.sleep_cycle_date || member.tonight_strike_log?.sleep_cycle_date) : undefined,
           reason: effectiveReason,
         }),
       });

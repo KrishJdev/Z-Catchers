@@ -37,6 +37,13 @@ interface MemberCardProps {
   isVotingStrike?: boolean;
 }
 
+/**
+ * Visual card displaying an individual community member's bedtime status,
+ * streak milestone badge, live nag assist counter, and strike actions.
+ *
+ * @param props - Component properties for member state and interaction handlers
+ * @returns Rendered member card
+ */
 export function MemberCard({
   member,
   state,
@@ -165,6 +172,9 @@ export function MemberCard({
     member.is_metastrike_active || member.tonight_strike_log?.record_type === 'metastrike'
   );
   const isStrikeIssuedTonight = Boolean(member.tonight_strike_log?.record_type === 'strike');
+  const isStrikeConvertible = Boolean(
+    isStrikeIssuedTonight || member.convertible_strike_log
+  );
   const strikeVotesCount =
     member.tonight_strike_log?.record_type === 'pending_vote'
       ? member.tonight_strike_log.voter_ids?.length || 0
@@ -194,15 +204,15 @@ export function MemberCard({
     if (bucket === 'WINDING_DOWN') {
       const minsLeft = Math.abs(Math.floor(state.diffMinutes));
       return {
-        className: 'bg-[#F4A261]/15 text-[#F4A261]',
+        className: 'bg-status-amber/15 text-status-amber',
         icon: <Sparkles className="h-3.5 w-3.5 shrink-0" />,
         label: `in ${minsLeft}m`,
       };
     }
     if (bucket === 'SLEEPING') {
       return {
-        className: 'bg-[#261E1A] text-[#C8B6A6]',
-        icon: <Moon className="h-3.5 w-3.5 shrink-0 text-[#C8B6A6]" />,
+        className: 'bg-[#261E1A] text-cream-muted',
+        icon: <Moon className="h-3.5 w-3.5 shrink-0 text-cream-muted" />,
         label: isInBed ? 'In Bed' : 'Sleeping',
       };
     }
@@ -212,8 +222,8 @@ export function MemberCard({
     const mins = totalMins % 60;
     const label = hours > 0 ? `in ${hours}h ${mins}m` : `in ${mins}m`;
     return {
-      className: 'bg-[#261E1A] text-[#A89F91]',
-      icon: <Sun className="h-3.5 w-3.5 shrink-0 text-[#A89F91]" />,
+      className: 'bg-[#261E1A] text-cream-muted',
+      icon: <Sun className="h-3.5 w-3.5 shrink-0 text-cream-muted" />,
       label,
     };
   };
@@ -506,7 +516,7 @@ export function MemberCard({
         )}
 
         {/* Viewer Retroactive Strike Conversion */}
-        {isViewer && isStrikeIssuedTonight && metastrikesUsed < 3 && onOpenMetastrike && (
+        {isViewer && isStrikeConvertible && metastrikesUsed < 3 && onOpenMetastrike && (
           <button
             type="button"
             onClick={() => {

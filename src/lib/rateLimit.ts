@@ -204,6 +204,16 @@ export async function recordPinFailurePersistent(
   const keys = getRateLimitKeys(ip, targetId);
   if (keys.length === 0) return;
 
+  // Mirror to in-memory cache first so checkPinRateLimitSync works even if Supabase is unavailable
+  for (const key of keys) {
+    const entry = pinRateLimits.get(key);
+    if (!entry || nowMs > entry.resetAt) {
+      pinRateLimits.set(key, { attempts: 1, resetAt: nowMs + windowMs });
+    } else {
+      entry.attempts += 1;
+    }
+  }
+
   // Persist to Supabase rate_limit_entries table
   try {
     const client = getSupabase();
@@ -251,45 +261,58 @@ export function recordPinFailure(
   targetId: string,
   windowMs = 15 * 60 * 1000
 ): void {
-  const now = Date.now();
-  const keys = getRateLimitKeys(ip, targetId);
-
-  for (const key of keys) {
-    const entry = pinRateLimits.get(key);
-    if (!entry || now > entry.resetAt) {
-      pinRateLimits.set(key, { attempts: 1, resetAt: now + windowMs });
-    } else {
-      entry.attempts += 1;
-    }
-  }
-
-  // Asynchronously synchronize with persistent Supabase store
+  // Synchronously mirrors to in-memory map before awaiting Supabase
   recordPinFailurePersistent(ip, targetId, windowMs).catch(() => {});
 }
 
 /**
- * Clears failed attempts upon successful verification for the target member.
- * Preserves IP failure count to prevent attackers from clearing IP rate limits with valid credentials.
+ * Clears failed attempts upon successful verification for the target member and/or IP.
+ * Deletes corresponding IP-scoped keys for moderator auth and target/member-scoped keys.
  */
 export async function resetPinFailurePersistent(ip: string, targetId: string): Promise<void> {
+  const cleanIp = ip ? ip.trim() : '';
   const cleanTarget = targetId ? targetId.trim() : '';
+
   if (cleanTarget) {
     pinRateLimits.delete(`target:${cleanTarget}`);
-    if (ip && ip.trim()) {
-      pinRateLimits.delete(`pair:${ip.trim()}:${cleanTarget}`);
-    }
+  }
 
-    try {
-      const client = getSupabase();
-      if (client) {
+  const isModOrIpScoped =
+    cleanTarget.startsWith('mod') ||
+    cleanTarget.startsWith('ip:') ||
+    cleanTarget.includes('mod_ip') ||
+    cleanTarget.includes('mod_gate') ||
+    !cleanTarget;
+
+  if (cleanIp && isModOrIpScoped) {
+    pinRateLimits.delete(`ip:${cleanIp}`);
+    pinRateLimits.delete(`target:mod_ip:${cleanIp}`);
+    pinRateLimits.delete(`target:mod_gate_ip:${cleanIp}`);
+  }
+
+  if (cleanIp && cleanTarget) {
+    pinRateLimits.delete(`pair:${cleanIp}:${cleanTarget}`);
+  }
+
+  try {
+    const client = getSupabase();
+    if (client) {
+      const keysToDelete: string[] = [];
+      if (cleanTarget) {
+        keysToDelete.push(`target:${cleanTarget}`);
+      }
+      if (cleanIp && isModOrIpScoped) {
+        keysToDelete.push(`ip:${cleanIp}`, `target:mod_ip:${cleanIp}`, `target:mod_gate_ip:${cleanIp}`);
+      }
+      if (keysToDelete.length > 0) {
         await client
           .from('rate_limit_entries')
           .delete()
-          .or(`key.eq.target:${cleanTarget},target_member_id.eq.${cleanTarget}`);
+          .in('key', keysToDelete);
       }
-    } catch {
-      // Non-blocking
     }
+  } catch {
+    // Non-blocking
   }
 }
 

@@ -41,6 +41,13 @@ import {
 const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
 const STORAGE_KEY_CACHED_ROSTER = 'zcatchers_cached_roster';
 
+/**
+ * Main dashboard page for Z Catchers.
+ * Displays the live community member roster sorted by sleep bucket,
+ * real-time timezone conversion, sleep consistency streaks, and strike accountability.
+ *
+ * @returns Rendered Home dashboard component
+ */
 export default function HomePage() {
   const router = useRouter();
   const [isSessionChecked, setIsSessionChecked] = useState(false);
@@ -143,6 +150,11 @@ export default function HomePage() {
             setCurrentUser(data.member);
             setClaimedMemberId(data.member.id);
             setStoredAuthMember(data.member);
+          } else if (data.authenticated === false) {
+            clearAuthSession();
+            setCurrentUser(null);
+            setClaimedMemberId(null);
+            router.replace('/join');
           }
         })
         .catch((err) => console.warn('Auth background verify error:', err));

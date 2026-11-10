@@ -8,6 +8,12 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Server-only administrative client (bypasses RLS for cron, cooldown promotion, admin overrides)
+export const isSupabaseConfigured = Boolean(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder') &&
+  supabaseServiceKey
+);
+
 export const supabaseAdmin = supabaseServiceKey
   ? createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
@@ -53,6 +59,7 @@ export interface Member {
   streak_days?: number;
   nag_assists_count?: number;
   tonight_strike_log?: NightlyStrikeLog | null;
+  convertible_strike_log?: NightlyStrikeLog | null;
   can_vote_strike?: boolean;
   has_voted_strike?: boolean;
   is_metastrike_active?: boolean;

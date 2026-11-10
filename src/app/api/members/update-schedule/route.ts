@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
-import { hashPin, verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
+import { hashPin, verifyPin, verifyModPasscode, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
 import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import {
   getClientIp,
@@ -13,6 +13,12 @@ import { DateTime } from 'luxon';
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/**
+ * POST: Update a member's bedtime schedule with 48-hour cooldown protection or moderator override.
+ *
+ * @param request - Incoming HTTP request containing schedule updates and PIN/passcode
+ * @returns JSON response with updated or pending schedule status
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -52,13 +58,15 @@ export async function POST(request: Request) {
     // 2. PIN verification / Claiming profile
     let isModeratorOverride = false;
     if (mod_passcode) {
-      const modRate = await checkPinRateLimitPersistent(clientIp, 'mod_passcode_gate');
+      const sessionMemberId = getRequestSessionMemberId(request);
+      const modGateTarget = sessionMemberId ? `mod_gate_member:${sessionMemberId}` : `mod_gate_ip:${clientIp}`;
+      const modRate = await checkPinRateLimitPersistent(clientIp, modGateTarget);
       if (modRate.allowed) {
         isModeratorOverride = verifyModPasscode(mod_passcode);
         if (!isModeratorOverride) {
-          await recordPinFailurePersistent(clientIp, 'mod_passcode_gate');
+          await recordPinFailurePersistent(clientIp, modGateTarget);
         } else {
-          await resetPinFailurePersistent(clientIp, 'mod_passcode_gate');
+          await resetPinFailurePersistent(clientIp, modGateTarget);
         }
       }
     }

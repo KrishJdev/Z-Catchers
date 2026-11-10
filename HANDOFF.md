@@ -1,14 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T00:13:30+05:30  
+> **Last Updated:** 2026-11-11T01:15:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `f7ca109` (in `krish`)  
+> **Latest Commit:** `3ba3662` (in `krish`)  
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `test-logout-flow.mjs` 18/18 passed | Dev server active on `http://192.168.1.3:3000`)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `test-strikes-system.mjs` 26/26 passed | `test-logout-flow.mjs` 18/18 passed | `test-pin-rate-limiting.mjs` passed | Dev server active on `http://192.168.1.3:3000`)
 
 ---
 
@@ -68,6 +68,39 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 37: Automated Code Review Remediations, Security Hardening & Concurrency Protection
+* **Batched Roster Database Lookups & Required Timezone (`src/app/api/members/route.ts`):**
+  * Refactored `GET /api/members` to avoid sequential per-member queries: batched monthly strike count resolutions with `Promise.all` and replaced N per-member strike log queries with a single batched `getNightlyStrikeLogsBatch` query matching each member's canonical sleep cycle date.
+  * In `POST /api/members`, removed server-side `detectUserTimezone()` fallback; requires non-empty IANA timezone string and returns 400 when missing. Preserves trimmed client-supplied timezone.
+* **Voter Authentication Enforcement & Identity Verification (`src/app/api/members/strikes/route.ts`):**
+  * Removed unauthenticated `voterId`/`voter_id` destructuring from request body. Strictly requires authenticated session member ID from `getRequestSessionMemberId(request)`.
+  * Verifies session member ID belongs to an active existing member in the database, rejecting inactive or nonexistent voters with 403 Forbidden.
+  * Preserved self-voting guardrail rejecting attempts to vote on oneself.
+* **Moderator Passcode Failure Tracking & Flexible 24h Retroactive Window (`src/app/api/members/strikes/metastrike/route.ts`, `src/components/MemberCard.tsx`, `src/components/MetastrikeModal.tsx`):**
+  * In `/api/members/strikes/metastrike`, records failed `candidatePasscode` attempts via `recordPinFailurePersistent(clientIp, member.id)` and enforces persistent sliding-window rate limiting on moderator passcode attempts.
+  * In `convert_retroactive`, accepts explicit `sleep_cycle_date` payload from client or resolves most recent eligible strike within 24 hours via `getRecentEligibleStrikeLog`.
+  * Updated `MemberCard.tsx` and `MetastrikeModal.tsx` so retroactive Metastrike conversion remains available within the 24-hour window even after the member's current sleep cycle rolls over to the next day.
+* **Per-IP & Per-Member Scoped Moderator Rate Limiting (`src/app/api/mod/route.ts`, `src/app/api/members/update-schedule/route.ts`, `src/lib/rateLimit.ts`):**
+  * Replaced shared global `'mod_admin'` and `'mod_passcode_gate'` rate limit target buckets with isolated keys scoped per client IP (`mod_ip:${ip}`) and session member (`mod_member:${sessionMemberId}`), mitigating cross-tenant DoS attacks.
+  * Updated `resetPinFailurePersistent` to clear corresponding IP-scoped keys for moderator operations while preserving client IP attempt counters during regular member PIN resets to prevent brute-forcing.
+  * In `/api/mod` `clear_strike_log` action, added explicit 404 response when target member is not found and validated `cycleDate` before invoking `modClearStrikeLog`.
+* **Safe Push Subscription Old-Endpoint Cleanup & Session-Gated Unsubscription (`src/app/api/push/subscribe/route.ts`, `src/app/api/push/unsubscribe/route.ts`):**
+  * In `/api/push/subscribe`, scoped `old_endpoint` rotation cleanup deletion query strictly to `member.id`, preventing accidental deletion of other members' subscriptions sharing endpoints.
+  * Preserved existing `notify_personal` and `notify_community` notification preferences when request fields are omitted during health sync or token refreshes.
+  * In `/api/push/unsubscribe`, disallowed request body `member_id` from authorizing member-wide unsubscription; strictly requires `sessionMemberId` while preserving endpoint-specific unsubscription.
+* **Low-Blue-Light Warm Dark UI Tokens & Viewport Zoom Accessibility (`src/app/layout.tsx`, `src/components/MemberCard.tsx`, `src/app/page.tsx`):**
+  * In `src/app/layout.tsx`, updated `viewport` `maximumScale: 5` to allow low-vision users to zoom up to 500% while preserving `initialScale: 1` and preventing iOS auto-zoom on 16px inputs.
+  * In `src/components/MemberCard.tsx`, replaced raw hex colors `#F4A261` with Tailwind token `status-amber` and `#A89F91` / `#C8B6A6` with `cream-muted`.
+  * In `src/app/page.tsx`, updated background `/api/auth/me` session check: when server responds with `authenticated === false`, executes `clearAuthSession()`, clears `currentUser` and `claimedMemberId`, and redirects to `/join`.
+* **Cross-Instance Concurrency, Notification Guard & Monthly Reset Sync (`src/lib/strikes.ts`):**
+  * In monthly reset, replaced direct Supabase update with `updateMemberStrikeCounts(member.id, 0, 0, strike_cycle_month)` to keep in-memory store and database synchronized across both `strikes_used`/`strikes_count` and `metastrikes_used`/`metastrikes_count` alias pairs.
+  * In `recordStrikeVote`, verified in-bed status against `notification_logs` for `IN_BED_EARLY` on the current `cycleDate`, ensuring subsequent `last_notified_stage` transitions cannot revoke check-in protection.
+  * Implemented atomic cross-instance concurrency protection: optimistic locking and conflict retry (`23505`) on nightly strike logs, and conditional atomic update (`.lt('metastrikes_used', 3)`) on metastrike consumption.
+  * Added `isSupabaseConfigured` check in `src/lib/db.ts` to cleanly fall back to in-memory store during offline test execution.
+* **Production Function Test Suite & JSDoc Docstring Coverage (`scripts/test-strikes-system.mjs`):**
+  * Replaced duplicated `StrikeTestEngine` class with direct imports and tests against real production functions in `src/lib/strikes.ts`. All 26 test sections passing.
+  * Added comprehensive JSDoc docstrings across all modified routes, helper functions, and components to satisfy CodeRabbit pre-merge review threshold.
 
 ### Phase 36: Ubiquitous Member Log Out & Auth Session De-identification
 * **Ubiquitous Log Out Access in Header Navigation (`src/components/Header.tsx`):**
@@ -454,6 +487,7 @@ d:\Projects\Z Catchers\
 | **ZC-20**| Phase 4: Community Accountability Mechanics & Serverless Security | **DONE** | Phase 34 |
 | **ZC-21**| Phase 35: PWA Phone Robustness, Safe Areas, Keyboard dvh & Offline Resilience | **DONE** | Phase 35 |
 | **ZC-22**| Phase 36: Ubiquitous Member Log Out & Auth Session De-identification | **DONE** | Commit `ac191d0` |
+| **ZC-23**| Phase 37: Code Review Remediations, Security Hardening & Concurrency Protection | **DONE** | Phase 37 |
 
 ---
 

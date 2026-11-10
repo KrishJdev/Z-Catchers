@@ -11,6 +11,12 @@ import { DateTime } from 'luxon';
  *
  * Retrieves current month strike counts and tonight's strike log for a member.
  */
+/**
+ * GET: Retrieve a member's current sleep cycle date strike log and monthly strike counts.
+ *
+ * @param request - Incoming HTTP request with memberId query parameter
+ * @returns JSON response with member strikes summary
+ */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -70,11 +76,48 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const targetMemberId = body.target_member_id || body.member_id || body.targetMemberId;
-    const voterId = body.voter_id || body.voterId;
 
     if (!targetMemberId || typeof targetMemberId !== 'string') {
       return NextResponse.json(
         { error: 'Missing or invalid target_member_id.' },
+        { status: 400 }
+      );
+    }
+
+    // Identify the voter: only an authenticated session can vote on strikes
+    const sessionVoterId = getRequestSessionMemberId(request);
+    if (!sessionVoterId || typeof sessionVoterId !== 'string') {
+      return NextResponse.json(
+        {
+          error: 'Authentication required. Please log in with your profile to vote on strikes.',
+          code: 'UNAUTHORIZED',
+        },
+        { status: 401 }
+      );
+    }
+
+    // Verify session identity belongs to an existing active member
+    const { data: voterMember } = await supabaseAdmin
+      .from('members')
+      .select('id, is_active')
+      .eq('id', sessionVoterId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (!voterMember) {
+      return NextResponse.json(
+        {
+          error: 'Voter profile not found or inactive.',
+          code: 'UNAUTHORIZED',
+        },
+        { status: 401 }
+      );
+    }
+
+    // Voter cannot be the strike target
+    if (sessionVoterId === targetMemberId) {
+      return NextResponse.json(
+        { error: 'You cannot vote to strike yourself.' },
         { status: 400 }
       );
     }
@@ -90,20 +133,6 @@ export async function POST(request: Request) {
           status: 429,
           headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
         }
-      );
-    }
-
-    // Identify the voter: session token takes precedence, followed by explicit voter_id
-    const sessionVoterId = getRequestSessionMemberId(request);
-    const activeVoterId = sessionVoterId || voterId;
-
-    if (!activeVoterId || typeof activeVoterId !== 'string') {
-      return NextResponse.json(
-        {
-          error: 'Authentication required. Please log in with your profile to vote on strikes.',
-          code: 'UNAUTHORIZED',
-        },
-        { status: 401 }
       );
     }
 
@@ -127,7 +156,7 @@ export async function POST(request: Request) {
 
     const result = await recordStrikeVote(
       targetMember as Member,
-      activeVoterId,
+      sessionVoterId,
       cycleDate,
       nowUtc
     );

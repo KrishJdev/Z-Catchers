@@ -3,6 +3,13 @@ import { supabaseAdmin } from '@/lib/db';
 import { getRequestSessionMemberId, verifyPin } from '@/lib/auth';
 import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
 
+/**
+ * POST: Register or rotate a Web Push subscription endpoint linked to an authenticated member.
+ * Preserves existing notification preferences when omitted from health sync calls.
+ *
+ * @param request - Incoming HTTP request containing push subscription and credentials
+ * @returns JSON response with linked subscription record
+ */
 export async function POST(request: Request) {
   try {
     const sessionMemberId = getRequestSessionMemberId(request);
@@ -12,8 +19,8 @@ export async function POST(request: Request) {
       pin,
       subscription,
       old_endpoint,
-      notify_personal = true,
-      notify_community = true,
+      notify_personal,
+      notify_community,
       user_agent,
     } = body;
 
@@ -124,13 +131,37 @@ export async function POST(request: Request) {
       );
     }
 
-    // If an old endpoint was rotated, prune the old record
+    // If an old endpoint was rotated, prune the old record (scoped to member.id)
     if (old_endpoint && old_endpoint !== subscription.endpoint) {
       await supabaseAdmin
         .from('push_subscriptions')
         .delete()
-        .eq('endpoint', old_endpoint);
+        .eq('endpoint', old_endpoint)
+        .eq('member_id', member.id);
     }
+
+    // Preserve existing preferences when omitted in request (e.g. background health sync)
+    let existingSub: { notify_personal?: boolean; notify_community?: boolean } | null = null;
+    if (notify_personal === undefined || notify_community === undefined) {
+      const { data } = await supabaseAdmin
+        .from('push_subscriptions')
+        .select('notify_personal, notify_community')
+        .eq('endpoint', subscription.endpoint)
+        .maybeSingle();
+      if (data) {
+        existingSub = data;
+      }
+    }
+
+    const finalNotifyPersonal =
+      notify_personal !== undefined
+        ? Boolean(notify_personal)
+        : (existingSub?.notify_personal ?? true);
+
+    const finalNotifyCommunity =
+      notify_community !== undefined
+        ? Boolean(notify_community)
+        : (existingSub?.notify_community ?? true);
 
     // Upsert subscription uniquely by endpoint tied to member_id.
     // This allows a single member to maintain separate rows for mobile PWA and desktop simultaneously.
@@ -142,8 +173,8 @@ export async function POST(request: Request) {
           endpoint: subscription.endpoint,
           p256dh_key: subscription.keys.p256dh,
           auth_key: subscription.keys.auth,
-          notify_personal: Boolean(notify_personal),
-          notify_community: Boolean(notify_community),
+          notify_personal: finalNotifyPersonal,
+          notify_community: finalNotifyCommunity,
           user_agent: user_agent || null,
         },
         { onConflict: 'endpoint' }

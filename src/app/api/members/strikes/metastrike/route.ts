@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { getRequestSessionMemberId, verifyPin, verifyModPasscode } from '@/lib/auth';
-import { useProactiveMetastrike, convertStrikeToMetastrike } from '@/lib/strikes';
+import {
+  useProactiveMetastrike,
+  convertStrikeToMetastrike,
+  getRecentEligibleStrikeLog,
+} from '@/lib/strikes';
 import { getSleepCycleDate } from '@/lib/sleepEngine';
 import {
   getClientIp,
@@ -17,11 +21,21 @@ import { DateTime } from 'luxon';
  * Allows a member or moderator to use an excused Metastrike pass:
  * 1. Proactive (Tonight): Claims a pass for tonight with an optional excuse reason ("Monthly Battle", "Family", etc.)
  * 2. Retroactive (24-Hour Swap): Converts a community-issued strike within a 24-hour window following the missed bedtime into an excused Metastrike.
+ *
+ * @param request - Incoming HTTP request with member ID, action, reason, and auth credentials
+ * @returns JSON response containing action result and updated strike counts
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { member_id, action = 'proactive', reason, pin, mod_passcode } = body;
+    const {
+      member_id,
+      action = 'proactive',
+      reason,
+      pin,
+      mod_passcode,
+      sleep_cycle_date,
+    } = body;
 
     if (!member_id || typeof member_id !== 'string') {
       return NextResponse.json({ error: 'Missing member_id.' }, { status: 400 });
@@ -63,9 +77,17 @@ export async function POST(request: Request) {
     // 1. Check moderator passcode
     const headerPasscode = request.headers.get('x-mod-passcode');
     const candidatePasscode = mod_passcode || headerPasscode;
-    if (candidatePasscode && verifyModPasscode(candidatePasscode)) {
-      isAuthorized = true;
-      isModerator = true;
+    if (candidatePasscode) {
+      if (verifyModPasscode(candidatePasscode)) {
+        isAuthorized = true;
+        isModerator = true;
+      } else {
+        await recordPinFailurePersistent(clientIp, member.id);
+        return NextResponse.json(
+          { error: 'Invalid moderator passcode.' },
+          { status: 401 }
+        );
+      }
     }
 
     // 2. Check session token (matching target member OR moderator role)
@@ -127,10 +149,16 @@ export async function POST(request: Request) {
     const cycleDate = getSleepCycleDate(member, nowUtc);
 
     if (action === 'convert_retroactive') {
+      let targetCycleDate = sleep_cycle_date;
+      if (!targetCycleDate) {
+        const eligibleStrike = await getRecentEligibleStrikeLog(member.id, nowUtc);
+        targetCycleDate = eligibleStrike ? eligibleStrike.sleep_cycle_date : cycleDate;
+      }
+
       const result = await convertStrikeToMetastrike(
         member,
         reason || (isModerator ? 'Moderator Retroactive Excuse' : 'Converted from Strike'),
-        cycleDate,
+        targetCycleDate,
         nowUtc,
         isModerator
       );
@@ -143,7 +171,7 @@ export async function POST(request: Request) {
         success: true,
         action: 'convert_retroactive',
         member_id: member.id,
-        sleep_cycle_date: cycleDate,
+        sleep_cycle_date: targetCycleDate,
         log: result.log,
         strikes_used: result.strikesUsed,
         strikes_count: result.strikesUsed,

@@ -2,20 +2,33 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db';
 import { getRequestSessionMemberId } from '@/lib/auth';
 
+/**
+ * POST: Unsubscribe a specific push endpoint or all push endpoints for an authenticated member.
+ * Member-wide unsubscription strictly requires an authenticated session.
+ *
+ * @param request - Incoming HTTP request containing endpoint or session credentials
+ * @returns JSON response with unsubscription status
+ */
 export async function POST(request: Request) {
   try {
     const sessionMemberId = getRequestSessionMemberId(request);
     const body = await request.json().catch(() => ({}));
-    const { endpoint, member_id } = body;
+    const { endpoint } = body;
 
-    const targetMemberId = sessionMemberId || member_id;
+    const targetMemberId = sessionMemberId;
 
     // 1. Specific endpoint provided: delete only that specific device's endpoint
     if (endpoint && typeof endpoint === 'string') {
-      const { error } = await supabaseAdmin
+      const query = supabaseAdmin
         .from('push_subscriptions')
         .delete()
         .eq('endpoint', endpoint);
+
+      if (sessionMemberId) {
+        query.eq('member_id', sessionMemberId);
+      }
+
+      const { error } = await query;
 
       if (error) {
         console.error('Failed to remove push subscription for endpoint:', error);
@@ -29,7 +42,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // 2. No specific endpoint provided, but member_id is provided: fall back to deleting all endpoints for that member
+    // 2. No specific endpoint provided: require authenticated session for member-wide subscription removal
     if (targetMemberId && typeof targetMemberId === 'string') {
       const { error } = await supabaseAdmin
         .from('push_subscriptions')
@@ -49,7 +62,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { error: 'Missing endpoint or member_id for unsubscription' },
+      { error: 'Missing endpoint or authenticated session for unsubscription' },
       { status: 400 }
     );
   } catch (err: unknown) {
