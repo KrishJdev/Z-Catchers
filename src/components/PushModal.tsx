@@ -36,6 +36,7 @@ interface PushModalProps {
   onOpenScheduleModal: () => void;
   currentUser?: Member | null;
   onOpenLogin?: () => void;
+  onLogout?: () => void;
 }
 
 export function PushModal({
@@ -47,6 +48,7 @@ export function PushModal({
   onOpenScheduleModal,
   currentUser,
   onOpenLogin,
+  onLogout,
 }: PushModalProps) {
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [notifyPersonal, setNotifyPersonal] = useState<boolean>(true);
@@ -270,15 +272,29 @@ export function PushModal({
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => {
-                onClose();
-                onOpenScheduleModal();
-              }}
-              className="text-[11px] font-medium text-status-amber hover:underline min-h-[44px] flex items-center"
-            >
-              Edit Schedule
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenScheduleModal();
+                }}
+                className="text-[11px] font-medium text-status-amber hover:underline min-h-[44px] flex items-center"
+              >
+                Edit Schedule
+              </button>
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onLogout();
+                  }}
+                  className="text-[11px] font-medium text-cream-muted hover:text-status-coral transition-colors min-h-[44px] flex items-center ml-1"
+                >
+                  Log Out
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="mb-4 rounded-xl border border-status-amber/40 bg-status-amber/10 p-3.5 text-xs text-cream-secondary">

@@ -19,6 +19,7 @@ import {
   UserPlus,
   RefreshCw,
   Moon,
+  LogOut,
 } from 'lucide-react';
 
 import { setStoredMemberId, setStoredAuthToken, setStoredAuthMember } from '@/lib/pushClient';
@@ -33,6 +34,7 @@ interface MyScheduleModalProps {
   viewerTimezone: string;
   onRefreshRoster: () => Promise<void>;
   currentUser?: Member | null;
+  onLogout?: () => void;
 }
 
 export function MyScheduleModal({
@@ -42,6 +44,7 @@ export function MyScheduleModal({
   viewerTimezone,
   onRefreshRoster,
   currentUser,
+  onLogout,
 }: MyScheduleModalProps) {
   const [tab, setTab] = useState<'claim' | 'new'>('claim');
 
@@ -395,13 +398,29 @@ export function MyScheduleModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-xl p-2 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary min-h-[44px] min-w-[44px] flex items-center justify-center"
-            aria-label="Close modal"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {currentUser && onLogout && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onLogout();
+                }}
+                title={`Log out of @${currentUser.discord_username}`}
+                className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 sm:px-3 py-1.5 text-xs font-medium text-cream-muted hover:border-status-coral/40 hover:bg-status-coral/10 hover:text-status-coral transition-colors min-h-[44px]"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Log Out</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="rounded-xl p-2 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary min-h-[44px] min-w-[44px] flex items-center justify-center"
+              aria-label="Close modal"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Navigation Tabs: Edit Existing vs Join Roster */}
@@ -909,6 +928,38 @@ export function MyScheduleModal({
                   </button>
                 </div>
               </form>
+              </div>
+            )}
+
+            {/* Account & Session Management (Log Out) */}
+            {currentUser && onLogout && (
+              <div className="pt-4 border-t border-night-border">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-2xl border border-night-border bg-night-elevated/40 p-3.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-night-surface border border-night-border text-status-amber">
+                      <FoxMascot state="logo" size={20} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-cream-primary">
+                        Signed in as @{currentUser.discord_username}
+                      </p>
+                      <p className="text-[11px] text-cream-muted">
+                        Need to switch accounts or take a break?
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onLogout();
+                    }}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 py-2 text-xs font-semibold text-status-coral hover:bg-status-coral/20 hover:border-status-coral/60 transition-all min-h-[44px]"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Log Out of Fox Den</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

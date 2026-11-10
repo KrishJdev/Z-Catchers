@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Bell, BellOff, Clock, Shield, Moon, KeyRound } from 'lucide-react';
+import { Bell, BellOff, Clock, Shield, Moon, KeyRound, LogOut } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import { FoxMascot } from '@/components/FoxMascot';
 import { DateTime } from 'luxon';
@@ -17,6 +17,7 @@ interface HeaderProps {
   onOpenMod?: () => void;
   currentUser?: Member | null;
   onOpenLogin?: (initialTab?: 'login' | 'register') => void;
+  onLogout?: () => void;
 }
 
 export function Header({
@@ -29,6 +30,7 @@ export function Header({
   onOpenMod,
   currentUser,
   onOpenLogin,
+  onLogout,
 }: HeaderProps) {
   const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
 
@@ -139,25 +141,40 @@ export function Header({
             </span>
           </button>
 
-          {/* Member Profile / Log In */}
+          {/* Member Profile / Log In / Log Out */}
           {currentUser ? (
-            <button
-              type="button"
-              onClick={onOpenSchedule}
-              title={`Logged in as @${currentUser.discord_username}. Tap to view your schedule.`}
-              className="flex items-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2.5 sm:px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all shrink-0 min-h-[44px]"
-            >
-              <span className="h-2 w-2 rounded-full bg-status-sage shrink-0" />
-              <span className="max-w-[100px] truncate sm:max-w-[140px]">
-                @{currentUser.discord_username}
-              </span>
-            </button>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                onClick={onOpenSchedule}
+                title={`Logged in as @${currentUser.discord_username}. Tap to view your schedule.`}
+                className="flex items-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2.5 sm:px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all shrink-0 min-h-[44px]"
+              >
+                <span className="h-2 w-2 rounded-full bg-status-sage shrink-0" />
+                <span className="max-w-[70px] xs:max-w-[100px] truncate sm:max-w-[140px]">
+                  @{currentUser.discord_username}
+                </span>
+              </button>
+
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  title={`Log out of @${currentUser.discord_username}`}
+                  aria-label="Log out"
+                  className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 py-2 text-xs font-medium text-cream-muted hover:border-status-coral/40 hover:bg-status-coral/10 hover:text-status-coral transition-all min-h-[44px] shrink-0"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline font-medium">Log Out</span>
+                </button>
+              )}
+            </div>
           ) : (
             <button
               type="button"
               onClick={() => onOpenLogin?.('login')}
               title="Log in with your 4-digit PIN"
-              className="hidden md:flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary transition-all min-h-[44px]"
+              className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary transition-all min-h-[44px]"
             >
               <KeyRound className="h-3.5 w-3.5 text-status-amber" />
               <span>Log In</span>
