@@ -1,12 +1,12 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T13:48:00+05:30  
+> **Last Updated:** 2026-11-10T14:26:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `73aee39`  
+> **Latest Commit:** `a10a7ae`  
 > **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | All auth, rate limit, and security tests passing)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` 21/21 routes | All auth, rate limit, and security tests passing)
 
 ---
 
@@ -326,6 +326,23 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Verification:**
   * Verified `npx tsc --noEmit` passing cleanly (0 errors).
   * Verified `npm run build` passing cleanly with all 21 static and dynamic routes compiled.
+
+### Phase 19: Implementation of CodeRabbit Group A Findings (Commit `a10a7ae`)
+* **Login Multi-Target Rate-Limit Fix (`src/app/api/auth/login/route.ts`):**
+  * Fixed IP failure key double counting when users log in by username (`targetIdentifier !== currentMember.id`).
+  * Passed empty IP string (`recordPinFailure('', targetIdentifier)`) on secondary target alias recording, ensuring exactly 1 IP failure is counted per failed attempt while still locking down the target alias across IPs.
+  * Added Section 7 test suite to `scripts/test-pin-rate-limiting.mjs` verifying multi-target lockout at exactly 5 failed attempts without premature IP throttling.
+* **Deterministic PostgREST Pagination (`src/lib/db.ts`):**
+  * Chained `.order('id', { ascending: true })` on `fetchAllNotificationLogs` before `.range(from, to)`, ensuring stable, deterministic row order across PostgREST page boundaries.
+* **Moderator Passcode Rate-Limiting & Query Parameter Removal (`src/app/api/mod/route.ts`):**
+  * Removed insecure `?passcode=` query string handling from `isAuthorized()`, preventing secret leakage into proxy logs and browser history.
+  * Applied IP-based rate limiting (`checkPinRateLimit(clientIp, '')`) and failure logging (`recordPinFailure(clientIp, '')`) to `isAuthorized()`, `/api/mod` GET, and `/api/mod` POST operations. Returns HTTP 429 with `Retry-After` header when throttled.
+  * Updated `fetchModRoster` in `src/components/ModDrawer.tsx` to omit `?passcode=` query parameters and use the `x-mod-passcode` header exclusively.
+  * Extended IP rate-limiting to all `verifyModPasscode` evaluation gates in `src/app/api/members/update-schedule/route.ts`, `src/app/api/members/cancel-pending/route.ts`, and `src/app/api/mod/webhook/route.ts`.
+* **Verification:**
+  * `npx tsc --noEmit`: 0 errors.
+  * `npm run build`: 21/21 routes compiled successfully.
+  * `node scripts/test-pin-rate-limiting.mjs`: All 17 rate-limiting and lockout tests passing.
 
 ---
 
