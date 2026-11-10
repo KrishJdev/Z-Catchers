@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T15:15:00+05:30  
+> **Last Updated:** 2026-11-10T15:35:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `9cc8c4b`  
+> **Latest Commit:** `eec8661`  
 > **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` 21/21 routes | All auth, rate limit, and security tests passing)
 
@@ -378,6 +378,12 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * `npx tsc --noEmit`: 0 errors.
   * `npm run build`: 21/21 routes compiled cleanly.
   * Full test suite passing cleanly across rate limits, weekend hours, and demo seed fingerprinting.
+
+### Phase 23: CodeRabbit Production Branch Exemption (Commit `eec8661`)
+* **CodeRabbit Configuration Update (`.coderabbit.yaml`):**
+  * Removed `"main"` from `reviews.auto_review.base_branches`.
+  * Configured CodeRabbit to automatically review only pull requests targeting the integration branch `dev` (`krish -> dev`).
+  * Pull requests merging from `dev` into `main` will skip automated reviews, eliminating redundant duplicate reviews and saving included hourly review allowance.
 
 ---
 
