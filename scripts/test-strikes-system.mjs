@@ -14,6 +14,7 @@ import {
   resolveMemberStrikeCounts,
   updateMemberStrikeCounts,
   getNightlyStrikeLog,
+  getRecentEligibleStrikeLog,
   saveNightlyStrikeLog,
 } from '../src/lib/strikes.ts';
 
@@ -182,6 +183,51 @@ async function run() {
   );
   assert(expiredConvert.success === false, 'Conversion rejected past 24-hour window');
   assert(expiredConvert.error && expiredConvert.error.includes('24-hour window'), 'Returns 24h expired error');
+
+  // Test 3C: Conversion across cycle change without explicit sleep_cycle_date (resolves via getRecentEligibleStrikeLog)
+  const rolloverMember = {
+    id: 'test-sleeper-rollover',
+    discord_username: 'RolloverFox',
+    discord_handle: '@rollover',
+    bedtime_local: '23:00',
+    wake_time_local: '07:00',
+    timezone: 'UTC',
+    role: 'member',
+    is_active: true,
+    strikes_used: 1,
+    strikes_count: 1,
+    metastrikes_used: 0,
+    metastrikes_count: 0,
+    strike_cycle_month: '2026-11',
+  };
+
+  const strikeTime = DateTime.fromISO('2026-11-10T23:15:00.000Z', { zone: 'utc' });
+  await saveNightlyStrikeLog({
+    id: 'rollover-log-1',
+    target_member_id: rolloverMember.id,
+    sleep_cycle_date: '2026-11-10',
+    record_type: 'strike',
+    voter_ids: ['voter-a', 'voter-b'],
+    created_at: strikeTime.toISO(),
+    updated_at: strikeTime.toISO(),
+  });
+  await updateMemberStrikeCounts(rolloverMember.id, 1, 0, '2026-11');
+
+  // Next afternoon: 14:00 UTC next day (14h 45m after strike, well within 24h, but cycle date has rolled over to 2026-11-11)
+  const nextDayTime = DateTime.fromISO('2026-11-11T14:00:00.000Z', { zone: 'utc' });
+  const rolloverConvert = await convertStrikeToMetastrike(
+    rolloverMember,
+    'Next afternoon conversion',
+    undefined, // No explicit sleepCycleDate provided
+    nextDayTime
+  );
+  assert(rolloverConvert.success === true, 'Conversion resolves recent strike across cycle change');
+  assert(rolloverConvert.log?.sleep_cycle_date === '2026-11-10', 'Correctly targeted previous cycle date of strike');
+  assert(rolloverConvert.strikesUsed === 0, 'Strikes decremented to 0');
+  assert(rolloverConvert.metastrikesUsed === 1, 'Metastrikes incremented to 1');
+
+  const postConversionEligible = await getRecentEligibleStrikeLog(rolloverMember.id, nextDayTime);
+  assert(postConversionEligible === null, 'No eligible strikes remain after conversion');
 
   console.log('\n--- 4. Proactive Metastrike (Excuse Pass) Workflow ---');
   const freshMember = {
