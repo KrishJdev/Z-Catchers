@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member } from '@/lib/db';
+import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
 import { verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
 import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
@@ -67,9 +67,9 @@ export async function POST(request: Request) {
       resetPinFailure(clientIp, member.id);
     }
 
-    const { data: updatedMember, error: updateError } = await supabaseAdmin
-      .from('members')
-      .update({
+    const { data: updatedMember, error: updateError } = await updateMemberSafe(
+      member_id,
+      {
         pending_bedtime_local: null,
         pending_wake_time_local: null,
         pending_timezone: null,
@@ -77,10 +77,8 @@ export async function POST(request: Request) {
         pending_weekend_wake_time_local: null,
         pending_effective_at: null,
         updated_at: DateTime.utc().toISO() as string,
-      })
-      .eq('id', member_id)
-      .select('*')
-      .single();
+      }
+    );
 
     if (updateError || !updatedMember) {
       return NextResponse.json(

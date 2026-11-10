@@ -38,6 +38,22 @@ export function isPushSupported(): boolean {
 }
 
 /**
+ * Detects whether the user is browsing via Brave Browser
+ */
+export async function isBraveBrowser(): Promise<boolean> {
+  if (typeof navigator === 'undefined') return false;
+  const nav = navigator as unknown as { brave?: { isBrave?: () => Promise<boolean> } };
+  if (nav.brave && typeof nav.brave.isBrave === 'function') {
+    try {
+      return await nav.brave.isBrave();
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Gets the current Notification permission state
  */
 export function getNotificationPermission(): NotificationPermission | 'unsupported' {
@@ -76,6 +92,78 @@ export async function getExistingSubscription(): Promise<PushSubscription | null
   } catch (err) {
     console.error('Failed to get existing push subscription:', err);
     return null;
+  }
+}
+
+/**
+ * Silent push subscription health-check called on app boot and foreground resume.
+ * When Notification.permission === 'granted', verifies that registration.pushManager.getSubscription()
+ * exists and re-syncs it with /api/push/subscribe so local browser state and Supabase rows never drift out of sync.
+ */
+export async function syncPushSubscriptionHealth(): Promise<boolean> {
+  if (!isPushSupported()) return false;
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+
+    // If permission is granted but subscription was lost/cleared, attempt silent resubscribe
+    if (!subscription && VAPID_PUBLIC_KEY) {
+      try {
+        const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey as unknown as BufferSource,
+        });
+      } catch (subErr) {
+        console.warn('[PushClient] Silent resubscribe error:', subErr);
+      }
+    }
+
+    if (!subscription) return false;
+
+    const subJson = subscription.toJSON();
+    if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
+      return false;
+    }
+
+    const memberIdToUse = getStoredMemberId();
+    const token = getStoredAuthToken();
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        member_id: memberIdToUse || null,
+        subscription: {
+          endpoint: subJson.endpoint,
+          keys: {
+            p256dh: subJson.keys.p256dh,
+            auth: subJson.keys.auth,
+          },
+        },
+        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      }),
+    });
+
+    if (res.ok) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY_PUSH_ENABLED, 'true');
+      }
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn('[PushClient] Push subscription health sync failed:', err);
+    return false;
   }
 }
 
@@ -172,8 +260,24 @@ export async function subscribeToPush(
 
     return { success: true, subscription };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown push subscription error';
-    return { success: false, error: message };
+    const rawMessage = err instanceof Error ? err.message : 'Unknown push subscription error';
+    let userFriendlyError = rawMessage;
+
+    const isBrave = await isBraveBrowser();
+    if (
+      rawMessage.toLowerCase().includes('push service error') ||
+      rawMessage.toLowerCase().includes('registration failed')
+    ) {
+      if (isBrave) {
+        userFriendlyError =
+          'Brave blocks Web Push by default. Enable "Use Google services for push messaging" in brave://settings/privacy, restart Brave, and try again.';
+      } else {
+        userFriendlyError =
+          'Push registration failed. This usually occurs if your browser cannot reach Google Push Services (FCM). Check if an ad blocker, VPN, or network firewall is blocking Google push messaging.';
+      }
+    }
+
+    return { success: false, error: userFriendlyError };
   }
 }
 
@@ -287,4 +391,3 @@ export function clearAuthSession(): void {
   setStoredAuthToken(null);
   setStoredAuthMember(null);
 }
-

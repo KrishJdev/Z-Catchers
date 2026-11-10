@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member } from '@/lib/db';
+import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
 import { hashPin, verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
 import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
@@ -126,11 +126,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // 4. Validate Timezone (Must be a valid GMT offset or IANA timezone)
+    // 4. Validate Timezone (Must be a valid IANA timezone or supported offset)
     if (timezone) {
       if (!isValidTimezone(timezone)) {
         return NextResponse.json(
-          { error: `Invalid timezone "${timezone}". Please select a valid GMT offset (e.g. "GMT+05:30").` },
+          { error: `Invalid timezone "${timezone}". Please select a valid IANA timezone (e.g. "Europe/Athens", "America/New_York", "Asia/Kolkata").` },
           { status: 400 }
         );
       }
@@ -173,7 +173,7 @@ export async function POST(request: Request) {
     // 6. Check for Schedule Changes vs Immediate Profile Changes
     const targetBedtime = bedtime_local || currentMember.bedtime_local;
     const targetWakeTime = wake_time_local || currentMember.wake_time_local;
-    const targetTimezone = timezone ? formatGmtOffset(timezone) : currentMember.timezone;
+    const targetTimezone = timezone ? timezone.trim() : currentMember.timezone;
     const targetWeekendBedtime =
       weekend_bedtime_local !== undefined
         ? weekend_bedtime_local && weekend_bedtime_local.trim() !== ''
@@ -237,19 +237,11 @@ export async function POST(request: Request) {
     }
 
     // 7. Persist to Supabase
-    let updateQuery = supabaseAdmin
-      .from('members')
-      .update(updates)
-      .eq('id', member_id);
-
-    // Conditional atomic CAS update if claiming an unconfigured profile
-    if (isFirstTimeClaim) {
-      updateQuery = updateQuery.is('passcode_hash', null);
-    }
-
-    const { data: updatedMember, error: updateError } = await updateQuery
-      .select('*')
-      .maybeSingle();
+    const { data: updatedMember, error: updateError } = await updateMemberSafe(
+      member_id,
+      updates,
+      { isFirstTimeClaim }
+    );
 
     if (updateError || !updatedMember) {
       return NextResponse.json(

@@ -1,15 +1,25 @@
 import { NextResponse } from 'next/server';
-import { supabase, supabaseAdmin, Member, fetchAllNotificationLogs } from '@/lib/db';
+import {
+  supabase,
+  supabaseAdmin,
+  Member,
+  fetchAllNotificationLogs,
+  updateMemberSafe,
+  insertMemberSafe,
+  hydrateMemberWeekendHours,
+} from '@/lib/db';
 import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
-import { hashPin, sanitizeMember, createSessionToken } from '@/lib/auth';
-import { toValidLuxonZone, isValidTimezone, formatGmtOffset } from '@/lib/timezone';
+import { hashPin, sanitizeMember, createSessionToken, getRequestSessionMemberId } from '@/lib/auth';
+import { toValidLuxonZone, isValidTimezone, formatGmtOffset, detectUserTimezone } from '@/lib/timezone';
+import { resolveMemberStrikeCounts, getNightlyStrikeLog } from '@/lib/strikes';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const sessionMemberId = getRequestSessionMemberId(request);
     const { data: members, error } = await supabase
       .from('members')
       .select('*')
@@ -56,39 +66,52 @@ export async function GET() {
     for (const member of (members as Member[]) || []) {
       const { promoted, activeMember } = checkCooldownPromotion(member, nowUtc);
       if (promoted) {
-        // Update DB in background with supabaseAdmin
-        await supabaseAdmin
-          .from('members')
-          .update({
-            bedtime_local: activeMember.bedtime_local,
-            wake_time_local: activeMember.wake_time_local,
-            timezone: activeMember.timezone,
-            weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
-            weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
-            pending_bedtime_local: null,
-            pending_wake_time_local: null,
-            pending_timezone: null,
-            pending_weekend_bedtime_local: null,
-            pending_weekend_wake_time_local: null,
-            pending_effective_at: null,
-            updated_at: nowUtc.toISO(),
-          })
-          .eq('id', member.id);
+        // Update DB in background with safe column stripping
+        await updateMemberSafe(member.id, {
+          bedtime_local: activeMember.bedtime_local,
+          wake_time_local: activeMember.wake_time_local,
+          timezone: activeMember.timezone,
+          weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
+          weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
+          pending_bedtime_local: null,
+          pending_wake_time_local: null,
+          pending_timezone: null,
+          pending_weekend_bedtime_local: null,
+          pending_weekend_wake_time_local: null,
+          pending_effective_at: null,
+          updated_at: nowUtc.toISO(),
+        });
       }
 
+      const hydratedMember = hydrateMemberWeekendHours(activeMember);
+
       // Check-in & streak computation
-      const sleeperNow = nowUtc.setZone(toValidLuxonZone(activeMember.timezone));
-      const localDateStr = getSleepCycleDate(activeMember, nowUtc);
-      const memberCheckins = checkinsByMember.get(activeMember.id) || [];
+      const sleeperNow = nowUtc.setZone(toValidLuxonZone(hydratedMember.timezone));
+      const localDateStr = getSleepCycleDate(hydratedMember, nowUtc);
+      const memberCheckins = checkinsByMember.get(hydratedMember.id) || [];
       const is_in_bed = memberCheckins.includes(localDateStr);
       const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);
-      const nag_assists_count = nagAssistsByMemberAndDate.get(`${activeMember.id}_${localDateStr}`) || 0;
+      const nag_assists_count = nagAssistsByMemberAndDate.get(`${hydratedMember.id}_${localDateStr}`) || 0;
+
+      // Strikes & Metastrikes resolution (handles lazy monthly resets)
+      const strikeInfo = await resolveMemberStrikeCounts(hydratedMember, nowUtc);
+      const tonightLog = await getNightlyStrikeLog(hydratedMember.id, localDateStr);
+      const is_metastrike_active = tonightLog?.record_type === 'metastrike';
+      const metastrike_reason = tonightLog?.reason || null;
+      const has_voted_strike = Boolean(sessionMemberId && tonightLog?.voter_ids?.includes(sessionMemberId));
 
       processedMembers.push({
-        ...sanitizeMember(activeMember),
+        ...sanitizeMember(hydratedMember),
         is_in_bed,
         streak_days,
         nag_assists_count,
+        strikes_used: strikeInfo.strikes_used,
+        metastrikes_used: strikeInfo.metastrikes_used,
+        strike_cycle_month: strikeInfo.strike_cycle_month,
+        tonight_strike_log: tonightLog,
+        is_metastrike_active,
+        metastrike_reason,
+        has_voted_strike,
       });
     }
 
@@ -114,9 +137,9 @@ export async function POST(request: Request) {
       pin,
     } = body;
 
-    if (!discord_username || !journal_url || !bedtime_local || !timezone) {
+    if (!discord_username || !journal_url || !bedtime_local) {
       return NextResponse.json(
-        { error: 'Missing required fields (username, journal link, bedtime, timezone).' },
+        { error: 'Missing required fields (username, journal link, bedtime).' },
         { status: 400 }
       );
     }
@@ -162,11 +185,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate Timezone
-    const cleanTz = String(timezone).trim();
+    // Validate Timezone (auto-detects IANA timezone if not provided)
+    const cleanTz = timezone && String(timezone).trim() ? String(timezone).trim() : detectUserTimezone();
     if (!isValidTimezone(cleanTz)) {
       return NextResponse.json(
-        { error: 'Invalid timezone identifier. Please select a valid GMT offset (e.g. "GMT+05:30").' },
+        { error: `Invalid timezone identifier "${cleanTz}". Please provide a valid IANA timezone (e.g. "Europe/Athens", "America/New_York", "Asia/Kolkata").` },
         { status: 400 }
       );
     }
@@ -209,9 +232,12 @@ export async function POST(request: Request) {
       journal_url: cleanJournal,
       bedtime_local: bedtime_local.trim(),
       wake_time_local: wake_time_local.trim(),
-      timezone: formatGmtOffset(cleanTz),
+      timezone: cleanTz,
       role: 'member',
       passcode_hash,
+      strikes_used: 0,
+      metastrikes_used: 0,
+      strike_cycle_month: DateTime.utc().toFormat('yyyy-MM'),
     };
 
     if (weekend_bedtime_local?.trim()) {
@@ -227,10 +253,13 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    // Resilient fallback: If weekend columns do not exist in the database schema yet (PGRST204), retry with core fields
-    if (error && error.code === 'PGRST204' && error.message.includes('weekend')) {
+    // Resilient fallback: If strikes/weekend columns do not exist in the database schema yet, retry with core fields
+    if (error && (error.code === 'PGRST204' || error.code === '42703')) {
       delete insertPayload.weekend_bedtime_local;
       delete insertPayload.weekend_wake_time_local;
+      delete insertPayload.strikes_used;
+      delete insertPayload.metastrikes_used;
+      delete insertPayload.strike_cycle_month;
       const fallbackRes = await supabaseAdmin
         .from('members')
         .insert(insertPayload)

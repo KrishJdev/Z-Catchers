@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member } from '@/lib/db';
+import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
 import { DateTime } from 'luxon';
 import { verifyPin, getRequestSessionMemberId } from '@/lib/auth';
 import { calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
@@ -153,6 +153,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: delErr.message }, { status: 500 });
       }
 
+      if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date === localDate) {
+        await updateMemberSafe(member.id, {
+          last_notified_stage: null,
+        });
+      }
+
       // Recompute streak after cancellation
       const { data: logs } = await supabaseAdmin
         .from('notification_logs')
@@ -190,6 +196,11 @@ export async function POST(request: Request) {
     if (insertErr) {
       return NextResponse.json({ error: insertErr.message }, { status: 500 });
     }
+
+    await updateMemberSafe(member.id, {
+      last_notified_stage: 'IN_BED_EARLY',
+      last_notified_cycle_date: localDate,
+    });
 
     // Compute updated streak
     const { data: logs } = await supabaseAdmin

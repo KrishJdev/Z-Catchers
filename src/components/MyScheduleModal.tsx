@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 import { setStoredMemberId, setStoredAuthToken, setStoredAuthMember } from '@/lib/pushClient';
-import { GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
+import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 
@@ -56,7 +56,7 @@ export function MyScheduleModal({
   const [journalUrl, setJournalUrl] = useState<string>('');
   const [bedtime, setBedtime] = useState<string>('23:00');
   const [wakeTime, setWakeTime] = useState<string>('07:00');
-  const [timezone, setTimezone] = useState<string>(formatGmtOffset(viewerTimezone));
+  const [timezone, setTimezone] = useState<string>(viewerTimezone);
 
   // Weekend hours (Friday & Saturday nights)
   const [enableWeekendHours, setEnableWeekendHours] = useState<boolean>(false);
@@ -86,7 +86,7 @@ export function MyScheduleModal({
       setJournalUrl(activeMember.journal_url);
       setBedtime(activeMember.bedtime_local);
       setWakeTime(activeMember.wake_time_local);
-      setTimezone(formatGmtOffset(activeMember.timezone));
+      setTimezone(activeMember.timezone);
       if (activeMember.weekend_bedtime_local) {
         setEnableWeekendHours(true);
         setWeekendBedtime(activeMember.weekend_bedtime_local);
@@ -169,7 +169,7 @@ export function MyScheduleModal({
   // Check if schedule (bedtime, wake time, timezone, weekend hours) has changed from active values
   const hasScheduleChanged = activeMember
     ? bedtime !== activeMember.bedtime_local ||
-      formatGmtOffset(timezone) !== formatGmtOffset(activeMember.timezone) ||
+      timezone !== activeMember.timezone ||
       wakeTime !== activeMember.wake_time_local ||
       (enableWeekendHours
         ? weekendBedtime !== (activeMember.weekend_bedtime_local || '') ||
@@ -371,13 +371,13 @@ export function MyScheduleModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/85 backdrop-blur-md p-0 md:items-center md:p-4">
       <div
-        className="relative flex w-full max-w-lg flex-col rounded-t-3xl border-t border-night-border bg-night-surface p-5 shadow-2xl max-h-[90vh] overflow-y-auto md:rounded-2xl md:border md:p-6"
+        className="relative flex w-full max-w-lg flex-col rounded-t-3xl border-t border-night-border bg-night-surface p-5 shadow-2xl max-h-[90vh] overflow-y-auto md:rounded-2xl md:border md:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-6"
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-schedule-title"
       >
         {/* Mobile handle indicator */}
-        <div className="mx-auto mb-3 h-1 w-12 rounded-full bg-night-border md:hidden" />
+        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-night-border md:hidden shrink-0" />
 
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-night-border pb-4">
@@ -397,7 +397,7 @@ export function MyScheduleModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded-xl p-2 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary"
+            className="rounded-xl p-2 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="Close modal"
           >
             <X className="h-5 w-5" />
@@ -757,12 +757,12 @@ export function MyScheduleModal({
                     onChange={(e) => setTimezone(e.target.value)}
                     className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
                   >
-                    {!GMT_OFFSETS.includes(timezone as any) && (
-                      <option value={timezone}>{formatGmtOffset(timezone)}</option>
+                    {!COMMON_IANA_TIMEZONES.includes(timezone as any) && (
+                      <option value={timezone}>{timezone} ({formatGmtOffset(timezone)})</option>
                     )}
-                    {GMT_OFFSETS.map((tz) => (
+                    {COMMON_IANA_TIMEZONES.map((tz) => (
                       <option key={tz} value={tz}>
-                        {tz}
+                        {tz} ({formatGmtOffset(tz)})
                       </option>
                     ))}
                   </select>
@@ -1022,19 +1022,19 @@ export function MyScheduleModal({
             {/* Timezone */}
             <div>
               <label className="block text-xs font-medium text-cream-secondary mb-1">
-                Timezone (GMT Offset)
+                Timezone (IANA Identifier)
               </label>
               <select
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
                 className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
               >
-                {!GMT_OFFSETS.includes(timezone as any) && (
-                  <option value={timezone}>{formatGmtOffset(timezone)}</option>
+                {!COMMON_IANA_TIMEZONES.includes(timezone as any) && (
+                  <option value={timezone}>{timezone} ({formatGmtOffset(timezone)})</option>
                 )}
-                {GMT_OFFSETS.map((tz) => (
+                {COMMON_IANA_TIMEZONES.map((tz) => (
                   <option key={tz} value={tz}>
-                    {tz}
+                    {tz} ({formatGmtOffset(tz)})
                   </option>
                 ))}
               </select>

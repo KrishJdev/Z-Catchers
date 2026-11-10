@@ -20,7 +20,7 @@ export function StatusBucket({
   count,
   icon,
   defaultExpanded = true,
-  accentColor = 'text-cream-primary',
+  accentColor = 'text-[#F5EBE1]',
   showEmptyState = false,
   emptyMessage = 'Every fox in this den is fast asleep.',
   children,
@@ -34,33 +34,33 @@ export function StatusBucket({
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full min-h-[44px] items-center justify-between rounded-xl border border-night-border/70 bg-night-surface/80 px-4 py-2.5 text-left transition-colors hover:border-night-elevated hover:bg-night-surface"
+        className="flex w-full min-h-[44px] items-center justify-between rounded-xl border border-[#2C221E] bg-[#1A1412] px-4 py-3 text-left transition-colors hover:border-[#382C27] hover:bg-[#201917]"
       >
         <div className="flex items-center gap-2.5">
           {icon}
           <span className={`text-xs font-bold tracking-wider uppercase ${accentColor}`}>
             {title}
           </span>
-          <span className="rounded-full bg-night-elevated px-2 py-0.5 text-xs font-semibold tabular-nums text-cream-secondary">
+          <span className="rounded-full bg-[#261E1A] border border-[#2C221E] px-2.5 py-0.5 text-xs font-semibold tabular-nums text-[#A89F91]">
             {count}
           </span>
         </div>
 
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-cream-muted" />
+          <ChevronDown className="h-4 w-4 text-[#A89F91]" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-cream-muted" />
+          <ChevronRight className="h-4 w-4 text-[#A89F91]" />
         )}
       </button>
 
       {isExpanded && (
         <div className="mt-3">
           {count === 0 ? (
-            <div className="flex items-center justify-center gap-3 rounded-2xl border border-night-border/40 bg-night-surface/40 px-6 py-8 text-center text-cream-muted">
+            <div className="flex items-center justify-center gap-3 rounded-2xl border border-[#2C221E]/60 bg-[#1A1412]/60 px-6 py-8 text-center text-[#A89F91]">
               <FoxMascot state="sleeping" size={44} />
               <div className="text-left">
-                <p className="text-sm font-medium text-cream-secondary">{emptyMessage}</p>
-                <p className="text-xs text-cream-muted">Quiet hours are in effect for this group.</p>
+                <p className="text-sm font-medium text-[#F5EBE1]">{emptyMessage}</p>
+                <p className="text-xs text-[#A89F91]">Quiet hours are in effect for this group.</p>
               </div>
             </div>
           ) : (

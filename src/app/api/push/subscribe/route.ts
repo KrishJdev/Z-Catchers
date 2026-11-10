@@ -11,6 +11,7 @@ export async function POST(request: Request) {
       member_id,
       pin,
       subscription,
+      old_endpoint,
       notify_personal = true,
       notify_community = true,
       user_agent,
@@ -24,7 +25,23 @@ export async function POST(request: Request) {
     }
 
     // Determine target member ID: Prefer authenticated session member ID
-    const effectiveMemberId = sessionMemberId || member_id;
+    let effectiveMemberId = sessionMemberId || member_id;
+    let isRotationRecovery = false;
+
+    // Background pushsubscriptionchange recovery: if old_endpoint is provided and matches an existing subscription,
+    // recover the linked member_id without requiring active user credentials
+    if (!effectiveMemberId && old_endpoint) {
+      const { data: oldSub } = await supabaseAdmin
+        .from('push_subscriptions')
+        .select('member_id')
+        .eq('endpoint', old_endpoint)
+        .maybeSingle();
+
+      if (oldSub) {
+        effectiveMemberId = oldSub.member_id;
+        isRotationRecovery = true;
+      }
+    }
 
     if (!effectiveMemberId) {
       return NextResponse.json(
@@ -64,11 +81,11 @@ export async function POST(request: Request) {
     }
 
     // Security Gate:
-    // Must be authenticated via session OR provide valid PIN matching member's passcode_hash
+    // Must be authenticated via session, valid PIN, or verified background rotation recovery
     const isSessionMatch = Boolean(sessionMemberId && sessionMemberId === member.id);
     let isPinMatch = false;
 
-    if (!isSessionMatch) {
+    if (!isSessionMatch && !isRotationRecovery) {
       if (pin !== undefined && pin !== null) {
         if (typeof pin !== 'string') {
           return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
@@ -97,7 +114,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!isSessionMatch && !isPinMatch) {
+    if (!isSessionMatch && !isPinMatch && !isRotationRecovery) {
       return NextResponse.json(
         {
           error: 'Authentication required. Please log in or provide your 4-digit PIN to link push notifications.',
@@ -107,7 +124,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Upsert subscription (unique on endpoint)
+    // If an old endpoint was rotated, prune the old record
+    if (old_endpoint && old_endpoint !== subscription.endpoint) {
+      await supabaseAdmin
+        .from('push_subscriptions')
+        .delete()
+        .eq('endpoint', old_endpoint);
+    }
+
+    // Upsert subscription uniquely by endpoint tied to member_id.
+    // This allows a single member to maintain separate rows for mobile PWA and desktop simultaneously.
     const { data: subData, error: subErr } = await supabaseAdmin
       .from('push_subscriptions')
       .upsert(

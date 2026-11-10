@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, Share, X, Download } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -17,23 +17,50 @@ interface PwaBannerProps {
   isPushGranted: boolean;
 }
 
+const STORAGE_KEY_PWA_DISMISSED = 'zcatchers_pwa_banner_dismissed_at';
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
 export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
   const [isDismissed, setIsDismissed] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
   const [isIosPrompt, setIsIosPrompt] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
-    // Check if running on iOS Safari outside standalone PWA mode
-    const isIos = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
-    const isStandalone =
+    // 1. Detect standalone PWA execution mode
+    const standaloneMode =
       window.matchMedia('(display-mode: standalone)').matches ||
-      ('standalone' in window.navigator && (window.navigator as unknown as { standalone: boolean }).standalone);
+      ('standalone' in window.navigator && Boolean((window.navigator as unknown as { standalone: boolean }).standalone));
 
-    if (isIos && !isStandalone) {
+    if (standaloneMode) {
+      setIsStandalone(true);
+      return;
+    }
+
+    // 2. Check 7-day dismissal cooldown
+    try {
+      const dismissedAtStr = localStorage.getItem(STORAGE_KEY_PWA_DISMISSED);
+      if (dismissedAtStr) {
+        const dismissedAt = parseInt(dismissedAtStr, 10);
+        if (!isNaN(dismissedAt) && Date.now() - dismissedAt < SEVEN_DAYS_MS) {
+          setIsDismissed(true);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to read PWA banner dismissal timestamp:', err);
+    }
+
+    // 3. Detect iOS/iPadOS Safari (touch Apple devices outside standalone mode)
+    const ua = window.navigator.userAgent.toLowerCase();
+    const isAppleMobile =
+      /iphone|ipad|ipod/.test(ua) ||
+      (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+
+    if (isAppleMobile) {
       setIsIosPrompt(true);
     }
 
-    // Listen for Chrome/Android install prompt
+    // 4. Capture Chromium/Android install prompt
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setInstallPrompt(e as BeforeInstallPromptEvent);
@@ -46,9 +73,15 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
     };
   }, []);
 
-  if (isDismissed) {
-    return null;
-  }
+  // Dismiss with 7-day cooldown
+  const handleDismiss = useCallback(() => {
+    setIsDismissed(true);
+    try {
+      localStorage.setItem(STORAGE_KEY_PWA_DISMISSED, String(Date.now()));
+    } catch (err) {
+      console.warn('Failed to store banner dismissal:', err);
+    }
+  }, []);
 
   // Handle native install prompt
   const handleInstallClick = async () => {
@@ -60,16 +93,21 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
         setInstallPrompt(null);
       }
     } catch (err) {
-      console.warn('Install prompt failed:', err);
+      console.warn('Install prompt error:', err);
     }
   };
 
-  // 1. Android / Chrome Native Install Banner (if installable)
+  // If already running in standalone PWA mode or dismissed within 7-day cooldown, hide completely
+  if (isStandalone || isDismissed) {
+    return null;
+  }
+
+  // 1. Android / Chrome Native Install Banner (when install prompt captured)
   if (installPrompt) {
     return (
       <div className="relative mb-3 flex items-center justify-between gap-3 rounded-2xl border border-status-amber/40 bg-night-surface p-3.5 shadow-sm">
         <button
-          onClick={() => setIsDismissed(true)}
+          onClick={handleDismiss}
           className="absolute right-2 top-2 p-1 text-cream-muted hover:text-cream-primary"
           aria-label="Dismiss banner"
         >
@@ -97,36 +135,36 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
     );
   }
 
-  // 2. iOS Safari Instructions
+  // 2. iOS / iPadOS Safari Instructions (Add to Home Screen)
   if (isIosPrompt && !isPushGranted) {
     return (
       <div className="relative mb-3 rounded-2xl border border-status-amber/40 bg-status-amber/10 p-3.5 text-xs text-cream-secondary">
         <button
-          onClick={() => setIsDismissed(true)}
+          onClick={handleDismiss}
           className="absolute right-2 top-2 p-1 text-cream-muted hover:text-cream-primary"
           aria-label="Dismiss banner"
         >
           <X className="h-4 w-4" />
         </button>
         <p className="font-semibold text-status-amber">📲 Install Z Catchers for Bedtime Alerts</p>
-        <p className="mt-1 flex items-center gap-1.5 leading-relaxed">
-          Tap the Share button <Share className="inline h-3.5 w-3.5 text-status-amber" /> below and select{' '}
-          <strong className="text-cream-primary">&apos;Add to Home Screen&apos;</strong> to enable push notifications on iOS.
+        <p className="text-sm leading-relaxed text-[#A89F91] mt-1">
+          Tap the Share button <span className="inline-flex items-center align-middle mx-1"><Share className="h-3.5 w-3.5 text-status-amber" /></span> and select{' '}
+          <strong className="text-[#F4F1EA] font-semibold">&apos;Add to Home Screen&apos;</strong> to enable push notifications on iOS.
         </p>
       </div>
     );
   }
 
-  // If push is already granted, hide banner
+  // If push is already granted and no install prompt, hide banner
   if (isPushGranted) {
     return null;
   }
 
-  // 3. Push Alert Gate Prompt
+  // 3. Push Alert Gate Prompt (When push not granted)
   return (
     <div className="relative mb-3 flex items-center justify-between gap-3 rounded-2xl border border-status-amber/40 bg-night-surface p-3.5 shadow-sm">
       <button
-        onClick={() => setIsDismissed(true)}
+        onClick={handleDismiss}
         className="absolute right-2 top-2 p-1 text-cream-muted hover:text-cream-primary"
         aria-label="Dismiss banner"
       >
