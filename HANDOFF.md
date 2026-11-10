@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T01:35:30+05:30  
+> **Last Updated:** 2026-11-11T01:58:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `41c62bf` (in `krish`)  
+> **Latest Commit:** `pending-sync` (in `krish`)  
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
@@ -85,18 +85,17 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * Replaced shared global `'mod_admin'` and `'mod_passcode_gate'` rate limit target buckets with isolated keys scoped per client IP (`mod_ip:${ip}`) and session member (`mod_member:${sessionMemberId}`), mitigating cross-tenant DoS attacks.
   * Updated `resetPinFailurePersistent` to clear corresponding IP-scoped keys for moderator operations while preserving client IP attempt counters during regular member PIN resets to prevent brute-forcing.
   * In `/api/mod` `clear_strike_log` action, added explicit 404 response when target member is not found and validated `cycleDate` before invoking `modClearStrikeLog`.
-* **Push Subscription Health-Sync Preference Preservation (`src/lib/pushClient.ts`, `src/app/api/push/subscribe/route.ts`, `scripts/test-phase1-pwa-push.mjs`):**
+* **Complete Low-Blue-Light Warm Dark UI Tokenization & Viewport Zoom Accessibility (`src/app/layout.tsx`, `src/components/MemberCard.tsx`, `src/components/BottomNav.tsx`, `src/components/StatusBucket.tsx`, `src/app/page.tsx`):**
+  * In `src/app/layout.tsx`, updated `viewport` `maximumScale: 5` to allow low-vision users to zoom up to 500% while preserving `initialScale: 1` and preventing iOS auto-zoom on 16px inputs.
+  * In `src/components/MemberCard.tsx`, `BottomNav.tsx`, `StatusBucket.tsx`, and `src/app/page.tsx`, eliminated all remaining hardcoded hex colors (`#F4A261`, `#E07A5F`, `#A89F91`, `#C8B6A6`, `#120F0D`, `#1A1412`, `#261E1A`, `#2C221E`, `#6B9E78`) across all cards, navigation bars, section headers, counters, and status badges.
+  * Standardized strictly on Tailwind design system tokens: `status-amber`, `status-coral`, `status-sage`, `cream-primary`, `cream-secondary`, `cream-muted`, `night-bg`, `night-surface`, `night-elevated`, and `night-border`.
+  * In `src/app/page.tsx`, updated background `/api/auth/me` session check: when server responds with `authenticated === false`, executes `clearAuthSession()`, clears `currentUser` and `claimedMemberId`, and redirects to `/join`.
+* **Client & Server Push Notification Preference Persistence (`src/lib/pushClient.ts`, `src/app/api/push/subscribe/route.ts`, `scripts/test-phase1-pwa-push.mjs`):**
+  * Added `STORAGE_KEY_NOTIFY_PERSONAL` and `STORAGE_KEY_NOTIFY_COMMUNITY` in `pushClient.ts` to mirror user preferences in `localStorage`.
+  * In `syncPushSubscriptionHealth`, reads stored client preferences and transmits them to `/api/push/subscribe` so background/foreground health syncs preserve explicit member preferences alongside backend fallback preservation.
   * Verified review comment regarding health-sync requests omitting notification preferences: confirmed `/api/push/subscribe` queries existing preferences for the endpoint and preserves `notify_personal` and `notify_community` whenever fields are omitted or nullish, while retaining default `true` for new subscriptions.
   * Hardened null-safety defense in `/api/push/subscribe` (`undefined || null` checks for both preferences).
   * Added regression test assertion to `scripts/test-phase1-pwa-push.mjs` verifying preference preservation logic. All Phase 1 PWA tests passing.
-* **Safe Push Subscription Old-Endpoint Cleanup & Session-Gated Unsubscription (`src/app/api/push/subscribe/route.ts`, `src/app/api/push/unsubscribe/route.ts`):**
-  * In `/api/push/subscribe`, scoped `old_endpoint` rotation cleanup deletion query strictly to `member.id`, preventing accidental deletion of other members' subscriptions sharing endpoints.
-  * Preserved existing `notify_personal` and `notify_community` notification preferences when request fields are omitted during health sync or token refreshes.
-  * In `/api/push/unsubscribe`, disallowed request body `member_id` from authorizing member-wide unsubscription; strictly requires `sessionMemberId` while preserving endpoint-specific unsubscription.
-* **Low-Blue-Light Warm Dark UI Tokens & Viewport Zoom Accessibility (`src/app/layout.tsx`, `src/components/MemberCard.tsx`, `src/app/page.tsx`):**
-  * In `src/app/layout.tsx`, updated `viewport` `maximumScale: 5` to allow low-vision users to zoom up to 500% while preserving `initialScale: 1` and preventing iOS auto-zoom on 16px inputs.
-  * In `src/components/MemberCard.tsx`, replaced raw hex colors `#F4A261` with Tailwind token `status-amber` and `#A89F91` / `#C8B6A6` with `cream-muted` across status-pill configurations and icons. Verified and confirmed status pill styles are fully tokenized.
-  * In `src/app/page.tsx`, updated background `/api/auth/me` session check: when server responds with `authenticated === false`, executes `clearAuthSession()`, clears `currentUser` and `claimedMemberId`, and redirects to `/join`.
 * **Cross-Instance Concurrency, Notification Guard & Monthly Reset Sync (`src/lib/strikes.ts`):**
   * In monthly reset, replaced direct Supabase update with `updateMemberStrikeCounts(member.id, 0, 0, strike_cycle_month)` to keep in-memory store and database synchronized across both `strikes_used`/`strikes_count` and `metastrikes_used`/`metastrikes_count` alias pairs.
   * In `recordStrikeVote`, verified in-bed status against `notification_logs` for `IN_BED_EARLY` on the current `cycleDate`, ensuring subsequent `last_notified_stage` transitions cannot revoke check-in protection.

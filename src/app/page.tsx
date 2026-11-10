@@ -636,7 +636,7 @@ export default function HomePage() {
       <main className="flex min-h-screen flex-col items-center justify-center bg-night-bg text-cream-primary p-4">
         <FoxMascot state="sleeping" size={56} className="animate-pulse mb-3" />
         <h1 className="text-xl font-bold tracking-tight">Z Catchers</h1>
-        <p className="text-xs text-[#A89F91] mt-1">Entering the Fox Den...</p>
+        <p className="text-xs text-cream-secondary mt-1">Entering the Fox Den...</p>
       </main>
     );
   }
@@ -789,16 +789,16 @@ export default function HomePage() {
             </div>
 
             {/* Quick summary counters */}
-            <div className="flex items-center gap-2 self-start rounded-xl bg-[#1A1412] border border-[#2C221E] px-3 py-1.5 text-xs font-medium text-[#A89F91] sm:self-auto">
-              <span className="text-[#E07A5F] font-bold tabular-nums">
+            <div className="flex items-center gap-2 self-start rounded-xl bg-night-surface border border-night-border px-3 py-1.5 text-xs font-medium text-cream-secondary sm:self-auto">
+              <span className="text-status-coral font-bold tabular-nums">
                 {categorized.nagNow.length} Nag
               </span>
               <span>•</span>
-              <span className="text-[#F4A261] font-bold tabular-nums">
+              <span className="text-status-amber font-bold tabular-nums">
                 {categorized.windingDown.length} Wind
               </span>
               <span>•</span>
-              <span className="text-[#C8B6A6] font-bold tabular-nums">
+              <span className="text-cream-muted font-bold tabular-nums">
                 {categorized.sleeping.length} Asleep
               </span>
             </div>
@@ -890,8 +890,8 @@ export default function HomePage() {
             <StatusBucket
               title="Nag Now"
               count={categorized.nagNow.length}
-              accentColor="text-[#E07A5F]"
-              icon={<ShieldAlert className="h-4 w-4 text-[#E07A5F] animate-pulse" />}
+              accentColor="text-status-coral"
+              icon={<ShieldAlert className="h-4 w-4 text-status-coral animate-pulse" />}
               defaultExpanded={true}
               showEmptyState={false}
             >
@@ -917,8 +917,8 @@ export default function HomePage() {
             <StatusBucket
               title="Winding Down"
               count={categorized.windingDown.length}
-              accentColor="text-[#F4A261]"
-              icon={<Sparkles className="h-4 w-4 text-[#F4A261]" />}
+              accentColor="text-status-amber"
+              icon={<Sparkles className="h-4 w-4 text-status-amber" />}
               defaultExpanded={true}
               showEmptyState={false}
             >
@@ -944,8 +944,8 @@ export default function HomePage() {
             <StatusBucket
               title="Awake"
               count={categorized.awake.length}
-              accentColor="text-[#A89F91]"
-              icon={<Sun className="h-4 w-4 text-[#A89F91]" />}
+              accentColor="text-cream-secondary"
+              icon={<Sun className="h-4 w-4 text-cream-secondary" />}
               defaultExpanded={true}
             >
               {categorized.awake.map(({ member, state }) => (
@@ -970,8 +970,8 @@ export default function HomePage() {
             <StatusBucket
               title="Sleeping"
               count={categorized.sleeping.length}
-              accentColor="text-[#C8B6A6]"
-              icon={<Moon className="h-4 w-4 text-[#C8B6A6]" />}
+              accentColor="text-cream-muted"
+              icon={<Moon className="h-4 w-4 text-cream-muted" />}
               defaultExpanded={categorized.awake.length === 0}
               showEmptyState={true}
               emptyMessage="No members currently asleep."

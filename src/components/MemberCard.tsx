@@ -192,7 +192,7 @@ export function MemberCard({
         ? `${state.graceMinutesLeft || 5}m grace`
         : `${Math.max(1, Math.floor(state.diffMinutes))}m overdue`;
       return {
-        className: 'bg-[#E07A5F]/15 text-[#E07A5F]',
+        className: 'bg-status-coral/15 text-status-coral',
         icon: isGrace ? (
           <Clock className="h-3.5 w-3.5 shrink-0" />
         ) : (
@@ -211,7 +211,7 @@ export function MemberCard({
     }
     if (bucket === 'SLEEPING') {
       return {
-        className: 'bg-[#261E1A] text-cream-muted',
+        className: 'bg-night-elevated text-cream-muted',
         icon: <Moon className="h-3.5 w-3.5 shrink-0 text-cream-muted" />,
         label: isInBed ? 'In Bed' : 'Sleeping',
       };
@@ -222,7 +222,7 @@ export function MemberCard({
     const mins = totalMins % 60;
     const label = hours > 0 ? `in ${hours}h ${mins}m` : `in ${mins}m`;
     return {
-      className: 'bg-[#261E1A] text-cream-muted',
+      className: 'bg-night-elevated text-cream-muted',
       icon: <Sun className="h-3.5 w-3.5 shrink-0 text-cream-muted" />,
       label,
     };
@@ -230,21 +230,21 @@ export function MemberCard({
 
   const statusPillConfig = getStatusPillConfig();
 
-  // Subtle border and resting opacity variations anchored to #1A1412
-  let cardBorderAndResting = 'border-[#2C221E]';
+  // Subtle border and resting opacity variations anchored to night-surface
+  let cardBorderAndResting = 'border-night-border';
   if (isNagNow) {
-    cardBorderAndResting = 'border-[#E07A5F]/40 shadow-sm shadow-[#E07A5F]/5';
+    cardBorderAndResting = 'border-status-coral/40 shadow-sm shadow-status-coral/5';
   } else if (bucket === 'WINDING_DOWN') {
-    cardBorderAndResting = 'border-[#F4A261]/30';
+    cardBorderAndResting = 'border-status-amber/30';
   } else if (bucket === 'SLEEPING') {
-    cardBorderAndResting = 'border-[#2C221E] opacity-85 hover:opacity-100';
+    cardBorderAndResting = 'border-night-border opacity-85 hover:opacity-100';
   } else {
-    cardBorderAndResting = 'border-[#2C221E] hover:border-[#382C27]';
+    cardBorderAndResting = 'border-night-border hover:border-night-border/80';
   }
 
   return (
     <div
-      className={`w-full p-5 rounded-2xl bg-[#1A1412] border transition-colors flex flex-col justify-between gap-4 ${cardBorderAndResting}`}
+      className={`w-full p-5 rounded-2xl bg-night-surface border transition-colors flex flex-col justify-between gap-4 ${cardBorderAndResting}`}
     >
       <div className="flex flex-col gap-3.5">
         {/* Header: Fixed avatar wrapper, consistent metadata sequence, and viewer time + pill */}
@@ -255,11 +255,11 @@ export function MemberCard({
               <img
                 src={avatarUrl}
                 alt={member.discord_username}
-                className="w-11 h-11 rounded-full object-cover border border-[#2C221E] bg-[#261E1A]"
+                className="w-11 h-11 rounded-full object-cover border border-night-border bg-night-elevated"
               />
               {isInBed && (
                 <span
-                  className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#F4A261] text-[#120F0D] shadow font-bold"
+                  className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-status-amber text-night-bg shadow font-bold"
                   title="Checked into bed"
                 >
                   <Check className="h-2.5 w-2.5 stroke-[3]" />
@@ -271,20 +271,20 @@ export function MemberCard({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span
-                  className="text-base font-semibold text-[#F5EBE1] truncate max-w-[120px] sm:max-w-[150px]"
+                  className="text-base font-semibold text-cream-primary truncate max-w-[120px] sm:max-w-[150px]"
                   title={member.discord_username}
                 >
                   {member.discord_username}
                 </span>
 
                 {isViewer && (
-                  <span className="rounded bg-[#F4A261]/20 border border-[#F4A261]/40 px-1.5 py-0.5 text-[9px] font-bold text-[#F4A261] shrink-0">
+                  <span className="rounded bg-status-amber/20 border border-status-amber/40 px-1.5 py-0.5 text-[9px] font-bold text-status-amber shrink-0">
                     YOU
                   </span>
                 )}
 
                 {member.role === 'moderator' && (
-                  <span className="rounded bg-[#261E1A] border border-[#2C221E] px-1.5 py-0.5 text-[9px] font-medium text-[#A89F91] shrink-0">
+                  <span className="rounded bg-night-elevated border border-night-border px-1.5 py-0.5 text-[9px] font-medium text-cream-secondary shrink-0">
                     MOD
                   </span>
                 )}
@@ -301,38 +301,38 @@ export function MemberCard({
                     }}
                     className={`min-h-[44px] min-w-[44px] -my-2.5 -mx-2 flex items-center justify-center rounded-lg transition-colors shrink-0 ${
                       isStarred
-                        ? 'text-[#F4A261] hover:text-[#F4A261]/80'
-                        : 'text-[#A89F91]/40 hover:text-[#A89F91]'
+                        ? 'text-status-amber hover:text-status-amber/80'
+                        : 'text-cream-secondary/40 hover:text-cream-secondary'
                     }`}
                     title={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
                     aria-label={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
                   >
-                    <Star className={`h-4 w-4 ${isStarred ? 'fill-[#F4A261]' : ''}`} />
+                    <Star className={`h-4 w-4 ${isStarred ? 'fill-status-amber' : ''}`} />
                   </button>
                 )}
 
                 {/* Streak milestone badge */}
                 {member.streak_days && member.streak_days > 0 ? (
                   <span
-                    className="inline-flex items-center gap-1 rounded-full border border-[#F4A261]/30 bg-[#F4A261]/10 px-2 py-0.5 text-[10px] font-semibold text-[#F4A261] shrink-0"
+                    className="inline-flex items-center gap-1 rounded-full border border-status-amber/30 bg-status-amber/10 px-2 py-0.5 text-[10px] font-semibold text-status-amber shrink-0"
                     title={streakMilestone?.description || `${member.streak_days} days on track`}
                   >
-                    <Flame className="h-3 w-3 fill-[#F4A261] text-[#F4A261]" />
+                    <Flame className="h-3 w-3 fill-status-amber text-status-amber" />
                     <span>{streakMilestone?.badgeLabel || `${member.streak_days}d`}</span>
                   </span>
                 ) : null}
               </div>
 
-              <div className="flex items-center gap-1.5 flex-wrap text-xs text-[#A89F91] mt-0.5">
+              <div className="flex items-center gap-1.5 flex-wrap text-xs text-cream-secondary mt-0.5">
                 <span>
                   {formattedSleeperTime} local ({formatGmtOffset(member.timezone)})
                 </span>
                 {state.isWeekendSchedule && (
                   <span
-                    className="inline-flex items-center gap-1 rounded bg-[#F4A261]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#F4A261] border border-[#F4A261]/30"
+                    className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30"
                     title="Weekend bedtime schedule active (Friday/Saturday nights)"
                   >
-                    <Moon className="h-2.5 w-2.5 text-[#F4A261]" />
+                    <Moon className="h-2.5 w-2.5 text-status-amber" />
                     <span>Weekend</span>
                   </span>
                 )}
@@ -342,7 +342,7 @@ export function MemberCard({
 
           {/* Right Header: Bedtime in viewer timezone & status badge */}
           <div className="flex flex-col items-end shrink-0 gap-1 text-right">
-            <span className="text-xl font-bold tabular-nums text-[#F5EBE1]">
+            <span className="text-xl font-bold tabular-nums text-cream-primary">
               {formattedViewerTime}
             </span>
             <span
@@ -355,11 +355,11 @@ export function MemberCard({
         </div>
 
         {/* Compact Accountability Row: Strikes & Metastrikes */}
-        <div className="flex items-center justify-between rounded-xl border border-[#2C221E] bg-[#261E1A]/50 px-3 py-1.5 text-[11px]">
+        <div className="flex items-center justify-between rounded-xl border border-night-border bg-night-elevated/50 px-3 py-1.5 text-[11px]">
           {/* Strikes Indicator */}
           <div className="flex items-center gap-1.5" title={`${strikesUsed} of 3 monthly strikes used`}>
-            <span className="font-semibold text-[#E07A5F] flex items-center gap-1">
-              <Zap className="h-3 w-3 fill-[#E07A5F] text-[#E07A5F]" />
+            <span className="font-semibold text-status-coral flex items-center gap-1">
+              <Zap className="h-3 w-3 fill-status-coral text-status-coral" />
               <span>Strikes:</span>
               <span className="tabular-nums font-bold">{strikesUsed}/3</span>
             </span>
@@ -369,8 +369,8 @@ export function MemberCard({
                   key={`strike-${member.id}-${pip}`}
                   className={`h-2 w-2 rounded-full transition-colors ${
                     pip <= strikesUsed
-                      ? 'bg-[#E07A5F] ring-1 ring-[#E07A5F]/40 shadow-sm shadow-[#E07A5F]/50'
-                      : 'bg-[#2C221E] border border-[#382C27]'
+                      ? 'bg-status-coral ring-1 ring-status-coral/40 shadow-sm shadow-status-coral/50'
+                      : 'bg-night-border border border-night-border/80'
                   }`}
                 />
               ))}
@@ -382,8 +382,8 @@ export function MemberCard({
             className="flex items-center gap-1.5"
             title={`${metastrikesUsed} of 3 monthly excused metastrikes used`}
           >
-            <span className="font-semibold text-[#F4A261] flex items-center gap-1">
-              <Shield className="h-3 w-3 fill-[#F4A261]/20 text-[#F4A261]" />
+            <span className="font-semibold text-status-amber flex items-center gap-1">
+              <Shield className="h-3 w-3 fill-status-amber/20 text-status-amber" />
               <span>Meta:</span>
               <span className="tabular-nums font-bold">{metastrikesUsed}/3</span>
             </span>
@@ -393,8 +393,8 @@ export function MemberCard({
                   key={`meta-${member.id}-${pip}`}
                   className={`h-2 w-2 rounded-full transition-colors ${
                     pip <= metastrikesUsed
-                      ? 'bg-[#F4A261] ring-1 ring-[#F4A261]/40 shadow-sm shadow-[#F4A261]/50'
-                      : 'bg-[#2C221E] border border-[#382C27]'
+                      ? 'bg-status-amber ring-1 ring-status-amber/40 shadow-sm shadow-status-amber/50'
+                      : 'bg-night-border border border-night-border/80'
                   }`}
                 />
               ))}
@@ -404,18 +404,18 @@ export function MemberCard({
 
         {/* Out of Strikes Sleepy Fox Alert Badge */}
         {strikesUsed >= 3 && (
-          <div className="flex items-center justify-between rounded-lg border border-[#E07A5F]/40 bg-[#E07A5F]/10 px-2.5 py-1 text-[11px] font-semibold text-[#E07A5F]">
+          <div className="flex items-center justify-between rounded-lg border border-status-coral/40 bg-status-coral/10 px-2.5 py-1 text-[11px] font-semibold text-status-coral">
             <div className="flex items-center gap-1.5">
               <FoxMascot state="alert" size={16} />
               <span>Out of Strikes • 0 Margin Left</span>
             </div>
-            <span className="text-[10px] text-[#A89F91]">Resets on 1st</span>
+            <span className="text-[10px] text-cream-secondary">Resets on 1st</span>
           </div>
         )}
 
         {/* Pending 48-Hour Schedule Shift Cooldown Notice */}
         {pendingNotice && (
-          <div className="flex items-center justify-between rounded-lg border border-dashed border-[#F4A261]/40 bg-[#F4A261]/10 px-3 py-1.5 text-xs tabular-nums text-[#F4A261]">
+          <div className="flex items-center justify-between rounded-lg border border-dashed border-status-amber/40 bg-status-amber/10 px-3 py-1.5 text-xs tabular-nums text-status-amber">
             <span className="flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5 shrink-0" />
               <span>{pendingNotice}</span>
@@ -425,8 +425,8 @@ export function MemberCard({
 
         {/* Metastrike Active Notice (Body) */}
         {isMetastrikeActive && !isNagNow && (
-          <div className="flex items-center gap-1.5 rounded-xl border border-[#F4A261]/40 bg-[#F4A261]/15 px-3 py-2 text-xs font-semibold text-[#F4A261] min-h-[44px]">
-            <Shield className="h-4 w-4 fill-[#F4A261]/20 shrink-0" />
+          <div className="flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber min-h-[44px]">
+            <Shield className="h-4 w-4 fill-status-amber/20 shrink-0" />
             <span>
               Metastrike Active: {member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'}
             </span>
@@ -438,7 +438,7 @@ export function MemberCard({
           <button
             onClick={handleCheckInClick}
             disabled={isCheckingIn}
-            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl bg-[#F4A261] px-3 font-bold text-[#120F0D] shadow transition-transform hover:bg-[#F4A261]/90 active:scale-[0.98]"
+            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-3 font-bold text-night-bg shadow transition-transform hover:bg-status-amber/90 active:scale-[0.98]"
           >
             <BedDouble className="h-4 w-4" />
             <span>{isNagNow ? "I'm in Bed Now (Mute Nags)" : "I'm in Bed (Goodnight)"}</span>
@@ -455,7 +455,7 @@ export function MemberCard({
             <button
               onClick={handleCheckInClick}
               disabled={isCheckingIn}
-              className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl border border-[#F4A261]/40 bg-[#F4A261]/15 text-xs font-semibold text-[#F4A261] transition-colors hover:bg-[#F4A261]/25"
+              className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/15 text-xs font-semibold text-status-amber transition-colors hover:bg-status-amber/25"
             >
               <BedDouble className="h-4 w-4" />
               <span>Early Bedtime Check-In</span>
@@ -464,7 +464,7 @@ export function MemberCard({
 
         {/* Checked-in Confirmation Banner */}
         {isViewer && isInBed && (isNagNow || bucket === 'WINDING_DOWN') && (
-          <div className="flex items-center justify-between rounded-xl border border-[#F4A261]/30 bg-[#F4A261]/10 px-3 py-2 text-xs font-medium text-[#F4A261] min-h-[44px]">
+          <div className="flex items-center justify-between rounded-xl border border-status-amber/30 bg-status-amber/10 px-3 py-2 text-xs font-medium text-status-amber min-h-[44px]">
             <span className="flex items-center gap-1.5">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
               <span>You&apos;re checked in! Nags muted</span>
@@ -483,9 +483,9 @@ export function MemberCard({
 
         {/* Checked-in Confirmation Banner for Sleeping State */}
         {isViewer && isInBed && bucket === 'SLEEPING' && (
-          <div className="flex items-center justify-between rounded-xl border border-[#2C221E] bg-[#261E1A] px-3 py-2 text-xs text-[#C8B6A6] min-h-[44px]">
+          <div className="flex items-center justify-between rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-muted min-h-[44px]">
             <span className="flex items-center gap-1.5">
-              <Shield className="h-4 w-4 text-[#C8B6A6] shrink-0" />
+              <Shield className="h-4 w-4 text-cream-muted shrink-0" />
               <span>Sleep Shield Active • Nags Muted</span>
             </span>
             {onCancelInBed && (
@@ -508,9 +508,9 @@ export function MemberCard({
               triggerHaptic(10);
               onOpenMetastrike(member, 'proactive');
             }}
-            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-[#F4A261]/40 bg-[#F4A261]/10 px-3 py-2 text-xs font-semibold text-[#F4A261] hover:bg-[#F4A261]/20 transition-all"
+            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/10 px-3 py-2 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all"
           >
-            <Shield className="h-4 w-4 fill-[#F4A261]/20 shrink-0" />
+            <Shield className="h-4 w-4 fill-status-amber/20 shrink-0" />
             <span>Use Metastrike Tonight (Excused Pass)</span>
           </button>
         )}
@@ -523,7 +523,7 @@ export function MemberCard({
               triggerHaptic(10);
               onOpenMetastrike(member, 'convert_retroactive');
             }}
-            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-[#F4A261] bg-[#F4A261] px-3 py-2 text-xs font-bold text-[#120F0D] shadow hover:bg-[#F4A261]/90 transition-all"
+            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber px-3 py-2 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 transition-all"
           >
             <RefreshCw className="h-4 w-4 shrink-0" />
             <span>Convert Strike to Metastrike (24h Swap)</span>
@@ -532,7 +532,7 @@ export function MemberCard({
 
         {/* Nagged Assist Counter */}
         {isNagNow && localNagCount > 0 && (
-          <div className="flex items-center gap-1.5 rounded-xl border border-[#E07A5F]/30 bg-[#E07A5F]/10 px-3 py-2 text-xs font-semibold text-[#E07A5F] min-h-[40px]">
+          <div className="flex items-center gap-1.5 rounded-xl border border-status-coral/30 bg-status-coral/10 px-3 py-2 text-xs font-semibold text-status-coral min-h-[40px]">
             <Users className="h-4 w-4 shrink-0" />
             <span>
               {hasNagged
@@ -562,7 +562,7 @@ export function MemberCard({
               target="_blank"
               rel="noopener noreferrer"
               onClick={handleNagJournalClick}
-              className="flex-1 min-h-[44px] min-w-[44px] flex items-center justify-center gap-2 rounded-xl bg-[#E07A5F] font-semibold text-[#120F0D] transition-all hover:bg-[#E07A5F]/90 active:scale-[0.98] text-xs sm:text-sm px-3"
+              className="flex-1 min-h-[44px] min-w-[44px] flex items-center justify-center gap-2 rounded-xl bg-status-coral font-semibold text-night-bg transition-all hover:bg-status-coral/90 active:scale-[0.98] text-xs sm:text-sm px-3"
             >
               <span>{hasNagged ? 'Nagged! Reopen Journal' : 'Nag in Discord Journal'}</span>
               <ExternalLink className="h-4 w-4 shrink-0" />
@@ -571,27 +571,27 @@ export function MemberCard({
             {/* Secondary Action Pill: Metastrike / Strike Issued / Grace / Vote Strike */}
             {isMetastrikeActive ? (
               <div
-                className="flex items-center gap-1.5 rounded-xl border border-[#F4A261]/40 bg-[#F4A261]/15 px-3 py-2 text-xs font-semibold text-[#F4A261] min-h-[44px]"
+                className="flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber min-h-[44px]"
                 title={`Protected tonight: ${
                   member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'
                 }`}
               >
-                <Shield className="h-3.5 w-3.5 fill-[#F4A261]/20 shrink-0" />
+                <Shield className="h-3.5 w-3.5 fill-status-amber/20 shrink-0" />
                 <span className="truncate max-w-[130px]">
                   Metastrike Active: {member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'}
                 </span>
               </div>
             ) : isStrikeIssuedTonight ? (
               <div
-                className="flex items-center gap-1.5 rounded-xl border border-[#E07A5F]/40 bg-[#E07A5F]/15 px-3 py-2 text-xs font-semibold text-[#E07A5F] min-h-[44px]"
+                className="flex items-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/15 px-3 py-2 text-xs font-semibold text-status-coral min-h-[44px]"
                 title="2/2 community verification votes reached. Strike issued for tonight."
               >
-                <Zap className="h-3.5 w-3.5 fill-[#E07A5F] shrink-0" />
+                <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
                 <span>Strike Issued</span>
               </div>
             ) : state.status === 'BEDTIME_GRACE' ? (
               <div
-                className="flex items-center gap-1.5 rounded-xl border border-[#2C221E] bg-[#261E1A] px-2.5 py-2 text-xs text-[#A89F91] min-h-[44px]"
+                className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-2.5 py-2 text-xs text-cream-secondary min-h-[44px]"
                 title="5-minute grace period active. Strike voting is locked."
               >
                 <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -609,8 +609,8 @@ export function MemberCard({
                   disabled={isVotingStrike || member.has_voted_strike}
                   className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all min-h-[44px] min-w-[44px] ${
                     member.has_voted_strike
-                      ? 'border border-[#E07A5F]/30 bg-[#261E1A] text-[#E07A5F]/60 cursor-not-allowed'
-                      : 'border border-[#E07A5F]/50 bg-[#E07A5F]/15 text-[#E07A5F] hover:bg-[#E07A5F]/25 active:scale-95'
+                      ? 'border border-status-coral/30 bg-night-elevated text-status-coral/60 cursor-not-allowed'
+                      : 'border border-status-coral/50 bg-status-coral/15 text-status-coral hover:bg-status-coral/25 active:scale-95'
                   }`}
                   title={
                     member.has_voted_strike
@@ -618,7 +618,7 @@ export function MemberCard({
                       : 'Vote to verify bedtime missed (2 community votes needed)'
                   }
                 >
-                  <Zap className="h-3.5 w-3.5 fill-[#E07A5F] shrink-0" />
+                  <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
                   <span>
                     {member.has_voted_strike
                       ? `Voted (${strikeVotesCount}/2)`
@@ -636,7 +636,7 @@ export function MemberCard({
             target="_blank"
             rel="noopener noreferrer"
             onClick={handleNagJournalClick}
-            className="w-full min-h-[44px] min-w-[44px] flex items-center justify-center gap-2 rounded-xl border border-[#F4A261]/40 bg-[#261E1A] font-medium text-[#F4A261] transition-colors hover:bg-[#F4A261]/15 active:scale-[0.98] text-xs sm:text-sm px-3"
+            className="w-full min-h-[44px] min-w-[44px] flex items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-night-elevated font-medium text-status-amber transition-colors hover:bg-status-amber/15 active:scale-[0.98] text-xs sm:text-sm px-3"
           >
             <span>{hasNagged ? 'Noted! Reopen Journal' : 'Say Goodnight in Journal'}</span>
             <ExternalLink className="h-4 w-4" />
@@ -648,8 +648,8 @@ export function MemberCard({
             {!isInBed && !isMetastrikeActive && !isViewer && onVoteStrike ? (
               <div>
                 {isStrikeIssuedTonight ? (
-                  <span className="text-xs font-semibold text-[#E07A5F] flex items-center gap-1 min-h-[44px]">
-                    <Zap className="h-3.5 w-3.5 fill-[#E07A5F]" />
+                  <span className="text-xs font-semibold text-status-coral flex items-center gap-1 min-h-[44px]">
+                    <Zap className="h-3.5 w-3.5 fill-status-coral" />
                     <span>Strike Issued</span>
                   </span>
                 ) : (
@@ -660,9 +660,9 @@ export function MemberCard({
                       onVoteStrike(member.id);
                     }}
                     disabled={isVotingStrike || member.has_voted_strike}
-                    className="text-xs font-medium text-[#E07A5F] hover:underline flex items-center gap-1 min-h-[44px] min-w-[44px]"
+                    className="text-xs font-medium text-status-coral hover:underline flex items-center gap-1 min-h-[44px] min-w-[44px]"
                   >
-                    <Zap className="h-3.5 w-3.5 fill-[#E07A5F]" />
+                    <Zap className="h-3.5 w-3.5 fill-status-coral" />
                     <span>
                       {member.has_voted_strike
                         ? `Voted (${strikeVotesCount}/2)`
@@ -679,7 +679,7 @@ export function MemberCard({
               href={member.journal_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-[#2C221E] bg-[#261E1A] px-3.5 py-1.5 text-xs text-[#A89F91] transition-colors hover:text-[#F5EBE1] hover:border-[#2C221E]/80 ml-auto"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 py-1.5 text-xs text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 ml-auto"
             >
               <span>Leave quiet note</span>
               <ExternalLink className="h-3.5 w-3.5" />
@@ -693,7 +693,7 @@ export function MemberCard({
               href={member.journal_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-[#2C221E] bg-[#261E1A] px-3.5 py-1.5 text-xs font-medium text-[#A89F91] transition-colors hover:text-[#F5EBE1] hover:border-[#2C221E]/80"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 py-1.5 text-xs font-medium text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80"
               title="Open Discord Journal"
             >
               <span>Journal</span>

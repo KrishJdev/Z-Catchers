@@ -8,6 +8,8 @@ export const STORAGE_KEY_MEMBER_ID = 'zcatchers_member_id';
 export const STORAGE_KEY_PUSH_ENABLED = 'zcatchers_push_enabled';
 export const STORAGE_KEY_AUTH_TOKEN = 'zcatchers_auth_token';
 export const STORAGE_KEY_AUTH_MEMBER = 'zcatchers_auth_member';
+export const STORAGE_KEY_NOTIFY_PERSONAL = 'zcatchers_notify_personal';
+export const STORAGE_KEY_NOTIFY_COMMUNITY = 'zcatchers_notify_community';
 
 /**
  * Converts a URL-safe Base64 VAPID public key into a Uint8Array backed by an ArrayBuffer
@@ -138,11 +140,23 @@ export async function syncPushSubscriptionHealth(): Promise<boolean> {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
+    // Preserve any client-stored notification preferences if present
+    let notifyPersonal: boolean | undefined = undefined;
+    let notifyCommunity: boolean | undefined = undefined;
+    if (typeof localStorage !== 'undefined') {
+      const storedPersonal = localStorage.getItem(STORAGE_KEY_NOTIFY_PERSONAL);
+      if (storedPersonal !== null) notifyPersonal = storedPersonal === 'true';
+      const storedCommunity = localStorage.getItem(STORAGE_KEY_NOTIFY_COMMUNITY);
+      if (storedCommunity !== null) notifyCommunity = storedCommunity === 'true';
+    }
+
     const res = await fetch('/api/push/subscribe', {
       method: 'POST',
       headers,
       body: JSON.stringify({
         member_id: memberIdToUse || null,
+        notify_personal: notifyPersonal,
+        notify_community: notifyCommunity,
         subscription: {
           endpoint: subJson.endpoint,
           keys: {
@@ -255,6 +269,12 @@ export async function subscribeToPush(
       localStorage.setItem(STORAGE_KEY_PUSH_ENABLED, 'true');
       if (memberIdToUse) {
         localStorage.setItem(STORAGE_KEY_MEMBER_ID, memberIdToUse);
+      }
+      if (options.notifyPersonal !== undefined) {
+        localStorage.setItem(STORAGE_KEY_NOTIFY_PERSONAL, String(options.notifyPersonal));
+      }
+      if (options.notifyCommunity !== undefined) {
+        localStorage.setItem(STORAGE_KEY_NOTIFY_COMMUNITY, String(options.notifyCommunity));
       }
     }
 

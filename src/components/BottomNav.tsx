@@ -50,7 +50,7 @@ export function BottomNav({
 
   return (
     <nav
-      className={`fixed inset-x-0 bottom-0 z-40 mx-auto grid ${gridColsClass} h-16 w-full items-center bg-[#1C1714]/95 backdrop-blur-md border-t border-[#332B24] px-2 pb-[env(safe-area-inset-bottom)] md:hidden`}
+      className={`fixed inset-x-0 bottom-0 z-40 mx-auto grid ${gridColsClass} h-16 w-full items-center bg-night-surface/95 backdrop-blur-md border-t border-night-border px-2 pb-[env(safe-area-inset-bottom)] md:hidden`}
       aria-label="Mobile Navigation Bar"
     >
       {tabs.map((tab) => {
@@ -73,14 +73,14 @@ export function BottomNav({
             }}
             className={`flex flex-col items-center justify-center gap-1 min-h-[44px] min-w-[44px] py-1 transition-colors ${
               isActive
-                ? 'text-[#F4A261] font-semibold'
-                : 'text-[#73675C] hover:text-[#B0A295]'
+                ? 'text-status-amber font-semibold'
+                : 'text-cream-muted hover:text-cream-secondary'
             }`}
           >
             <div className="relative">
               <Icon className="h-5 w-5" />
               {tab.id === 'alerts' && isPushEnabled && (
-                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[#6B9E78] ring-2 ring-[#1C1714]" />
+                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-status-sage ring-2 ring-night-surface" />
               )}
             </div>
             <span className="text-[10px] tracking-tight">{tab.label}</span>
