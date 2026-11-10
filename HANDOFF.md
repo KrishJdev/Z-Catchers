@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T01:30:00+05:30  
+> **Last Updated:** 2026-11-11T01:31:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -8,7 +8,7 @@
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `node scripts/test-strikes-system.mjs` 26/26 passed | `node scripts/test-logout-flow.mjs` 18/18 passed | Dev server active on `http://192.168.1.3:3000`)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `test-pin-rate-limiting.mjs` passed | `node scripts/test-strikes-system.mjs` 26/26 passed | `node scripts/test-logout-flow.mjs` 18/18 passed | Dev server active on `http://192.168.1.3:3000`)
 
 ---
 
@@ -98,6 +98,8 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * In `recordStrikeVote`, verified in-bed status against `notification_logs` for `IN_BED_EARLY` on the current `cycleDate`, ensuring subsequent `last_notified_stage` transitions cannot revoke check-in protection.
   * Implemented atomic cross-instance concurrency protection: optimistic locking and conflict retry (`23505`) on nightly strike logs, and conditional atomic update (`.lt('metastrikes_used', 3)`) on metastrike consumption.
   * Added `isSupabaseConfigured` check in `src/lib/db.ts` to cleanly fall back to in-memory store during offline test execution.
+* **In-Memory Rate Limit Mirroring in `recordPinFailurePersistent` (`src/lib/rateLimit.ts`):**
+  * Verified review comment regarding `recordPinFailurePersistent`: confirmed that in-memory rate-limit keys in `pinRateLimits` map are updated immediately prior to attempting best-effort Supabase writes (lines 208–215). Preserves synchronous fallback behavior for `checkPinRateLimitSync` when Supabase is unreachable or in offline mode. Verified via `node scripts/test-pin-rate-limiting.mjs` (all tests passing).
 * **Production Function Test Suite & JSDoc Docstring Coverage (`scripts/test-strikes-system.mjs`):**
   * Replaced duplicated `StrikeTestEngine` class with direct imports and tests against real production functions in `src/lib/strikes.ts`. All 26 test sections passing.
   * Added comprehensive JSDoc docstrings across all modified routes, helper functions, and components to satisfy CodeRabbit pre-merge review threshold.

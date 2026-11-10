@@ -121,6 +121,14 @@ async function run() {
       'pushServer.ts automatically prunes dead subscription endpoint from Supabase'
     );
 
+    const subscribeRoutePath = path.resolve(process.cwd(), 'src/app/api/push/subscribe/route.ts');
+    const subscribeRouteContent = fs.readFileSync(subscribeRoutePath, 'utf8');
+    assert(
+      subscribeRouteContent.includes('existingSub?.notify_personal ?? true') &&
+      subscribeRouteContent.includes('existingSub?.notify_community ?? true'),
+      '/api/push/subscribe preserves existing notification preferences when omitted'
+    );
+
     // -------------------------------------------------------------
     // 4. PwaBanner Component Verification
     // -------------------------------------------------------------

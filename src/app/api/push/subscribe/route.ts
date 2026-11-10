@@ -142,7 +142,12 @@ export async function POST(request: Request) {
 
     // Preserve existing preferences when omitted in request (e.g. background health sync)
     let existingSub: { notify_personal?: boolean; notify_community?: boolean } | null = null;
-    if (notify_personal === undefined || notify_community === undefined) {
+    if (
+      notify_personal === undefined ||
+      notify_personal === null ||
+      notify_community === undefined ||
+      notify_community === null
+    ) {
       const { data } = await supabaseAdmin
         .from('push_subscriptions')
         .select('notify_personal, notify_community')
@@ -154,12 +159,12 @@ export async function POST(request: Request) {
     }
 
     const finalNotifyPersonal =
-      notify_personal !== undefined
+      notify_personal !== undefined && notify_personal !== null
         ? Boolean(notify_personal)
         : (existingSub?.notify_personal ?? true);
 
     const finalNotifyCommunity =
-      notify_community !== undefined
+      notify_community !== undefined && notify_community !== null
         ? Boolean(notify_community)
         : (existingSub?.notify_community ?? true);
 
