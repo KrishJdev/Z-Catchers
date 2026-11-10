@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T14:44:00+05:30  
+> **Last Updated:** 2026-11-10T14:46:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `3f62539`  
+> **Latest Commit:** `5cac7fb`  
 > **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` 21/21 routes | All auth, rate limit, and security tests passing)
 
@@ -276,7 +276,8 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **PostgREST Row Cap Pagination (`src/lib/db.ts` & `src/app/api/members/route.ts`):**
   * Implemented `fetchAllNotificationLogs` using `.range()` pagination to prevent row truncation on high-volume notification log tables.
 * **Due-and-Not-Yet-Logged Cron Dispatch Engine (`src/lib/cronDispatcher.ts`):**
-  * Replaced fragile narrow-minute window checks with robust due-and-not-yet-logged evaluation for 30m wind-down (`-30 <= diff < 0`) and bedtime hit (`0 <= diff < 60`), guaranteeing delivery under 1m, 5m, or jittered schedulers with zero duplicate dispatches. Aborts execution if log prefetch errors occur.
+  * Replaced fragile narrow-minute window checks with robust due-and-not-yet-logged evaluation for 30m wind-down (`-30 <= diff < 0`) and bedtime hit (`0 <= diff < 60`), accommodating 1m, 5m, or jittered scheduler intervals. Aborts execution if log prefetch errors occur.
+  * Note on dispatch semantics: Notification logs are written upon push dispatch attempt to prevent runaway retries. Transient push failures are recorded as dispatched and are not retried for that window. In multi-instance deployments without distributed locking or atomic row reservation, overlapping concurrent dispatcher executions that observe an empty log concurrently may send duplicate notifications; full zero-duplicate guarantees require serialized execution or atomic distributed row claiming.
 * **CI/CD Script Injection Prevention (`.github/workflows/jira-transition.yml`):**
   * Passed `${{ github.event.inputs.* }}` through quoted environment variables to eliminate shell template injection risks.
 * **Safe Demo Member Purging (`src/app/api/mod/route.ts` & `scripts/purge-demo-members.mjs`):**
@@ -354,6 +355,14 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Verification:**
   * `npx tsc --noEmit`: 0 errors.
   * `npm run build`: 21/21 routes compiled cleanly.
+
+### Phase 21: Implementation of CodeRabbit Group C Findings (Commit `5cac7fb`)
+* **Dispatcher Concurrency & Delivery Semantics Clarification (`HANDOFF.md`):**
+  * Removed unconditional "zero duplicate dispatches" claim in Phase 14 documentation.
+  * Documented that push notifications write to logs upon dispatch to prevent runaway spam, noting that transient network push failures are recorded as dispatched and not retried for that window.
+  * Explicitly documented that concurrent overlapping dispatcher executions observing an empty prefetch log simultaneously can dispatch duplicates unless serialized or guarded by distributed atomic claims.
+* **Vercel Pro Native Cron Configuration Guidance (`HANDOFF.md`):**
+  * Expanded deployment configuration guide to explicitly differentiate Vercel Pro operators (who can change `vercel.json` cron expression to `"schedule": "* * * * *"` for native 1-minute scheduling and redeploy) from Vercel Hobby operators (who require external HTTP schedulers like cron-job.org or EasyCron due to Hobby's 1-per-day cron limit).
 
 ---
 
@@ -486,7 +495,9 @@ All core features, Phase 10 security hardening, and Phase 11 PWA reliability/cro
      * Web Push & VAPID: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
      * Security & Sessions: `SESSION_SECRET`, `PIN_SALT`, `MOD_SECRET_PASSCODE`, `CRON_SECRET`
      * Integrations: `DISCORD_COMMUNITY_WEBHOOK_URL`
-   * Configure an external cron scheduler (e.g. cron-job.org, EasyCron, or Crontap) to send a GET request with `Authorization: Bearer <CRON_SECRET>` to `/api/cron/dispatch-notifications` every 1 to 5 minutes when deploying on Vercel Hobby (or upgrade to Vercel Pro for native per-minute cron scheduling). Dedicated HTTP schedulers are recommended over GitHub Actions to avoid scheduling jitter.
+   * **Cron Scheduling Setup by Vercel Plan:**
+     * **Vercel Pro Plan:** Update `vercel.json` to change the dispatcher schedule to run every minute using the native cron expression `"schedule": "* * * * *"` and redeploy.
+     * **Vercel Hobby Plan:** Vercel Hobby limits native crons to once per day. Operators should configure an external HTTP cron scheduler (e.g. cron-job.org, EasyCron, or Crontap) to send a GET request with `Authorization: Bearer <CRON_SECRET>` to `/api/cron/dispatch-notifications` every 1 to 5 minutes. Dedicated external HTTP schedulers are strongly recommended over GitHub Actions to avoid runner queue jitter.
 2. **Community Roster & Friend Onboarding:**
    * Demo profiles have been purged from Supabase. Friends can now visit the app URL directly, click **"Join Den"**, input their username, local bedtime, auto-detected timezone, Discord journal thread link, and 4-digit PIN.
    * To restore demo seed profiles for staging/testing at any time, run `node --env-file=.env.local scripts/seed-demo-members.mjs`.
