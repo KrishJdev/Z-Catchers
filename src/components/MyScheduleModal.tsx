@@ -581,11 +581,20 @@ export function MyScheduleModal({
                         <button
                           type="button"
                           onClick={async () => {
-                            await fetch('/api/members/in-bed', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ memberId: activeMember.id, action: 'cancel' }),
-                            });
+                            try {
+                              const res = await fetch('/api/members/in-bed', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                credentials: 'include',
+                                body: JSON.stringify({ memberId: activeMember.id, action: 'cancel' }),
+                              });
+                              if (!res.ok) {
+                                const errData = await res.json().catch(() => ({}));
+                                console.warn('Cancel in-bed failed:', errData.error);
+                              }
+                            } catch (err) {
+                              console.error('Failed to cancel check-in:', err);
+                            }
                             await onRefreshRoster();
                           }}
                           className="flex-1 min-h-[38px] rounded-xl border border-night-border bg-night-surface text-xs font-medium text-cream-muted hover:text-status-coral transition-colors"
@@ -596,11 +605,20 @@ export function MyScheduleModal({
                         <button
                           type="button"
                           onClick={async () => {
-                            await fetch('/api/members/in-bed', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ memberId: activeMember.id, action: 'check_in' }),
-                            });
+                            try {
+                              const res = await fetch('/api/members/in-bed', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                credentials: 'include',
+                                body: JSON.stringify({ memberId: activeMember.id, action: 'check_in' }),
+                              });
+                              if (!res.ok) {
+                                const errData = await res.json().catch(() => ({}));
+                                console.warn('Check-in failed:', errData.error);
+                              }
+                            } catch (err) {
+                              console.error('Failed to check in:', err);
+                            }
                             await onRefreshRoster();
                           }}
                           className="flex-1 min-h-[40px] rounded-xl bg-status-amber text-xs font-bold text-night-bg hover:bg-status-amber/90 transition-all shadow"

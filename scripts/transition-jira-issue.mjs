@@ -55,7 +55,9 @@ async function debugJira() {
 }
 
 async function transitionIssue(issueKey, targetState = 'in progress') {
-  await debugJira();
+  if (process.env.JIRA_DEBUG === '1') {
+    await debugJira();
+  }
 
   console.log(`\nFetching transitions for ${issueKey}...`);
   const res = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/issue/${issueKey}/transitions`, {
@@ -67,8 +69,7 @@ async function transitionIssue(issueKey, targetState = 'in progress') {
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Failed to fetch transitions for ${issueKey}: ${res.status} ${text}`);
-    return;
+    throw new Error(`Failed to fetch transitions for ${issueKey}: ${res.status} ${text}`);
   }
 
   const data = await res.json();
@@ -82,8 +83,7 @@ async function transitionIssue(issueKey, targetState = 'in progress') {
   );
 
   if (!targetTransition) {
-    console.error(`Could not find a transition matching "${targetState}".`);
-    return;
+    throw new Error(`Could not find a transition matching "${targetState}".`);
   }
 
   console.log(`Applying transition "${targetTransition.name}" (ID: ${targetTransition.id})...`);

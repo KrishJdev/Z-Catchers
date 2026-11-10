@@ -362,7 +362,7 @@ export function PushModal({
             ) : (
               <button
                 type="button"
-                onClick={currentUser ? handleEnablePush : onOpenLogin || handleEnablePush}
+                onClick={currentUser ? handleEnablePush : () => (onOpenLogin ? onOpenLogin() : handleEnablePush())}
                 disabled={loading || !supported}
                 className="w-full flex items-center justify-center gap-2 rounded-xl bg-status-amber py-3 text-xs font-bold text-night-bg hover:opacity-90 transition-opacity disabled:opacity-50"
               >

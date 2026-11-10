@@ -6,6 +6,7 @@ import { toValidLuxonZone, isValidTimezone, formatGmtOffset } from '@/lib/timezo
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
+const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export async function GET() {
   try {
@@ -166,6 +167,32 @@ export async function POST(request: Request) {
     if (!isValidTimezone(cleanTz)) {
       return NextResponse.json(
         { error: 'Invalid timezone identifier. Please select a valid GMT offset (e.g. "GMT+05:30").' },
+        { status: 400 }
+      );
+    }
+
+    // Validate 24-hour time format (HH:mm)
+    if (!TIME_FORMAT_REGEX.test(bedtime_local.trim())) {
+      return NextResponse.json(
+        { error: 'Invalid bedtime format. Must be HH:mm (24-hour, e.g. 23:00).' },
+        { status: 400 }
+      );
+    }
+    if (wake_time_local && !TIME_FORMAT_REGEX.test(wake_time_local.trim())) {
+      return NextResponse.json(
+        { error: 'Invalid wake time format. Must be HH:mm (24-hour, e.g. 07:00).' },
+        { status: 400 }
+      );
+    }
+    if (weekend_bedtime_local?.trim() && !TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim())) {
+      return NextResponse.json(
+        { error: 'Invalid weekend bedtime format. Must be HH:mm (24-hour, e.g. 01:00).' },
+        { status: 400 }
+      );
+    }
+    if (weekend_wake_time_local?.trim() && !TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim())) {
+      return NextResponse.json(
+        { error: 'Invalid weekend wake time format. Must be HH:mm (24-hour, e.g. 09:00).' },
         { status: 400 }
       );
     }
