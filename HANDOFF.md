@@ -1,13 +1,13 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T21:56:00+05:30  
+> **Last Updated:** 2026-11-10T22:21:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Latest Commit:** `8c3d259` (in `krish`)  
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 25/25 static & dynamic routes generated | All unit, live E2E, IANA timezone, weekend evening, push, and cron idempotency test suites passing)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 static & dynamic routes generated | All unit, live E2E, strike voting, 24h metastrikes, serverless rate limiting, and auth test suites passing)
 
 ---
 
@@ -195,6 +195,37 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * `npx tsc --noEmit`: 0 errors.
   * `npm run build`: 25/25 static & dynamic routes compiled cleanly.
 
+### Phase 34: Community Accountability Mechanics & Serverless Security (Phase 4 Execution)
+* **Supabase Schema & Table Hardening (`supabase/schema.sql` & `src/lib/db.ts`):**
+  * Added `strikes_count` and `metastrikes_count` alias columns to `members` table in `supabase/schema.sql` with check constraints (`0 <= count <= 3`).
+  * Created persistent serverless rate limiting table `rate_limit_entries` keyed by `key` (indexed on `key + reset_at` and `target_member_id + ip_address`) with service role RLS policies.
+  * Added stored PostgreSQL function `reset_monthly_strikes()` for database-level calendar month rollovers.
+  * Updated TypeScript interfaces in `src/lib/db.ts` (`RateLimitRecord`, `Member.strikes_count`, `Member.metastrikes_count`) and automated alias synchronization in `updateMemberSafe`.
+* **Persistent Serverless Rate Limiter (`src/lib/rateLimit.ts`):**
+  * Refactored from ephemeral in-memory maps to a persistent Supabase-backed table counter keyed by `target_member_id + ip_address` across ephemeral serverless instances.
+  * Implemented dual sync + async interface (`checkPinRateLimitSync`, `checkPinRateLimitPersistent`, `recordPinFailurePersistent`, `resetPinFailurePersistent`, `clearAllPinRateLimitsPersistent`).
+  * Provided thenable return structure on `checkPinRateLimit` ensuring 100% backward compatibility for synchronous unit test suites and awaitable serverless runtime usage.
+  * Applied persistent rate limiting to PIN login attempts in `/api/auth/login/route.ts`, schedule updates in `/api/members/update-schedule/route.ts`, in-bed check-ins in `/api/members/in-bed/route.ts`, and administrative mutations in `/api/mod/route.ts`.
+* **Moderator Route Consolidation & Server-Side Security (`src/app/api/mod/*` & `src/lib/auth.ts`):**
+  * Deleted redundant re-export `src/app/api/mod/members/route.ts` to eliminate duplicate and ambiguous endpoints.
+  * Implemented centralized `verifyModeratorAuthorization` in `src/lib/auth.ts` enforcing strict server-side validation across all handler operations in `/api/mod/route.ts` (supporting master `MOD_SECRET_PASSCODE` and authenticated moderator sessions).
+  * Audited all administrative mutations with structured audit logs.
+* **Community 2-Vote Strike Verification System (`/api/members/strike`, `/api/members/strikes`, `src/lib/strikes.ts`):**
+  * Enforced 2 distinct community member verification votes to confirm a strike against an overdue member.
+  * Strictly locked strike voting during the 5-minute bedtime grace period (`BEDTIME_GRACE`) and blocked voting if the target member has checked into bed for tonight.
+  * Created strike endpoints at `/api/members/strike` and `POST /api/members/strikes` supporting `target_member_id`, `member_id`, and `targetMemberId`.
+* **24-Hour Metastrike Emergency Window & Monthly Resets (`/api/members/metastrike`, `src/lib/strikes.ts`):**
+  * Created `/api/members/metastrike` enabling members or moderators to claim proactive excuse passes or convert active strikes into excused Metastrikes within a strict 24-hour window following missed bedtimes.
+  * Enforced automated monthly resets via `checkMonthlyStrikeReset` and database function `reset_monthly_strikes()`.
+* **Interactive UI Buttons & Status Badges (`src/components/MemberCard.tsx`):**
+  * Updated `MemberCard.tsx` to support both `strikes_count` and `strikes_used` aliases.
+  * Rendered interactive peer 2-vote verification buttons (`Vote Strike (0/2)`, `Voted (1/2)`, `Strike Issued`) with haptic feedback.
+  * Maintained out-of-strikes warning banners, grace countdowns, and self-service Metastrike excuse triggers.
+* **Verification:**
+  * `npx tsc --noEmit`: 0 errors.
+  * `npm run build`: 26/26 static & dynamic routes compiled cleanly.
+  * All test suites passed: `test-pin-rate-limiting.mjs`, `test-phase1-security.mjs`, `test-strikes-system.mjs`, `test-in-bed-and-streaks.mjs`, `test-gmt-timezones.mjs`, `test-weekend-hours.mjs`, `test-push-and-cron.mjs`, `test-e2e-api-endpoints.mjs`, `test-login-and-auth.mjs`.
+
 ### Phase 33: DST-Aware IANA Timezones, Canonical Sleep Cycle Anchor & Idempotent Cron Dispatcher (Phase 3 Core Spec Implementation)
 * **DST-Aware IANA Timezone Refactoring (`src/lib/timezone.ts` & `src/lib/sleepEngine.ts`):**
   * Transitioned all member timezone storage and sleep calculations from static GMT offsets to strict IANA timezone identifiers (e.g., `Europe/Athens`, `America/New_York`, `Asia/Kolkata`).
@@ -361,6 +392,7 @@ d:\Projects\Z Catchers\
 | **ZC-17**| Phase 1: Mobile PWA Lifecycle, Service Worker & Multi-Device Push | **DONE** | Phase 31 |
 | **ZC-18**| Phase 2: Mobile Navigation, Standalone Onboarding & Touch UX | **DONE** | Phase 32 |
 | **ZC-19**| Phase 3: Sleep Engine, IANA Timezone Math & Idempotent Cron | **DONE** | Phase 33 |
+| **ZC-20**| Phase 4: Community Accountability Mechanics & Serverless Security | **DONE** | Phase 34 |
 
 ---
 
@@ -369,7 +401,7 @@ d:\Projects\Z Catchers\
 1. **Commit and Push to `krish` Branch:**
    * Stage all modified and untracked files on branch `krish`.
    * Commit with descriptive commit message:
-     `feat(engine): implement DST-aware IANA timezones, canonical evening sleep cycle anchor, and idempotent cron lookback`
+     `feat(accountability): implement 2-vote community strikes, 24h metastrikes, and persistent serverless rate limiting`
    * Push branch `krish` to `origin/krish`.
 
 2. **Pull Request & Integration:**
@@ -377,5 +409,5 @@ d:\Projects\Z Catchers\
    * Verify CI, automated test suites, and CodeRabbit on `dev`.
 
 3. **Verification Checklist:**
-   * Verify `npx tsc --noEmit` (0 errors) and `npm run build` (25/25 routes) before pushing.
-   * Verify test suites pass: `node scripts/test-gmt-timezones.mjs`, `node scripts/test-weekend-hours.mjs`, `node scripts/test-push-and-cron.mjs`, `node scripts/test-phase1-pwa-push.mjs`, `node scripts/test-phase2-mobile-touch-ux.mjs`, `node scripts/test-strikes-system.mjs`.
+   * Verify `npx tsc --noEmit` (0 errors) and `npm run build` (26/26 routes) before pushing.
+   * Verify test suites pass: `node scripts/test-pin-rate-limiting.mjs`, `node --env-file=.env.local scripts/test-phase1-security.mjs`, `node scripts/test-strikes-system.mjs`, `node --env-file=.env.local scripts/test-in-bed-and-streaks.mjs`.

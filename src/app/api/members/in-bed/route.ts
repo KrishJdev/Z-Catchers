@@ -4,7 +4,12 @@ import { DateTime } from 'luxon';
 import { verifyPin, getRequestSessionMemberId } from '@/lib/auth';
 import { calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
-import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 
 export async function GET(request: Request) {
   try {
@@ -97,7 +102,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
         }
         const clientIp = getClientIp(request);
-        const rateCheck = checkPinRateLimit(clientIp, member.id);
+        const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
         if (!rateCheck.allowed) {
           return NextResponse.json(
             {
@@ -113,9 +118,9 @@ export async function POST(request: Request) {
         const cleanPin = pin.trim();
         if (member.passcode_hash && verifyPin(cleanPin, member.passcode_hash)) {
           isPinMatch = true;
-          resetPinFailure(clientIp, member.id);
+          await resetPinFailurePersistent(clientIp, member.id);
         } else {
-          recordPinFailure(clientIp, member.id);
+          await recordPinFailurePersistent(clientIp, member.id);
         }
       }
     }

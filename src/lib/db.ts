@@ -41,6 +41,8 @@ export interface Member {
   // Monthly Strikes & Metastrikes Accountability System
   strikes_used?: number; // 0 to 3
   metastrikes_used?: number; // 0 to 3
+  strikes_count?: number; // Alias 0 to 3
+  metastrikes_count?: number; // Alias 0 to 3
   strike_cycle_month?: string; // "YYYY-MM"
   last_notified_stage?: string | null;
   last_notified_cycle_date?: string | null;
@@ -88,6 +90,17 @@ export interface NotificationLog {
   notification_type: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY' | string;
   local_date: string; // "YYYY-MM-DD"
   dispatched_at: string;
+}
+
+export interface RateLimitRecord {
+  id: string;
+  key: string;
+  ip_address?: string | null;
+  target_member_id?: string | null;
+  attempts: number;
+  reset_at: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /**
@@ -193,6 +206,11 @@ export async function getExistingMemberColumns(): Promise<Set<string>> {
     'role',
     'passcode_hash',
     'is_active',
+    'strikes_used',
+    'strikes_count',
+    'metastrikes_used',
+    'metastrikes_count',
+    'strike_cycle_month',
     'last_notified_stage',
     'last_notified_cycle_date',
     'created_at',
@@ -229,6 +247,18 @@ export async function updateMemberSafe(
   updates: Record<string, any>,
   options: SafeUpdateOptions = {}
 ): Promise<{ data: Member | null; error: any }> {
+  // Sync strike count aliases
+  if ('strikes_used' in updates && !('strikes_count' in updates)) {
+    updates.strikes_count = updates.strikes_used;
+  } else if ('strikes_count' in updates && !('strikes_used' in updates)) {
+    updates.strikes_used = updates.strikes_count;
+  }
+  if ('metastrikes_used' in updates && !('metastrikes_count' in updates)) {
+    updates.metastrikes_count = updates.metastrikes_used;
+  } else if ('metastrikes_count' in updates && !('metastrikes_used' in updates)) {
+    updates.metastrikes_used = updates.metastrikes_count;
+  }
+
   // Store weekend hours in memory cache in case columns do not exist in PostgreSQL
   if ('weekend_bedtime_local' in updates || 'weekend_wake_time_local' in updates) {
     setInMemoryWeekendHours(memberId, {

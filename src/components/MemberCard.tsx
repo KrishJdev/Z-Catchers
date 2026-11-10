@@ -149,8 +149,18 @@ export function MemberCard({
     `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(member.discord_username)}`;
 
   // Strikes & Metastrikes data
-  const strikesUsed = typeof member.strikes_used === 'number' ? member.strikes_used : 0;
-  const metastrikesUsed = typeof member.metastrikes_used === 'number' ? member.metastrikes_used : 0;
+  const strikesUsed =
+    typeof member.strikes_count === 'number'
+      ? member.strikes_count
+      : typeof member.strikes_used === 'number'
+      ? member.strikes_used
+      : 0;
+  const metastrikesUsed =
+    typeof member.metastrikes_count === 'number'
+      ? member.metastrikes_count
+      : typeof member.metastrikes_used === 'number'
+      ? member.metastrikes_used
+      : 0;
   const isMetastrikeActive = Boolean(
     member.is_metastrike_active || member.tonight_strike_log?.record_type === 'metastrike'
   );

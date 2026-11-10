@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
 import { hashPin, verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
 import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
-import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -47,10 +52,13 @@ export async function POST(request: Request) {
     // 2. PIN verification / Claiming profile
     let isModeratorOverride = false;
     if (mod_passcode) {
-      if (checkPinRateLimit(clientIp, '').allowed) {
+      const modRate = await checkPinRateLimitPersistent(clientIp, 'mod_passcode_gate');
+      if (modRate.allowed) {
         isModeratorOverride = verifyModPasscode(mod_passcode);
         if (!isModeratorOverride) {
-          recordPinFailure(clientIp, '');
+          await recordPinFailurePersistent(clientIp, 'mod_passcode_gate');
+        } else {
+          await resetPinFailurePersistent(clientIp, 'mod_passcode_gate');
         }
       }
     }
@@ -59,7 +67,7 @@ export async function POST(request: Request) {
     let updatedPasscodeHash = currentMember.passcode_hash;
 
     if (!isModeratorOverride) {
-      const rateCheck = checkPinRateLimit(clientIp, currentMember.id);
+      const rateCheck = await checkPinRateLimitPersistent(clientIp, currentMember.id);
       if (!rateCheck.allowed) {
         return NextResponse.json(
           {
@@ -74,7 +82,7 @@ export async function POST(request: Request) {
 
       if (!currentMember.passcode_hash) {
         if (currentMember.role === 'moderator') {
-          recordPinFailure(clientIp, currentMember.id);
+          await recordPinFailurePersistent(clientIp, currentMember.id);
           return NextResponse.json(
             { error: 'Claiming an initial moderator profile requires moderator authorization.' },
             { status: 403 }
@@ -88,17 +96,17 @@ export async function POST(request: Request) {
           );
         }
         updatedPasscodeHash = hashPin(pin.trim());
-        resetPinFailure(clientIp, currentMember.id);
+        await resetPinFailurePersistent(clientIp, currentMember.id);
       } else {
         // Profile already claimed: verify PIN with rate limit protection
         if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), currentMember.passcode_hash)) {
-          recordPinFailure(clientIp, currentMember.id);
+          await recordPinFailurePersistent(clientIp, currentMember.id);
           return NextResponse.json(
             { error: 'Invalid 4-digit PIN. Please enter your correct PIN.' },
             { status: 401 }
           );
         }
-        resetPinFailure(clientIp, currentMember.id);
+        await resetPinFailurePersistent(clientIp, currentMember.id);
 
         // If updating PIN
         if (new_pin) {

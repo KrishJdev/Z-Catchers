@@ -1,22 +1,27 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
-import { getRequestSessionMemberId, verifyPin } from '@/lib/auth';
+import { getRequestSessionMemberId, verifyPin, verifyModPasscode } from '@/lib/auth';
 import { useProactiveMetastrike, convertStrikeToMetastrike } from '@/lib/strikes';
 import { getSleepCycleDate } from '@/lib/sleepEngine';
-import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
 /**
  * POST /api/members/strikes/metastrike
  *
- * Allows a member to use an excused Metastrike pass:
+ * Allows a member or moderator to use an excused Metastrike pass:
  * 1. Proactive (Tonight): Claims a pass for tonight with an optional excuse reason ("Monthly Battle", "Family", etc.)
- * 2. Retroactive (24-Hour Swap): Converts a community-issued strike from the last 24 hours into an excused Metastrike.
+ * 2. Retroactive (24-Hour Swap): Converts a community-issued strike within a 24-hour window following the missed bedtime into an excused Metastrike.
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { member_id, action = 'proactive', reason, pin } = body;
+    const { member_id, action = 'proactive', reason, pin, mod_passcode } = body;
 
     if (!member_id || typeof member_id !== 'string') {
       return NextResponse.json({ error: 'Missing member_id.' }, { status: 400 });
@@ -34,60 +39,88 @@ export async function POST(request: Request) {
     }
 
     const member = rawMember as Member;
+    const clientIp = getClientIp(request);
 
-    // Security check: Session must match target member OR valid PIN provided
+    // Rate limit check before verifying auth
+    const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+        }
+      );
+    }
+
+    // Security check: Target member ownership OR Moderator authorization
     const sessionMemberId = getRequestSessionMemberId(request);
-    const isSessionMatch = Boolean(sessionMemberId && sessionMemberId === member.id);
+    let isAuthorized = false;
+    let isModerator = false;
 
-    let isPinMatch = false;
-    if (!isSessionMatch) {
+    // 1. Check moderator passcode
+    const headerPasscode = request.headers.get('x-mod-passcode');
+    const candidatePasscode = mod_passcode || headerPasscode;
+    if (candidatePasscode && verifyModPasscode(candidatePasscode)) {
+      isAuthorized = true;
+      isModerator = true;
+    }
+
+    // 2. Check session token (matching target member OR moderator role)
+    if (!isAuthorized && sessionMemberId) {
+      if (sessionMemberId === member.id) {
+        isAuthorized = true;
+      } else {
+        const { data: sessionUser } = await supabaseAdmin
+          .from('members')
+          .select('role, is_active')
+          .eq('id', sessionMemberId)
+          .single();
+
+        if (sessionUser && sessionUser.is_active && sessionUser.role === 'moderator') {
+          isAuthorized = true;
+          isModerator = true;
+        }
+      }
+    }
+
+    // 3. Check 4-digit PIN for target member
+    if (!isAuthorized && pin !== undefined && pin !== null) {
+      if (typeof pin !== 'string') {
+        return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
+      }
+
+      if (member.passcode_hash && verifyPin(pin, member.passcode_hash)) {
+        isAuthorized = true;
+        await resetPinFailurePersistent(clientIp, member.id);
+      } else {
+        await recordPinFailurePersistent(clientIp, member.id);
+        return NextResponse.json(
+          { error: 'Invalid 4-digit PIN for this profile.' },
+          { status: 401 }
+        );
+      }
+    }
+
+    if (!isAuthorized) {
       if (sessionMemberId && sessionMemberId !== member.id) {
         return NextResponse.json(
           {
-            error: 'Forbidden. You cannot manage Metastrikes for another member.',
+            error: 'Forbidden. You cannot manage Metastrikes for another member without moderator privileges.',
             code: 'FORBIDDEN',
           },
           { status: 403 }
         );
       }
-
-      if (pin !== undefined && pin !== null) {
-        if (typeof pin !== 'string') {
-          return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
-        }
-        const clientIp = getClientIp(request);
-        const rateCheck = checkPinRateLimit(clientIp, member.id);
-        if (!rateCheck.allowed) {
-          return NextResponse.json(
-            {
-              error: `Too many failed PIN attempts. Please wait ${rateCheck.retryAfterSeconds} seconds.`,
-            },
-            {
-              status: 429,
-              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-            }
-          );
-        }
-
-        if (member.passcode_hash && verifyPin(pin, member.passcode_hash)) {
-          isPinMatch = true;
-          resetPinFailure(clientIp, member.id);
-        } else {
-          recordPinFailure(clientIp, member.id);
-          return NextResponse.json(
-            { error: 'Invalid 4-digit PIN for this profile.' },
-            { status: 401 }
-          );
-        }
-      } else {
-        return NextResponse.json(
-          {
-            error: 'Authentication required. Please log in with your profile to use a Metastrike.',
-            code: 'UNAUTHORIZED',
-          },
-          { status: 401 }
-        );
-      }
+      return NextResponse.json(
+        {
+          error: 'Authentication required. Please log in with your profile or moderator passcode to use a Metastrike.',
+          code: 'UNAUTHORIZED',
+        },
+        { status: 401 }
+      );
     }
 
     const nowUtc = DateTime.utc();
@@ -96,9 +129,10 @@ export async function POST(request: Request) {
     if (action === 'convert_retroactive') {
       const result = await convertStrikeToMetastrike(
         member,
-        reason || 'Converted from Strike',
+        reason || (isModerator ? 'Moderator Retroactive Excuse' : 'Converted from Strike'),
         cycleDate,
-        nowUtc
+        nowUtc,
+        isModerator
       );
 
       if (!result.success) {
@@ -112,14 +146,16 @@ export async function POST(request: Request) {
         sleep_cycle_date: cycleDate,
         log: result.log,
         strikes_used: result.strikesUsed,
+        strikes_count: result.strikesUsed,
         metastrikes_used: result.metastrikesUsed,
+        metastrikes_count: result.metastrikesUsed,
       });
     }
 
     // Default: Proactive Metastrike pass for tonight
     const result = await useProactiveMetastrike(
       member,
-      reason || 'Excused Night',
+      reason || (isModerator ? 'Moderator Excused Pass' : 'Excused Night'),
       cycleDate,
       nowUtc
     );
@@ -135,6 +171,7 @@ export async function POST(request: Request) {
       sleep_cycle_date: cycleDate,
       log: result.log,
       metastrikes_used: result.metastrikesUsed,
+      metastrikes_count: result.metastrikesUsed,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown server error';

@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS members (
   -- Monthly Strikes & Metastrikes Accountability System
   strikes_used INT NOT NULL DEFAULT 0 CHECK (strikes_used >= 0 AND strikes_used <= 3),
   metastrikes_used INT NOT NULL DEFAULT 0 CHECK (metastrikes_used >= 0 AND metastrikes_used <= 3),
+  strikes_count INT NOT NULL DEFAULT 0 CHECK (strikes_count >= 0 AND strikes_count <= 3),
+  metastrikes_count INT NOT NULL DEFAULT 0 CHECK (metastrikes_count >= 0 AND metastrikes_count <= 3),
   strike_cycle_month TEXT NOT NULL DEFAULT '2026-11', -- 'YYYY-MM' for lazy monthly reset
 
   -- Idempotent Notification Dispatcher Tracking (Rolling lookback & jitter protection)
@@ -55,6 +57,8 @@ ALTER TABLE members ADD COLUMN IF NOT EXISTS pending_weekend_bedtime_local VARCH
 ALTER TABLE members ADD COLUMN IF NOT EXISTS pending_weekend_wake_time_local VARCHAR(5);
 ALTER TABLE members ADD COLUMN IF NOT EXISTS strikes_used INT NOT NULL DEFAULT 0;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS metastrikes_used INT NOT NULL DEFAULT 0;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS strikes_count INT NOT NULL DEFAULT 0;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS metastrikes_count INT NOT NULL DEFAULT 0;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS strike_cycle_month TEXT NOT NULL DEFAULT '2026-11';
 ALTER TABLE members ADD COLUMN IF NOT EXISTS last_notified_stage TEXT;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS last_notified_cycle_date TEXT;
@@ -66,6 +70,12 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'check_metastrikes_used_range') THEN
     ALTER TABLE members ADD CONSTRAINT check_metastrikes_used_range CHECK (metastrikes_used >= 0 AND metastrikes_used <= 3);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'check_strikes_count_range') THEN
+    ALTER TABLE members ADD CONSTRAINT check_strikes_count_range CHECK (strikes_count >= 0 AND strikes_count <= 3);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'check_metastrikes_count_range') THEN
+    ALTER TABLE members ADD CONSTRAINT check_metastrikes_count_range CHECK (metastrikes_count >= 0 AND metastrikes_count <= 3);
   END IF;
 END $$;
 
@@ -113,6 +123,18 @@ CREATE TABLE IF NOT EXISTS nightly_strike_logs (
   UNIQUE(target_member_id, sleep_cycle_date)
 );
 
+-- 5. Rate Limit Entries Table (Serverless-persistent brute-force protection across ephemeral instances)
+CREATE TABLE IF NOT EXISTS rate_limit_entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key TEXT NOT NULL UNIQUE,                -- E.g. "ip:1.2.3.4", "target:member-uuid", or "ip_target:1.2.3.4:member-uuid"
+  ip_address TEXT,
+  target_member_id TEXT,
+  attempts INT NOT NULL DEFAULT 1,
+  reset_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Indexes for high-performance cron lookups & timezone queries
 CREATE INDEX IF NOT EXISTS idx_members_active ON members(is_active);
 CREATE INDEX IF NOT EXISTS idx_members_pending ON members(pending_effective_at) WHERE pending_effective_at IS NOT NULL;
@@ -121,6 +143,8 @@ CREATE INDEX IF NOT EXISTS idx_push_endpoint ON push_subscriptions(endpoint);
 CREATE INDEX IF NOT EXISTS idx_push_member_id ON push_subscriptions(member_id);
 CREATE INDEX IF NOT EXISTS idx_notification_logs_lookup ON notification_logs(member_id, notification_type, local_date);
 CREATE INDEX IF NOT EXISTS idx_nightly_strike_logs_target ON nightly_strike_logs(target_member_id, sleep_cycle_date);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_entries_key_reset ON rate_limit_entries(key, reset_at);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_target_ip ON rate_limit_entries(target_member_id, ip_address);
 
 -- ==============================================================================
 -- Row Level Security (RLS) Policies
@@ -129,6 +153,7 @@ ALTER TABLE members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nightly_strike_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rate_limit_entries ENABLE ROW LEVEL SECURITY;
 
 -- Members: Public read for active members (for community roster view)
 DROP POLICY IF EXISTS "Public can view active members" ON members;
@@ -163,6 +188,28 @@ CREATE POLICY "Public can view nightly strike logs" ON nightly_strike_logs
 DROP POLICY IF EXISTS "Service role full access on nightly_strike_logs" ON nightly_strike_logs;
 CREATE POLICY "Service role full access on nightly_strike_logs" ON nightly_strike_logs
   FOR ALL USING (auth.role() = 'service_role');
+
+-- Rate Limit Entries: Service role full access (strictly internal backend security)
+DROP POLICY IF EXISTS "Service role full access on rate_limit_entries" ON rate_limit_entries;
+CREATE POLICY "Service role full access on rate_limit_entries" ON rate_limit_entries
+  FOR ALL USING (auth.role() = 'service_role');
+
+-- ==============================================================================
+-- Automated Monthly Strike Reset Procedure
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION reset_monthly_strikes()
+RETURNS void AS $$
+BEGIN
+  UPDATE members
+  SET strikes_used = 0,
+      strikes_count = 0,
+      metastrikes_used = 0,
+      metastrikes_count = 0,
+      strike_cycle_month = to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM'),
+      updated_at = NOW()
+  WHERE strike_cycle_month != to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM');
+END;
+$$ LANGUAGE plpgsql;
 
 -- ==============================================================================
 -- Seed Initial Demo Members (Cross-Timezone Community)

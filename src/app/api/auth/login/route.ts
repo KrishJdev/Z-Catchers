@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { hashPin, verifyPin, createSessionToken, verifyModPasscode } from '@/lib/auth';
-import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 
 export async function POST(request: Request) {
   try {
@@ -27,7 +32,7 @@ export async function POST(request: Request) {
     const targetIdentifier = cleanMemberId || cleanUsername.toLowerCase();
 
     // Rate limit check before verifying PIN
-    const rateCheck = checkPinRateLimit(clientIp, targetIdentifier);
+    const rateCheck = await checkPinRateLimitPersistent(clientIp, targetIdentifier);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
@@ -60,7 +65,7 @@ export async function POST(request: Request) {
     const currentMember = member as Member;
 
     // Apply shared per-member attempt limit before PIN verification/claiming
-    const memberRateCheck = checkPinRateLimit(clientIp, currentMember.id);
+    const memberRateCheck = await checkPinRateLimitPersistent(clientIp, currentMember.id);
     if (!memberRateCheck.allowed) {
       return NextResponse.json(
         {
@@ -79,9 +84,9 @@ export async function POST(request: Request) {
       if (currentMember.role === 'moderator') {
         const isModAuthorized = verifyModPasscode(mod_passcode);
         if (!isModAuthorized) {
-          recordPinFailure(clientIp, currentMember.id);
+          await recordPinFailurePersistent(clientIp, currentMember.id);
           if (targetIdentifier && targetIdentifier !== currentMember.id) {
-            recordPinFailure('', targetIdentifier);
+            await recordPinFailurePersistent('', targetIdentifier);
           }
           return NextResponse.json(
             { error: 'Claiming an initial moderator profile requires the moderator secret passcode.' },
@@ -106,23 +111,23 @@ export async function POST(request: Request) {
         );
       }
       currentMember.passcode_hash = newHash;
-      resetPinFailure(clientIp, currentMember.id);
+      await resetPinFailurePersistent(clientIp, currentMember.id);
       if (targetIdentifier && targetIdentifier !== currentMember.id) {
-        resetPinFailure(clientIp, targetIdentifier);
+        await resetPinFailurePersistent(clientIp, targetIdentifier);
       }
     } else {
       // Verify existing PIN
       const isMatch = verifyPin(cleanPin, currentMember.passcode_hash);
       if (!isMatch) {
-        recordPinFailure(clientIp, currentMember.id);
+        await recordPinFailurePersistent(clientIp, currentMember.id);
         if (targetIdentifier && targetIdentifier !== currentMember.id) {
-          recordPinFailure('', targetIdentifier);
+          await recordPinFailurePersistent('', targetIdentifier);
         }
         return NextResponse.json({ error: 'Invalid PIN. Please check your PIN and try again.' }, { status: 401 });
       }
-      resetPinFailure(clientIp, currentMember.id);
+      await resetPinFailurePersistent(clientIp, currentMember.id);
       if (targetIdentifier && targetIdentifier !== currentMember.id) {
-        resetPinFailure(clientIp, targetIdentifier);
+        await resetPinFailurePersistent(clientIp, targetIdentifier);
       }
     }
 

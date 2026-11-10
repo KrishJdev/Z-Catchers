@@ -6,8 +6,13 @@ import {
   insertMemberSafe,
   hydrateMemberWeekendHours,
 } from '@/lib/db';
-import { verifyModPasscode, hashPin, sanitizeMember } from '@/lib/auth';
-import { getClientIp, checkPinRateLimit, recordPinFailure } from '@/lib/rateLimit';
+import { verifyModPasscode, hashPin, sanitizeMember, verifyModeratorAuthorization } from '@/lib/auth';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 import { DEMO_SEED_FINGERPRINTS, isDemoSeedMember } from '@/lib/demoSeed';
 import { checkCooldownPromotion, getSleepCycleDate } from '@/lib/sleepEngine';
 import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
@@ -18,25 +23,12 @@ const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channel
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
- * Helper to extract and verify moderator passcode from headers or body with IP rate limiting
- */
-function isAuthorized(request: Request, passcodeFromBody?: string): boolean {
-  const headerPasscode = request.headers.get('x-mod-passcode');
-  const candidate = passcodeFromBody || headerPasscode;
-  const ip = getClientIp(request);
-  if (!checkPinRateLimit(ip, '').allowed) return false;
-  const ok = verifyModPasscode(candidate);
-  if (!ok && candidate) recordPinFailure(ip, '');
-  return ok;
-}
-
-/**
  * GET: Fetch all members (including inactive and pending schedules) for moderator view
  */
 export async function GET(request: Request) {
   try {
     const clientIp = getClientIp(request);
-    const rateCheck = checkPinRateLimit(clientIp, '');
+    const rateCheck = await checkPinRateLimitPersistent(clientIp, 'mod_admin');
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
@@ -49,12 +41,16 @@ export async function GET(request: Request) {
       );
     }
 
-    if (!isAuthorized(request)) {
+    const authResult = await verifyModeratorAuthorization(request);
+    if (!authResult.authorized) {
+      await recordPinFailurePersistent(clientIp, 'mod_admin');
       return NextResponse.json(
-        { error: 'Unauthorized: Invalid moderator passcode.' },
+        { error: authResult.error || 'Unauthorized: Invalid moderator passcode or session.' },
         { status: 401 }
       );
     }
+
+    await resetPinFailurePersistent(clientIp, 'mod_admin');
 
     // Fetch all members with service role (includes is_active = false)
     const { data: members, error } = await supabaseAdmin
@@ -121,7 +117,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const clientIp = getClientIp(request);
-    const rateCheck = checkPinRateLimit(clientIp, '');
+    const rateCheck = await checkPinRateLimitPersistent(clientIp, 'mod_admin');
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
@@ -135,20 +131,26 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { action, mod_passcode } = body;
+    const { action, mod_passcode, pin } = body;
 
-    if (!isAuthorized(request, mod_passcode)) {
+    const authResult = await verifyModeratorAuthorization(request, mod_passcode, pin);
+    if (!authResult.authorized) {
+      await recordPinFailurePersistent(clientIp, 'mod_admin');
       return NextResponse.json(
-        { error: 'Unauthorized: Invalid moderator secret passcode.' },
+        { error: authResult.error || 'Unauthorized: Invalid moderator secret passcode or session.' },
         { status: 401 }
       );
     }
+
+    await resetPinFailurePersistent(clientIp, 'mod_admin');
 
     // 1. Verify Passcode action
     if (action === 'verify') {
       return NextResponse.json({
         success: true,
         message: 'Moderator passcode verified successfully.',
+        moderatorId: authResult.moderatorId,
+        moderatorRole: authResult.moderatorRole,
       });
     }
 

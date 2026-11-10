@@ -11,7 +11,7 @@ interface InMemoryStrikeStore {
   logs: Map<string, NightlyStrikeLog>; // Key: `${target_member_id}_${sleep_cycle_date}`
   memberCounts: Map<
     string,
-    { strikes_used: number; metastrikes_used: number; strike_cycle_month: string }
+    { strikes_used: number; metastrikes_used: number; strikes_count?: number; metastrikes_count?: number; strike_cycle_month: string }
   >;
 }
 
@@ -43,11 +43,15 @@ export async function resolveMemberStrikeCounts(
   // Check in-memory store first if member column was not loaded
   const fallback = memoryStore.memberCounts.get(member.id);
   let strikes_used =
-    typeof member.strikes_used === 'number'
+    typeof member.strikes_count === 'number'
+      ? member.strikes_count
+      : typeof member.strikes_used === 'number'
       ? member.strikes_used
       : fallback?.strikes_used ?? 0;
   let metastrikes_used =
-    typeof member.metastrikes_used === 'number'
+    typeof member.metastrikes_count === 'number'
+      ? member.metastrikes_count
+      : typeof member.metastrikes_used === 'number'
       ? member.metastrikes_used
       : fallback?.metastrikes_used ?? 0;
   let strike_cycle_month =
@@ -112,7 +116,9 @@ export async function updateMemberStrikeCounts(
 
   memoryStore.memberCounts.set(memberId, {
     strikes_used: clampedStrikes,
-    metastrikes_used: clampedMetastrikes,
+        strikes_count: clampedStrikes,
+        metastrikes_used: clampedMetastrikes,
+        metastrikes_count: clampedMetastrikes,
     strike_cycle_month: cycleMonth,
   });
 
@@ -121,7 +127,9 @@ export async function updateMemberStrikeCounts(
       .from('members')
       .update({
         strikes_used: clampedStrikes,
+        strikes_count: clampedStrikes,
         metastrikes_used: clampedMetastrikes,
+        metastrikes_count: clampedMetastrikes,
         strike_cycle_month: cycleMonth,
         updated_at: DateTime.utc().toISO(),
       })
@@ -277,7 +285,20 @@ export async function recordStrikeVote(
   const state = computeMemberState(targetMember, targetMember.timezone, nowUtc);
   const cycleDate = sleepCycleDate || getSleepCycleDate(targetMember, nowUtc);
 
-  // Rule 2 & 3: Check grace period and overdue status
+    // Rule 2: Check in-bed check-in status
+  if (
+    targetMember.is_in_bed ||
+    state.checkedInEarly ||
+    (targetMember.last_notified_stage === 'IN_BED_EARLY' &&
+      targetMember.last_notified_cycle_date === cycleDate)
+  ) {
+    return {
+      success: false,
+      error: `Strike voting is blocked. ${targetMember.discord_username} has already checked into bed for tonight.`,
+    };
+  }
+
+  // Rule 3: Check grace period and overdue status
   if (state.status === 'BEDTIME_GRACE') {
     return {
       success: false,
@@ -476,7 +497,8 @@ export async function convertStrikeToMetastrike(
   member: Member,
   reason: string,
   sleepCycleDate?: string,
-  nowUtc = DateTime.utc()
+  nowUtc = DateTime.utc(),
+  isModeratorOverride = false
 ): Promise<{
   success: boolean;
   log?: NightlyStrikeLog;
@@ -507,7 +529,7 @@ export async function convertStrikeToMetastrike(
   const createdAt = DateTime.fromISO(existingLog.created_at, { zone: 'utc' });
   const hoursSinceStrike = nowUtc.diff(createdAt, 'hours').hours;
 
-  if (hoursSinceStrike > 24) {
+  if (hoursSinceStrike > 24 && !isModeratorOverride) {
     return {
       success: false,
       error: 'The 24-hour window to convert this strike to a Metastrike has expired.',

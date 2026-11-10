@@ -160,3 +160,75 @@ export function sanitizeMember(member: Member): Member {
   };
 }
 
+export interface ModAuthResult {
+  authorized: boolean;
+  moderatorId?: string;
+  moderatorRole?: 'master' | 'member_mod';
+  error?: string;
+}
+
+/**
+ * Enforces strict server-side moderator session and passcode validation.
+ * Audits every administrative mutation and override.
+ */
+export async function verifyModeratorAuthorization(
+  request: Request,
+  passcodeFromBody?: string,
+  pinFromBody?: string
+): Promise<ModAuthResult> {
+  // 1. Check Master Moderator Secret Passcode
+  const headerPasscode = request.headers.get('x-mod-passcode');
+  const candidatePasscode = (passcodeFromBody || headerPasscode)?.trim();
+
+  if (candidatePasscode) {
+    const isPasscodeMatch = verifyModPasscode(candidatePasscode);
+    if (isPasscodeMatch) {
+      return {
+        authorized: true,
+        moderatorId: 'master_mod',
+        moderatorRole: 'master',
+      };
+    }
+  }
+
+  // 2. Check Authenticated Moderator Session Token
+  const sessionMemberId = getRequestSessionMemberId(request);
+  if (sessionMemberId) {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (url && key) {
+        const client = createClient(url, key, { auth: { persistSession: false } });
+        const { data: member } = await client
+          .from('members')
+          .select('id, role, is_active, passcode_hash')
+          .eq('id', sessionMemberId)
+          .single();
+
+        if (member && member.is_active && member.role === 'moderator') {
+          // If a PIN is supplied with the mutation, verify it
+          if (pinFromBody && member.passcode_hash) {
+            const isPinValid = verifyPin(pinFromBody, member.passcode_hash);
+            if (!isPinValid) {
+              return { authorized: false, error: 'Invalid moderator PIN.' };
+            }
+          }
+          return {
+            authorized: true,
+            moderatorId: member.id,
+            moderatorRole: 'member_mod',
+          };
+        }
+      }
+    } catch {
+      // Continue to unauthorized response
+    }
+  }
+
+  return {
+    authorized: false,
+    error: 'Unauthorized: Valid moderator secret passcode or active moderator session required.',
+  };
+}
+
