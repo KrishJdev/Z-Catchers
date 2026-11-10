@@ -81,7 +81,7 @@ export async function POST(request: Request) {
         if (!isModAuthorized) {
           recordPinFailure(clientIp, currentMember.id);
           if (targetIdentifier && targetIdentifier !== currentMember.id) {
-            recordPinFailure(clientIp, targetIdentifier);
+            recordPinFailure('', targetIdentifier);
           }
           return NextResponse.json(
             { error: 'Claiming an initial moderator profile requires the moderator secret passcode.' },
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
       if (!isMatch) {
         recordPinFailure(clientIp, currentMember.id);
         if (targetIdentifier && targetIdentifier !== currentMember.id) {
-          recordPinFailure(clientIp, targetIdentifier);
+          recordPinFailure('', targetIdentifier);
         }
         return NextResponse.json({ error: 'Invalid PIN. Please check your PIN and try again.' }, { status: 401 });
       }

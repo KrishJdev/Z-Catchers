@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyModPasscode, getRequestSessionMemberId } from '@/lib/auth';
 import { supabaseAdmin, Member } from '@/lib/db';
+import { getClientIp, checkPinRateLimit, recordPinFailure } from '@/lib/rateLimit';
 import {
   validateDiscordWebhookUrl,
   getDiscordWebhookUrl,
@@ -12,8 +13,14 @@ async function isAuthorizedMod(request: Request, bodyPasscode?: string): Promise
   // 1. Check direct passcode header or body
   const headerPasscode = request.headers.get('x-mod-passcode');
   const passcode = headerPasscode || bodyPasscode;
-  if (passcode && verifyModPasscode(passcode)) {
-    return true;
+  if (passcode) {
+    const clientIp = getClientIp(request);
+    if (checkPinRateLimit(clientIp, '').allowed) {
+      if (verifyModPasscode(passcode)) {
+        return true;
+      }
+      recordPinFailure(clientIp, '');
+    }
   }
 
   // 2. Check authenticated session for moderator role

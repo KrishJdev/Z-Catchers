@@ -24,8 +24,17 @@ export async function POST(request: Request) {
     }
 
     const member = memberData as Member;
+    const clientIp = getClientIp(request);
 
-    const isModerator = verifyModPasscode(mod_passcode);
+    let isModerator = false;
+    if (mod_passcode) {
+      if (checkPinRateLimit(clientIp, '').allowed) {
+        isModerator = verifyModPasscode(mod_passcode);
+        if (!isModerator) {
+          recordPinFailure(clientIp, '');
+        }
+      }
+    }
 
     if (!isModerator) {
       if (!member.passcode_hash) {
@@ -35,7 +44,6 @@ export async function POST(request: Request) {
         );
       }
 
-      const clientIp = getClientIp(request);
       const rateCheck = checkPinRateLimit(clientIp, member.id);
       if (!rateCheck.allowed) {
         return NextResponse.json(

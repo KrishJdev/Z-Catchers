@@ -42,15 +42,23 @@ export async function POST(request: Request) {
     }
 
     const currentMember = memberData as Member;
+    const clientIp = getClientIp(request);
 
     // 2. PIN verification / Claiming profile
-    const isModeratorOverride = verifyModPasscode(mod_passcode);
+    let isModeratorOverride = false;
+    if (mod_passcode) {
+      if (checkPinRateLimit(clientIp, '').allowed) {
+        isModeratorOverride = verifyModPasscode(mod_passcode);
+        if (!isModeratorOverride) {
+          recordPinFailure(clientIp, '');
+        }
+      }
+    }
     const isFirstTimeClaim = !isModeratorOverride && !currentMember.passcode_hash;
 
     let updatedPasscodeHash = currentMember.passcode_hash;
 
     if (!isModeratorOverride) {
-      const clientIp = getClientIp(request);
       const rateCheck = checkPinRateLimit(clientIp, currentMember.id);
       if (!rateCheck.allowed) {
         return NextResponse.json(

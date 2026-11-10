@@ -81,7 +81,7 @@ export async function fetchAllNotificationLogs<T = any>(
     const from = page * pageSize;
     const to = from + pageSize - 1;
     const baseQuery = supabaseAdmin.from('notification_logs');
-    const query = builderFn(baseQuery).range(from, to);
+    const query = builderFn(baseQuery).order('id', { ascending: true }).range(from, to);
 
     const { data, error } = (await query) as { data: T[] | null; error: any };
     if (error) {

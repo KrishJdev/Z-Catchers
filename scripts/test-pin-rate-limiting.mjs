@@ -135,6 +135,34 @@ const expiredCheck = checkPinRateLimit('192.0.2.1', 'member-expiry', 5, 50);
 assert(expiredCheck.allowed === true, 'Allowed again after sliding window expires');
 
 // -------------------------------------------------------------
+// 7. Multi-Target Failure Recording (No Double Counting of Client IP)
+// -------------------------------------------------------------
+console.log('\n--- 7. Multi-Target Failure Recording (No Double Counting of Client IP) ---');
+clearAllPinRateLimits();
+
+const multiTargetIp = '198.51.100.99';
+const canonicalId = 'canonical-uuid-1111';
+const usernameAlias = 'alias-username-alice';
+
+// 4 attempts where primary is canonicalId (with IP) and secondary is alias (with empty IP)
+for (let i = 1; i <= 4; i++) {
+  recordPinFailure(multiTargetIp, canonicalId);
+  recordPinFailure('', usernameAlias);
+}
+
+const checkAfter4 = checkPinRateLimit(multiTargetIp, canonicalId);
+assert(checkAfter4.allowed === true, 'IP is not prematurely blocked after 4 multi-target attempts');
+
+// 5th attempt triggers lockout exactly on 5th failure
+recordPinFailure(multiTargetIp, canonicalId);
+recordPinFailure('', usernameAlias);
+
+const checkAfter5 = checkPinRateLimit(multiTargetIp, canonicalId);
+assert(checkAfter5.allowed === false, 'IP is blocked on exactly the 5th attempt');
+const checkAliasBlocked = checkPinRateLimit('9.9.9.9', usernameAlias);
+assert(checkAliasBlocked.allowed === false, 'Username alias target is also tracked and blocked across IPs');
+
+// -------------------------------------------------------------
 // Summary
 // -------------------------------------------------------------
 if (failed) {

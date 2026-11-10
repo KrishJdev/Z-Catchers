@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { verifyModPasscode, hashPin, sanitizeMember } from '@/lib/auth';
+import { getClientIp, checkPinRateLimit, recordPinFailure } from '@/lib/rateLimit';
 import { DEMO_SEED_FINGERPRINTS, isDemoSeedMember } from '@/lib/demoSeed';
 import { checkCooldownPromotion } from '@/lib/sleepEngine';
 import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
@@ -10,14 +11,16 @@ const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channel
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
- * Helper to extract and verify moderator passcode from headers, search params, or body
+ * Helper to extract and verify moderator passcode from headers or body with IP rate limiting
  */
 function isAuthorized(request: Request, passcodeFromBody?: string): boolean {
-  const url = new URL(request.url);
-  const queryPasscode = url.searchParams.get('passcode');
   const headerPasscode = request.headers.get('x-mod-passcode');
-  const candidate = passcodeFromBody || headerPasscode || queryPasscode;
-  return verifyModPasscode(candidate);
+  const candidate = passcodeFromBody || headerPasscode;
+  const ip = getClientIp(request);
+  if (!checkPinRateLimit(ip, '').allowed) return false;
+  const ok = verifyModPasscode(candidate);
+  if (!ok && candidate) recordPinFailure(ip, '');
+  return ok;
 }
 
 /**
@@ -25,6 +28,20 @@ function isAuthorized(request: Request, passcodeFromBody?: string): boolean {
  */
 export async function GET(request: Request) {
   try {
+    const clientIp = getClientIp(request);
+    const rateCheck = checkPinRateLimit(clientIp, '');
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+        }
+      );
+    }
+
     if (!isAuthorized(request)) {
       return NextResponse.json(
         { error: 'Unauthorized: Invalid moderator passcode.' },
@@ -92,6 +109,20 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
+    const clientIp = getClientIp(request);
+    const rateCheck = checkPinRateLimit(clientIp, '');
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+        }
+      );
+    }
+
     const body = await request.json();
     const { action, mod_passcode } = body;
 

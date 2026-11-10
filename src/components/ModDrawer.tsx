@@ -121,7 +121,7 @@ export function ModDrawer({
   const fetchModRoster = useCallback(async (code: string) => {
     setLoadingMembers(true);
     try {
-      const res = await fetch(`/api/mod?passcode=${encodeURIComponent(code)}`, {
+      const res = await fetch('/api/mod', {
         headers: { 'x-mod-passcode': code },
       });
       if (res.ok) {
