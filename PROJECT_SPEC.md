@@ -343,6 +343,8 @@ To ship ASAP without waiting on complex OAuth app verification:
 
 ### Phase 2: Anti-Spam & Check-In Polish (DO NOT BUILD UNTIL PHASE 1 IS LIVE)
 
+* [x] **Member PIN Login & Profile Authentication (ZC-13):** Built a simple, secure 4-digit PIN authentication system. Devices bind Web Push notifications and Sleep Shield quiet hours strictly to verified accounts, completely eliminating unauthenticated profile selection and notification misdirection.
+
 * \[ \] **"I'm In Bed" Safe Button:** During the 30-minute wind-down window, the sleeper can tap `"I'm heading to bed now"` in the app, which marks them as `SLEEPING` early and suppresses the outgoing community nag notification for that night.
 
 * \[ \] **Selective Watchlists (Buddy System):** Allow users to star specific friends so they only get community nag pings for their chosen watchlist rather than the entire server.
@@ -424,6 +426,15 @@ Follow these exact milestones in order. Verify each milestone compiles and passe
    * If push permission is `"default"`: Show an `"Enable Bedtime & Nag Alerts"` button that subscribes via VAPID public key and saves to `/api/push/subscribe`.
 
 4. Build `/api/cron/dispatch-notifications` implementing Algorithm 5.3 (30m wind-down + 0m community nag filtered strictly through the Sleep Shield) and a `"Send Test Notification"` button in the UI so push delivery can be verified immediately.
+
+### Milestone 6: Simple Member PIN Login & Profile Session Binding (ZC-13)
+
+1. Built `src/lib/auth.ts` session management using HMAC-SHA256 signed session tokens (30-day persistence) with zero external auth dependencies.
+2. Built auth REST endpoints: `POST /api/auth/login` (verifies/claims 4-digit PIN and issues HttpOnly cookie + Bearer token), `GET /api/auth/me` (restores session), and `POST /api/auth/logout`.
+3. Built responsive `src/components/LoginModal.tsx` with Sleepy Fox mascot, supporting first-time profile claim and returning member PIN unlock.
+4. Secured `POST /api/push/subscribe` to enforce session ownership, preventing users from subscribing their devices to another member's profile.
+5. Integrated logged-in account status into desktop `Header.tsx`, mobile navigation bar, and updated `PushModal.tsx` to link push alerts directly to the authenticated user.
+6. Verified with unit and live database tests in `scripts/test-login-and-auth.mjs`.
 
 ## 8. Edge Cases & QA Checklist for Antigravity
 

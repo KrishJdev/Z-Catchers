@@ -12,28 +12,53 @@ export interface PushPayload {
   title: string;
   body: string;
   url?: string;
+  icon?: string;
+  badge?: string;
+  tag?: string;
 }
 
+export interface PushSubscriptionKeys {
+  p256dh: string;
+  auth: string;
+}
+
+export interface PushSubscriptionData {
+  endpoint: string;
+  keys: PushSubscriptionKeys;
+}
+
+/**
+ * Sends a web push notification to a specific client subscription.
+ * Handles WebPushError with statusCode inspection for dead subscriptions (404/410).
+ */
 export async function sendPushNotification(
-  subscription: {
-    endpoint: string;
-    keys: {
-      p256dh: string;
-      auth: string;
-    };
-  },
+  subscription: PushSubscriptionData,
   payload: PushPayload
-) {
-  return webpush.sendNotification(
-    {
-      endpoint: subscription.endpoint,
-      keys: {
-        p256dh: subscription.keys.p256dh,
-        auth: subscription.keys.auth,
+): Promise<{ success: boolean; statusCode?: number; error?: string }> {
+  try {
+    const res = await webpush.sendNotification(
+      {
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: subscription.keys.p256dh,
+          auth: subscription.keys.auth,
+        },
       },
-    },
-    JSON.stringify(payload)
-  );
+      JSON.stringify(payload)
+    );
+
+    return {
+      success: true,
+      statusCode: res.statusCode,
+    };
+  } catch (err: unknown) {
+    const webPushErr = err as { statusCode?: number; message?: string };
+    return {
+      success: false,
+      statusCode: webPushErr.statusCode,
+      error: webPushErr.message || 'Unknown push error',
+    };
+  }
 }
 
 export { webpush };
