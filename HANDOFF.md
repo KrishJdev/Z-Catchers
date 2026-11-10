@@ -317,6 +317,16 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Extended Atomic CAS to Schedule Updates (`src/app/api/members/update-schedule/route.ts`):**
   * Applied the identical conditional atomic CAS update (`.is('passcode_hash', null)`) when an unconfigured member claims their PIN through schedule updates (`isFirstTimeClaim`), returning HTTP 409 if a concurrent update claimed the profile first.
 
+### Phase 18: CodeRabbit PR Review Trigger & Branch Synchronization (Commit `73aee39`)
+* **Branch Synchronization (`krish` → `origin/krish`):**
+  * Pushed 6 pending security & hardening commits (Phases 15-17) to remote `origin/krish`, updating PR #14 (`krish` → `dev`) HEAD to `73aee39`.
+* **CodeRabbit Re-trigger Execution:**
+  * Dispatched `@coderabbitai review` on PR #14 via GitHub CLI.
+  * Verified GitHub Check Run `CodeRabbit` transitioned to `pending` (active review in progress).
+* **Verification:**
+  * Verified `npx tsc --noEmit` passing cleanly (0 errors).
+  * Verified `npm run build` passing cleanly with all 21 static and dynamic routes compiled.
+
 ---
 
 ## 5. Current File Tree & Key Components
