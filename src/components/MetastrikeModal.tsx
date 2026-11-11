@@ -184,14 +184,14 @@ export function MetastrikeModal({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="rounded-xl border border-night-border px-4 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary transition-colors"
+              className="h-11 min-h-[44px] px-4 flex items-center justify-center rounded-xl border border-night-border text-xs font-semibold text-cream-secondary hover:text-cream-primary transition-colors whitespace-nowrap"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || remainingMetas <= 0}
-              className="flex items-center gap-1.5 rounded-xl bg-fox-amber px-4 py-2 text-xs font-bold text-night-bg shadow hover:bg-fox-amber/90 disabled:opacity-50 transition-all active:scale-95"
+              className="h-11 min-h-[44px] px-4 flex items-center justify-center gap-1.5 rounded-xl bg-fox-amber text-xs font-bold text-night-bg shadow hover:bg-fox-amber/90 disabled:opacity-50 transition-all active:scale-95 whitespace-nowrap"
             >
               {loading ? (
                 <span>Applying Pass...</span>

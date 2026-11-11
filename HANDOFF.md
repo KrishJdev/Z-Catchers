@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T00:30:00+05:30  
+> **Last Updated:** 2026-11-12T01:29:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 3797e59 (in krish)  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19)  
-> **Active Integration Pull Request:** [#21 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/21)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20)  
-> **Active Production Release Pull Request:** None (PR #20 merged into `main`; PR #21 currently targeting `dev`)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
+> **Latest Commit:** 68be0f6  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21)  
+> **Active Integration Pull Request:** [#23 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/23)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22)  
+> **Active Production Release Pull Request:** None (PR #22 merged into `main`)  
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 30/30 routes | `node scripts/test-nag-notifications.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
 
 ---
 
@@ -69,6 +69,59 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 48: Real-Time Bedtime Nag Notifications & Sleep Shield Guardrail Enforcement
+* **Real-Time Bedtime Nag Notification Engine (`src/app/api/members/nag-notif/route.ts`):**
+  - **Eligibility Verification:** Enables community members to send push notifications to friends who are within 30 minutes before their bedtime (`-30 <= diffMinutes < 0`) or past their bedtime (`0 <= diffMinutes <= 480`). Awake members well before bedtime (`diffMinutes < -30`) or past their 8-hour sleep cycle are strictly protected against reminder dispatch.
+  - **Sleep Shield Guardrail:** Non-negotiable defense: if the target member has turned on their Sleep Shield (via early check-in `"I'm in Bed"`, active 8-hour sleep window, or excused Metastrike pass), push notifications strictly **will not go** (`shieldActive: true`), and the endpoint returns an informative response confirming that the recipient's Sleep Shield is safely active.
+  - **Multi-Device Push Dispatch & Dead Subscription Pruning:** Dispatches Web Push payloads (`"🌙 Time to Catch Some Z's!"`) directly to all registered client endpoints in `push_subscriptions` via `sendPushNotification()`, automatically pruning expired 404/410 subscriptions.
+  - **Anti-Spam Deduplication & Community Assists:** Restricts manual nags to 1 reminder per sender per sleeper per stage (`WIND_DOWN` vs `OVERDUE`) per local cycle date, and automatically records an assist in `notification_logs` to increment the live community assist counter (`"👥 X friends checked in tonight 🦊"`).
+* **MemberCard Real-Time Nag Notification UI (`src/components/MemberCard.tsx`):**
+  - **Profile Box Nag Notif Button:** Added an intuitive, accessible action button (`min-h-[44px] min-w-[44px]`) on the member's profile card for eligible peers.
+  - **Shield Status Feedback:** If the recipient has turned on their Sleep Shield, the button visually reflects `Shield On` (with muted purple styling `border-status-slumber/40 bg-status-slumber/15 text-status-slumber`), and tapping it displays a gentle feedback toast: `"🛡️ [Name] has turned on their Sleep Shield. Nag notifications are muted."` without dispatching notifications.
+  - **Optimistic State & Assist Counter Synchronization:** When tapped for active friends, the button transitions to `Sending...` with spinner, then updates to `Nag Sent` with a checkmark badge, emits a 15ms light haptic pulse, and increments the on-card assist counter.
+  - **Multi-Bucket Layout Integration:** Elegantly positioned across `NAG NOW` (secondary action row alongside Vote Strike), `WINDING DOWN` (when within 30m of bedtime), and `SLEEPING` (indicating `Shield On (Muted)`).
+* **Header Sleep Shield Toggle Live Synchronization (`src/app/page.tsx`):**
+  - Synchronized `isSleepShieldActive` with authenticated member `currentUser.is_in_bed` state.
+  - Connected the Header `Shield: Active / Off` toggle directly to the member's live Supabase check-in status via `/api/members/in-bed`, enabling instant personal Sleep Shield activation with toast feedback.
+* **404 Not Found Page Component (`src/app/not-found.tsx`):**
+  - Implemented Next.js 15 root `not-found.tsx` adhering to the Warm Dark low-blue-light design system (`#120F0D` background, `#F5EBE1` text, sleeping FoxMascot vector).
+* **Automated Unit & Integration Test Suite (`scripts/test-nag-notifications.mjs`):**
+  - Added unit test suite verifying time-window boundary conditions (`-30m` through `+480m`), Sleep Shield guardrail assertions, PostgreSQL unique constraint anti-spam deduplication, and check-in discovery.
+* **Verification Check:**
+  - `npx tsc --noEmit` clean (0 errors).
+  - `npm run build` clean (all 30/30 dynamic and static routes compiled).
+  - `node scripts/test-nag-notifications.mjs` passed cleanly.
+  - `node scripts/test-strikes-system.mjs` passed cleanly.
+  - `node scripts/test-login-and-auth.mjs` passed cleanly.
+  - `node scripts/test-logout-flow.mjs` passed cleanly.
+  - `node scripts/test-schedule-cooldown.mjs` passed cleanly.
+  - `node scripts/test-phase1-pwa-push.mjs` passed cleanly.
+  - `node scripts/test-profile-and-schedule-tab.mjs` passed cleanly.
+
+### Phase 47: MemberCard Action Button Layout Stability & UI Button Normalisation
+* **Problem Statement & Root Cause Diagnosis:**
+  - In `MemberCard.tsx`, the primary `"Nag in Discord Journal"` action button and secondary contextual pills (Grace countdown, Vote Strike, Strike Issued, Metastrike Active) were rendered in a flex row with `flex-wrap` and `flex-1`.
+  - When rendered in multi-column desktop grids or mobile single columns, the available width inside the card (~250px-300px) could not accommodate both elements side-by-side without wrapping.
+  - Because `"Nag in Discord Journal"` lacked `whitespace-nowrap`, its text wrapped onto 3 vertical lines ("Nag in / Discord / Journal"), causing the button height to balloon from 44px to ~76px.
+  - Furthermore, as time progressed (e.g. from 0-5m Grace period to >5m Overdue Vote Strike), the sibling element changed widths. This triggered erratic flex layout recalculations where the button wrapped onto two rows, snapped from 3 lines tall to 1 line tall, or shifted vertically whenever nag assist counters or strike logs updated.
+* **MemberCard Action Bar Stabilization (`src/components/MemberCard.tsx`):**
+  - **Height-Locked, Full-Width Primary Action:** The primary `"Nag in Discord Journal ↗"` button now spans the full card width (`w-full`) with height-locked dimensions (`h-11 min-h-[44px]`), single-line text (`whitespace-nowrap truncate`), and an invariant rounded shape (`rounded-xl`).
+  - **Dedicated Secondary Action / Status Row:** Secondary contextual pills (Grace countdown `Grace: Xm left`, community verification `Vote Strike (X/2)`, `Strike Issued Tonight`, and `Metastrike Active: Reason`) now render in a dedicated, height-locked row directly below the primary button (`w-full h-9 min-h-[36px] whitespace-nowrap`).
+  - **Zero Shape Shifting or Jumping:** Regardless of time progression, grace countdown, strike voting, or nag counter increments, the primary button retains its exact shape, size, and position without ever wrapping or distorting.
+  - **Normalized Other MemberCard Buttons:** Normalized viewer "I'm in Bed Now" check-in (`h-11 min-h-[44px] whitespace-nowrap`), early check-in (`h-11 min-h-[44px] whitespace-nowrap`), viewer check-in undo banners (`h-11 min-h-[44px] whitespace-nowrap`), and viewer Metastrike excuse buttons (`h-11 min-h-[44px] whitespace-nowrap`).
+* **Global UI Button Normalisation:**
+  - `src/components/Header.tsx`: Normalized Mod Panel button, Alerts toggle button, member profile pill, log out button, and log in button to `h-11 min-h-[44px] whitespace-nowrap`.
+  - `src/components/PwaBanner.tsx`: Normalized native "Install App" and "Turn On" push buttons to `h-10 min-h-[40px] whitespace-nowrap flex items-center justify-center`.
+  - `src/components/PushModal.tsx`: Normalized "Send Test Alert", "Turn Off", and "Turn On Bedtime & Nag Alerts" buttons to `h-11 min-h-[44px] whitespace-nowrap`.
+  - `src/components/MetastrikeModal.tsx`: Normalized "Cancel" and "Protect Tonight / Convert to Metastrike" submit buttons to `h-11 min-h-[44px] whitespace-nowrap`.
+  - `src/components/MyScheduleModal.tsx`: Normalized "Lock", "Queue 48h Schedule Change / Save Profile Changes", and "Log Out of Fox Den" buttons to `h-11 min-h-[44px] whitespace-nowrap`.
+  - `src/app/page.tsx`: Normalized banner "I'm in Bed (Goodnight)" button, Buddy filter toggles, and empty state CTA buttons to `h-11 min-h-[44px] whitespace-nowrap`.
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run build` verified clean with all 29/29 routes compiled and prerendered.
+  - `node scripts/test-phase2-mobile-touch-ux.mjs` passed cleanly.
+  - `node scripts/test-login-and-auth.mjs` passed cleanly.
 
 ### Phase 46: Schedule Tab Redundancy Elimination & Discord Handle Auto-fill
 * **Header Navigation Redundancy Elimination (`src/components/Header.tsx`):**
@@ -724,8 +777,7 @@ d:\Projects\Z Catchers\
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
-3. **Review & Merge Integration Pull Request #21 (`krish` → `dev`):**
-   * Integration PR #21: [PR #21](https://github.com/KrishJdev/Z-Catchers/pull/21)
-   * Merges production authentication secret fallback and profile UI improvements into `dev`.
-   * Following integration merge, open a production release PR (`dev` → `main`) to deploy to Vercel production.
+3. **Verify Production Deployment Following PR #22 Merge (`main`):**
+   * Production release PR #22 successfully merged into `main`: [PR #22](https://github.com/KrishJdev/Z-Catchers/pull/22)
+   * Verify deployment logs and Discord login flow in Vercel following merge to production `main`.
    * (Optional Best Practice) Add `SESSION_SECRET` (random 32+ char string) in Vercel Project Settings > Environment Variables for explicit key configuration.

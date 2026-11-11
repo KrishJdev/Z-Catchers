@@ -119,7 +119,7 @@ export function Header({
           <button
             type="button"
             onClick={onOpenMod}
-            className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary min-h-[44px] md:inline-flex"
+            className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary h-11 min-h-[44px] whitespace-nowrap md:inline-flex"
           >
             <Shield className="h-3.5 w-3.5 text-cream-muted" />
             <span>Mod Panel</span>
@@ -130,7 +130,7 @@ export function Header({
             type="button"
             onClick={onTogglePush}
             title={isPushEnabled ? 'Push notifications active' : 'Turn on bedtime & nag alerts'}
-            className={`hidden md:flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium transition-all min-h-[44px] ${
+            className={`hidden md:flex h-11 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-all min-h-[44px] whitespace-nowrap ${
               isPushEnabled
                 ? 'border border-status-sage/40 bg-status-sage/15 text-status-sage'
                 : 'border border-night-border bg-night-surface text-cream-muted hover:border-night-elevated hover:text-cream-secondary'
@@ -153,7 +153,7 @@ export function Header({
                 type="button"
                 onClick={onOpenSchedule}
                 title={`Logged in as @${currentUser.discord_username}. Tap to view your profile & schedule.`}
-                className="flex items-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2.5 sm:px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all shrink-0 min-h-[44px]"
+                className="flex items-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2.5 sm:px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all shrink-0 h-11 min-h-[44px] whitespace-nowrap"
               >
                 {currentUser.avatar_url ? (
                   <img
@@ -178,7 +178,7 @@ export function Header({
                   onClick={onLogout}
                   title={`Log out of @${currentUser.discord_username}`}
                   aria-label="Log out"
-                  className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 py-2 text-xs font-medium text-cream-muted hover:border-status-coral/40 hover:bg-status-coral/10 hover:text-status-coral transition-all min-h-[44px] shrink-0"
+                  className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 text-xs font-medium text-cream-muted hover:border-status-coral/40 hover:bg-status-coral/10 hover:text-status-coral transition-all h-11 min-h-[44px] shrink-0 whitespace-nowrap"
                 >
                   <LogOut className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline font-medium">Log Out</span>
@@ -190,7 +190,7 @@ export function Header({
               type="button"
               onClick={() => onOpenLogin?.('login')}
               title="Log in with your Discord account"
-              className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary transition-all min-h-[44px]"
+              className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary transition-all h-11 min-h-[44px] whitespace-nowrap"
             >
               <DiscordIcon className="h-3.5 w-3.5 text-status-amber" />
               <span>Log In</span>

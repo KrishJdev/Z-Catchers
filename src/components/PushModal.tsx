@@ -392,7 +392,7 @@ export function PushModal({
                 type="button"
                 onClick={handleSendTestPush}
                 disabled={testLoading}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-night-border bg-night-elevated py-2.5 text-xs font-semibold text-cream-primary hover:bg-night-border transition-colors disabled:opacity-50 min-h-[44px]"
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-night-border bg-night-elevated px-3 text-xs font-semibold text-cream-primary hover:bg-night-border transition-colors disabled:opacity-50 h-11 min-h-[44px] whitespace-nowrap"
               >
                 <Send className="h-3.5 w-3.5 text-status-amber" />
                 <span>{testLoading ? 'Sending...' : 'Send Test Alert'}</span>
@@ -402,7 +402,7 @@ export function PushModal({
                 type="button"
                 onClick={handleDisablePush}
                 disabled={loading}
-                className="flex items-center justify-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 py-2.5 text-xs font-semibold text-status-coral hover:bg-status-coral/20 transition-colors disabled:opacity-50 min-h-[44px]"
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 text-xs font-semibold text-status-coral hover:bg-status-coral/20 transition-colors disabled:opacity-50 h-11 min-h-[44px] whitespace-nowrap"
               >
                 <BellOff className="h-3.5 w-3.5" />
                 <span>Turn Off</span>
@@ -413,7 +413,7 @@ export function PushModal({
               type="button"
               onClick={handleEnablePush}
               disabled={loading || !supported}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-status-amber py-3 text-xs font-bold text-night-bg shadow-lg hover:bg-status-amber/90 transition-all disabled:opacity-50 active:scale-95 min-h-[44px]"
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-status-amber px-4 text-xs font-bold text-night-bg shadow-lg hover:bg-status-amber/90 transition-all disabled:opacity-50 active:scale-95 h-11 min-h-[44px] whitespace-nowrap"
             >
               <Bell className="h-4 w-4" />
               <span>{loading ? 'Registering Push...' : 'Turn On Bedtime & Nag Alerts'}</span>

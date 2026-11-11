@@ -887,14 +887,14 @@ export function MyScheduleModal({
                   <button
                     type="button"
                     onClick={() => setIsUnlocked(false)}
-                    className="min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-4 text-xs font-semibold text-cream-secondary hover:text-cream-primary transition-colors"
+                    className="h-11 min-h-[44px] flex items-center justify-center rounded-xl border border-night-border bg-night-elevated px-4 text-xs font-semibold text-cream-secondary hover:text-cream-primary transition-colors whitespace-nowrap"
                   >
                     Lock
                   </button>
                   <button
                     type="submit"
                     disabled={loading || !isJournalValid}
-                    className="flex-1 min-h-[44px] rounded-xl bg-status-amber font-semibold text-xs text-night-bg hover:bg-status-amber/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                    className="flex-1 h-11 min-h-[44px] rounded-xl bg-status-amber font-semibold text-xs text-night-bg hover:bg-status-amber/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 px-4 whitespace-nowrap"
                   >
                     {loading ? (
                       <>
@@ -935,7 +935,7 @@ export function MyScheduleModal({
                       onClose();
                       onLogout();
                     }}
-                    className="flex items-center justify-center gap-2 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 py-2 text-xs font-semibold text-status-coral hover:bg-status-coral/20 hover:border-status-coral/60 transition-all min-h-[44px]"
+                    className="flex items-center justify-center gap-2 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 text-xs font-semibold text-status-coral hover:bg-status-coral/20 hover:border-status-coral/60 transition-all h-11 min-h-[44px] whitespace-nowrap"
                   >
                     <LogOut className="h-4 w-4" />
                     <span>Log Out of Fox Den</span>
