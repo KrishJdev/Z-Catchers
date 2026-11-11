@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T21:30:00+05:30  
+> **Last Updated:** 2026-11-11T21:43:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 8d5bd18 (in krish)  
+> **Latest Commit:** 6681d3c (in krish)  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17)  
 > **Active Integration Pull Request:** [#18 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/18)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
@@ -69,12 +69,16 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 ## 4. Comprehensive Task Changelog
 
-### Phase 43: Website Profile Cleanup & Purge of Legacy / Test Profiles
-* **Purge of Legacy Test Accounts (`scripts/purge-old-profiles.mjs`):**
-  * Created dedicated idempotent maintenance script to inspect, safely unlink, and purge all legacy test/development accounts from Supabase (`Krish` and `FoxOAuth_1794391141330`).
-  * Purged cascading dependencies in `push_subscriptions` and `notification_logs` to ensure no orphaned foreign key rows or lingering push tokens.
-  * Verified Supabase tables (`members`, `push_subscriptions`, `notification_logs`) have 0 residual records, leaving the website in a pristine state ready for genuine member onboarding.
-  * Verification check clean (`npx tsc --noEmit` passing with 0 errors).
+### Phase 43: Website Profile Cleanup & Review Remediations (PR #18)
+* **Explicit Allowlist Discovery Enforcement (`scripts/purge-old-profiles.mjs`):**
+  * Restricted member discovery query to `LEGACY_MEMBER_IDS_TO_PURGE` (`Krish` and `FoxOAuth_1794391141330`), ensuring non-allowlisted community members can never reach the deletion flow.
+* **Strict Verification Error Handling (`scripts/purge-old-profiles.mjs`):**
+  * Hardened post-purge members count verification to fail explicitly when query errors occur or when remaining count is non-zero, preserving error context.
+* **100% Docstring Coverage (`scripts/purge-old-profiles.mjs`):**
+  * Added comprehensive JSDoc docstrings for `LEGACY_MEMBER_IDS_TO_PURGE`, `purgeOldProfiles`, and `run` to satisfy the docstring coverage threshold.
+* **Verification Check:**
+  * Clean execution with `node --env-file=.env.local scripts/purge-old-profiles.mjs` (0 members remaining verified).
+  * `npx tsc --noEmit` verified clean with 0 errors.
 
 ### Phase 42: Comprehensive Follow-Up CodeRabbit Review Remediations (14/14 Threads Resolved, 27/27 Total on PR #17)
 * **Live Allowlist Recheck on Profile Claiming (`src/app/api/auth/claim-profile/route.ts`):**
