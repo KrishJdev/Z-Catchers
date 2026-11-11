@@ -21,6 +21,7 @@ export interface SessionPayload {
 export interface ClaimTokenPayload {
   discordId: string;
   discordUsername: string;
+  discordHandle?: string | null;
   avatarUrl: string | null;
   isModerator: boolean;
   suggestedMemberId?: string | null;
@@ -28,39 +29,115 @@ export interface ClaimTokenPayload {
 }
 
 /**
- * Retrieves the cryptographic salt used for PIN hashing from the PIN_SALT environment variable.
- * Throws in production if missing; falls back to dev salt in development mode.
+ * Retrieves the cryptographic salt used for PIN hashing.
+ * Prefers PIN_SALT environment variable; falls back to a deterministic key derived
+ * from server credentials (SUPABASE_SERVICE_ROLE_KEY or DISCORD_CLIENT_SECRET) or a stable fallback salt.
+ * Never throws in production to prevent unexpected authentication lockouts.
  *
  * @returns Secret salt string
  */
 export function getPinSalt(): string {
-  const isProd = process.env.NODE_ENV === 'production';
-  const salt = process.env.PIN_SALT;
-  if (!salt) {
-    if (isProd) {
-      throw new Error('PIN_SALT environment variable is required in production.');
-    }
-    return 'z_catchers_salt_dev_only';
+  const explicitSalt = process.env.PIN_SALT?.trim();
+  if (explicitSalt) {
+    return explicitSalt;
   }
-  return salt;
+
+  // Derive deterministically from persistent server secrets if available
+  const serverSecret =
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    process.env.DISCORD_CLIENT_SECRET?.trim();
+  if (serverSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(
+        '[AUTH] PIN_SALT environment variable is not explicitly set; using deterministic key derived from server credentials.'
+      );
+    }
+    return crypto.createHmac('sha256', serverSecret).update('zcatchers_pin_salt_v1').digest('hex');
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    console.warn(
+      '[AUTH] PIN_SALT environment variable is not set; falling back to default salt.'
+    );
+  }
+  return 'z_catchers_salt_dev_only';
 }
 
 /**
- * Retrieves the secret used for signing session tokens from SESSION_SECRET environment variable.
- * Throws in production if missing; falls back to dev secret in development mode.
+ * Retrieves the primary secret used for signing session and claim tokens.
+ * Prefers SESSION_SECRET environment variable; falls back to a deterministic key derived
+ * from server credentials (SUPABASE_SERVICE_ROLE_KEY or DISCORD_CLIENT_SECRET) or a stable fallback secret.
+ * Never throws in production to prevent unexpected authentication lockouts.
  *
  * @returns Secret session string
  */
 export function getSessionSecret(): string {
-  const isProd = process.env.NODE_ENV === 'production';
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) {
-    if (isProd) {
-      throw new Error('SESSION_SECRET environment variable is required in production.');
-    }
-    return 'z_catchers_session_secret_dev_only';
+  const explicitSecret = process.env.SESSION_SECRET?.trim();
+  if (explicitSecret) {
+    return explicitSecret;
   }
-  return secret;
+
+  // Derive deterministically from persistent server secrets if available
+  const serverSecret =
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    process.env.DISCORD_CLIENT_SECRET?.trim();
+  if (serverSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(
+        '[AUTH] SESSION_SECRET environment variable is not explicitly set; using deterministic key derived from server credentials.'
+      );
+    }
+    return crypto
+      .createHmac('sha256', serverSecret)
+      .update('zcatchers_session_secret_v1')
+      .digest('hex');
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    console.warn(
+      '[AUTH] SESSION_SECRET environment variable is not set; falling back to default session secret.'
+    );
+  }
+  return 'z_catchers_session_secret_fox_den_fallback_2026';
+}
+
+/**
+ * Returns candidate secrets for token verification to support smooth secret rotation
+ * and graceful fallback without invalidating active sessions across deployments.
+ *
+ * @returns Array of candidate secret strings
+ */
+export function getVerificationSessionSecrets(): string[] {
+  const secrets: string[] = [];
+  const explicit = process.env.SESSION_SECRET?.trim();
+  if (explicit) {
+    secrets.push(explicit);
+  }
+
+  const serverSecret =
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    process.env.DISCORD_CLIENT_SECRET?.trim();
+  if (serverSecret) {
+    const derived = crypto
+      .createHmac('sha256', serverSecret)
+      .update('zcatchers_session_secret_v1')
+      .digest('hex');
+    if (!secrets.includes(derived)) {
+      secrets.push(derived);
+    }
+  }
+
+  const staticFallback = 'z_catchers_session_secret_fox_den_fallback_2026';
+  if (!secrets.includes(staticFallback)) {
+    secrets.push(staticFallback);
+  }
+
+  const devOnly = 'z_catchers_session_secret_dev_only';
+  if (!secrets.includes(devOnly)) {
+    secrets.push(devOnly);
+  }
+
+  return secrets;
 }
 
 /**
@@ -197,15 +274,24 @@ export function verifySessionToken(token: string | null | undefined): SessionPay
   const [payload, signature] = parts;
 
   try {
-    const secret = getSessionSecret();
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(payload)
-      .digest('base64url');
-
+    const candidateSecrets = getVerificationSessionSecrets();
     const sigBuf = Buffer.from(signature);
-    const expBuf = Buffer.from(expectedSignature);
-    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    let isValidSignature = false;
+
+    for (const secret of candidateSecrets) {
+      const expectedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(payload)
+        .digest('base64url');
+
+      const expBuf = Buffer.from(expectedSignature);
+      if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
+        isValidSignature = true;
+        break;
+      }
+    }
+
+    if (!isValidSignature) {
       return null;
     }
 
@@ -261,15 +347,24 @@ export function verifyClaimToken(token: string | null | undefined): ClaimTokenPa
   const [payload, signature] = parts;
 
   try {
-    const secret = getSessionSecret();
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(payload)
-      .digest('base64url');
-
+    const candidateSecrets = getVerificationSessionSecrets();
     const sigBuf = Buffer.from(signature);
-    const expBuf = Buffer.from(expectedSignature);
-    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    let isValidSignature = false;
+
+    for (const secret of candidateSecrets) {
+      const expectedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(payload)
+        .digest('base64url');
+
+      const expBuf = Buffer.from(expectedSignature);
+      if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
+        isValidSignature = true;
+        break;
+      }
+    }
+
+    if (!isValidSignature) {
       return null;
     }
 

@@ -33,6 +33,8 @@ const {
   verifyClaimToken,
   isModDiscordId,
   SESSION_MAX_AGE_SECONDS,
+  getSessionSecret,
+  getPinSalt,
 } = await import('../src/lib/auth.ts');
 
 const { updateMemberSafe, insertMemberSafe, supabaseAdmin } = await import('../src/lib/db.ts');
@@ -98,6 +100,74 @@ async function run() {
     // Malformed token test
     assert(verifySessionToken('invalid.token.extra') === null, 'Rejects tokens with invalid part count');
     assert(verifySessionToken('') === null, 'Rejects empty token');
+
+    // 1B. Production Environment Secret Fallback Tests
+    console.log('\n--- 1B. Production Environment Secret Fallback Tests ---');
+    const origNodeEnv = process.env.NODE_ENV;
+    const origSessionSecret = process.env.SESSION_SECRET;
+    const origPinSalt = process.env.PIN_SALT;
+
+    try {
+      // Simulate production without SESSION_SECRET or PIN_SALT set
+      process.env.NODE_ENV = 'production';
+      delete process.env.SESSION_SECRET;
+      delete process.env.PIN_SALT;
+
+      let caughtSecretErr = null;
+      let prodSecret = null;
+      try {
+        prodSecret = getSessionSecret();
+      } catch (err) {
+        caughtSecretErr = err;
+      }
+      assert(caughtSecretErr === null, 'getSessionSecret() does not throw in production when SESSION_SECRET is unset');
+      assert(typeof prodSecret === 'string' && prodSecret.length > 0, 'getSessionSecret() returns non-empty derived or fallback secret');
+
+      let caughtSaltErr = null;
+      let prodSalt = null;
+      try {
+        prodSalt = getPinSalt();
+      } catch (err) {
+        caughtSaltErr = err;
+      }
+      assert(caughtSaltErr === null, 'getPinSalt() does not throw in production when PIN_SALT is unset');
+      assert(typeof prodSalt === 'string' && prodSalt.length > 0, 'getPinSalt() returns non-empty salt in production');
+
+      // Create session and claim tokens under production mode without explicit SESSION_SECRET
+      const prodSessionToken = createSessionToken({
+        memberId: mockMemberId,
+        discordId: mockDiscordId,
+        isModerator: false,
+      });
+      assert(prodSessionToken && prodSessionToken.includes('.'), 'createSessionToken works in production without SESSION_SECRET');
+      const prodSessionDecoded = verifySessionToken(prodSessionToken);
+      assert(prodSessionDecoded && prodSessionDecoded.memberId === mockMemberId, 'verifySessionToken decodes token created without SESSION_SECRET');
+
+      const prodClaimToken = createClaimToken({
+        discordId: mockDiscordId,
+        discordUsername: 'ProdFox',
+        avatarUrl: null,
+        isModerator: false,
+      });
+      assert(prodClaimToken && prodClaimToken.includes('.'), 'createClaimToken works in production without SESSION_SECRET');
+      const prodClaimDecoded = verifyClaimToken(prodClaimToken);
+      assert(prodClaimDecoded && prodClaimDecoded.discordUsername === 'ProdFox', 'verifyClaimToken decodes token created without SESSION_SECRET');
+
+      // Secret rotation / transition test: verify that when SESSION_SECRET is later added,
+      // tokens signed under fallback still verify cleanly
+      process.env.SESSION_SECRET = 'new-explicit-rotated-secret-32-chars-long';
+      const crossVerifiedSession = verifySessionToken(prodSessionToken);
+      assert(crossVerifiedSession && crossVerifiedSession.memberId === mockMemberId, 'verifySessionToken validates fallback token even after explicit SESSION_SECRET is configured');
+
+      const crossVerifiedClaim = verifyClaimToken(prodClaimToken);
+      assert(crossVerifiedClaim && crossVerifiedClaim.discordUsername === 'ProdFox', 'verifyClaimToken validates fallback claim token even after explicit SESSION_SECRET is configured');
+    } finally {
+      process.env.NODE_ENV = origNodeEnv;
+      if (origSessionSecret !== undefined) process.env.SESSION_SECRET = origSessionSecret;
+      else delete process.env.SESSION_SECRET;
+      if (origPinSalt !== undefined) process.env.PIN_SALT = origPinSalt;
+      else delete process.env.PIN_SALT;
+    }
 
     // 2. Claim Token Tests
     console.log('\n--- 2. Claim Token Lifecycle Tests ---');

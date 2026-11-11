@@ -39,7 +39,11 @@ assert(metaModalContent.includes('90dvh'), 'MetastrikeModal uses 90dvh scrollabl
 console.log('\n--- 3. Warm Dark Palette Compliance in BottomNav ---');
 const bottomNavContent = fs.readFileSync(path.resolve('src/components/BottomNav.tsx'), 'utf8');
 assert(!bottomNavContent.includes('#12141c') && !bottomNavContent.includes('#262936'), 'BottomNav eliminates cool slate blue hex tokens');
-assert(bottomNavContent.includes('#1C1714') && bottomNavContent.includes('#332B24'), 'BottomNav anchors to Warm Dark espresso surface and border tokens');
+assert(
+  (bottomNavContent.includes('night-surface') && bottomNavContent.includes('night-border')) ||
+  (bottomNavContent.includes('#1C1714') && bottomNavContent.includes('#332B24')),
+  'BottomNav anchors to Warm Dark espresso surface and border tokens'
+);
 
 // 4. Touch Ergonomics & Double-Tap Latency Elimination
 console.log('\n--- 4. Touch Ergonomics & Double-Tap Latency in globals.css ---');
