@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T14:47:00+05:30  
+> **Last Updated:** 2026-11-11T14:50:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `aedd3fa` (in `krish`)  
+> **Latest Commit:** `6316b58` (in `krish`)  
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
@@ -106,6 +106,9 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Database-Backed Strike Batch Integration Test & Environment Auto-Loading (`scripts/test-strikes-system.mjs`, `scripts/test-signup-and-profiles.mjs`, `scripts/test-login-and-auth.mjs`):**
   * In `scripts/test-strikes-system.mjs`, added section 7D providing a separate database-backed integration test that seeds valid members with UUIDs directly into the `members` table and strike logs into `nightly_strike_logs`, verifies batched recent strike queries, and cleans up all seeded records in a `finally` block, leaving the existing test fixture intact.
   * Added `.env.local` auto-loading across `test-strikes-system.mjs`, `test-signup-and-profiles.mjs`, and `test-login-and-auth.mjs`.
+* **Verification: Retroactive Metastrike Cycle Date Resolution & 24h Window (`src/app/api/members/strikes/metastrike/route.ts`, `src/lib/strikes.ts`, `src/components/MemberCard.tsx`):**
+  * Verified review finding regarding retroactive strike conversion targeting the strike's cycle date rather than current `getSleepCycleDate`.
+  * Confirmed that `convert_retroactive` in `src/app/api/members/strikes/metastrike/route.ts` and `src/lib/strikes.ts` already accepts client `sleep_cycle_date` and resolves via `getRecentEligibleStrikeLog`, while `MemberCard.tsx` and `GET /api/members` keep the 24-hour conversion option active across sleep cycle changes via `convertible_strike_log`. Verified passing under Test 3C in `scripts/test-strikes-system.mjs`.
 
 ### Phase 37: Automated Code Review Remediations, Security Hardening & Concurrency Protection
 * **Batched Roster Database Lookups & Required Timezone (`src/app/api/members/route.ts`):**
