@@ -1,12 +1,13 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T14:50:00+05:30  
+> **Last Updated:** 2026-11-11T16:50:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `6316b58` (in `krish`)  
+> **Latest Commit:** d2aac8b (in krish)  
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
-> **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
+> **Active Integration Pull Request:** [#17 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/17)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | Dev server active on `http://192.168.1.3:3000`)
 
@@ -559,5 +560,5 @@ d:\Projects\Z Catchers\
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
 3. **Monitor & Review Active Pull Request #16 (`krish` → `dev`):**
-   * Review link: [PR #16](https://github.com/KrishJdev/Z-Catchers/pull/16)
+   * Review link: [PR #17](https://github.com/KrishJdev/Z-Catchers/pull/17)
    * Verify all automated checks pass on branch `krish`.
