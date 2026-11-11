@@ -7,8 +7,8 @@
 > **Latest Commit:** 3b4729a (in krish)  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19)  
 > **Active Integration Pull Request:** None (all features merged into `dev`)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Active Production Release Pull Request:** [#20 (dev → main) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/20)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20)  
+> **Active Production Release Pull Request:** None (PR #20 merged into `main`)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed)
 
 ---
@@ -681,6 +681,6 @@ d:\Projects\Z Catchers\
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
-3. **Review & Merge Production Release Pull Request #20 (`dev` → `main`):**
-   * Production release PR: [PR #20](https://github.com/KrishJdev/Z-Catchers/pull/20)
+3. **Verify Production Deployment Following PR #20 Merge (`main`):**
+   * Production release PR #20 successfully merged into `main`: [PR #20](https://github.com/KrishJdev/Z-Catchers/pull/20)
    * Verify deployment logs in Vercel following merge to production `main`.

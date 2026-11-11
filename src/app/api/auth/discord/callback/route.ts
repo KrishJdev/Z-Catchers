@@ -143,6 +143,9 @@ export async function GET(request: Request) {
     const discordUser = await userResponse.json();
     const discordId: string = discordUser.id;
     const discordUsername: string = discordUser.global_name || discordUser.username;
+    const discordHandle: string = discordUser.username
+      ? (discordUser.username.startsWith('@') ? discordUser.username : `@${discordUser.username}`)
+      : (discordUsername.startsWith('@') ? discordUsername : `@${discordUsername}`);
     const avatarUrl = computeDiscordAvatarUrl(
       discordId,
       discordUser.avatar,
@@ -166,7 +169,8 @@ export async function GET(request: Request) {
       const effectiveIsMod = isDbMod || isEnvMod;
 
       await updateMemberSafe(member.id, {
-        discord_username: discordUsername,
+        discord_username: member.discord_username || discordUsername,
+        discord_handle: member.discord_handle || discordHandle,
         avatar_url: avatarUrl,
         is_moderator: isDbMod,
         role: member.role,
@@ -223,6 +227,7 @@ export async function GET(request: Request) {
       {
         discordId,
         discordUsername,
+        discordHandle,
         avatarUrl,
         isModerator,
         suggestedMemberId: matchedMemberId,

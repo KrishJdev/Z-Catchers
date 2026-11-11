@@ -116,16 +116,6 @@ export function Header({
 
         {/* Right side: Compact profile pill on mobile; desktop command buttons on md:flex */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {/* Desktop Quick-Action Buttons */}
-          <button
-            type="button"
-            onClick={onOpenSchedule}
-            className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary min-h-[44px] md:inline-flex"
-          >
-            <Clock className="h-3.5 w-3.5 text-status-amber" />
-            <span>My Schedule</span>
-          </button>
-
           <button
             type="button"
             onClick={onOpenMod}
@@ -162,7 +152,7 @@ export function Header({
               <button
                 type="button"
                 onClick={onOpenSchedule}
-                title={`Logged in as @${currentUser.discord_username}. Tap to view your schedule.`}
+                title={`Logged in as @${currentUser.discord_username}. Tap to view your profile & schedule.`}
                 className="flex items-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2.5 sm:px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all shrink-0 min-h-[44px]"
               >
                 {currentUser.avatar_url ? (

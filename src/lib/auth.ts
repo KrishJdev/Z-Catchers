@@ -21,6 +21,7 @@ export interface SessionPayload {
 export interface ClaimTokenPayload {
   discordId: string;
   discordUsername: string;
+  discordHandle?: string | null;
   avatarUrl: string | null;
   isModerator: boolean;
   suggestedMemberId?: string | null;
