@@ -1,12 +1,12 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T20:59:00+05:30  
+> **Last Updated:** 2026-11-11T21:43:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** c96f149 (in krish)  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
-> **Active Integration Pull Request:** [#17 (krish → dev) [OPEN - 27/27 CodeRabbit Threads Resolved (100%)]](https://github.com/KrishJdev/Z-Catchers/pull/17)  
+> **Latest Commit:** 6681d3c (in krish)  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17)  
+> **Active Integration Pull Request:** [#18 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/18)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed)
 
@@ -68,6 +68,17 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 43: Website Profile Cleanup & Review Remediations (PR #18)
+* **Explicit Allowlist Discovery Enforcement (`scripts/purge-old-profiles.mjs`):**
+  * Restricted member discovery query to `LEGACY_MEMBER_IDS_TO_PURGE` (`Krish` and `FoxOAuth_1794391141330`), ensuring non-allowlisted community members can never reach the deletion flow.
+* **Strict Verification Error Handling (`scripts/purge-old-profiles.mjs`):**
+  * Hardened post-purge members count verification to fail explicitly when query errors occur or when remaining count is non-zero, preserving error context.
+* **100% Docstring Coverage (`scripts/purge-old-profiles.mjs`):**
+  * Added comprehensive JSDoc docstrings for `LEGACY_MEMBER_IDS_TO_PURGE`, `purgeOldProfiles`, and `run` to satisfy the docstring coverage threshold.
+* **Verification Check:**
+  * Clean execution with `node --env-file=.env.local scripts/purge-old-profiles.mjs` (0 members remaining verified).
+  * `npx tsc --noEmit` verified clean with 0 errors.
 
 ### Phase 42: Comprehensive Follow-Up CodeRabbit Review Remediations (14/14 Threads Resolved, 27/27 Total on PR #17)
 * **Live Allowlist Recheck on Profile Claiming (`src/app/api/auth/claim-profile/route.ts`):**
