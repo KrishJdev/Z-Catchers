@@ -218,7 +218,9 @@ export async function POST(request: Request) {
         await resetPinFailurePersistent(clientIp, target.id);
       }
 
-      const willBeMod = isModerator;
+      const finalDbRole = isTargetMod && hasModAuthorization ? 'moderator' : 'member';
+      const isDbMod = finalDbRole === 'moderator';
+      const effectiveIsMod = isDbMod || isModerator;
 
       const { data: updatedMember, error: updateErr } = await updateMemberSafe(
         target.id,
@@ -226,8 +228,8 @@ export async function POST(request: Request) {
           discord_id: payload.discordId,
           discord_username: payload.discordUsername || target.discord_username,
           avatar_url: payload.avatarUrl || target.avatar_url,
-          is_moderator: willBeMod,
-          role: willBeMod ? 'moderator' : (target.role === 'moderator' ? 'member' : target.role),
+          is_moderator: isDbMod,
+          role: finalDbRole,
           onboarding_completed: true,
           updated_at: DateTime.utc().toISO() as string,
         },
@@ -252,7 +254,7 @@ export async function POST(request: Request) {
         {
           memberId: updatedMember.id,
           discordId: payload.discordId,
-          isModerator: willBeMod,
+          isModerator: effectiveIsMod,
         },
         90
       );
@@ -325,8 +327,8 @@ export async function POST(request: Request) {
         bedtime_local: cleanBedtime,
         wake_time_local: cleanWakeTime,
         timezone: cleanTz,
-        is_moderator: isModerator,
-        role: isModerator ? 'moderator' : 'member',
+        is_moderator: false,
+        role: 'member',
         onboarding_completed: true,
         is_active: true,
         strikes_used: 0,

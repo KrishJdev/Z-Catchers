@@ -37,21 +37,18 @@ export async function GET(request: Request) {
 
     const currentMember = memberData as Member;
 
-    // Synchronize moderator privileges against MOD_DISCORD_IDS and role
-    const isMod = Boolean(
-      isModDiscordId(currentMember.discord_id) ||
-        currentMember.role === 'moderator' ||
-        currentMember.is_moderator === true
-    );
+    // Evaluate effective moderator status dynamically (MOD_DISCORD_IDS is live; do not persist into DB role)
+    const isDbMod = currentMember.role === 'moderator';
+    const isEnvMod = isModDiscordId(currentMember.discord_id);
+    const effectiveIsMod = isDbMod || isEnvMod;
 
-    if (isMod !== Boolean(currentMember.is_moderator)) {
+    // Clean up stale database is_moderator flag if role is not moderator
+    if (!isDbMod && currentMember.is_moderator) {
       await updateMemberSafe(currentMember.id, {
-        is_moderator: isMod,
-        role: isMod ? 'moderator' : currentMember.role,
+        is_moderator: false,
         updated_at: DateTime.utc().toISO() as string,
       });
-      currentMember.is_moderator = isMod;
-      if (isMod) currentMember.role = 'moderator';
+      currentMember.is_moderator = false;
     }
 
     // Rolling 90-Day Session Renewal: Generate fresh token and extend expiration
@@ -59,12 +56,13 @@ export async function GET(request: Request) {
       {
         memberId: currentMember.id,
         discordId: currentMember.discord_id || session.discordId || null,
-        isModerator: isMod,
+        isModerator: effectiveIsMod,
       },
       90
     );
 
     const sanitized = sanitizeMember(currentMember);
+    sanitized.is_moderator = effectiveIsMod;
 
     const response = NextResponse.json({
       authenticated: true,
