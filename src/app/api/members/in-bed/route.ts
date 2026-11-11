@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
 import { DateTime } from 'luxon';
-import { verifyPin, getRequestSessionMemberId } from '@/lib/auth';
+import { verifyPin, getRequestSessionMemberId, verifyModeratorAuthorization } from '@/lib/auth';
 import { calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
 import {
@@ -39,22 +39,29 @@ export async function GET(request: Request) {
     const sleeperNow = DateTime.utc().setZone(toValidLuxonZone(member.timezone));
     const cycleDate = getSleepCycleDate(member, DateTime.utc());
 
-    // Fetch member's recent check-ins
+    // Fetch member's recent check-ins and woke-up logs
     const { data: logs } = await supabaseAdmin
       .from('notification_logs')
-      .select('local_date')
+      .select('notification_type, local_date')
       .eq('member_id', member.id)
-      .eq('notification_type', 'IN_BED_EARLY')
+      .in('notification_type', ['IN_BED_EARLY', 'WOKE_UP'])
       .order('local_date', { ascending: false })
       .limit(60);
 
-    const checkinDates = (logs || []).map((l: { local_date: string }) => l.local_date);
+    const checkinDates = (logs || [])
+      .filter((l: { notification_type: string }) => l.notification_type === 'IN_BED_EARLY')
+      .map((l: { local_date: string }) => l.local_date);
     const isInBed = checkinDates.includes(cycleDate);
+    const isWokeUp = (logs || []).some(
+      (l: { notification_type: string; local_date: string }) =>
+        l.notification_type === 'WOKE_UP' && l.local_date === cycleDate
+    );
     const streakDays = calculateSleepStreak(checkinDates, sleeperNow);
 
     return NextResponse.json({
       member_id: member.id,
       is_in_bed: isInBed,
+      is_woke_up: isWokeUp,
       streak_days: streakDays,
       local_date: cycleDate,
     });
@@ -94,12 +101,21 @@ export async function POST(request: Request) {
 
     // Security Gate:
     // 1. Session must match target memberId, OR
-    // 2. A valid PIN must be provided matching member's passcode_hash.
+    // 2. Authenticated server moderator (session or secret passcode), OR
+    // 3. A valid PIN must be provided matching member's passcode_hash.
     const sessionMemberId = getRequestSessionMemberId(request);
     const isSessionMatch = Boolean(sessionMemberId && sessionMemberId === member.id);
 
-    let isPinMatch = false;
+    let isModMatch = false;
     if (!isSessionMatch) {
+      const modAuth = await verifyModeratorAuthorization(request);
+      if (modAuth.authorized) {
+        isModMatch = true;
+      }
+    }
+
+    let isPinMatch = false;
+    if (!isSessionMatch && !isModMatch) {
       if (sessionMemberId && sessionMemberId !== member.id) {
         return NextResponse.json(
           {
@@ -138,7 +154,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!isSessionMatch && !isPinMatch) {
+    if (!isSessionMatch && !isModMatch && !isPinMatch) {
       return NextResponse.json(
         {
           error: member.passcode_hash
@@ -158,7 +174,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to compute local date' }, { status: 500 });
     }
 
-    if (action === 'cancel') {
+    if (action === 'cancel' || action === 'wake_up') {
       // Remove check-in for member's current local date
       const { error: delErr } = await supabaseAdmin
         .from('notification_logs')
@@ -177,6 +193,19 @@ export async function POST(request: Request) {
         });
       }
 
+      // Record WOKE_UP log to transition member from sleeping state to AWAKE
+      await supabaseAdmin
+        .from('notification_logs')
+        .upsert(
+          {
+            member_id: member.id,
+            notification_type: 'WOKE_UP',
+            local_date: localDate,
+            dispatched_at: nowUtc.toISO(),
+          },
+          { onConflict: 'member_id,notification_type,local_date' }
+        );
+
       // Recompute streak after cancellation
       const { data: logs } = await supabaseAdmin
         .from('notification_logs')
@@ -193,12 +222,21 @@ export async function POST(request: Request) {
         success: true,
         action: 'cancel',
         is_in_bed: false,
+        is_woke_up: true,
         streak_days: streakDays,
-        message: 'Check-in cancelled. Community nag notifications restored if within bedtime window.',
+        message: 'Sleep state undone. Status updated to Awake and notifications restored.',
       });
     }
 
     // Default action: 'check_in' ("I'm in Bed" Safe Button)
+    // Clear any active WOKE_UP override for tonight's sleep cycle
+    await supabaseAdmin
+      .from('notification_logs')
+      .delete()
+      .eq('member_id', member.id)
+      .eq('notification_type', 'WOKE_UP')
+      .eq('local_date', localDate);
+
     const { error: insertErr } = await supabaseAdmin
       .from('notification_logs')
       .upsert(
@@ -236,6 +274,7 @@ export async function POST(request: Request) {
       success: true,
       action: 'check_in',
       is_in_bed: true,
+      is_woke_up: false,
       local_date: localDate,
       streak_days: streakDays,
       message: 'Sweet dreams! You are checked in and community nag alerts are suppressed for tonight.',

@@ -8,6 +8,7 @@ import {
   isModDiscordId,
 } from '@/lib/auth';
 import { DateTime } from 'luxon';
+import { getSleepCycleDate } from '@/lib/sleepEngine';
 
 /**
  * GET: Retrieve the authenticated session member's profile and perform rolling session renewal.
@@ -63,6 +64,19 @@ export async function GET(request: Request) {
 
     const sanitized = sanitizeMember(currentMember);
     sanitized.is_moderator = effectiveIsMod;
+
+    // Hydrate active sleep cycle in_bed and woke_up flags
+    const localDate = getSleepCycleDate(currentMember, DateTime.utc());
+    const { data: logs } = await supabaseAdmin
+      .from('notification_logs')
+      .select('notification_type')
+      .eq('member_id', currentMember.id)
+      .eq('local_date', localDate)
+      .in('notification_type', ['IN_BED_EARLY', 'WOKE_UP']);
+
+    const types = (logs || []).map((l: { notification_type: string }) => l.notification_type);
+    sanitized.is_in_bed = types.includes('IN_BED_EARLY');
+    sanitized.is_woke_up = types.includes('WOKE_UP');
 
     const response = NextResponse.json({
       authenticated: true,
