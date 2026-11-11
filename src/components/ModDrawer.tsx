@@ -38,6 +38,7 @@ import {
   ShieldAlert,
   Radio,
   Send,
+  Sun,
 } from 'lucide-react';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -1515,6 +1516,46 @@ export function ModDrawer({
                             >
                               Clear Tonight&apos;s Log
                             </button>
+
+                            {member.is_in_bed && (
+                              <>
+                                <span className="text-cream-muted">•</span>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setActionLoadingId(`wake_${member.id}`);
+                                    try {
+                                      const res = await fetch('/api/members/in-bed', {
+                                        method: 'POST',
+                                        headers: {
+                                          'Content-Type': 'application/json',
+                                          'x-mod-passcode': passcode,
+                                        },
+                                        body: JSON.stringify({ memberId: member.id, action: 'cancel' }),
+                                      });
+                                      if (res.ok) {
+                                        setSuccessMessage(`Reset sleep status for ${member.discord_username} to Awake.`);
+                                        await fetchModRoster(passcode);
+                                        await onRosterChanged();
+                                      } else {
+                                        const d = await res.json().catch(() => ({}));
+                                        setErrorMessage(d.error || 'Failed to reset sleep status.');
+                                      }
+                                    } catch {
+                                      setErrorMessage('Network error resetting sleep status.');
+                                    } finally {
+                                      setActionLoadingId(null);
+                                    }
+                                  }}
+                                  disabled={actionLoadingId === `wake_${member.id}`}
+                                  className="text-[10px] text-status-amber hover:underline transition-colors flex items-center gap-1"
+                                  title="Wake up member and cancel in-bed check-in"
+                                >
+                                  <Sun className="h-3 w-3 text-status-amber" />
+                                  <span>Wake Up / Undo Sleep</span>
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>

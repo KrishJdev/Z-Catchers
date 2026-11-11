@@ -59,6 +59,7 @@ export interface Member {
   updated_at: string;
   // Dynamic runtime properties (hydrated by /api/members)
   is_in_bed?: boolean;
+  is_woke_up?: boolean;
   streak_days?: number;
   nag_assists_count?: number;
   tonight_strike_log?: NightlyStrikeLog | null;

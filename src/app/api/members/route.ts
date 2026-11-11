@@ -58,8 +58,17 @@ export async function GET(request: Request) {
       checkinsByMember.set(log.member_id, dates);
     }
 
-    // Query recent nag assists for today's active count (paginated to avoid PostgREST row cap)
+    // Query recent woke-up logs to support manual awake / undo sleep transition
     const twoDaysAgo = nowUtc.minus({ days: 2 }).toISODate() || '2026-01-01';
+    const { data: wokeUpLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string }>((q) =>
+      q.select('member_id, local_date')
+        .eq('notification_type', 'WOKE_UP')
+        .gte('local_date', twoDaysAgo)
+    );
+
+    const wokeUpSet = new Set((wokeUpLogs || []).map((l) => `${l.member_id}_${l.local_date}`));
+
+    // Query recent nag assists for today's active count (paginated to avoid PostgREST row cap)
     const { data: nagLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string }>((q) =>
       q.select('member_id, local_date')
         .like('notification_type', 'NAG_ASSIST:%')
@@ -77,6 +86,7 @@ export async function GET(request: Request) {
       hydratedMember: Member;
       localDateStr: string;
       is_in_bed: boolean;
+      is_woke_up: boolean;
       streak_days: number;
       nag_assists_count: number;
     }[] = [];
@@ -108,13 +118,15 @@ export async function GET(request: Request) {
       const localDateStr = getSleepCycleDate(hydratedMember, nowUtc);
       const memberCheckins = checkinsByMember.get(hydratedMember.id) || [];
       const is_in_bed = memberCheckins.includes(localDateStr);
+      const is_woke_up = wokeUpSet.has(`${hydratedMember.id}_${localDateStr}`);
       const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);
       const nag_assists_count = nagAssistsByMemberAndDate.get(`${hydratedMember.id}_${localDateStr}`) || 0;
 
       memberItems.push({
-        hydratedMember,
+        hydratedMember: { ...hydratedMember, is_woke_up },
         localDateStr,
         is_in_bed,
+        is_woke_up,
         streak_days,
         nag_assists_count,
       });
@@ -147,6 +159,7 @@ export async function GET(request: Request) {
       return {
         ...sanitizeMember(item.hydratedMember),
         is_in_bed: item.is_in_bed,
+        is_woke_up: item.is_woke_up,
         streak_days: item.streak_days,
         nag_assists_count: item.nag_assists_count,
         strikes_used: strikeInfo.strikes_used,

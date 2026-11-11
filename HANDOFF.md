@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T01:29:00+05:30  
+> **Last Updated:** 2026-11-12T02:40:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 68be0f6  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21)  
-> **Active Integration Pull Request:** [#23 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/23)  
+> **Latest Commit:** 47653b3  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23)  
+> **Active Integration Pull Request:** [#25 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22)  
 > **Active Production Release Pull Request:** None (PR #22 merged into `main`)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 30/30 routes | `node scripts/test-nag-notifications.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 30/30 routes | `node scripts/test-wake-up-and-overflow.mjs` passed | `node scripts/test-nag-notifications.mjs` passed | `node scripts/test-in-bed-and-streaks.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
 
 ---
 
@@ -69,6 +69,43 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 49: Sleeping State to Awake Undo Action & Leave Quiet Note Overflow Fix
+* **Problem Diagnosis & Root Cause:**
+  - **Leave Quiet Note Overflow:** In `MemberCard.tsx`, when a member was rendered in `bucket === 'SLEEPING'`, the bottom action row placed the left action button (`Shield On (Muted)` or `Vote Strike`) and right journal link (`Leave quiet note ↗`) side-by-side using `flex items-center justify-between gap-2 w-full`. Because both elements were constrained with `whitespace-nowrap` without `flex-1 min-w-0` or `truncate`, their combined width (~281px) exceeded the available width inside card columns in 2-column or 3-column responsive grids (~240px-260px), pushing `Leave quiet note` horizontally out of the card container.
+  - **Lack of Awake Undo Transition:** When a member tapped `"I'm in Bed"` (or was marked sleeping by mistake), there was no prominent button to transition back from sleeping state to awake. Furthermore, if the sleeper's local time fell inside the scheduled 8-hour sleep window (`diffMinutes > 60`), the sleep engine (`computeMemberState`) hardcoded `bucket = 'SLEEPING'`, preventing cancellation from moving the member back to `AWAKE`.
+* **Leave Quiet Note Overflow Resolution (`src/components/MemberCard.tsx`):**
+  - **Symmetrical Flexbox Distribution:** Applied `flex items-center gap-2 w-full` with `flex-1 min-w-0` on both child action elements in `bucket === 'SLEEPING'`.
+  - **Responsive Truncation:** Wrapped the `"Leave quiet note"` label in `<span className="truncate">Leave quiet note</span>` alongside `<ExternalLink className="h-3.5 w-3.5 shrink-0" />`. This guarantees mathematically that neither button can ever overflow the card boundary, even on narrow 240px card viewports.
+* **Sleeping State to Awake Undo Architecture & State Machine:**
+  - **Database & Runtime Member Entity (`src/lib/db.ts`):** Added `is_woke_up?: boolean` to the `Member` interface to capture active awake overrides.
+  - **Sleep Engine Awake Transition (`src/lib/sleepEngine.ts`):** Updated `computeMemberState` to evaluate `member.is_woke_up`. When true, the member immediately transitions to `bucket = 'AWAKE'`, `status = 'AWAKE'`, with `isSleepShieldActive = false`, enabling members to reliably return to awake status even during their scheduled sleep window.
+  - **In-Bed API Route Awake & Cancellation Engine (`src/app/api/members/in-bed/route.ts`):**
+    - Enhanced `action === 'cancel'` / `action === 'wake_up'` to remove `IN_BED_EARLY` from `notification_logs`, clear `last_notified_stage`, and record a `WOKE_UP` notification log for today's sleep cycle date, returning `is_in_bed: false` and `is_woke_up: true`.
+    - Updated `action === 'check_in'` to automatically purge any active `WOKE_UP` record for the cycle date before setting `IN_BED_EARLY`.
+    - Supported moderator authorization via `verifyModeratorAuthorization(request)`, enabling moderators (via mod session or passcode) to undo sleep check-ins for any community member.
+    - Updated `GET` endpoint to return both `is_in_bed` and `is_woke_up` for the queried member.
+  - **Members Hydration Engine (`src/app/api/members/route.ts`):** Hydrated `is_woke_up` by batch-querying recent `WOKE_UP` records from `notification_logs` and returning it across all members in the roster.
+  - **Auth Session Hydration (`src/app/api/auth/me/route.ts`):** Hydrated `is_in_bed` and `is_woke_up` for the authenticated member profile.
+* **UI Controls & Interactive Undo Buttons:**
+  - **MemberCard Wake Up Button (`src/components/MemberCard.tsx`):**
+    - In `bucket === 'SLEEPING'`, added a dedicated, touch-target compliant (`min-h-[44px]`) `Wake Up (Undo)` button (`border-status-amber/40 bg-status-amber/15 text-status-amber`) for the viewer, checked-in members, or moderators.
+    - Enhanced the in-card confirmation banner with a prominent `[ ☀️ Undo ]` button.
+    - Added an `optimisticWokeUp` state and updated status pill to reflect `Awake` when woken up.
+    - In `bucket === 'AWAKE'`, added a `[ 🛏️ Go to Bed ]` button if the member had previously woken up and wants to check in again later.
+  - **Dashboard Top Banner Wake Up Button (`src/app/page.tsx`):**
+    - Replaced the understated `Undo` text link with a prominent `[ ☀️ Wake Up / Undo ]` button (`min-h-[44px]`).
+    - Added dynamic personalized greeting for `claimedMember.is_woke_up` (`Good Morning, [Name]! You're marked as awake.` with `Back to Bed` button).
+    - Passed `isModerator` to `MemberCard` across all four status buckets.
+  - **Moderator Drawer Sleep Reset Control (`src/components/ModDrawer.tsx`):**
+    - Added a `Wake Up / Undo Sleep` action directly inside the moderator administration roster table for any checked-in member, enabling server moderators to resolve accidental sleep status toggles instantly.
+* **Verification Check:**
+  - `npx tsc --noEmit` clean (0 errors).
+  - `npm run build` clean (all 30/30 dynamic and static routes compiled).
+  - `node scripts/test-wake-up-and-overflow.mjs` passed cleanly.
+  - `node scripts/test-nag-notifications.mjs` passed cleanly.
+  - `node scripts/test-in-bed-and-streaks.mjs` passed cleanly.
+  - `node scripts/test-strikes-system.mjs` passed cleanly.
 
 ### Phase 48: Real-Time Bedtime Nag Notifications & Sleep Shield Guardrail Enforcement
 * **Real-Time Bedtime Nag Notification Engine (`src/app/api/members/nag-notif/route.ts`):**
@@ -753,12 +790,18 @@ d:\Projects\Z Catchers\
 | **ZC-23**| Phase 37: Code Review Remediations, Security Hardening & Concurrency Protection | **DONE** | Phase 37 |
 | **ZC-24**| Phase 40: Comprehensive Code Review Remediations, Session Owner Auth & A11y | **DONE** | Phase 40 |
 | **ZC-25**| Phase 41: Complete CodeRabbit Review Remediations & PR #17 Update | **DONE** | Phase 41 |
+| **ZC-26**| Phase 49: Sleeping State to Awake Undo Action & Leave Quiet Note Overflow Fix | **DONE** | PR #25 (Commit `4aa2d40`) |
 
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Database Migration Execution in Supabase SQL Editor:**
+1. **Review & Merge Active Integration Pull Request [#25 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/25):**
+   * Active PR: [#25 `fix(sleeping): add option to undo sleep state to awake and fix leave quiet note overflow`](https://github.com/KrishJdev/Z-Catchers/pull/25) targets `dev` from `krish`.
+   * Includes awake transition override in `sleepEngine.ts`, `WOKE_UP` notification logging & API endpoints, touch-friendly `[ ☀️ Wake Up (Undo) ]` buttons across dashboard banner, card body, action bar, and Mod Drawer, plus symmetrical flexbox layout eliminating "Leave quiet note" overflow.
+   * Verify CI and merge into `dev`.
+
+2. **Database Migration Execution in Supabase SQL Editor:**
    * Run the idempotent migration block from `supabase/schema.sql` on the remote Supabase database:
      ```sql
      ALTER TABLE members ADD COLUMN IF NOT EXISTS discord_id TEXT;

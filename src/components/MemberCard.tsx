@@ -36,6 +36,7 @@ interface MemberCardProps {
   onVoteStrike?: (targetMemberId: string) => Promise<void>;
   onOpenMetastrike?: (member: Member, mode: 'proactive' | 'convert_retroactive') => void;
   isVotingStrike?: boolean;
+  isModerator?: boolean;
 }
 
 /**
@@ -57,13 +58,19 @@ export function MemberCard({
   onVoteStrike,
   onOpenMetastrike,
   isVotingStrike = false,
+  isModerator = false,
 }: MemberCardProps) {
   const { bucket, formattedViewerTime, formattedSleeperTime, pendingNotice, streakMilestone } = state;
   const isViewer = Boolean(currentMemberId && member.id === currentMemberId);
 
-  // Optimistic UI state for "I'm In Bed" check-in
+  // Optimistic UI state for "I'm In Bed" check-in & "Wake Up" undo
   const [optimisticInBed, setOptimisticInBed] = useState<boolean | null>(null);
-  const isInBed = optimisticInBed !== null ? optimisticInBed : Boolean(member.is_in_bed || state.checkedInEarly);
+  const [optimisticWokeUp, setOptimisticWokeUp] = useState<boolean | null>(null);
+
+  const isWokeUp = optimisticWokeUp !== null ? optimisticWokeUp : Boolean(member.is_woke_up);
+  const isInBed = optimisticInBed !== null
+    ? optimisticInBed
+    : (!isWokeUp && Boolean(member.is_in_bed || state.checkedInEarly));
 
   // Local Nag Assist State with optimistic increment & rollback
   const [localNagCount, setLocalNagCount] = useState<number>(member.nag_assists_count || 0);
@@ -90,7 +97,8 @@ export function MemberCard({
       setLocalNagCount(member.nag_assists_count);
     }
     setOptimisticInBed(null);
-  }, [member.nag_assists_count, member.is_in_bed, state.checkedInEarly]);
+    setOptimisticWokeUp(null);
+  }, [member.nag_assists_count, member.is_in_bed, member.is_woke_up, state.checkedInEarly]);
 
   // Optimistic Nag Assist Action
   const handleNagJournalClick = async () => {
@@ -127,26 +135,30 @@ export function MemberCard({
     triggerHaptic(15);
     if (!onCheckIn) return;
     setOptimisticInBed(true);
+    setOptimisticWokeUp(false);
     setCardError(null);
     try {
       await onCheckIn(member.id);
     } catch {
       setOptimisticInBed(false);
+      setOptimisticWokeUp(null);
       setCardError('Check-in failed. Reverting status.');
       setTimeout(() => setCardError(null), 3000);
     }
   };
 
-  // Optimistic Cancel "I'm in Bed" action
+  // Optimistic Cancel "I'm in Bed" / Wake Up action
   const handleCancelInBedClick = async () => {
     triggerHaptic(15);
     if (!onCancelInBed) return;
     setOptimisticInBed(false);
+    setOptimisticWokeUp(true);
     setCardError(null);
     try {
       await onCancelInBed(member.id);
     } catch {
       setOptimisticInBed(true);
+      setOptimisticWokeUp(false);
       setCardError('Failed to cancel check-in.');
       setTimeout(() => setCardError(null), 3000);
     }
@@ -276,6 +288,13 @@ export function MemberCard({
 
   // Single-line, non-wrapping status pill configuration
   const getStatusPillConfig = () => {
+    if (isWokeUp) {
+      return {
+        className: 'bg-status-amber/15 text-status-amber border border-status-amber/30',
+        icon: <Sun className="h-3.5 w-3.5 shrink-0 text-status-amber" />,
+        label: 'Awake',
+      };
+    }
     if (isNagNow) {
       const isGrace = state.status === 'BEDTIME_GRACE' || bucket === 'BEDTIME_GRACE';
       const label = isGrace
@@ -573,19 +592,22 @@ export function MemberCard({
         )}
 
         {/* Checked-in Confirmation Banner for Sleeping State */}
-        {isViewer && isInBed && bucket === 'SLEEPING' && (
-          <div className="flex h-11 min-h-[44px] items-center justify-between rounded-xl border border-night-border bg-night-elevated px-3 text-xs text-cream-muted whitespace-nowrap">
+        {(isViewer || isModerator) && isInBed && bucket === 'SLEEPING' && (
+          <div className="flex h-11 min-h-[44px] items-center justify-between rounded-xl border border-status-amber/30 bg-status-amber/10 px-3 text-xs font-medium text-status-amber">
             <span className="flex items-center gap-1.5 truncate">
-              <Shield className="h-4 w-4 text-cream-muted shrink-0" />
-              <span>Sleep Shield Active • Nags Muted</span>
+              <Shield className="h-4 w-4 shrink-0" />
+              <span className="truncate">Sleep Shield Active • Nags Muted</span>
             </span>
             {onCancelInBed && (
               <button
+                type="button"
                 onClick={handleCancelInBedClick}
                 disabled={isCheckingIn}
-                className="underline opacity-80 hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-end shrink-0 ml-2"
+                className="inline-flex items-center gap-1 font-bold underline hover:opacity-100 min-h-[44px] px-2 shrink-0 ml-2"
+                title="Undo check-in and return to awake status"
               >
-                Undo
+                <Sun className="h-3.5 w-3.5" />
+                <span>Undo</span>
               </button>
             )}
           </div>
@@ -841,13 +863,25 @@ export function MemberCard({
         )}
 
         {bucket === 'SLEEPING' && (
-          <div className="flex items-center justify-between gap-2 w-full">
-            {!isInBed && !isMetastrikeActive && !isViewer && onVoteStrike ? (
-              <div>
+          <div className="flex items-center gap-2 w-full">
+            {/* Left Action Button */}
+            {(isViewer || member.is_in_bed || isModerator) && onCancelInBed ? (
+              <button
+                type="button"
+                onClick={handleCancelInBedClick}
+                disabled={isCheckingIn}
+                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-2.5 text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm"
+                title="Wake up and undo sleep status (returns from sleeping state to awake)"
+              >
+                <Sun className="h-3.5 w-3.5 text-status-amber shrink-0" />
+                <span className="truncate">Wake Up (Undo)</span>
+              </button>
+            ) : !isInBed && !isMetastrikeActive && !isViewer && onVoteStrike ? (
+              <div className="flex-1 min-w-0">
                 {isStrikeIssuedTonight ? (
-                  <span className="text-xs font-semibold text-status-coral flex items-center gap-1 h-11 min-h-[44px] whitespace-nowrap">
+                  <span className="h-11 min-h-[44px] flex items-center justify-center gap-1 rounded-xl px-2.5 text-xs font-semibold text-status-coral whitespace-nowrap">
                     <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                    <span>Strike Issued</span>
+                    <span className="truncate">Strike Issued</span>
                   </span>
                 ) : (
                   <button
@@ -857,10 +891,10 @@ export function MemberCard({
                       onVoteStrike(member.id);
                     }}
                     disabled={isVotingStrike || member.has_voted_strike}
-                    className="text-xs font-medium text-status-coral hover:underline flex items-center gap-1 h-11 min-h-[44px] min-w-[44px] whitespace-nowrap"
+                    className="w-full h-11 min-h-[44px] flex items-center justify-center gap-1 rounded-xl border border-status-coral/40 bg-status-coral/15 px-2.5 text-xs font-semibold text-status-coral hover:bg-status-coral/25 active:scale-95 transition-all"
                   >
                     <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                    <span>
+                    <span className="truncate">
                       {member.has_voted_strike
                         ? `Voted (${strikeVotesCount}/2)`
                         : `Vote Strike (${strikeVotesCount}/2)`}
@@ -872,38 +906,50 @@ export function MemberCard({
               <button
                 type="button"
                 onClick={handleSendNagNotif}
-                className="h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-slumber/40 bg-status-slumber/15 px-3 text-xs font-semibold text-status-slumber hover:bg-status-slumber/25 transition-all whitespace-nowrap"
+                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-slumber/40 bg-status-slumber/15 px-2.5 text-xs font-semibold text-status-slumber hover:bg-status-slumber/25 transition-all shadow-sm"
                 title={`Sleep Shield is ON for ${member.discord_username}. Tap to view shield status.`}
               >
                 <Shield className="h-3.5 w-3.5 fill-status-slumber/20 shrink-0" />
-                <span>Shield On (Muted)</span>
+                <span className="truncate">Shield On</span>
               </button>
-            ) : (
-              <div />
-            )}
+            ) : null}
 
+            {/* Leave quiet note - flex-1 min-w-0 with truncate to prevent ANY overflow */}
             <a
               href={member.journal_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 text-xs text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 ml-auto whitespace-nowrap"
+              className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-2.5 text-xs text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 shadow-sm"
+              title="Open Discord journal to leave a quiet note"
             >
-              <span>Leave quiet note</span>
+              <span className="truncate">Leave quiet note</span>
               <ExternalLink className="h-3.5 w-3.5 shrink-0" />
             </a>
           </div>
         )}
 
         {bucket === 'AWAKE' && (
-          <div className="flex items-center justify-end w-full">
+          <div className="flex items-center gap-2 w-full">
+            {isViewer && isWokeUp && onCheckIn && (
+              <button
+                type="button"
+                onClick={handleCheckInClick}
+                disabled={isCheckingIn}
+                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-2.5 text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm"
+                title="Go to bed and turn on Sleep Shield"
+              >
+                <BedDouble className="h-3.5 w-3.5 text-status-amber shrink-0" />
+                <span className="truncate">Go to Bed</span>
+              </button>
+            )}
             <a
               href={member.journal_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 text-xs font-medium text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 whitespace-nowrap"
+              className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3 text-xs font-medium text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 ml-auto shadow-sm"
               title="Open Discord Journal"
             >
-              <span>Journal</span>
+              <span className="truncate">Journal</span>
               <ExternalLink className="h-3.5 w-3.5 shrink-0" />
             </a>
           </div>

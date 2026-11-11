@@ -527,9 +527,15 @@ export function computeMemberState(
 
   const effectiveInBed = isInBed !== undefined ? isInBed : Boolean(member.is_in_bed);
 
-  // If member has checked in via "I'm in Bed" Safe Button
-  // (Applies when within 3h before bedtime through 8h sleep window)
-  if (effectiveInBed && diffMinutes >= -180 && diffMinutes <= 480) {
+  // If member has explicitly marked themselves awake / undid sleeping state
+  if (member.is_woke_up) {
+    bucket = 'AWAKE';
+    status = 'AWAKE';
+    statusText = 'Wide Awake • Rested';
+    isSleepShieldActive = false;
+    checkedInEarly = false;
+    canVoteStrike = false;
+  } else if (effectiveInBed && diffMinutes >= -180 && diffMinutes <= 480) {
     bucket = 'SLEEPING';
     status = 'SLEEPING';
     statusText = 'In Bed (Checked In) • Resting';
