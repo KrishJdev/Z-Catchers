@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T03:16:00+05:30  
+> **Last Updated:** 2026-11-12T03:20:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 9bb293c  
+> **Latest Commit:** 9e7c839  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
 > **Active Integration Pull Request:** None  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
 > **Active Production Release Pull Request:** [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 30/30 routes | `node scripts/test-wake-up-and-overflow.mjs` passed | `node scripts/test-nag-notifications.mjs` passed | `node scripts/test-in-bed-and-streaks.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `node scripts/test-wake-up-and-overflow.mjs` passed | `node scripts/test-nag-notifications.mjs` passed | `node scripts/test-in-bed-and-streaks.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
 
 ---
 
@@ -69,6 +69,27 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 52: Task 2 - Consolidate Redundant API Proxies into Canonical Endpoints
+* **API Proxy Redundancy Audit & Elimination:**
+  - Audited all occurrences of `/api/cron`, `/api/members/strike`, `/api/members/strikes/vote`, and `/api/members/metastrike` across `src/`, `scripts/`, `.github/workflows/`, and `vercel.json`.
+  - Confirmed `.github/workflows/cron-dispatcher.yml` and `vercel.json` already point directly to the canonical `/api/cron/dispatch-notifications` endpoint.
+  - Updated [`src/app/page.tsx`](file:///d:/Projects/Z%20Catchers/src/app/page.tsx#L597) to target canonical `/api/members/strikes` directly instead of `/api/members/strikes/vote`.
+  - Deleted redundant pass-through proxy routes and directories:
+    - `src/app/api/cron/route.ts` (proxied to `./dispatch-notifications/route`)
+    - `src/app/api/members/strike/route.ts` (proxied to `../strikes/route`)
+    - `src/app/api/members/strikes/vote/route.ts` (proxied to `../route`)
+    - `src/app/api/members/metastrike/route.ts` (proxied to `../strikes/metastrike/route`)
+* **Route Structure Consolidation:**
+  - Standardized canonical endpoints:
+    - Cron: `/api/cron/dispatch-notifications`
+    - Strikes: `/api/members/strikes`
+    - Metastrike: `/api/members/strikes/metastrike`
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run build` compiled all 26/26 static and dynamic routes cleanly.
+  - `node scripts/test-push-and-cron.mjs` passed cleanly.
+  - `node scripts/test-strikes-system.mjs` passed cleanly.
 
 ### Phase 51: Task 1 - Metastrike Route Resolution & Standardization
 * **Metastrike Handler & Export Inspection (`src/app/api/members/strikes/metastrike/route.ts`):**
