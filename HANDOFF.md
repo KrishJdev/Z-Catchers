@@ -1,12 +1,12 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T22:20:00+05:30  
+> **Last Updated:** 2026-11-11T23:05:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 124ffa6 (in krish)  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17)  
-> **Active Integration Pull Request:** [#18 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/18)  
+> **Latest Commit:** 3eb07f3 (in krish)  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18)  
+> **Active Integration Pull Request:** [#19 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/19)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed)
 
@@ -669,6 +669,6 @@ d:\Projects\Z Catchers\
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
-3. **Monitor & Review Active Pull Request #17 (`krish` → `dev`):**
-   * Review link: [PR #17](https://github.com/KrishJdev/Z-Catchers/pull/17)
+3. **Monitor & Review Active Pull Request #19 (`krish` → `dev`):**
+   * Review link: [PR #19](https://github.com/KrishJdev/Z-Catchers/pull/19)
    * Verify all automated checks pass on branch `krish`.
