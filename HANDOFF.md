@@ -1,14 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T12:02:30+05:30  
+> **Last Updated:** 2026-11-11T12:50:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `5a41b1a` (in `krish`)  
+> **Latest Commit:** `64eaea5` (in `krish`)  
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-logout-flow.mjs` passed | Dev server active on `http://192.168.1.3:3000`)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-signup-and-profiles.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | Dev server active on `http://192.168.1.3:3000`)
 
 ---
 
@@ -90,6 +90,22 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Test Verification & Regression Suites (`scripts/test-strikes-system.mjs`, `scripts/test-phase1-pwa-push.mjs`):**
   * Added Section 7 tests in `test-strikes-system.mjs` verifying `getNightlyStrikeLogsBatch` cycle date filtering, `getRecentEligibleStrikeLogsBatch` 24h window filtering, and voter rate limiting isolation from PIN rate limits.
   * Added assertion in `test-phase1-pwa-push.mjs` verifying preference preservation across endpoint rotation. All test suites passed cleanly.
+
+### Phase 38: Code Review Remediations: Scoped Preferences, Authoritative Strike Readers & Member Safe Insert
+* **Member-Scoped Notification Preferences & Health Sync Isolation (`src/lib/pushClient.ts`, `scripts/test-phase1-pwa-push.mjs`):**
+  * Replaced un-scoped global preference storage (`zcatchers_notify_personal`, `zcatchers_notify_community`) with member-scoped keys generated via `getMemberNotificationStorageKey(baseKey, memberId)`.
+  * Added `getStoredNotificationPreferences(memberId)` and `setStoredNotificationPreferences(memberId, prefs)` helper functions.
+  * In `syncPushSubscriptionHealth`, health sync now reads preferences strictly for the current signed-in member (`memberIdToUse`). If no member is signed in or no member-scoped choice exists, fields remain undefined so `/api/push/subscribe` preserves existing subscription preferences and never leaks or applies another member's stored choices across sessions.
+  * Added test assertions to `scripts/test-phase1-pwa-push.mjs` verifying scoped keys and health-sync isolation.
+* **Authoritative Database Strike Log Readers & Fallback Hardening (`src/lib/strikes.ts`):**
+  * Updated `getNightlyStrikeLog`, `getNightlyStrikeLogsBatch`, `getRecentEligibleStrikeLog`, and `getRecentEligibleStrikeLogsBatch` so that after a successful database query, missing rows are treated as authoritative and are never filled from `memoryStore`.
+  * In-memory fallbacks now execute strictly when Supabase is unconfigured or a query fails/throws.
+* **Resilient Member Safe Insert Integration (`src/app/api/members/route.ts`):**
+  * Replaced raw Supabase `members` insert and inline column-stripping retry block with `insertMemberSafe(insertPayload)`.
+  * Preserves PostgREST schema cache adaptation (stripping only unmigrated columns) and retains automatic in-memory weekend-hours caching (`setInMemoryWeekendHours` and `hydrateMemberWeekendHours`).
+* **Database-Backed Strike Batch Integration Test & Environment Auto-Loading (`scripts/test-strikes-system.mjs`, `scripts/test-signup-and-profiles.mjs`, `scripts/test-login-and-auth.mjs`):**
+  * In `scripts/test-strikes-system.mjs`, added section 7D providing a separate database-backed integration test that seeds valid members with UUIDs directly into the `members` table and strike logs into `nightly_strike_logs`, verifies batched recent strike queries, and cleans up all seeded records in a `finally` block, leaving the existing test fixture intact.
+  * Added `.env.local` auto-loading across `test-strikes-system.mjs`, `test-signup-and-profiles.mjs`, and `test-login-and-auth.mjs`.
 
 ### Phase 37: Automated Code Review Remediations, Security Hardening & Concurrency Protection
 * **Batched Roster Database Lookups & Required Timezone (`src/app/api/members/route.ts`):**
