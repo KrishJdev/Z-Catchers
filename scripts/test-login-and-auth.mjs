@@ -51,6 +51,7 @@ function assert(condition, message) {
 
 async function run() {
   let newMember = null;
+  let testModMember = null;
   let testEndpoint = null;
   try {
     // 1. Session Token Payload & Rolling 90-Day Math
@@ -201,6 +202,48 @@ async function run() {
     assert(sessionVerification?.memberId === newMember.id, 'Session token authenticates as claimed member');
     assert(sessionVerification?.discordId === testDiscordId, 'Session token contains discord_id');
 
+    // 4B. Regression Test: Revocation After Token Issuance
+    console.log('\n--- 4B. Revocation After Token Issuance Regression Test ---');
+    const { verifyModeratorAuthorization } = await import('../src/lib/auth.ts');
+
+    const nonModDiscordId = 'revoked_mod_user_' + Date.now();
+    const staleModClaimToken = createClaimToken(
+      {
+        discordId: nonModDiscordId,
+        discordUsername: 'RevokedMod',
+        avatarUrl: null,
+        isModerator: true, // Stale token issued before user was removed from MOD_DISCORD_IDS
+        suggestedMemberId: null,
+      },
+      60
+    );
+
+    const decodedClaim = verifyClaimToken(staleModClaimToken);
+    assert(decodedClaim?.isModerator === true, 'Claim token carries cached isModerator: true');
+    assert(isModDiscordId(decodedClaim.discordId) === false, 'Live allowlist correctly marks revoked ID as non-moderator');
+
+    // Verify session with stale token claims rejected by verifyModeratorAuthorization when member is not mod
+    const staleSessionToken = createSessionToken(
+      {
+        memberId: newMember.id,
+        discordId: nonModDiscordId,
+        isModerator: true, // Stale token claims isModerator: true
+      },
+      90
+    );
+
+    const testReq = new Request('http://localhost:3000/api/mod', {
+      headers: {
+        cookie: `zcatchers_session=${staleSessionToken}`,
+      },
+    });
+
+    const modAuthResult = await verifyModeratorAuthorization(testReq);
+    assert(
+      modAuthResult.authorized === false,
+      'verifyModeratorAuthorization ignores stale isModerator session claim and checks live DB/allowlist'
+    );
+
     // 5. Rolling Renewal Simulation on /api/auth/me
     console.log('\n--- 5. Rolling Session Renewal Verification ---');
     // Simulate /api/auth/me renewal
@@ -257,16 +300,16 @@ async function run() {
 
     if (failed) {
       console.error('\n❌ SOME TESTS FAILED.');
-      process.exit(1);
+      process.exitCode = 1;
     } else {
       console.log('\n✨ ALL DISCORD OAUTH2 & AUTH PIPELINE TESTS PASSED SUCCESSFULLY! 🦊💤');
     }
   } catch (err) {
     console.error('Unexpected test error:', err);
-    process.exit(1);
+    process.exitCode = 1;
   } finally {
     // 8. Cleanup
-    if (testEndpoint || newMember?.id) {
+    if (testEndpoint || newMember?.id || testModMember?.id) {
       console.log('\n--- 8. Cleanup ---');
       if (testEndpoint) {
         await supabaseAdmin.from('push_subscriptions').delete().eq('endpoint', testEndpoint);
@@ -274,7 +317,10 @@ async function run() {
       if (newMember?.id) {
         await supabaseAdmin.from('members').delete().eq('id', newMember.id);
       }
-      console.log('   Cleaned up test member and subscriptions.');
+      if (testModMember?.id) {
+        await supabaseAdmin.from('members').delete().eq('id', testModMember.id);
+      }
+      console.log('   Cleaned up test members and subscriptions.');
     }
   }
 }

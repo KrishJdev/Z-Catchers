@@ -118,6 +118,7 @@ export async function sendDiscordWebhook(
       headers: {
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(5000),
       body: JSON.stringify({
         username: payload.username || SLEEPY_FOX_BOT_NAME,
         avatar_url: payload.avatar_url || SLEEPY_FOX_AVATAR,

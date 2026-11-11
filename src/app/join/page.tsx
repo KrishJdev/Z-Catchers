@@ -60,6 +60,7 @@ function JoinPageContent() {
   const [claimOption, setClaimOption] = useState<'claim' | 'new'>('claim');
   const [selectedTargetId, setSelectedTargetId] = useState<string>('');
   const [claimPin, setClaimPin] = useState<string>('');
+  const [claimModPasscode, setClaimModPasscode] = useState<string>('');
 
   // New Profile Form State
   const [regUsername, setRegUsername] = useState('');
@@ -173,8 +174,15 @@ function JoinPageContent() {
       }
 
       const targetMember = unclaimedMembers.find((m) => m.id === selectedTargetId);
+      const isTargetMod = Boolean(targetMember?.is_moderator || targetMember?.role === 'moderator');
+
       if (targetMember?.has_pin && (!claimPin || claimPin.length < 4)) {
         setErrorMessage('Please enter the 4-digit PIN to claim this profile.');
+        return;
+      }
+
+      if (isTargetMod && !discordUser?.isModerator && !claimModPasscode.trim()) {
+        setErrorMessage('Claiming an unlinked moderator profile requires the master moderator passcode.');
         return;
       }
 
@@ -188,6 +196,7 @@ function JoinPageContent() {
             option: 'claim',
             target_member_id: selectedTargetId,
             pin: claimPin.trim() || undefined,
+            mod_passcode: claimModPasscode.trim() || undefined,
           }),
         });
 
@@ -388,6 +397,7 @@ function JoinPageContent() {
                       onChange={(e) => {
                         setSelectedTargetId(e.target.value);
                         setClaimPin('');
+                        setClaimModPasscode('');
                       }}
                       className="w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2.5 text-cream-primary text-sm focus:border-status-amber focus:outline-none"
                     >
@@ -401,10 +411,11 @@ function JoinPageContent() {
 
                   {unclaimedMembers.find((m) => m.id === selectedTargetId)?.has_pin && (
                     <div>
-                      <label className="block text-xs font-medium text-cream-secondary mb-1">
+                      <label htmlFor="claim-profile-pin" className="block text-xs font-medium text-cream-secondary mb-1">
                         Profile PIN <span className="text-status-amber">*</span>
                       </label>
                       <input
+                        id="claim-profile-pin"
                         type="password"
                         inputMode="numeric"
                         maxLength={6}
@@ -416,6 +427,30 @@ function JoinPageContent() {
                       />
                       <p className="text-[11px] text-cream-muted mt-1">
                         This profile is protected with a legacy PIN. Enter the PIN to verify ownership.
+                      </p>
+                    </div>
+                  )}
+
+                  {Boolean(
+                    (unclaimedMembers.find((m) => m.id === selectedTargetId)?.is_moderator ||
+                      unclaimedMembers.find((m) => m.id === selectedTargetId)?.role === 'moderator') &&
+                      !discordUser?.isModerator
+                  ) && (
+                    <div>
+                      <label htmlFor="claim-mod-passcode" className="block text-xs font-medium text-cream-secondary mb-1">
+                        Master Moderator Passcode <span className="text-status-amber">*</span>
+                      </label>
+                      <input
+                        id="claim-mod-passcode"
+                        type="password"
+                        required
+                        placeholder="Enter master moderator passcode"
+                        value={claimModPasscode}
+                        onChange={(e) => setClaimModPasscode(e.target.value)}
+                        className="w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-cream-primary text-sm focus:border-status-amber focus:outline-none"
+                      />
+                      <p className="text-[11px] text-cream-muted mt-1">
+                        Claiming an unlinked moderator profile requires the master moderator secret passcode if not pre-authorized.
                       </p>
                     </div>
                   )}

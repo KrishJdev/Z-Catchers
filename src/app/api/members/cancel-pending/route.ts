@@ -46,7 +46,18 @@ export async function POST(request: Request) {
     const sessionMemberId = getRequestSessionMemberId(request);
     const isSessionOwner = Boolean(sessionMemberId && sessionMemberId === member.id);
 
+    if (!isModerator && isSessionOwner && !member.is_active) {
+      return NextResponse.json({ error: 'Member is inactive.' }, { status: 403 });
+    }
+
     if (!isModerator && !isSessionOwner) {
+      if (member.discord_id) {
+        return NextResponse.json(
+          { error: 'This profile is linked to a Discord account and can only be updated by its owner or a moderator.' },
+          { status: 403 }
+        );
+      }
+
       if (!member.passcode_hash) {
         return NextResponse.json(
           { error: 'PIN protection or owner session is required to cancel pending schedule changes.' },
@@ -87,13 +98,21 @@ export async function POST(request: Request) {
         pending_weekend_wake_time_local: null,
         pending_effective_at: null,
         updated_at: DateTime.utc().toISO() as string,
-      }
+      },
+      { requireUnlinkedDiscord: !isModerator && !isSessionOwner }
     );
 
-    if (updateError || !updatedMember) {
+    if (updateError) {
       return NextResponse.json(
-        { error: updateError?.message || 'Failed to cancel pending change' },
+        { error: updateError.message || 'Failed to cancel pending change' },
         { status: 500 }
+      );
+    }
+
+    if (!updatedMember) {
+      return NextResponse.json(
+        { error: 'This profile has been linked to a Discord account and can only be updated by its owner or a moderator.' },
+        { status: 409 }
       );
     }
 

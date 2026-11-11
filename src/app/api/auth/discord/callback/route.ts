@@ -161,7 +161,7 @@ export async function GET(request: Request) {
     if (existingMemberData) {
       // Returning Discord Member: update username, avatar, and moderator flag
       const member = existingMemberData as Member;
-      const isDbMod = member.role === 'moderator';
+      const isDbMod = member.role === 'moderator' || member.is_moderator === true;
       const isEnvMod = isModDiscordId(discordId);
       const effectiveIsMod = isDbMod || isEnvMod;
 

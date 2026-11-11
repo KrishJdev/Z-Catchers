@@ -890,7 +890,7 @@ export function ModDrawer({
                 <button
                   type="button"
                   onClick={() => setIsUnlocked(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-4 py-2.5 text-xs font-bold text-status-amber transition-colors hover:bg-status-amber/20"
+                  className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-4 py-2.5 text-xs font-bold text-status-amber transition-colors hover:bg-status-amber/20"
                 >
                   <Shield className="h-4 w-4" />
                   <span>Unlock with Moderator Session (@{currentUser?.discord_username})</span>

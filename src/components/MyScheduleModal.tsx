@@ -599,7 +599,7 @@ export function MyScheduleModal({
 
                 <form onSubmit={handleSaveProfile} className="space-y-3.5">
                   {/* Unclaimed Notice (If setting initial PIN) */}
-                  {!(activeMember?.has_pin ?? Boolean(activeMember?.passcode_hash)) && (
+                  {!isOwner && !(activeMember?.has_pin ?? Boolean(activeMember?.passcode_hash)) && (
                     <div className="rounded-xl border border-status-sage/30 bg-status-sage/10 p-3 text-xs text-cream-secondary">
                       <p className="font-semibold text-status-sage flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5" />
@@ -953,7 +953,7 @@ export function MyScheduleModal({
               </a>
               <a
                 href="/join"
-                className="text-[11px] text-cream-muted hover:text-status-amber underline transition-colors"
+                className="inline-flex min-h-[44px] items-center px-2 text-[11px] text-cream-muted hover:text-status-amber underline transition-colors"
               >
                 Or visit the full onboarding page (/join)
               </a>

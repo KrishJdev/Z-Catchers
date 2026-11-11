@@ -421,7 +421,8 @@ export async function verifyModeratorAuthorization(
           member &&
           member.is_active &&
           (member.role === 'moderator' ||
-            isModDiscordId(member.discord_id || session.discordId))
+            member.is_moderator === true ||
+            isModDiscordId(member.discord_id))
         ) {
           return {
             authorized: true,

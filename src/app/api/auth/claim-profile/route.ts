@@ -125,18 +125,20 @@ export async function POST(request: Request) {
     // 2. Prevent duplicate claims: verify no active member already has this discordId
     const { data: existingLinked } = await supabaseAdmin
       .from('members')
-      .select('id')
+      .select('id, role, is_moderator')
       .eq('discord_id', payload.discordId)
       .eq('is_active', true)
       .maybeSingle();
 
     if (existingLinked) {
       // If already linked, directly issue rolling session cookie
+      const isLiveMod = isModDiscordId(payload.discordId);
+      const isDbMod = existingLinked.role === 'moderator' || existingLinked.is_moderator === true;
       const sessionToken = createSessionToken(
         {
           memberId: existingLinked.id,
           discordId: payload.discordId,
-          isModerator: payload.isModerator || isModDiscordId(payload.discordId),
+          isModerator: isDbMod || isLiveMod,
         },
         90
       );
@@ -149,7 +151,7 @@ export async function POST(request: Request) {
       return res;
     }
 
-    const isModerator = Boolean(payload.isModerator || isModDiscordId(payload.discordId));
+    const isModerator = isModDiscordId(payload.discordId);
 
     // Option A: Claim existing unclaimed roster profile
     if (option === 'claim') {
@@ -183,7 +185,29 @@ export async function POST(request: Request) {
       }
 
       const isTargetMod = target.role === 'moderator' || target.is_moderator === true;
-      const hasValidModPasscode = Boolean(mod_passcode && verifyModPasscode(mod_passcode));
+      let hasValidModPasscode = false;
+      if (mod_passcode) {
+        const modClaimTarget = `mod_claim:${payload.discordId}`;
+        const modRate = await checkPinRateLimitPersistent(clientIp, modClaimTarget);
+        if (!modRate.allowed) {
+          return NextResponse.json(
+            {
+              error: `Too many failed moderator passcode attempts. Please wait ${modRate.retryAfterSeconds} seconds before trying again.`,
+            },
+            {
+              status: 429,
+              headers: { 'Retry-After': String(modRate.retryAfterSeconds) },
+            }
+          );
+        }
+
+        hasValidModPasscode = verifyModPasscode(mod_passcode);
+        if (!hasValidModPasscode) {
+          await recordPinFailurePersistent(clientIp, modClaimTarget);
+        } else {
+          await resetPinFailurePersistent(clientIp, modClaimTarget);
+        }
+      }
       const hasModAuthorization = isModerator || hasValidModPasscode;
 
       if (isTargetMod && !hasModAuthorization) {

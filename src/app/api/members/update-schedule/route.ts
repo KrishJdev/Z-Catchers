@@ -77,6 +77,9 @@ export async function POST(request: Request) {
 
     if (!isModeratorOverride) {
       if (isSessionOwner) {
+        if (!currentMember.is_active) {
+          return NextResponse.json({ error: 'Member is inactive.' }, { status: 403 });
+        }
         // Authenticated owner session: no PIN required; allow PIN update if new_pin supplied
         if (new_pin) {
           if (typeof new_pin !== 'string' || !/^\d{4,6}$/.test(new_pin.trim())) {
