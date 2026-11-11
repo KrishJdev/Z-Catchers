@@ -1,12 +1,12 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T18:43:00+05:30
+> **Last Updated:** 2026-11-11T18:48:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 50b30c1 (in krish)  
+> **Latest Commit:** cbe9311 (in krish)  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
-> **Active Integration Pull Request:** [#17 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/17)  
+> **Active Integration Pull Request:** [#17 (krish → dev) [OPEN - 12/12 CodeRabbit Threads Resolved]](https://github.com/KrishJdev/Z-Catchers/pull/17)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed)
 
@@ -68,6 +68,23 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 41: Complete CodeRabbit Review Remediations & PR #17 Update
+* **Resolution of All 12 CodeRabbit Review Threads on PR #17 (`KrishJdev/Z-Catchers#17`):**
+  * **Thread #1 (`/api/auth/claim-profile`):** Resolved. Verified that caller moderator privileges derive strictly from authenticated Discord identity (`payload.isModerator || isModDiscordId(...)`), moderator profile claiming strictly requires moderator authorization (`hasModAuthorization`), legacy PIN profiles enforce `verifyPin` + persistent rate limiting (`checkPinRateLimitPersistent`), and atomic claim writes prevent concurrency races via `.is('discord_id', null)`.
+  * **Thread #2 (`/api/auth/discord/callback`, `/api/auth/me`, `/api/auth/claim-profile`):** Resolved. Decoupled `MOD_DISCORD_IDS` environment allowlist from database persistence. Updated `/api/auth/me` to cease writing `role: 'moderator'` on env match, cleaned up stale `is_moderator` flags when `role !== 'moderator'`, and return `effectiveIsMod` dynamically. Removing a Discord ID from `MOD_DISCORD_IDS` immediately revokes moderator privileges across all requests.
+  * **Thread #3 (`/api/auth/register`):** Resolved. Confirmed HTTP 410 Gone deprecation and redirection to Discord onboarding.
+  * **Thread #4 & #5 (`/api/members/update-schedule`):** Resolved. Verified session owner exemption from PIN requirements while strictly preserving the 48-hour cooldown for regular edits; enforced moderator passcode rate limiting on all failed attempts even from profile owners.
+  * **Thread #6 (`/api/mod`):** Resolved / Documented. Maintained dual-authorization architecture supporting verified Discord moderator sessions (with real-time live database active member status and `MOD_DISCORD_IDS` checks) alongside master `MOD_SECRET_PASSCODE` fallback per Phase 39 specification.
+  * **Thread #7 (`LoginModal.tsx`):** Resolved. Implemented full accessible modal dialog semantics (`role="dialog"`, `aria-modal="true"`, `aria-labelledby="login-modal-title"`), focus management, tab trapping, Escape key dismissal, previous focus restoration, $\ge 44\text{px}$ close touch target with `aria-label`, and Warm Dark amber styling.
+  * **Thread #8 (`ModDrawer.tsx`):** Resolved. Aligned `/api/mod/webhook` with shared `verifyModeratorAuthorization` and enabled session-based drawer re-unlocking.
+  * **Thread #9 & #10 (`MyScheduleModal.tsx`):** Resolved. Recomputed owner unlock state whenever modal opens (`isOpen`), and exempted session owners from required PIN input.
+  * **Thread #11 (`src/lib/auth.ts`):** Resolved. Removed fast-path trust of session tokens in `verifyModeratorAuthorization`; strictly checks live Supabase database record for `is_active: true` and active `role === 'moderator' || isModDiscordId(...)` eligibility.
+  * **Thread #12 (`supabase/schema.sql`):** Resolved. Corrected dollar-quote delimiters from `DO $` to `DO $$` and `END $;` to `END $$;`.
+  * **Outside Diff & Minor Comments:** Verified role demotion cleans `is_moderator` flag in `/api/mod`, confirmed strike webhook dispatch on 2-vote confirmation, moved `getAppBaseUrl` to shared `@/lib/auth`, fixed `HANDOFF.md` heading reference to PR #17, and moved test suite cleanup to `finally` block with guarded deletion.
+* **GitHub PR #17 Update & Thread Resolution:**
+  * Added detailed resolution replies and programmatically resolved all 5 previously open review threads via GitHub GraphQL API (`resolveReviewThread`), achieving **100% resolution (12/12 threads resolved)**.
+  * Pushed all 13 commits on branch `krish` to `origin/krish`.
 
 ### Phase 40: Comprehensive Code Review Remediations, Session Owner Auth & A11y (PR #17)
 * **Live Moderator Authorization & Dynamic Revocation (`src/lib/auth.ts`, `src/app/api/auth/discord/callback/route.ts`):**
@@ -576,6 +593,7 @@ d:\Projects\Z Catchers\
 | **ZC-22**| Phase 36: Ubiquitous Member Log Out & Auth Session De-identification | **DONE** | Commit `ac191d0` |
 | **ZC-23**| Phase 37: Code Review Remediations, Security Hardening & Concurrency Protection | **DONE** | Phase 37 |
 | **ZC-24**| Phase 40: Comprehensive Code Review Remediations, Session Owner Auth & A11y | **DONE** | Phase 40 |
+| **ZC-25**| Phase 41: Complete CodeRabbit Review Remediations & PR #17 Update | **DONE** | Phase 41 |
 
 ---
 
