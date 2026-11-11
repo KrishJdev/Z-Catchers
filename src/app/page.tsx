@@ -220,6 +220,11 @@ export default function HomePage() {
         const json = await res.json();
         if (json.members) {
           setMembers(json.members);
+          setCurrentUser((prev) => {
+            if (!prev) return null;
+            const updated = json.members.find((m: Member) => m.id === prev.id);
+            return updated ? { ...prev, ...updated } : prev;
+          });
           try {
             localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(json.members));
           } catch {
@@ -304,18 +309,35 @@ export default function HomePage() {
         body: JSON.stringify({ memberId, action: 'check_in' }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, is_in_bed: true, is_woke_up: false } : prev));
+        setIsSleepShieldActive(true);
+        setToastMessage({
+          text: data.message || 'Checked into bed! Sleep Shield activated.',
+          type: 'success',
+        });
         await fetchRoster();
       } else if (res.status === 401) {
         router.push('/join');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setToastMessage({
+          text: data.error || 'Failed to check in.',
+          type: 'error',
+        });
       }
     } catch (err) {
       console.error('Failed to check in:', err);
+      setToastMessage({
+        text: 'Network error checking in.',
+        type: 'error',
+      });
     } finally {
       setIsCheckingIn(false);
     }
   }, [fetchRoster, router]);
 
-  // Cancel "I'm in Bed" check-in handler
+  // Cancel "I'm in Bed" / Wake Up undo check-in handler
   const handleCancelInBed = useCallback(async (memberId: string) => {
     try {
       setIsCheckingIn(true);
@@ -329,12 +351,29 @@ export default function HomePage() {
         body: JSON.stringify({ memberId, action: 'cancel' }),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, is_in_bed: false, is_woke_up: true } : prev));
+        setIsSleepShieldActive(false);
+        setToastMessage({
+          text: data.message || 'Status updated from sleeping to awake.',
+          type: 'success',
+        });
         await fetchRoster();
       } else if (res.status === 401) {
         router.push('/join');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setToastMessage({
+          text: data.error || 'Failed to undo sleep state.',
+          type: 'error',
+        });
       }
     } catch (err) {
       console.error('Failed to cancel check-in:', err);
+      setToastMessage({
+        text: 'Network error undoing sleep state.',
+        type: 'error',
+      });
     } finally {
       setIsCheckingIn(false);
     }
@@ -767,11 +806,35 @@ export default function HomePage() {
                       </p>
                     </div>
                     <button
+                      type="button"
                       onClick={() => handleCancelInBed(claimedMember.id)}
                       disabled={isCheckingIn}
-                      className="text-xs text-cream-muted underline hover:text-cream-secondary"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3.5 h-11 min-h-[44px] text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all whitespace-nowrap shadow-sm"
+                      title="Wake up and undo sleep status (returns from sleeping state to awake)"
                     >
-                      Undo
+                      <Sun className="h-4 w-4" />
+                      <span>Wake Up / Undo</span>
+                    </button>
+                  </div>
+                ) : claimedMember && claimedMember.is_woke_up ? (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div>
+                      <h2 className="text-sm font-bold tracking-wide text-cream-primary sm:text-base">
+                        Good Morning, {claimedMember.discord_username}!
+                      </h2>
+                      <p className="text-xs text-cream-secondary sm:text-sm">
+                        You&apos;re marked as awake. Ready for today&apos;s adventures in the den!
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCheckIn(claimedMember.id)}
+                      disabled={isCheckingIn}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 h-11 min-h-[44px] text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 active:scale-95 transition-all whitespace-nowrap shadow-sm"
+                      title="Heading back to bed? Tap to silence outgoing community nag alerts."
+                    >
+                      <BedDouble className="h-4 w-4 text-status-amber" />
+                      <span>Back to Bed</span>
                     </button>
                   </div>
                 ) : claimedMember &&
@@ -947,6 +1010,7 @@ export default function HomePage() {
                   onVoteStrike={handleVoteStrike}
                   onOpenMetastrike={handleOpenMetastrike}
                   isVotingStrike={isVotingStrike}
+                  isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
                 />
               ))}
             </StatusBucket>
@@ -974,6 +1038,7 @@ export default function HomePage() {
                   onVoteStrike={handleVoteStrike}
                   onOpenMetastrike={handleOpenMetastrike}
                   isVotingStrike={isVotingStrike}
+                  isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
                 />
               ))}
             </StatusBucket>
@@ -1000,6 +1065,7 @@ export default function HomePage() {
                   onVoteStrike={handleVoteStrike}
                   onOpenMetastrike={handleOpenMetastrike}
                   isVotingStrike={isVotingStrike}
+                  isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
                 />
               ))}
             </StatusBucket>
@@ -1028,6 +1094,7 @@ export default function HomePage() {
                   onVoteStrike={handleVoteStrike}
                   onOpenMetastrike={handleOpenMetastrike}
                   isVotingStrike={isVotingStrike}
+                  isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
                 />
               ))}
             </StatusBucket>
