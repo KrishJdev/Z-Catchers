@@ -335,6 +335,7 @@ export async function POST(request: Request) {
         );
       }
 
+      const isTargetMod = role === 'moderator';
       const updates: Partial<Member> = {
         discord_username: discord_username?.trim() || existing.discord_username,
         discord_handle:
@@ -342,7 +343,8 @@ export async function POST(request: Request) {
             ? discord_handle?.trim() || null
             : existing.discord_handle,
         journal_url: journal_url?.trim() || existing.journal_url,
-        role: role === 'moderator' ? 'moderator' : 'member',
+        role: isTargetMod ? 'moderator' : 'member',
+        is_moderator: isTargetMod,
         updated_at: DateTime.utc().toISO() as string,
       };
 

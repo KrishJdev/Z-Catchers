@@ -50,6 +50,8 @@ function assert(condition, message) {
 }
 
 async function run() {
+  let newMember = null;
+  let testEndpoint = null;
   try {
     // 1. Session Token Payload & Rolling 90-Day Math
     console.log('--- 1. Session Token & 90-Day Rolling Payload Tests ---');
@@ -136,7 +138,7 @@ async function run() {
     const testUsername = `FoxOAuth_${Date.now()}`;
 
     // Create unclaimed legacy profile using insertMemberSafe
-    const { data: newMember, error: createErr } = await insertMemberSafe({
+    const { data: createdMember, error: createErr } = await insertMemberSafe({
       discord_username: testUsername,
       discord_handle: `${testUsername}#0001`,
       journal_url: 'https://discord.com/channels/123456789/987654321',
@@ -147,6 +149,7 @@ async function run() {
       passcode_hash: null, // Legacy unclaimed
       is_active: true,
     });
+    newMember = createdMember;
 
     assert(!createErr && newMember, `Created unclaimed test member ${testUsername}`);
 
@@ -198,7 +201,7 @@ async function run() {
 
     // 6. Push Subscription Binding to Authenticated Member
     console.log('\n--- 6. Push Subscription Profile Binding Test ---');
-    const testEndpoint = `https://updates.push.mock/oauth-test-${Date.now()}`;
+    testEndpoint = `https://updates.push.mock/oauth-test-${Date.now()}`;
     const { data: subData, error: subErr } = await supabaseAdmin
       .from('push_subscriptions')
       .upsert({
@@ -231,12 +234,6 @@ async function run() {
     const regJson = await regRes.json();
     assert(regJson.deprecated === true, 'POST /api/auth/register includes deprecated: true');
 
-    // 8. Cleanup
-    console.log('\n--- 8. Cleanup ---');
-    await supabaseAdmin.from('push_subscriptions').delete().eq('endpoint', testEndpoint);
-    await supabaseAdmin.from('members').delete().eq('id', newMember.id);
-    console.log('   Cleaned up test member and subscriptions.');
-
     if (failed) {
       console.error('\n❌ SOME TESTS FAILED.');
       process.exit(1);
@@ -246,6 +243,18 @@ async function run() {
   } catch (err) {
     console.error('Unexpected test error:', err);
     process.exit(1);
+  } finally {
+    // 8. Cleanup
+    if (testEndpoint || newMember?.id) {
+      console.log('\n--- 8. Cleanup ---');
+      if (testEndpoint) {
+        await supabaseAdmin.from('push_subscriptions').delete().eq('endpoint', testEndpoint);
+      }
+      if (newMember?.id) {
+        await supabaseAdmin.from('members').delete().eq('id', newMember.id);
+      }
+      console.log('   Cleaned up test member and subscriptions.');
+    }
   }
 }
 

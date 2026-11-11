@@ -59,6 +59,7 @@ function JoinPageContent() {
   // 1-Step Claim/Setup Choice: 'claim' | 'new'
   const [claimOption, setClaimOption] = useState<'claim' | 'new'>('claim');
   const [selectedTargetId, setSelectedTargetId] = useState<string>('');
+  const [claimPin, setClaimPin] = useState<string>('');
 
   // New Profile Form State
   const [regUsername, setRegUsername] = useState('');
@@ -72,7 +73,7 @@ function JoinPageContent() {
 
   // Status & Feedback
   const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(urlError ? decodeURIComponent(urlError) : null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(urlError || null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Haptic feedback helper
@@ -171,6 +172,12 @@ function JoinPageContent() {
         return;
       }
 
+      const targetMember = unclaimedMembers.find((m) => m.id === selectedTargetId);
+      if (targetMember?.has_pin && (!claimPin || claimPin.length < 4)) {
+        setErrorMessage('Please enter the 4-digit PIN to claim this profile.');
+        return;
+      }
+
       setSubmitting(true);
       try {
         const res = await fetch('/api/auth/claim-profile', {
@@ -180,6 +187,7 @@ function JoinPageContent() {
             claim_token: claimToken,
             option: 'claim',
             target_member_id: selectedTargetId,
+            pin: claimPin.trim() || undefined,
           }),
         });
 
@@ -329,7 +337,7 @@ function JoinPageContent() {
                   )}
                 </div>
                 <span className="text-xs text-cream-secondary flex items-center gap-1">
-                  <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
+                  <DiscordIcon className="w-3.5 h-3.5 text-status-amber" />
                   Connected via Discord
                 </span>
               </div>
@@ -377,16 +385,40 @@ function JoinPageContent() {
                     </label>
                     <select
                       value={selectedTargetId}
-                      onChange={(e) => setSelectedTargetId(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedTargetId(e.target.value);
+                        setClaimPin('');
+                      }}
                       className="w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2.5 text-cream-primary text-sm focus:border-status-amber focus:outline-none"
                     >
                       {unclaimedMembers.map((m) => (
                         <option key={m.id} value={m.id}>
-                          @{m.discord_username} — Bedtime {m.bedtime_local} ({m.timezone})
+                          @{m.discord_username} — Bedtime {m.bedtime_local} ({m.timezone}){m.has_pin ? ' 🔒 (PIN Protected)' : ''}
                         </option>
                       ))}
                     </select>
                   </div>
+
+                  {unclaimedMembers.find((m) => m.id === selectedTargetId)?.has_pin && (
+                    <div>
+                      <label className="block text-xs font-medium text-cream-secondary mb-1">
+                        Profile PIN <span className="text-status-amber">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={6}
+                        required
+                        placeholder="Enter 4-digit PIN"
+                        value={claimPin}
+                        onChange={(e) => setClaimPin(e.target.value.replace(/\D/g, ''))}
+                        className="w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-cream-primary text-sm focus:border-status-amber focus:outline-none"
+                      />
+                      <p className="text-[11px] text-cream-muted mt-1">
+                        This profile is protected with a legacy PIN. Enter the PIN to verify ownership.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 /* Mode B: Configure New Schedule */

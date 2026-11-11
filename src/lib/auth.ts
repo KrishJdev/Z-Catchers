@@ -127,6 +127,25 @@ export function isModDiscordId(discordId: string | null | undefined): boolean {
 }
 
 /**
+ * Resolves the canonical application base URL for OAuth callbacks and redirects.
+ *
+ * @param request - Incoming HTTP request
+ * @returns Canonical base URL string (without trailing slash)
+ */
+export function getAppBaseUrl(request: Request): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (envUrl && !envUrl.includes('placeholder') && !envUrl.includes('your-production-domain')) {
+    return envUrl.replace(/\/+$/, '');
+  }
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+  const proto = request.headers.get('x-forwarded-proto') || 'http';
+  if (host) {
+    return `${proto}://${host}`;
+  }
+  return 'http://localhost:3000';
+}
+
+/**
  * Generates an HMAC-SHA256 signed session token for a member.
  * Supports legacy memberId string or modern session payload object.
  * Valid for 90 days by default (rolling renewal).
@@ -384,15 +403,8 @@ export async function verifyModeratorAuthorization(
   // 2. Check Authenticated Moderator Session Token
   const session = getRequestSession(request);
   if (session) {
-    if (session.isModerator || isModDiscordId(session.discordId)) {
-      return {
-        authorized: true,
-        moderatorId: session.memberId,
-        moderatorRole: 'member_mod',
-      };
-    }
-
-    // Check DB member row in case moderator status was recently assigned
+    // Session token claims are used only for identity; always check live member record
+    // and current moderator eligibility (including active status and live MOD_DISCORD_IDS)
     try {
       const { createClient } = await import('@supabase/supabase-js');
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -410,7 +422,7 @@ export async function verifyModeratorAuthorization(
           member.is_active &&
           (member.role === 'moderator' ||
             member.is_moderator === true ||
-            isModDiscordId(member.discord_id))
+            isModDiscordId(member.discord_id || session.discordId))
         ) {
           return {
             authorized: true,

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { FoxMascot } from './FoxMascot';
 import type { Member } from '@/lib/db';
@@ -27,27 +27,88 @@ function DiscordIcon({ className = 'w-5 h-5' }: { className?: string }) {
 
 /**
  * Clean Discord OAuth sign-in modal styled in Warm Dark low-blue-light aesthetics.
+ * Features accessible dialog semantics, focus trap, and touch-target sizing.
  *
  * @param props - LoginModalProps
  * @returns React modal dialog element or null
  */
 export function LoginModal({ isOpen, onClose }: LoginModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement | null;
+
+      // Focus first interactive element inside dialog
+      const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onClose();
+          return;
+        }
+
+        if (e.key === 'Tab') {
+          if (!dialogRef.current) return;
+          const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          );
+          if (focusables.length === 0) return;
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+
+          if (e.shiftKey) {
+            if (document.activeElement === first) {
+              e.preventDefault();
+              last.focus();
+            }
+          } else {
+            if (document.activeElement === last) {
+              e.preventDefault();
+              first.focus();
+            }
+          }
+        }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+        previousFocusRef.current?.focus();
+      };
+    }
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night-bg/80 backdrop-blur-md animate-fade-in">
-      <div className="w-full max-w-sm bg-night-surface border border-night-border rounded-2xl p-6 shadow-2xl relative text-center">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="login-modal-title"
+        className="w-full max-w-sm bg-night-surface border border-night-border rounded-2xl p-6 shadow-2xl relative text-center"
+      >
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-xl border border-night-border text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
+          aria-label="Close modal"
+          className="absolute top-4 right-4 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-night-border text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
         >
           <X className="h-4 w-4" />
         </button>
 
         <div className="flex flex-col items-center mb-5">
           <FoxMascot state="logo" size={48} className="mb-2" />
-          <h2 className="text-lg font-bold text-cream-primary">Sign in to Z Catchers</h2>
+          <h2 id="login-modal-title" className="text-lg font-bold text-cream-primary">
+            Sign in to Z Catchers
+          </h2>
           <p className="text-xs text-cream-secondary mt-1">
             Connect your Discord account to sync your schedule & sleep alerts.
           </p>
@@ -55,7 +116,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
         <a
           href="/api/auth/discord"
-          className="w-full min-h-[48px] bg-[#5865F2] hover:bg-[#4752C4] text-white font-semibold rounded-xl flex items-center justify-center gap-2.5 px-4 shadow-lg shadow-[#5865F2]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          className="w-full min-h-[48px] bg-status-amber hover:bg-status-amber/90 text-night-bg font-semibold rounded-xl flex items-center justify-center gap-2.5 px-4 shadow-lg shadow-status-amber/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
         >
           <DiscordIcon className="w-5 h-5 shrink-0" />
           <span>Continue with Discord</span>

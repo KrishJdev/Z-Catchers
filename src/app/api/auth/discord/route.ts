@@ -1,21 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-
-/**
- * Resolves the canonical application base URL for OAuth callbacks.
- */
-function getAppBaseUrl(request: Request): string {
-  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (envUrl && !envUrl.includes('placeholder') && !envUrl.includes('your-production-domain')) {
-    return envUrl.replace(/\/+$/, '');
-  }
-  const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
-  const proto = request.headers.get('x-forwarded-proto') || 'http';
-  if (host) {
-    return `${proto}://${host}`;
-  }
-  return 'http://localhost:3000';
-}
+import { getAppBaseUrl } from '@/lib/auth';
 
 /**
  * GET: Initiate Discord OAuth2 authorization flow.

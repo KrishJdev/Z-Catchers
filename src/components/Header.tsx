@@ -202,7 +202,7 @@ export function Header({
               title="Log in with your Discord account"
               className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary transition-all min-h-[44px]"
             >
-              <DiscordIcon className="h-3.5 w-3.5 text-[#5865F2]" />
+              <DiscordIcon className="h-3.5 w-3.5 text-status-amber" />
               <span>Log In</span>
             </button>
           )}

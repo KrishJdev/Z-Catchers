@@ -128,10 +128,10 @@ export function ModDrawer({
   const isModUser = Boolean(currentUser?.is_moderator || currentUser?.role === 'moderator');
 
   useEffect(() => {
-    if (isModUser) {
+    if (isOpen && isModUser) {
       setIsUnlocked(true);
     }
-  }, [isModUser]);
+  }, [isOpen, isModUser]);
 
   // Check sessionStorage for cached unlock state on mount
   useEffect(() => {
@@ -884,6 +884,19 @@ export function ModDrawer({
                 )}
               </button>
             </form>
+
+            {isModUser && (
+              <div className="mt-4 w-full max-w-sm pt-4 border-t border-night-border/60">
+                <button
+                  type="button"
+                  onClick={() => setIsUnlocked(true)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-4 py-2.5 text-xs font-bold text-status-amber transition-colors hover:bg-status-amber/20"
+                >
+                  <Shield className="h-4 w-4" />
+                  <span>Unlock with Moderator Session (@{currentUser?.discord_username})</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           /* Unlocked Moderator Panel View */

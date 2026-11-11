@@ -1,15 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T16:50:00+05:30  
+> **Last Updated:** 2026-11-11T18:25:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** d2aac8b (in krish)  
-> **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
+> **Latest Commit:** d5fdf74 (in krish)  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Integration Pull Request:** [#17 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/17)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | Dev server active on `http://192.168.1.3:3000`)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed)
 
 ---
 
@@ -69,6 +68,43 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 40: Comprehensive Code Review Remediations, Session Owner Auth & A11y (PR #17)
+* **Live Moderator Authorization & Dynamic Revocation (`src/lib/auth.ts`, `src/app/api/auth/discord/callback/route.ts`):**
+  * Updated `verifyModeratorAuthorization` so JWT session claims are used exclusively for identity verification (`session.memberId`). Live database lookup verifies active member status (`is_active`) and real-time eligibility (`role === 'moderator' || is_moderator || isModDiscordId(...)`), ensuring immediate revocation when permissions change.
+  * In the Discord OAuth callback, dynamically computed `effectiveIsMod = isDbMod || isEnvMod` on login without mutating database `role` to `'moderator'`, keeping database role status separate and revoking env-derived access immediately if removed from `MOD_DISCORD_IDS`.
+* **Atomic Profile Claiming & Rate-Limited Privilege Protection (`src/app/api/auth/claim-profile/route.ts`, `src/lib/db.ts`):**
+  * In `src/lib/db.ts`, extended `updateMemberSafe` with `requireUnlinkedDiscord?: boolean` utilizing atomic `.is('discord_id', null)` filtering to prevent race conditions during concurrent claim attempts. Lost claims return HTTP 409 Conflict.
+  * Sanitized unclaimed profile response in `GET /api/auth/claim-profile` to return `has_pin: Boolean(passcode_hash)` without leaking sensitive hashes or auth tokens.
+  * In `POST /api/auth/claim-profile` (Option A), derived moderator status strictly from the caller's authenticated Discord identity (`callerIsMod`), requiring moderator authorization to claim a moderator profile.
+  * Enforced PIN verification (`verifyMemberPasscode` + persistent rate limiter `checkPinRateLimitPersistent`) or moderator approval for claiming profiles marked `has_pin`.
+* **Onboarding & Join Flow Enhancements (`src/app/join/page.tsx`, `src/app/api/members/route.ts`):**
+  * Removed redundant `decodeURIComponent` in `src/app/join/page.tsx` on `useState(urlError || null)`.
+  * Added `claimPin` state and secure PIN entry prompt in `/join` when claiming a profile marked `has_pin`.
+  * Fully deprecated legacy registration `POST /api/members` with HTTP 410 Gone, directing client requests to Discord onboarding (`/api/auth/discord` or `/join`).
+* **Session Owner Exemption for Schedule Updates & Cancellation (`src/app/api/members/update-schedule/route.ts`, `src/app/api/members/cancel-pending/route.ts`, `src/components/MyScheduleModal.tsx`):**
+  * Updated `/api/members/update-schedule` to accept an authenticated session owner (`isSessionOwner`) without requiring a PIN, while strictly preserving the 48-hour cooldown for regular edits and PIN verification for non-owners.
+  * Enforced that Discord-linked profiles cannot be claimed or modified by non-owners without moderator override.
+  * Fixed moderator passcode failure rate limiting so invalid passcode attempts always record failures and count toward the moderator rate limit, even when attempted by the session owner.
+  * Updated `/api/members/cancel-pending` to recognize the authenticated shift owner (`sessionMemberId === member.id`) to cancel pending cooldown shifts without requiring a PIN.
+  * In `MyScheduleModal.tsx`, recomputed owner unlock state on `isOpen`, allowed session owners to submit profile/schedule updates and cancel pending shifts without entering a PIN, rendered a "Verified Owner Session" badge, and replaced legacy registration with a Discord onboarding card.
+* **Moderator Role Synchronization & Shared Webhook Authorization (`src/app/api/mod/route.ts`, `src/app/api/mod/webhook/route.ts`, `src/components/ModDrawer.tsx`):**
+  * In `edit_member` (`/api/mod`), updated role change logic so demoting a profile to member clears its `is_moderator` database flag (`is_moderator: isTargetMod`), keeping role and flag synchronized.
+  * Evaluated and skipped comment regarding enforcing `MOD_SECRET_PASSCODE` alone on GET handler: verified Discord moderator sessions are intentionally supported alongside master passcode per project spec and architecture.
+  * Replaced custom auth helper in `/api/mod/webhook` with shared `verifyModeratorAuthorization`, aligning webhook authorization with drawer and mod endpoints.
+  * In `ModDrawer.tsx`, recomputed `isUnlocked: true` when opening for session moderators and added "Unlock with Moderator Session" button on locked view.
+* **Warm Dark Design System & Accessibility Remediations (`src/components/LoginModal.tsx`, `src/components/Header.tsx`, `src/app/join/page.tsx`):**
+  * In `LoginModal.tsx`, added accessible dialog semantics (`role="dialog"`, `aria-modal="true"`, `aria-labelledby="login-modal-title"`), focus trap, Escape key listener, and focus restoration to trigger element on close.
+  * Updated close button in `LoginModal.tsx` to provide `aria-label="Close modal"` and $\ge 44\text{px}$ touch target (`min-w-[44px] min-h-[44px]`).
+  * Styled OAuth button in `LoginModal.tsx` with Warm Dark amber (`bg-status-amber text-night-bg hover:brightness-110`), removing cold-blue `#5865F2`.
+  * Updated Discord icon accents to `text-status-amber` across `Header.tsx`, `LoginModal.tsx`, and `join/page.tsx`.
+* **Discord Webhook Dispatch for Confirmed Community Strikes (`src/app/api/members/strikes/route.ts`):**
+  * Dispatched `sendStrikeDiscordWebhook` inside try/catch when a strike is confirmed by community votes, ensuring webhook delivery failure does not prevent vote recording.
+* **Shared OAuth Base URL & Migration Syntax Corrections (`src/app/api/auth/discord/route.ts`, `supabase/schema.sql`, `scripts/test-login-and-auth.mjs`):**
+  * Moved `getAppBaseUrl` into `@/lib/auth` and reused across `/api/auth/discord` and `/api/auth/discord/callback`.
+  * Corrected dollar-quote delimiters in `supabase/schema.sql` and `HANDOFF.md` from `DO $` to `DO $$` and `END $;` to `END $$;`.
+  * In `scripts/test-login-and-auth.mjs`, moved Supabase cleanup into a `finally` block with guarded deletion.
+
 
 ### Phase 38: PR #16 Code Review Remediations, Batched Strike Queries & Docstring Coverage
 * **Isolated Voter Rate Limiting (`src/app/api/members/strikes/route.ts`, `src/lib/rateLimit.ts`):**
@@ -535,6 +571,7 @@ d:\Projects\Z Catchers\
 | **ZC-21**| Phase 35: PWA Phone Robustness, Safe Areas, Keyboard dvh & Offline Resilience | **DONE** | Phase 35 |
 | **ZC-22**| Phase 36: Ubiquitous Member Log Out & Auth Session De-identification | **DONE** | Commit `ac191d0` |
 | **ZC-23**| Phase 37: Code Review Remediations, Security Hardening & Concurrency Protection | **DONE** | Phase 37 |
+| **ZC-24**| Phase 40: Comprehensive Code Review Remediations, Session Owner Auth & A11y | **DONE** | Phase 40 |
 
 ---
 
@@ -547,11 +584,11 @@ d:\Projects\Z Catchers\
      ALTER TABLE members ADD COLUMN IF NOT EXISTS is_moderator BOOLEAN DEFAULT FALSE;
      ALTER TABLE members ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE;
      ALTER TABLE members ALTER COLUMN passcode_hash DROP NOT NULL;
-     DO $ BEGIN
+     DO $$ BEGIN
        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'members_discord_id_key') THEN
          ALTER TABLE members ADD CONSTRAINT members_discord_id_key UNIQUE (discord_id);
        END IF;
-     END $;
+     END $$;
      CREATE INDEX IF NOT EXISTS idx_members_discord_id ON members(discord_id);
      ```
 
@@ -559,6 +596,6 @@ d:\Projects\Z Catchers\
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
-3. **Monitor & Review Active Pull Request #16 (`krish` → `dev`):**
+3. **Monitor & Review Active Pull Request #17 (`krish` → `dev`):**
    * Review link: [PR #17](https://github.com/KrishJdev/Z-Catchers/pull/17)
    * Verify all automated checks pass on branch `krish`.

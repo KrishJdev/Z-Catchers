@@ -272,6 +272,7 @@ export async function sanitizeMemberPayload<T extends Record<string, any>>(paylo
 export interface SafeUpdateOptions {
   select?: string;
   isFirstTimeClaim?: boolean;
+  requireUnlinkedDiscord?: boolean;
 }
 
 /**
@@ -309,6 +310,9 @@ export async function updateMemberSafe(
     let query = supabaseAdmin.from('members').update(fields).eq('id', memberId);
     if (options.isFirstTimeClaim) {
       query = query.is('passcode_hash', null);
+    }
+    if (options.requireUnlinkedDiscord) {
+      query = query.is('discord_id', null);
     }
     return options.select ? query.select(options.select).maybeSingle() : query.select('*').maybeSingle();
   };

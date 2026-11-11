@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
-import { verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
+import { verifyPin, verifyModPasscode, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
 import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
@@ -43,10 +43,13 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!isModerator) {
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const isSessionOwner = Boolean(sessionMemberId && sessionMemberId === member.id);
+
+    if (!isModerator && !isSessionOwner) {
       if (!member.passcode_hash) {
         return NextResponse.json(
-          { error: 'PIN protection is required to cancel pending schedule changes.' },
+          { error: 'PIN protection or owner session is required to cancel pending schedule changes.' },
           { status: 403 }
         );
       }

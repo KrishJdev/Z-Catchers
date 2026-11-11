@@ -59,12 +59,12 @@ ALTER TABLE members ADD COLUMN IF NOT EXISTS is_moderator BOOLEAN DEFAULT FALSE;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE;
 ALTER TABLE members ALTER COLUMN passcode_hash DROP NOT NULL;
 
-DO $
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'members_discord_id_key') THEN
     ALTER TABLE members ADD CONSTRAINT members_discord_id_key UNIQUE (discord_id);
   END IF;
-END $;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_members_discord_id ON members(discord_id);
 ALTER TABLE members ADD COLUMN IF NOT EXISTS weekend_bedtime_local VARCHAR(5);

@@ -5,24 +5,9 @@ import {
   setSessionCookie,
   createClaimToken,
   isModDiscordId,
+  getAppBaseUrl,
 } from '@/lib/auth';
 import { DateTime } from 'luxon';
-
-/**
- * Resolves the canonical application base URL for OAuth callbacks.
- */
-function getAppBaseUrl(request: Request): string {
-  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (envUrl && !envUrl.includes('placeholder') && !envUrl.includes('your-production-domain')) {
-    return envUrl.replace(/\/+$/, '');
-  }
-  const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
-  const proto = request.headers.get('x-forwarded-proto') || 'http';
-  if (host) {
-    return `${proto}://${host}`;
-  }
-  return 'http://localhost:3000';
-}
 
 /**
  * Computes a user's Discord avatar URL with fallback to default Discord avatars.
@@ -176,13 +161,15 @@ export async function GET(request: Request) {
     if (existingMemberData) {
       // Returning Discord Member: update username, avatar, and moderator flag
       const member = existingMemberData as Member;
-      const willBeMod = Boolean(isModerator || member.role === 'moderator' || member.is_moderator);
+      const isDbMod = member.role === 'moderator';
+      const isEnvMod = isModDiscordId(discordId);
+      const effectiveIsMod = isDbMod || isEnvMod;
 
       await updateMemberSafe(member.id, {
         discord_username: discordUsername,
         avatar_url: avatarUrl,
-        is_moderator: willBeMod,
-        role: willBeMod ? 'moderator' : member.role,
+        is_moderator: isDbMod,
+        role: member.role,
         updated_at: DateTime.utc().toISO() as string,
       });
 
@@ -191,7 +178,7 @@ export async function GET(request: Request) {
         {
           memberId: member.id,
           discordId,
-          isModerator: willBeMod,
+          isModerator: effectiveIsMod,
         },
         90
       );

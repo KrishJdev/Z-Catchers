@@ -6,7 +6,15 @@ import {
   setSessionCookie,
   sanitizeMember,
   isModDiscordId,
+  verifyPin,
+  verifyModPasscode,
 } from '@/lib/auth';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 import { isValidTimezone } from '@/lib/timezone';
 import { DateTime } from 'luxon';
 
@@ -38,10 +46,20 @@ export async function GET(request: Request) {
     // Fetch unclaimed members (where discord_id is NULL)
     const { data: unclaimedMembers } = await supabaseAdmin
       .from('members')
-      .select('id, discord_username, bedtime_local, timezone, avatar_url, role')
+      .select('id, discord_username, bedtime_local, timezone, avatar_url, role, passcode_hash')
       .is('discord_id', null)
       .eq('is_active', true)
       .order('discord_username', { ascending: true });
+
+    const formattedUnclaimed = (unclaimedMembers || []).map((m: any) => ({
+      id: m.id,
+      discord_username: m.discord_username,
+      bedtime_local: m.bedtime_local,
+      timezone: m.timezone,
+      avatar_url: m.avatar_url,
+      role: m.role,
+      has_pin: Boolean(m.passcode_hash),
+    }));
 
     return NextResponse.json({
       valid: true,
@@ -52,7 +70,7 @@ export async function GET(request: Request) {
         isModerator: payload.isModerator,
         suggestedMemberId: payload.suggestedMemberId || null,
       },
-      unclaimedMembers: unclaimedMembers || [],
+      unclaimedMembers: formattedUnclaimed,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown server error';
@@ -71,10 +89,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
+    const clientIp = getClientIp(request);
     const {
       claim_token,
       option,
       target_member_id,
+      pin,
+      mod_passcode,
       discord_username,
       discord_handle,
       journal_url,
@@ -161,22 +182,69 @@ export async function POST(request: Request) {
         );
       }
 
-      const willBeMod = isModerator || target.role === 'moderator' || target.is_moderator === true;
+      const isTargetMod = target.role === 'moderator' || target.is_moderator === true;
+      const hasValidModPasscode = Boolean(mod_passcode && verifyModPasscode(mod_passcode));
+      const hasModAuthorization = isModerator || hasValidModPasscode;
 
-      const { data: updatedMember, error: updateErr } = await updateMemberSafe(target.id, {
-        discord_id: payload.discordId,
-        discord_username: payload.discordUsername || target.discord_username,
-        avatar_url: payload.avatarUrl || target.avatar_url,
-        is_moderator: willBeMod,
-        role: willBeMod ? 'moderator' : target.role,
-        onboarding_completed: true,
-        updated_at: DateTime.utc().toISO() as string,
-      });
-
-      if (updateErr || !updatedMember) {
+      if (isTargetMod && !hasModAuthorization) {
         return NextResponse.json(
-          { error: updateErr?.message || 'Failed to claim member profile.' },
+          { error: 'Claiming a moderator profile requires moderator authorization.' },
+          { status: 403 }
+        );
+      }
+
+      if (target.passcode_hash && !hasModAuthorization) {
+        const rateCheck = await checkPinRateLimitPersistent(clientIp, target.id);
+        if (!rateCheck.allowed) {
+          return NextResponse.json(
+            {
+              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+            },
+            {
+              status: 429,
+              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+            }
+          );
+        }
+
+        if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), target.passcode_hash)) {
+          await recordPinFailurePersistent(clientIp, target.id);
+          return NextResponse.json(
+            { error: 'Invalid PIN. Please enter the correct PIN for this profile.' },
+            { status: 401 }
+          );
+        }
+
+        await resetPinFailurePersistent(clientIp, target.id);
+      }
+
+      const willBeMod = isModerator;
+
+      const { data: updatedMember, error: updateErr } = await updateMemberSafe(
+        target.id,
+        {
+          discord_id: payload.discordId,
+          discord_username: payload.discordUsername || target.discord_username,
+          avatar_url: payload.avatarUrl || target.avatar_url,
+          is_moderator: willBeMod,
+          role: willBeMod ? 'moderator' : (target.role === 'moderator' ? 'member' : target.role),
+          onboarding_completed: true,
+          updated_at: DateTime.utc().toISO() as string,
+        },
+        { requireUnlinkedDiscord: true }
+      );
+
+      if (updateErr) {
+        return NextResponse.json(
+          { error: updateErr.message || 'Failed to claim member profile.' },
           { status: 500 }
+        );
+      }
+
+      if (!updatedMember) {
+        return NextResponse.json(
+          { error: 'This profile has already been claimed by another Discord account.' },
+          { status: 409 }
         );
       }
 
