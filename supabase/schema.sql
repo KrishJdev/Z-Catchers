@@ -8,6 +8,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- 1. Members Table (Profiles, Schedules, and 48-Hour Cooldown State Machine)
 CREATE TABLE IF NOT EXISTS members (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  discord_id TEXT UNIQUE,                   -- Discord Snowflake User ID (OAuth2 identify scope)
   discord_username TEXT NOT NULL,
   discord_handle TEXT,
   avatar_url TEXT,
@@ -32,7 +33,9 @@ CREATE TABLE IF NOT EXISTS members (
   
   -- Role & Security
   role TEXT NOT NULL DEFAULT 'member',      -- 'member' | 'moderator'
-  passcode_hash TEXT,                       -- Hashed 4-digit PIN for self-service updates
+  is_moderator BOOLEAN NOT NULL DEFAULT FALSE, -- Flag identifying server moderators
+  onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE, -- True once initial schedule and journal are setup
+  passcode_hash TEXT,                       -- Legacy hashed 4-digit PIN (nullable, deprecated for OAuth)
   is_active BOOLEAN NOT NULL DEFAULT true,
 
   -- Monthly Strikes & Metastrikes Accountability System
@@ -51,6 +54,19 @@ CREATE TABLE IF NOT EXISTS members (
 );
 
 -- Migration support for existing deployments
+ALTER TABLE members ADD COLUMN IF NOT EXISTS discord_id TEXT;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS is_moderator BOOLEAN DEFAULT FALSE;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE;
+ALTER TABLE members ALTER COLUMN passcode_hash DROP NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'members_discord_id_key') THEN
+    ALTER TABLE members ADD CONSTRAINT members_discord_id_key UNIQUE (discord_id);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_members_discord_id ON members(discord_id);
 ALTER TABLE members ADD COLUMN IF NOT EXISTS weekend_bedtime_local VARCHAR(5);
 ALTER TABLE members ADD COLUMN IF NOT EXISTS weekend_wake_time_local VARCHAR(5);
 ALTER TABLE members ADD COLUMN IF NOT EXISTS pending_weekend_bedtime_local VARCHAR(5);

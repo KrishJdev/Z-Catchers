@@ -55,10 +55,11 @@ export async function POST(request: Request) {
     const currentMember = memberData as Member;
     const clientIp = getClientIp(request);
 
-    // 2. PIN verification / Claiming profile
+    // 2. PIN verification / Session Authorization / Claiming profile
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const isSessionOwner = Boolean(sessionMemberId && sessionMemberId === currentMember.id);
     let isModeratorOverride = false;
     if (mod_passcode) {
-      const sessionMemberId = getRequestSessionMemberId(request);
       const modGateTarget = sessionMemberId ? `mod_gate_member:${sessionMemberId}` : `mod_gate_ip:${clientIp}`;
       const modRate = await checkPinRateLimitPersistent(clientIp, modGateTarget);
       if (modRate.allowed) {
@@ -70,53 +71,16 @@ export async function POST(request: Request) {
         }
       }
     }
-    const isFirstTimeClaim = !isModeratorOverride && !currentMember.passcode_hash;
+    const isFirstTimeClaim = !isModeratorOverride && !isSessionOwner && !currentMember.passcode_hash;
 
     let updatedPasscodeHash = currentMember.passcode_hash;
 
     if (!isModeratorOverride) {
-      const rateCheck = await checkPinRateLimitPersistent(clientIp, currentMember.id);
-      if (!rateCheck.allowed) {
-        return NextResponse.json(
-          {
-            error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-          },
-          {
-            status: 429,
-            headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-          }
-        );
-      }
-
-      if (!currentMember.passcode_hash) {
-        if (currentMember.role === 'moderator') {
-          await recordPinFailurePersistent(clientIp, currentMember.id);
-          return NextResponse.json(
-            { error: 'Claiming an initial moderator profile requires moderator authorization.' },
-            { status: 403 }
-          );
+      if (isSessionOwner) {
+        if (!currentMember.is_active) {
+          return NextResponse.json({ error: 'Member is inactive.' }, { status: 403 });
         }
-        // Unclaimed profile: user must set a 4-digit PIN to claim and protect it
-        if (!pin || typeof pin !== 'string' || pin.trim().length < 4 || !/^\d{4,6}$/.test(pin.trim())) {
-          return NextResponse.json(
-            { error: 'Please choose a 4-to-6 digit PIN to claim and protect your profile.' },
-            { status: 400 }
-          );
-        }
-        updatedPasscodeHash = hashPin(pin.trim());
-        await resetPinFailurePersistent(clientIp, currentMember.id);
-      } else {
-        // Profile already claimed: verify PIN with rate limit protection
-        if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), currentMember.passcode_hash)) {
-          await recordPinFailurePersistent(clientIp, currentMember.id);
-          return NextResponse.json(
-            { error: 'Invalid 4-digit PIN. Please enter your correct PIN.' },
-            { status: 401 }
-          );
-        }
-        await resetPinFailurePersistent(clientIp, currentMember.id);
-
-        // If updating PIN
+        // Authenticated owner session: no PIN required; allow PIN update if new_pin supplied
         if (new_pin) {
           if (typeof new_pin !== 'string' || !/^\d{4,6}$/.test(new_pin.trim())) {
             return NextResponse.json(
@@ -125,6 +89,67 @@ export async function POST(request: Request) {
             );
           }
           updatedPasscodeHash = hashPin(new_pin.trim());
+        }
+      } else {
+        // Non-owner: If profile is linked to Discord, only authenticated owner or moderator can update it
+        if (currentMember.discord_id) {
+          return NextResponse.json(
+            { error: 'This profile is linked to a Discord account and can only be updated by its owner or a moderator.' },
+            { status: 403 }
+          );
+        }
+
+        const rateCheck = await checkPinRateLimitPersistent(clientIp, currentMember.id);
+        if (!rateCheck.allowed) {
+          return NextResponse.json(
+            {
+              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+            },
+            {
+              status: 429,
+              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+            }
+          );
+        }
+
+        if (!currentMember.passcode_hash) {
+          if (currentMember.role === 'moderator') {
+            await recordPinFailurePersistent(clientIp, currentMember.id);
+            return NextResponse.json(
+              { error: 'Claiming an initial moderator profile requires moderator authorization.' },
+              { status: 403 }
+            );
+          }
+          // Unclaimed unlinked profile: user must set a 4-digit PIN to claim and protect it
+          if (!pin || typeof pin !== 'string' || pin.trim().length < 4 || !/^\d{4,6}$/.test(pin.trim())) {
+            return NextResponse.json(
+              { error: 'Please choose a 4-to-6 digit PIN to claim and protect your profile.' },
+              { status: 400 }
+            );
+          }
+          updatedPasscodeHash = hashPin(pin.trim());
+          await resetPinFailurePersistent(clientIp, currentMember.id);
+        } else {
+          // Profile already claimed: verify PIN with rate limit protection
+          if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), currentMember.passcode_hash)) {
+            await recordPinFailurePersistent(clientIp, currentMember.id);
+            return NextResponse.json(
+              { error: 'Invalid 4-digit PIN. Please enter your correct PIN.' },
+              { status: 401 }
+            );
+          }
+          await resetPinFailurePersistent(clientIp, currentMember.id);
+
+          // If updating PIN
+          if (new_pin) {
+            if (typeof new_pin !== 'string' || !/^\d{4,6}$/.test(new_pin.trim())) {
+              return NextResponse.json(
+                { error: 'New PIN must be 4 to 6 digits.' },
+                { status: 400 }
+              );
+            }
+            updatedPasscodeHash = hashPin(new_pin.trim());
+          }
         }
       }
     }
@@ -256,7 +281,10 @@ export async function POST(request: Request) {
     const { data: updatedMember, error: updateError } = await updateMemberSafe(
       member_id,
       updates,
-      { isFirstTimeClaim }
+      {
+        isFirstTimeClaim,
+        requireUnlinkedDiscord: isFirstTimeClaim && !isSessionOwner && !isModeratorOverride,
+      }
     );
 
     if (updateError || !updatedMember) {

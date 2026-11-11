@@ -1,51 +1,18 @@
 import { NextResponse } from 'next/server';
-import { verifyModPasscode, getRequestSessionMemberId } from '@/lib/auth';
+import { verifyModeratorAuthorization, getRequestSessionMemberId } from '@/lib/auth';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 import { supabaseAdmin, Member } from '@/lib/db';
-import { getClientIp, checkPinRateLimit, recordPinFailure } from '@/lib/rateLimit';
 import {
   validateDiscordWebhookUrl,
   getDiscordWebhookUrl,
   sendTestDiscordWebhook,
   sendMorningDigestDiscordWebhook,
 } from '@/lib/discordWebhook';
-
-/**
- * Helper to verify moderator authorization via x-mod-passcode header, body passcode, or moderator session cookie.
- *
- * @param request - Incoming HTTP request
- * @param bodyPasscode - Optional passcode passed in JSON request body
- * @returns True if authorized as moderator, false otherwise
- */
-async function isAuthorizedMod(request: Request, bodyPasscode?: string): Promise<boolean> {
-  // 1. Check direct passcode header or body
-  const headerPasscode = request.headers.get('x-mod-passcode');
-  const passcode = headerPasscode || bodyPasscode;
-  if (passcode) {
-    const clientIp = getClientIp(request);
-    if (checkPinRateLimit(clientIp, '').allowed) {
-      if (verifyModPasscode(passcode)) {
-        return true;
-      }
-      recordPinFailure(clientIp, '');
-    }
-  }
-
-  // 2. Check authenticated session for moderator role
-  const sessionMemberId = getRequestSessionMemberId(request);
-  if (sessionMemberId) {
-    const { data: member } = await supabaseAdmin
-      .from('members')
-      .select('role, is_active')
-      .eq('id', sessionMemberId)
-      .single();
-
-    if (member && member.is_active && member.role === 'moderator') {
-      return true;
-    }
-  }
-
-  return false;
-}
 
 /**
  * GET: Retrieve Discord community webhook configuration status with masked token.
@@ -56,10 +23,30 @@ async function isAuthorizedMod(request: Request, bodyPasscode?: string): Promise
  */
 export async function GET(request: Request) {
   try {
-    const isAuthed = await isAuthorizedMod(request);
-    if (!isAuthed) {
-      return NextResponse.json({ error: 'Unauthorized moderator access' }, { status: 401 });
+    const clientIp = getClientIp(request);
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const modTarget = sessionMemberId ? `mod_member:${sessionMemberId}` : `mod_ip:${clientIp}`;
+
+    const rateCheck = await checkPinRateLimitPersistent(clientIp, modTarget);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+        }
+      );
     }
+
+    const authResult = await verifyModeratorAuthorization(request);
+    if (!authResult.authorized) {
+      await recordPinFailurePersistent(clientIp, modTarget);
+      return NextResponse.json({ error: authResult.error || 'Unauthorized moderator access' }, { status: 401 });
+    }
+
+    await resetPinFailurePersistent(clientIp, modTarget);
 
     const envWebhook = process.env.DISCORD_COMMUNITY_WEBHOOK_URL;
     const isConfigured = Boolean(envWebhook && validateDiscordWebhookUrl(envWebhook));
@@ -91,13 +78,33 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
+    const clientIp = getClientIp(request);
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const modTarget = sessionMemberId ? `mod_member:${sessionMemberId}` : `mod_ip:${clientIp}`;
+
+    const rateCheck = await checkPinRateLimitPersistent(clientIp, modTarget);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+        }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const { passcode, action, webhook_url } = body;
 
-    const isAuthed = await isAuthorizedMod(request, passcode);
-    if (!isAuthed) {
-      return NextResponse.json({ error: 'Unauthorized moderator access' }, { status: 401 });
+    const authResult = await verifyModeratorAuthorization(request, passcode);
+    if (!authResult.authorized) {
+      await recordPinFailurePersistent(clientIp, modTarget);
+      return NextResponse.json({ error: authResult.error || 'Unauthorized moderator access' }, { status: 401 });
     }
+
+    await resetPinFailurePersistent(clientIp, modTarget);
 
     if (action === 'verify') {
       const valid = validateDiscordWebhookUrl(webhook_url);

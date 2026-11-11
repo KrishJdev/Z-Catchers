@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { resolveMemberStrikeCounts, getNightlyStrikeLog, recordStrikeVote } from '@/lib/strikes';
+import { sendStrikeDiscordWebhook } from '@/lib/discordWebhook';
 import { getSleepCycleDate } from '@/lib/sleepEngine';
 import { getRequestSessionMemberId } from '@/lib/auth';
 import { checkVoteRateLimitPersistent, recordVoteAttemptPersistent } from '@/lib/rateLimit';
@@ -166,6 +167,18 @@ export async function POST(request: Request) {
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+
+    if (result.strikeIssued) {
+      try {
+        await sendStrikeDiscordWebhook(
+          targetMember as Member,
+          result.strikesUsed ?? 1,
+          'Confirmed by 2 community member votes'
+        );
+      } catch (webhookErr) {
+        console.error('Failed to dispatch strike Discord webhook:', webhookErr);
+      }
     }
 
     return NextResponse.json({

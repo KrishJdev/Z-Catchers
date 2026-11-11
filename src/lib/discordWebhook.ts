@@ -21,6 +21,22 @@ export function validateDiscordWebhookUrl(url: string | null | undefined): boole
 }
 
 /**
+ * Formats a Discord mention string for a member (<@snowflake> if discord_id exists, else display name).
+ *
+ * @param member - Target member entity
+ * @returns Discord ping string or plain username
+ */
+export function formatMemberDiscordMention(member: {
+  discord_id?: string | null;
+  discord_username: string;
+}): string {
+  if (member.discord_id && member.discord_id.trim()) {
+    return `<@${member.discord_id.trim()}>`;
+  }
+  return member.discord_username;
+}
+
+/**
  * Resolves the active webhook URL from override or environment.
  */
 export function getDiscordWebhookUrl(overrideUrl?: string | null): string | null {
@@ -102,6 +118,7 @@ export async function sendDiscordWebhook(
       headers: {
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(5000),
       body: JSON.stringify({
         username: payload.username || SLEEPY_FOX_BOT_NAME,
         avatar_url: payload.avatar_url || SLEEPY_FOX_AVATAR,
@@ -135,6 +152,7 @@ export async function sendDiscordWebhook(
 /**
  * Sends a rich bedtime alert embed to the community Discord announcement channel.
  * Triggered at T-0m when a member's bedtime hits and they haven't checked into bed early.
+ * Mentions <@discord_id> when available.
  */
 export async function sendBedtimeDiscordWebhook(
   member: Member,
@@ -143,6 +161,8 @@ export async function sendBedtimeDiscordWebhook(
 ): Promise<WebhookSendResult> {
   const zoneName = formatGmtOffset(member.timezone);
   const milestone = getStreakMilestoneBadge(streakDays);
+  const mention = formatMemberDiscordMention(member);
+
   const streakText =
     streakDays > 0
       ? `${streakDays} consecutive day${streakDays === 1 ? '' : 's'} on track ${milestone?.icon || '🔥'}`
@@ -152,7 +172,7 @@ export async function sendBedtimeDiscordWebhook(
 
   const embed: DiscordEmbed = {
     title: `🚨 Bedtime Alert: ${member.discord_username}`,
-    description: `It's **${displayBedtime}** in **${zoneName}**! Friends in awake timezones, make sure ${member.discord_username} logs off and catches some rest. 🦊💤`,
+    description: `It's **${displayBedtime}** in **${zoneName}**! Friends in awake timezones, make sure ${mention} logs off and catches some rest. 🦊💤`,
     url: member.journal_url,
     color: DISCORD_EMBED_COLORS.CORAL_NAG,
     fields: [
@@ -186,6 +206,133 @@ export async function sendBedtimeDiscordWebhook(
 
   return sendDiscordWebhook(
     {
+      content: member.discord_id ? `🔔 Bedtime alert for <@${member.discord_id}>!` : undefined,
+      embeds: [embed],
+    },
+    options.webhookUrl
+  );
+}
+
+/**
+ * Sends an urgent nag notification embed to Discord when a member is overdue past their bedtime.
+ *
+ * @param member - Target member entity
+ * @param minutesOverdue - Minutes elapsed since bedtime
+ * @param options - Webhook dispatch options
+ * @returns WebhookSendResult
+ */
+export async function sendNagDiscordWebhook(
+  member: Member,
+  minutesOverdue: number,
+  options: { webhookUrl?: string | null } = {}
+): Promise<WebhookSendResult> {
+  const mention = formatMemberDiscordMention(member);
+  const zoneName = formatGmtOffset(member.timezone);
+
+  const embed: DiscordEmbed = {
+    title: `⏰ Overdue Bedtime: ${member.discord_username}`,
+    description: `${mention} is **${minutesOverdue}m past bedtime** (${member.bedtime_local} in ${zoneName})! Tap into their journal and encourage them to catch some Z's. 🦊🔔`,
+    url: member.journal_url,
+    color: DISCORD_EMBED_COLORS.CORAL_NAG,
+    fields: [
+      {
+        name: '🔗 Discord Journal',
+        value: `[Jump into ${member.discord_username}'s Journal Thread](${member.journal_url})`,
+      },
+    ],
+    footer: {
+      text: 'Z Catchers Community Accountability • Sleep Den',
+    },
+    timestamp: new Date().toISOString(),
+  };
+
+  return sendDiscordWebhook(
+    {
+      content: member.discord_id ? `⏰ Nag alert: <@${member.discord_id}> needs sleep!` : undefined,
+      embeds: [embed],
+    },
+    options.webhookUrl
+  );
+}
+
+/**
+ * Sends a community nag assist check-in notification to Discord.
+ *
+ * @param sleeper - Sleeping member entity
+ * @param totalAssists - Count of assists tonight
+ * @param options - Webhook dispatch options
+ * @returns WebhookSendResult
+ */
+export async function sendNagAssistDiscordWebhook(
+  sleeper: Member,
+  totalAssists: number,
+  options: { webhookUrl?: string | null } = {}
+): Promise<WebhookSendResult> {
+  const mention = formatMemberDiscordMention(sleeper);
+
+  const embed: DiscordEmbed = {
+    title: `👥 Nag Assist: ${sleeper.discord_username}`,
+    description: `A friend just checked in on ${mention}'s Discord journal! Total community assists tonight: **${totalAssists}** 🦊🛌`,
+    url: sleeper.journal_url,
+    color: DISCORD_EMBED_COLORS.AMBER_COZY,
+    footer: {
+      text: 'Z Catchers Sleep Engine • Protecting Rest Together',
+    },
+    timestamp: new Date().toISOString(),
+  };
+
+  return sendDiscordWebhook(
+    {
+      embeds: [embed],
+    },
+    options.webhookUrl
+  );
+}
+
+/**
+ * Sends an accountability strike notification to Discord.
+ * Mentions <@discord_id> when available.
+ *
+ * @param member - Target member entity
+ * @param strikesUsed - Total strikes used this month
+ * @param reason - Optional reason or note
+ * @param options - Webhook dispatch options
+ * @returns WebhookSendResult
+ */
+export async function sendStrikeDiscordWebhook(
+  member: Member,
+  strikesUsed: number,
+  reason?: string,
+  options: { webhookUrl?: string | null } = {}
+): Promise<WebhookSendResult> {
+  const mention = formatMemberDiscordMention(member);
+
+  const embed: DiscordEmbed = {
+    title: `⚡ Community Strike Issued: ${member.discord_username}`,
+    description: `A strike has been confirmed for ${mention} tonight. **${strikesUsed}/3 strikes** used for this month.${reason ? ` Reason: ${reason}` : ''} 🦊⚡`,
+    url: member.journal_url,
+    color: DISCORD_EMBED_COLORS.CORAL_NAG,
+    fields: [
+      {
+        name: '⚡ Strikes Status',
+        value: `${strikesUsed} of 3 maximum monthly strikes used`,
+        inline: true,
+      },
+      {
+        name: '🛡️ Excused Pass (Metastrike)',
+        value: 'Members can convert an accidental strike to an excused Metastrike within 24 hours in the app.',
+        inline: false,
+      },
+    ],
+    footer: {
+      text: 'Z Catchers Accountability System • 2-Vote Community Verification',
+    },
+    timestamp: new Date().toISOString(),
+  };
+
+  return sendDiscordWebhook(
+    {
+      content: member.discord_id ? `⚡ Strike Notice for <@${member.discord_id}>` : undefined,
       embeds: [embed],
     },
     options.webhookUrl
@@ -210,7 +357,8 @@ export async function sendMorningDigestDiscordWebhook(
           .map((m, i) => {
             const milestone = getStreakMilestoneBadge(m.streak_days || 0);
             const medal = i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : '✨';
-            return `${medal} **${m.discord_username}**: ${m.streak_days} days on track (${milestone?.badgeLabel || 'Streak'})`;
+            const mention = formatMemberDiscordMention(m);
+            return `${medal} **${m.discord_username}** (${mention}): ${m.streak_days} days on track (${milestone?.badgeLabel || 'Streak'})`;
           })
           .join('\n')
       : 'Every fox is resting cozy! Start your streak tonight.';
@@ -261,18 +409,23 @@ export async function sendTestDiscordWebhook(
   const embed: DiscordEmbed = {
     title: '🦊 Z Catchers Webhook Connected!',
     description:
-      'This is a verification test from **Z Catchers**. Automated bedtime alerts and morning slumber digests will now safely arrive in this channel.',
+      'This is a verification test from **Z Catchers**. Automated bedtime alerts and morning slumber digests will now safely arrive in this channel with Discord member mentions.',
     color: DISCORD_EMBED_COLORS.AMBER_COZY,
     fields: [
       {
         name: '🛡️ Sleep Shield Protection',
-        value: 'Push notifications are strictly muted during each member\'s 8-hour sleep window.',
+        value: "Push notifications are strictly muted during each member's 8-hour sleep window.",
         inline: true,
       },
       {
         name: '⏳ 48-Hour Cooldown',
         value: 'Bedtime shifts enter a 48-hour pending queue to prevent bedtime dodging.',
         inline: true,
+      },
+      {
+        name: '💬 Discord OAuth Mentions',
+        value: 'Linked members are automatically mentioned via <@ID> in bedtime & strike alerts.',
+        inline: false,
       },
     ],
     footer: {

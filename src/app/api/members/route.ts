@@ -5,11 +5,10 @@ import {
   Member,
   fetchAllNotificationLogs,
   updateMemberSafe,
-  insertMemberSafe,
   hydrateMemberWeekendHours,
 } from '@/lib/db';
 import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
-import { hashPin, sanitizeMember, createSessionToken, getRequestSessionMemberId } from '@/lib/auth';
+import { sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
 import { toValidLuxonZone, isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import {
   resolveMemberStrikeCounts,
@@ -171,178 +170,19 @@ export async function GET(request: Request) {
 }
 
 /**
- * POST: Create a new community member profile with validated sleep schedule and PIN.
- * Timezone detection must be performed by the client and provided as a non-empty string.
+ * POST: Member registration via /api/members (Deprecated).
+ * Superseded by Discord OAuth profile claim & onboarding (/api/auth/claim-profile).
  *
- * @param request - Incoming HTTP request containing new member payload
- * @returns JSON response with created member record and auth cookie
+ * @returns 410 Gone response instructing clients to authenticate via Discord OAuth
  */
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const {
-      discord_username,
-      discord_handle,
-      journal_url,
-      bedtime_local,
-      wake_time_local = '07:00',
-      timezone,
-      weekend_bedtime_local,
-      weekend_wake_time_local,
-      pin,
-    } = body;
-
-    if (!discord_username || !journal_url || !bedtime_local) {
-      return NextResponse.json(
-        { error: 'Missing required fields (username, journal link, bedtime).' },
-        { status: 400 }
-      );
-    }
-
-    const cleanUsername = String(discord_username).trim();
-    if (cleanUsername.length < 2 || cleanUsername.length > 32) {
-      return NextResponse.json(
-        { error: 'Username must be between 2 and 32 characters.' },
-        { status: 400 }
-      );
-    }
-
-    // Check for username duplication (case-insensitive)
-    const { data: existingUser } = await supabaseAdmin
-      .from('members')
-      .select('id, discord_username')
-      .ilike('discord_username', cleanUsername)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (existingUser) {
-      return NextResponse.json(
-        { error: `The username "${cleanUsername}" is already taken. Please choose a different username or log in.` },
-        { status: 409 }
-      );
-    }
-
-    // Validate Discord Journal URL
-    const cleanJournal = String(journal_url).trim();
-    if (!DISCORD_JOURNAL_REGEX.test(cleanJournal)) {
-      return NextResponse.json(
-        { error: 'Invalid Discord journal thread URL. Must match format: https://discord.com/channels/{server_id}/{thread_id}' },
-        { status: 400 }
-      );
-    }
-
-    // Validate 4-to-6 digit numeric PIN
-    const cleanPin = pin ? String(pin).trim() : '';
-    if (!cleanPin || !/^\d{4,6}$/.test(cleanPin)) {
-      return NextResponse.json(
-        { error: 'Please choose a 4-to-6 digit numeric PIN to protect your profile.' },
-        { status: 400 }
-      );
-    }
-
-    // Validate Timezone (must be provided by client; no server fallback)
-    if (!timezone || !String(timezone).trim()) {
-      return NextResponse.json(
-        { error: 'Timezone is required. Please provide a valid IANA timezone (e.g. "Europe/Athens", "America/New_York", "Asia/Kolkata").' },
-        { status: 400 }
-      );
-    }
-
-    const cleanTz = String(timezone).trim();
-    if (!isValidTimezone(cleanTz)) {
-      return NextResponse.json(
-        { error: `Invalid timezone identifier "${cleanTz}". Please provide a valid IANA timezone (e.g. "Europe/Athens", "America/New_York", "Asia/Kolkata").` },
-        { status: 400 }
-      );
-    }
-
-    // Validate 24-hour time format (HH:mm)
-    if (!TIME_FORMAT_REGEX.test(bedtime_local.trim())) {
-      return NextResponse.json(
-        { error: 'Invalid bedtime format. Must be HH:mm (24-hour, e.g. 23:00).' },
-        { status: 400 }
-      );
-    }
-    if (wake_time_local && !TIME_FORMAT_REGEX.test(wake_time_local.trim())) {
-      return NextResponse.json(
-        { error: 'Invalid wake time format. Must be HH:mm (24-hour, e.g. 07:00).' },
-        { status: 400 }
-      );
-    }
-    if (weekend_bedtime_local?.trim() && !TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim())) {
-      return NextResponse.json(
-        { error: 'Invalid weekend bedtime format. Must be HH:mm (24-hour, e.g. 01:00).' },
-        { status: 400 }
-      );
-    }
-    if (weekend_wake_time_local?.trim() && !TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim())) {
-      return NextResponse.json(
-        { error: 'Invalid weekend wake time format. Must be HH:mm (24-hour, e.g. 09:00).' },
-        { status: 400 }
-      );
-    }
-
-    const passcode_hash = hashPin(cleanPin);
-    const avatar_url = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-      cleanUsername
-    )}`;
-
-    const insertPayload: Record<string, unknown> = {
-      discord_username: cleanUsername,
-      discord_handle: discord_handle?.trim() || null,
-      avatar_url,
-      journal_url: cleanJournal,
-      bedtime_local: bedtime_local.trim(),
-      wake_time_local: wake_time_local.trim(),
-      timezone: cleanTz,
-      role: 'member',
-      passcode_hash,
-      strikes_used: 0,
-      metastrikes_used: 0,
-      strike_cycle_month: DateTime.utc().toFormat('yyyy-MM'),
-    };
-
-    if (weekend_bedtime_local?.trim()) {
-      insertPayload.weekend_bedtime_local = weekend_bedtime_local.trim();
-    }
-    if (weekend_wake_time_local?.trim()) {
-      insertPayload.weekend_wake_time_local = weekend_wake_time_local.trim();
-    }
-
-    const { data, error } = await insertMemberSafe(insertPayload);
-
-    if (error || !data) {
-      return NextResponse.json({ error: error?.message || 'Failed to create member' }, { status: 500 });
-    }
-
-    const createdMember = data;
-    const token = createSessionToken(createdMember.id);
-    const sanitized = sanitizeMember(createdMember);
-
-    const response = NextResponse.json(
-      {
-        success: true,
-        member: sanitized,
-        token,
-        message: `Welcome to Z Catchers, ${cleanUsername}! Your profile has been created and secured with your PIN.`,
-      },
-      { status: 201 }
-    );
-
-    // Set 30-day HttpOnly session cookie
-    response.cookies.set({
-      name: 'zcatchers_session',
-      value: token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-    });
-
-    return response;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Internal server error';
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+export async function POST() {
+  return NextResponse.json(
+    {
+      error:
+        'Registration via /api/members has been deprecated in favor of Discord OAuth onboarding. Please connect your Discord account via /api/auth/discord or /join.',
+      deprecated: true,
+      auth_url: '/api/auth/discord',
+    },
+    { status: 410 }
+  );
 }

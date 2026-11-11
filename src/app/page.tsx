@@ -1038,6 +1038,7 @@ export default function HomePage() {
         onClose={handleCloseModal}
         viewerTimezone={viewerTimezone}
         onRosterChanged={fetchRoster}
+        currentUser={currentUser}
       />
 
       {/* Metastrike Excuse Pass Modal */}

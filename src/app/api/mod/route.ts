@@ -148,7 +148,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action, mod_passcode, pin } = body;
 
-    const authResult = await verifyModeratorAuthorization(request, mod_passcode, pin);
+    const authResult = await verifyModeratorAuthorization(request, mod_passcode);
     if (!authResult.authorized) {
       await recordPinFailurePersistent(clientIp, modTarget);
       return NextResponse.json(
@@ -335,6 +335,7 @@ export async function POST(request: Request) {
         );
       }
 
+      const isTargetMod = role === 'moderator';
       const updates: Partial<Member> = {
         discord_username: discord_username?.trim() || existing.discord_username,
         discord_handle:
@@ -342,7 +343,8 @@ export async function POST(request: Request) {
             ? discord_handle?.trim() || null
             : existing.discord_handle,
         journal_url: journal_url?.trim() || existing.journal_url,
-        role: role === 'moderator' ? 'moderator' : 'member',
+        role: isTargetMod ? 'moderator' : 'member',
+        is_moderator: isTargetMod,
         updated_at: DateTime.utc().toISO() as string,
       };
 

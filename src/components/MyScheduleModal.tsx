@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Moon,
   LogOut,
+  ArrowRight,
 } from 'lucide-react';
 
 import { setStoredMemberId, setStoredAuthToken, setStoredAuthMember } from '@/lib/pushClient';
@@ -87,9 +88,12 @@ export function MyScheduleModal({
     () => members.find((m) => m.id === selectedMemberId),
     [members, selectedMemberId]
   );
+  const isOwner = Boolean(currentUser && activeMember && currentUser.id === activeMember.id);
 
-  // Sync selected member data into form fields when selected
+  // Sync selected member data into form fields when selected or modal opens
   useEffect(() => {
+    if (!isOpen) return;
+
     if (activeMember) {
       setUsername(activeMember.discord_username);
       setHandle(activeMember.discord_handle || '');
@@ -110,14 +114,15 @@ export function MyScheduleModal({
       setSuccessMessage(null);
       setPin('');
       // If member has no PIN, auto-unlock so they can set initial PIN
+      const isOwner = Boolean(currentUser && activeMember && currentUser.id === activeMember.id);
       const isClaimed = Boolean(activeMember.has_pin ?? activeMember.passcode_hash);
-      setIsUnlocked(!isClaimed);
+      setIsUnlocked(isOwner || !isClaimed);
     } else if (currentUser) {
       setSelectedMemberId(currentUser.id);
     } else if (members.length > 0 && !selectedMemberId && tab === 'claim') {
       setSelectedMemberId(members[0].id);
     }
-  }, [activeMember, members, selectedMemberId, tab]);
+  }, [isOpen, activeMember, members, selectedMemberId, tab, currentUser]);
 
   // Reset states when modal is opened/closed
   useEffect(() => {
@@ -134,7 +139,7 @@ export function MyScheduleModal({
       setPin('');
       setNewMemberPin('');
     }
-  }, [isOpen, members, selectedMemberId]);
+  }, [isOpen, members, selectedMemberId, currentUser]);
 
   // Check if pending cooldown is currently active on selected member
   const pendingCooldownNotice = useMemo(() => {
@@ -222,9 +227,14 @@ export function MyScheduleModal({
       return;
     }
 
+    const isOwner = Boolean(currentUser && activeMember && currentUser.id === activeMember.id);
     const isClaimed = Boolean(activeMember?.has_pin ?? activeMember?.passcode_hash);
-    if (!isClaimed && (!pin || pin.length < 4)) {
+    if (!isOwner && !isClaimed && (!pin || pin.length < 4)) {
       setErrorMessage('Please create a 4-digit PIN to claim and secure your profile.');
+      return;
+    }
+    if (!isOwner && isClaimed && (!pin || pin.length < 4)) {
+      setErrorMessage('Please enter your 4-digit PIN to verify profile edits.');
       return;
     }
 
@@ -236,7 +246,7 @@ export function MyScheduleModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           member_id: activeMember?.id,
-          pin: pin.trim(),
+          pin: pin.trim() || undefined,
           discord_username: username.trim(),
           discord_handle: handle.trim() || null,
           journal_url: journalUrl.trim(),
@@ -283,7 +293,7 @@ export function MyScheduleModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           member_id: activeMember.id,
-          pin: pin.trim(),
+          pin: pin.trim() || undefined,
         }),
       });
 
@@ -307,76 +317,7 @@ export function MyScheduleModal({
     }
   };
 
-  // Handle New Member Registration
-  const handleRegisterNewMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
-    setSuccessMessage(null);
 
-    if (!username.trim()) {
-      setErrorMessage('Please enter your Discord display name.');
-      return;
-    }
-
-    if (!journalUrl.trim() || !DISCORD_JOURNAL_REGEX.test(journalUrl.trim())) {
-      setErrorMessage(
-        'Please enter a valid Discord Journal Thread URL: https://discord.com/channels/{guild}/{thread}'
-      );
-      return;
-    }
-
-    if (!newMemberPin || newMemberPin.length < 4) {
-      setErrorMessage('Please choose a 4-digit PIN to protect your profile.');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/members', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          discord_username: username.trim(),
-          discord_handle: handle.trim() || null,
-          journal_url: journalUrl.trim(),
-          bedtime_local: bedtime.trim(),
-          wake_time_local: wakeTime.trim(),
-          timezone: timezone.trim(),
-          weekend_bedtime_local: enableWeekendHours ? weekendBedtime.trim() : null,
-          weekend_wake_time_local: enableWeekendHours ? weekendWakeTime.trim() : null,
-          pin: newMemberPin.trim(),
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setErrorMessage(data.error || 'Failed to register new profile.');
-        return;
-      }
-
-      setSuccessMessage('Welcome to Z Catchers! Your bedtime schedule is active.');
-      if (data.token) {
-        setStoredAuthToken(data.token);
-      }
-      if (data.member) {
-        setStoredAuthMember(data.member);
-      }
-      await onRefreshRoster();
-      setTab('claim');
-      if (data.member?.id) {
-        setSelectedMemberId(data.member.id);
-        setStoredMemberId(data.member.id);
-        setIsUnlocked(true);
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Network error';
-      setErrorMessage(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/85 backdrop-blur-md p-0 md:items-center md:p-4">
@@ -658,7 +599,7 @@ export function MyScheduleModal({
 
                 <form onSubmit={handleSaveProfile} className="space-y-3.5">
                   {/* Unclaimed Notice (If setting initial PIN) */}
-                  {!(activeMember?.has_pin ?? Boolean(activeMember?.passcode_hash)) && (
+                  {!isOwner && !(activeMember?.has_pin ?? Boolean(activeMember?.passcode_hash)) && (
                     <div className="rounded-xl border border-status-sage/30 bg-status-sage/10 p-3 text-xs text-cream-secondary">
                       <p className="font-semibold text-status-sage flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5" />
@@ -870,24 +811,34 @@ export function MyScheduleModal({
                   </span>
                 </div>
 
-                {/* 4-Digit PIN Input (if claiming or updating) */}
-                <div>
-                  <label className="block text-xs font-medium text-cream-secondary mb-1">
-                    {!(activeMember?.has_pin ?? Boolean(activeMember?.passcode_hash))
-                      ? 'Create 4-Digit PIN (to secure profile)'
-                      : 'Confirm Your 4-Digit PIN'}
-                  </label>
-                  <input
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={6}
-                    required
-                    placeholder="4-digit PIN"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                    className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
-                  />
-                </div>
+                {/* 4-Digit PIN Input (Required for non-owners; hidden for verified owners) */}
+                {!isOwner ? (
+                  <div>
+                    <label className="block text-xs font-medium text-cream-secondary mb-1">
+                      {!(activeMember?.has_pin ?? Boolean(activeMember?.passcode_hash))
+                        ? 'Create 4-Digit PIN (to secure profile)'
+                        : 'Confirm Your 4-Digit PIN'}
+                    </label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      required
+                      placeholder="4-digit PIN"
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                      className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-night-border bg-night-elevated/40 px-3 py-2 text-[11px] text-cream-muted flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-status-sage">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Verified Owner Session</span>
+                    </span>
+                    <span>No PIN entry required</span>
+                  </div>
+                )}
 
                 {/* 48-Hour Cooldown Warning Callout (Mandatory per Spec Section 6.2) */}
                 {hasScheduleChanged ? (
@@ -972,231 +923,42 @@ export function MyScheduleModal({
           </div>
         )}
 
-        {/* TAB 2: Join Roster (New Member Registration) */}
+        {/* TAB 2: Join Roster (Discord Onboarding) */}
         {tab === 'new' && (
-          <form onSubmit={handleRegisterNewMember} className="mt-4 space-y-3.5">
-            <div className="rounded-xl border border-status-amber/30 bg-status-amber/10 p-3 text-xs text-cream-secondary leading-relaxed">
-              <p className="font-semibold text-status-amber flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5" />
+          <div className="mt-4 space-y-4">
+            <div className="rounded-xl border border-status-amber/30 bg-status-amber/10 p-4 text-xs text-cream-secondary leading-relaxed">
+              <p className="font-semibold text-status-amber flex items-center gap-1.5 text-sm">
+                <Sparkles className="h-4 w-4" />
                 <span>Join the Z Catchers Den</span>
               </p>
-              <p className="mt-1">
-                Your initial bedtime will activate immediately. Once created, future schedule edits will
-                enter the 48-hour accountability cooldown queue.
+              <p className="mt-2 text-cream-secondary">
+                All new member registrations now onboard securely via Discord OAuth. Connect your Discord account to set your bedtime schedule, claim your profile, and join the sleep accountability roster.
               </p>
             </div>
 
-            {/* Username */}
-            <div>
-              <label className="block text-xs font-medium text-cream-secondary mb-1">
-                Discord Display Name
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Alex"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
-              />
-            </div>
-
-            {/* Handle */}
-            <div>
-              <label className="block text-xs font-medium text-cream-secondary mb-1">
-                Discord Handle <span className="text-cream-muted">(optional)</span>
-              </label>
-              <input
-                type="text"
-                placeholder="@username or user ID"
-                value={handle}
-                onChange={(e) => setHandle(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
-              />
-            </div>
-
-            {/* Journal URL */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-medium text-cream-secondary">
-                  Discord Journal Thread / Channel URL
-                </label>
-                {journalUrl.trim() && DISCORD_JOURNAL_REGEX.test(journalUrl.trim()) && (
-                  <a
-                    href={journalUrl.trim()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] text-status-amber hover:underline"
-                  >
-                    <span>Test link</span>
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-              <input
-                type="url"
-                required
-                placeholder="https://discord.com/channels/123456789/987654321"
-                value={journalUrl}
-                onChange={(e) => setJournalUrl(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
-              />
-              <p className="mt-1 text-[11px] text-cream-muted leading-relaxed">
-                When your bedtime hits, friends will click to jump directly into your Discord journal thread to keep you accountable.
+            <div className="flex flex-col items-center justify-center p-6 rounded-2xl border border-night-border bg-night-elevated text-center gap-3">
+              <FoxMascot state="lantern" size={56} className="mb-1" />
+              <h3 className="text-sm font-bold text-cream-primary">
+                Discord Onboarding &amp; Profile Claim
+              </h3>
+              <p className="text-xs text-cream-secondary max-w-xs">
+                Zero passwords or PINs required. Seamlessly syncs your Discord avatar, journal link, and sleep notifications.
               </p>
-              <p className="mt-0.5 text-[10px] text-cream-muted/70">
-                💡 In Discord, right-click (or tap and hold on mobile) your journal thread and select <strong>Copy Link</strong>.
-              </p>
-            </div>
-
-            {/* Bedtime & Wake Time */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-cream-secondary mb-1">
-                  Bedtime (24h)
-                </label>
-                <input
-                  type="time"
-                  required
-                  value={bedtime}
-                  onChange={(e) => setBedtime(e.target.value)}
-                  className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-cream-secondary mb-1">
-                  Wake Time (24h)
-                </label>
-                <input
-                  type="time"
-                  required
-                  value={wakeTime}
-                  onChange={(e) => setWakeTime(e.target.value)}
-                  className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
-                />
-              </div>
-            </div>
-
-            {/* Timezone */}
-            <div>
-              <label className="block text-xs font-medium text-cream-secondary mb-1">
-                Timezone (IANA Identifier)
-              </label>
-              <select
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+              <a
+                href="/api/auth/discord"
+                className="w-full max-w-xs min-h-[44px] bg-status-amber hover:bg-status-amber/90 text-night-bg font-semibold rounded-xl flex items-center justify-center gap-2 px-4 shadow-lg shadow-status-amber/20 transition-all hover:scale-[1.02] active:scale-[0.98] text-xs mt-2"
               >
-                {!COMMON_IANA_TIMEZONES.includes(timezone as any) && (
-                  <option value={timezone}>{timezone} ({formatGmtOffset(timezone)})</option>
-                )}
-                {COMMON_IANA_TIMEZONES.map((tz) => (
-                  <option key={tz} value={tz}>
-                    {tz} ({formatGmtOffset(tz)})
-                  </option>
-                ))}
-              </select>
+                <span>Continue with Discord</span>
+                <ArrowRight className="h-4 w-4" />
+              </a>
+              <a
+                href="/join"
+                className="inline-flex min-h-[44px] items-center px-2 text-[11px] text-cream-muted hover:text-status-amber underline transition-colors"
+              >
+                Or visit the full onboarding page (/join)
+              </a>
             </div>
-
-            {/* Weekend Hours Toggle & Controls (Friday & Saturday Nights) */}
-            <div className="rounded-2xl border border-night-border bg-night-elevated/70 p-3.5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Moon className="h-4 w-4 text-status-amber" />
-                  <div>
-                    <span className="text-xs font-bold text-cream-primary block">
-                      Weekend Hours (Friday &amp; Saturday Nights)
-                    </span>
-                    <span className="text-[11px] text-cream-muted">
-                      Sleep later on weekend nights? Set custom hours for Fri &amp; Sat.
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEnableWeekendHours((prev) => !prev)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    enableWeekendHours ? 'bg-status-amber' : 'bg-night-border'
-                  }`}
-                  aria-label="Toggle weekend hours"
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-night-bg shadow ring-0 transition duration-200 ease-in-out ${
-                      enableWeekendHours ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {enableWeekendHours && (
-                <div className="pt-2 border-t border-night-border/50 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-cream-secondary mb-1">
-                        Weekend Bedtime (24h)
-                      </label>
-                      <input
-                        type="time"
-                        required={enableWeekendHours}
-                        value={weekendBedtime}
-                        onChange={(e) => setWeekendBedtime(e.target.value)}
-                        className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-cream-secondary mb-1">
-                        Weekend Wake Time (24h)
-                      </label>
-                      <input
-                        type="time"
-                        required={enableWeekendHours}
-                        value={weekendWakeTime}
-                        onChange={(e) => setWeekendWakeTime(e.target.value)}
-                        className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-cream-muted flex items-center gap-1.5">
-                    <span>🦊</span>
-                    <span>Applies on Friday night and Saturday night bedtimes. Sunday through Thursday use your regular hours.</span>
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* 4-digit PIN */}
-            <div>
-              <label className="block text-xs font-medium text-cream-secondary mb-1">
-                Choose a 4-Digit PIN
-              </label>
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={6}
-                required
-                placeholder="4-digit PIN"
-                value={newMemberPin}
-                onChange={(e) => setNewMemberPin(e.target.value.replace(/\D/g, ''))}
-                className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
-              />
-            </div>
-
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full min-h-[44px] rounded-xl bg-status-amber font-semibold text-xs text-night-bg hover:bg-status-amber/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 mt-4"
-            >
-              {loading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>Joining Den...</span>
-                </>
-              ) : (
-                <span>Join Z Catchers 🦊</span>
-              )}
-            </button>
-          </form>
+          </div>
         )}
       </div>
     </div>

@@ -150,10 +150,14 @@ export function MemberCard({
     }
   };
 
-  // Safe fallback avatar
-  const avatarUrl =
-    member.avatar_url ||
+  // Safe fallback avatar with error resilience
+  const fallbackAvatarUrl =
     `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(member.discord_username)}`;
+  const [avatarSrc, setAvatarSrc] = useState<string>(member.avatar_url || fallbackAvatarUrl);
+
+  useEffect(() => {
+    setAvatarSrc(member.avatar_url || fallbackAvatarUrl);
+  }, [member.avatar_url, fallbackAvatarUrl]);
 
   // Strikes & Metastrikes data
   const strikesUsed =
@@ -253,8 +257,9 @@ export function MemberCard({
             {/* Avatar with fixed dimensions to prevent squishing */}
             <div className="relative w-11 h-11 rounded-full shrink-0 flex items-center justify-center">
               <img
-                src={avatarUrl}
+                src={avatarSrc}
                 alt={member.discord_username}
+                onError={() => setAvatarSrc(fallbackAvatarUrl)}
                 className="w-11 h-11 rounded-full object-cover border border-night-border bg-night-elevated"
               />
               {isInBed && (
@@ -283,7 +288,7 @@ export function MemberCard({
                   </span>
                 )}
 
-                {member.role === 'moderator' && (
+                {(member.role === 'moderator' || member.is_moderator) && (
                   <span className="rounded bg-night-elevated border border-night-border px-1.5 py-0.5 text-[9px] font-medium text-cream-secondary shrink-0">
                     MOD
                   </span>
