@@ -1,14 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T02:40:00+05:30  
+> **Last Updated:** 2026-11-12T02:48:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 47653b3  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23)  
-> **Active Integration Pull Request:** [#25 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22)  
-> **Active Production Release Pull Request:** None (PR #22 merged into `main`)  
+> **Latest Commit:** ba93743  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
+> **Active Integration Pull Request:** None  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
+> **Active Production Release Pull Request:** [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 30/30 routes | `node scripts/test-wake-up-and-overflow.mjs` passed | `node scripts/test-nag-notifications.mjs` passed | `node scripts/test-in-bed-and-streaks.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
 
 ---
@@ -69,6 +69,16 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 50: Production Release PR #26 (`dev` → `main`)
+* **Production Release Pull Request Creation:**
+  * Created production release Pull Request [#26 (`dev` → `main`)](https://github.com/KrishJdev/Z-Catchers/pull/26) to promote verified features from Phase 49 into production (`main`).
+  * Encompasses sleeping state to awake undo action, early wake-up state machine override in `sleepEngine.ts`, `WOKE_UP` notification logging, moderator reset controls, hero greeting dynamic state, and symmetrical flexbox layout eliminating "Leave quiet note" overflow.
+* **Comprehensive Release Verification Check:**
+  * Clean zero-conflict tree merge verified between `origin/main` and `origin/dev`.
+  * `npx tsc --noEmit` verified clean with 0 errors.
+  * `npm run build` verified clean with all 30/30 static and dynamic routes compiled.
+  * All automated test suites executed and verified passing (`scripts/test-wake-up-and-overflow.mjs`, `scripts/test-nag-notifications.mjs`, `scripts/test-in-bed-and-streaks.mjs`, `scripts/test-strikes-system.mjs`).
 
 ### Phase 49: Sleeping State to Awake Undo Action & Leave Quiet Note Overflow Fix
 * **Problem Diagnosis & Root Cause:**
@@ -796,10 +806,10 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Review & Merge Active Integration Pull Request [#25 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/25):**
-   * Active PR: [#25 `fix(sleeping): add option to undo sleep state to awake and fix leave quiet note overflow`](https://github.com/KrishJdev/Z-Catchers/pull/25) targets `dev` from `krish`.
-   * Includes awake transition override in `sleepEngine.ts`, `WOKE_UP` notification logging & API endpoints, touch-friendly `[ ☀️ Wake Up (Undo) ]` buttons across dashboard banner, card body, action bar, and Mod Drawer, plus symmetrical flexbox layout eliminating "Leave quiet note" overflow.
-   * Verify CI and merge into `dev`.
+1. **Review & Merge Active Production Release Pull Request [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26):**
+   * Active PR: [#26 `release: promote sleep state undo option and leave quiet note overflow fix to main`](https://github.com/KrishJdev/Z-Catchers/pull/26) targets `main` from `dev`.
+   * Promotes Phase 49 verified features (PR #25) into production: awake state machine transition, early wake-up/undo buttons, `WOKE_UP` notification logging, and "Leave quiet note" overflow fix.
+   * Verify CI and merge into `main`.
 
 2. **Database Migration Execution in Supabase SQL Editor:**
    * Run the idempotent migration block from `supabase/schema.sql` on the remote Supabase database:
