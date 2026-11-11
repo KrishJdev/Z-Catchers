@@ -15,6 +15,13 @@ interface StatusBucketProps {
   children: React.ReactNode;
 }
 
+/**
+ * Collapsible section bucket component grouping members by sleep status (Asleep, Winding Down, Nag Now, etc.).
+ * Includes count pills, Warm Dark theme accents, and Sleepy Fox empty state illustrations.
+ *
+ * @param props - Status bucket configuration properties and children cards
+ * @returns React JSX collapsible bucket element
+ */
 export function StatusBucket({
   title,
   count,
@@ -34,33 +41,33 @@ export function StatusBucket({
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full min-h-[44px] items-center justify-between rounded-xl border border-night-border/70 bg-night-surface/80 px-4 py-2.5 text-left transition-colors hover:border-night-elevated hover:bg-night-surface"
+        className="flex w-full min-h-[44px] items-center justify-between rounded-xl border border-night-border bg-night-surface px-4 py-3 text-left transition-colors hover:border-night-border/80 hover:bg-night-elevated"
       >
         <div className="flex items-center gap-2.5">
           {icon}
           <span className={`text-xs font-bold tracking-wider uppercase ${accentColor}`}>
             {title}
           </span>
-          <span className="rounded-full bg-night-elevated px-2 py-0.5 text-xs font-semibold tabular-nums text-cream-secondary">
+          <span className="rounded-full bg-night-elevated border border-night-border px-2.5 py-0.5 text-xs font-semibold tabular-nums text-cream-secondary">
             {count}
           </span>
         </div>
 
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-cream-muted" />
+          <ChevronDown className="h-4 w-4 text-cream-secondary" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-cream-muted" />
+          <ChevronRight className="h-4 w-4 text-cream-secondary" />
         )}
       </button>
 
       {isExpanded && (
         <div className="mt-3">
           {count === 0 ? (
-            <div className="flex items-center justify-center gap-3 rounded-2xl border border-night-border/40 bg-night-surface/40 px-6 py-8 text-center text-cream-muted">
+            <div className="flex items-center justify-center gap-3 rounded-2xl border border-night-border/60 bg-night-surface/60 px-6 py-8 text-center text-cream-secondary">
               <FoxMascot state="sleeping" size={44} />
               <div className="text-left">
-                <p className="text-sm font-medium text-cream-secondary">{emptyMessage}</p>
-                <p className="text-xs text-cream-muted">Quiet hours are in effect for this group.</p>
+                <p className="text-sm font-medium text-cream-primary">{emptyMessage}</p>
+                <p className="text-xs text-cream-secondary">Quiet hours are in effect for this group.</p>
               </div>
             </div>
           ) : (

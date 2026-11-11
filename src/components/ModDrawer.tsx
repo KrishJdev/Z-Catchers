@@ -35,7 +35,7 @@ const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channel
 const DISCORD_WEBHOOK_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-import { GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
+import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
 
 interface ModDrawerProps {
   isOpen: boolean;
@@ -44,6 +44,14 @@ interface ModDrawerProps {
   onRosterChanged: () => Promise<void>;
 }
 
+/**
+ * Moderator administration drawer.
+ * Provides privileged schedule overrides, manual strike & metastrike adjustments,
+ * strike log clearing, and Discord community webhook management.
+ *
+ * @param props - Component props with isOpen, onClose, viewerTimezone, and onRosterChanged
+ * @returns React JSX slide-over drawer element
+ */
 export function ModDrawer({
   isOpen,
   onClose,
@@ -95,7 +103,7 @@ export function ModDrawer({
   const [newJournalUrl, setNewJournalUrl] = useState('');
   const [newBedtime, setNewBedtime] = useState('23:00');
   const [newWakeTime, setNewWakeTime] = useState('07:00');
-  const [newTimezone, setNewTimezone] = useState(formatGmtOffset(viewerTimezone));
+  const [newTimezone, setNewTimezone] = useState(viewerTimezone);
   const [newWeekendBedtime, setNewWeekendBedtime] = useState('');
   const [newWeekendWakeTime, setNewWeekendWakeTime] = useState('');
   const [newRole, setNewRole] = useState<'member' | 'moderator'>('member');
@@ -397,7 +405,7 @@ export function ModDrawer({
     setEditingMember(member);
     setEditBedtime(member.bedtime_local);
     setEditWakeTime(member.wake_time_local);
-    setEditTimezone(formatGmtOffset(member.timezone));
+    setEditTimezone(member.timezone);
     setEditWeekendBedtime(member.weekend_bedtime_local || '');
     setEditWeekendWakeTime(member.weekend_wake_time_local || '');
     setEditJournalUrl(member.journal_url);
@@ -467,6 +475,79 @@ export function ModDrawer({
       await onRosterChanged();
     } catch {
       setErrorMessage('Network error saving edit.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // Action: Moderator Adjust Strikes & Metastrikes
+  const handleAdjustStrikes = async (member: Member, deltaStrikes: number, deltaMetas: number) => {
+    const currentStrikes = member.strikes_used ?? 0;
+    const currentMetas = member.metastrikes_used ?? 0;
+    const nextStrikes = Math.max(0, Math.min(3, currentStrikes + deltaStrikes));
+    const nextMetas = Math.max(0, Math.min(3, currentMetas + deltaMetas));
+
+    setActionLoadingId(`strikes_${member.id}`);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch('/api/mod', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'adjust_strikes',
+          mod_passcode: passcode,
+          member_id: member.id,
+          strikes_used: nextStrikes,
+          metastrikes_used: nextMetas,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMessage(data.error || 'Failed to adjust strikes.');
+        return;
+      }
+
+      setSuccessMessage(`Updated strikes for ${member.discord_username}: ⚡ ${nextStrikes}/3 • 🛡️ ${nextMetas}/3`);
+      await fetchModRoster(passcode);
+      await onRosterChanged();
+      setTimeout(() => setSuccessMessage(null), 3500);
+    } catch {
+      setErrorMessage('Network error adjusting member strikes.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // Action: Clear Nightly Strike Log (Undo accidental vote / strike)
+  const handleClearNightlyLog = async (member: Member) => {
+    setActionLoadingId(`clear_${member.id}`);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch('/api/mod', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'clear_strike_log',
+          mod_passcode: passcode,
+          member_id: member.id,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMessage(data.error || 'Failed to clear strike log.');
+        return;
+      }
+
+      setSuccessMessage(`Cleared tonight's strike log & accidental votes for ${member.discord_username}.`);
+      await fetchModRoster(passcode);
+      await onRosterChanged();
+      setTimeout(() => setSuccessMessage(null), 3500);
+    } catch {
+      setErrorMessage('Network error clearing strike log.');
     } finally {
       setActionLoadingId(null);
     }
@@ -674,13 +755,13 @@ export function ModDrawer({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/85 backdrop-blur-md p-0 md:items-center md:p-4">
       <div
-        className="relative flex w-full max-w-2xl lg:max-w-3xl flex-col rounded-t-3xl border-t border-night-border bg-night-surface p-5 shadow-2xl max-h-[92vh] overflow-y-auto md:rounded-2xl md:border md:p-6"
+        className="relative flex w-full max-w-2xl lg:max-w-3xl flex-col rounded-t-3xl border-t border-night-border bg-night-surface p-5 shadow-2xl max-h-[92dvh] overflow-y-auto md:rounded-2xl md:border md:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-6"
         role="dialog"
         aria-modal="true"
         aria-labelledby="mod-panel-title"
       >
         {/* Mobile drag handle indicator */}
-        <div className="mx-auto mb-3 h-1 w-12 rounded-full bg-night-border md:hidden" />
+        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-night-border md:hidden shrink-0" />
 
         {/* Modal Top Header */}
         <div className="flex items-center justify-between border-b border-night-border pb-4">
@@ -965,12 +1046,12 @@ export function ModDrawer({
                       onChange={(e) => setEditTimezone(e.target.value)}
                       className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
                     >
-                      {!GMT_OFFSETS.includes(editTimezone as any) && (
-                        <option value={editTimezone}>{formatGmtOffset(editTimezone)}</option>
+                      {!COMMON_IANA_TIMEZONES.includes(editTimezone as any) && (
+                        <option value={editTimezone}>{editTimezone} ({formatGmtOffset(editTimezone)})</option>
                       )}
-                      {GMT_OFFSETS.map((tz) => (
+                      {COMMON_IANA_TIMEZONES.map((tz) => (
                         <option key={tz} value={tz}>
-                          {tz}
+                          {tz} ({formatGmtOffset(tz)})
                         </option>
                       ))}
                     </select>
@@ -1327,6 +1408,82 @@ export function ModDrawer({
                               {(member.has_pin ?? Boolean(member.passcode_hash)) ? 'PIN Set' : 'Unclaimed'}
                             </span>
                           </div>
+
+                          {/* Mod Accountability Row: Adjust Strikes & Metastrikes */}
+                          <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl border border-night-border/70 bg-night-bg/50 px-2.5 py-1.5 text-[11px]">
+                            {/* Strikes Adjuster */}
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-fox-rust flex items-center gap-1">
+                                <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
+                                <span>Strikes:</span>
+                                <strong className="tabular-nums font-bold">{member.strikes_used ?? 0}/3</strong>
+                              </span>
+                              <div className="flex items-center gap-0.5 ml-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdjustStrikes(member, -1, 0)}
+                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.strikes_used ?? 0) <= 0}
+                                  className="h-5 w-5 rounded bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center"
+                                  title="Decrement strikes"
+                                >
+                                  -
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdjustStrikes(member, 1, 0)}
+                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.strikes_used ?? 0) >= 3}
+                                  className="h-5 w-5 rounded bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center"
+                                  title="Increment strikes"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+
+                            <span className="text-cream-muted">•</span>
+
+                            {/* Metastrikes Adjuster */}
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-fox-amber flex items-center gap-1">
+                                <Shield className="h-3 w-3 fill-fox-amber/20 text-fox-amber" />
+                                <span>Meta:</span>
+                                <strong className="tabular-nums font-bold">{member.metastrikes_used ?? 0}/3</strong>
+                              </span>
+                              <div className="flex items-center gap-0.5 ml-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdjustStrikes(member, 0, -1)}
+                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.metastrikes_used ?? 0) <= 0}
+                                  className="h-5 w-5 rounded bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center"
+                                  title="Decrement metastrikes"
+                                >
+                                  -
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdjustStrikes(member, 0, 1)}
+                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.metastrikes_used ?? 0) >= 3}
+                                  className="h-5 w-5 rounded bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center"
+                                  title="Increment metastrikes"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+
+                            <span className="text-cream-muted">•</span>
+
+                            {/* Clear Tonight's Log / Accidental Votes */}
+                            <button
+                              type="button"
+                              onClick={() => handleClearNightlyLog(member)}
+                              disabled={actionLoadingId === `clear_${member.id}`}
+                              className="text-[10px] text-cream-muted hover:text-fox-rust underline transition-colors"
+                              title="Clear tonight's pending votes or accidental strike"
+                            >
+                              Clear Tonight&apos;s Log
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -1507,12 +1664,12 @@ export function ModDrawer({
                       onChange={(e) => setNewTimezone(e.target.value)}
                       className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
                     >
-                      {!GMT_OFFSETS.includes(newTimezone as any) && (
-                        <option value={newTimezone}>{formatGmtOffset(newTimezone)}</option>
+                      {!COMMON_IANA_TIMEZONES.includes(newTimezone as any) && (
+                        <option value={newTimezone}>{newTimezone} ({formatGmtOffset(newTimezone)})</option>
                       )}
-                      {GMT_OFFSETS.map((tz) => (
+                      {COMMON_IANA_TIMEZONES.map((tz) => (
                         <option key={tz} value={tz}>
-                          {tz}
+                          {tz} ({formatGmtOffset(tz)})
                         </option>
                       ))}
                     </select>

@@ -1,11 +1,22 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member } from '@/lib/db';
+import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
 import { DateTime } from 'luxon';
 import { verifyPin, getRequestSessionMemberId } from '@/lib/auth';
 import { calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
-import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 
+/**
+ * GET: Retrieve member's in-bed status and current sleep streak for their active sleep cycle date.
+ *
+ * @param request - Incoming HTTP request with memberId query parameter
+ * @returns JSON response with check-in status, streak count, and sleep cycle date
+ */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -53,6 +64,13 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * POST: Record an "I'm in Bed" check-in or cancel an existing check-in for tonight's sleep cycle.
+ * Requires member PIN authentication or valid session cookie.
+ *
+ * @param request - Incoming HTTP request with memberId, action, and optional PIN
+ * @returns JSON response with updated in-bed status and recalculated streak days
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -97,7 +115,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
         }
         const clientIp = getClientIp(request);
-        const rateCheck = checkPinRateLimit(clientIp, member.id);
+        const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
         if (!rateCheck.allowed) {
           return NextResponse.json(
             {
@@ -113,9 +131,9 @@ export async function POST(request: Request) {
         const cleanPin = pin.trim();
         if (member.passcode_hash && verifyPin(cleanPin, member.passcode_hash)) {
           isPinMatch = true;
-          resetPinFailure(clientIp, member.id);
+          await resetPinFailurePersistent(clientIp, member.id);
         } else {
-          recordPinFailure(clientIp, member.id);
+          await recordPinFailurePersistent(clientIp, member.id);
         }
       }
     }
@@ -151,6 +169,12 @@ export async function POST(request: Request) {
 
       if (delErr) {
         return NextResponse.json({ error: delErr.message }, { status: 500 });
+      }
+
+      if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date === localDate) {
+        await updateMemberSafe(member.id, {
+          last_notified_stage: null,
+        });
       }
 
       // Recompute streak after cancellation
@@ -190,6 +214,11 @@ export async function POST(request: Request) {
     if (insertErr) {
       return NextResponse.json({ error: insertErr.message }, { status: 500 });
     }
+
+    await updateMemberSafe(member.id, {
+      last_notified_stage: 'IN_BED_EARLY',
+      last_notified_cycle_date: localDate,
+    });
 
     // Compute updated streak
     const { data: logs } = await supabaseAdmin

@@ -1,5 +1,11 @@
 import { DateTime } from 'luxon';
-import { supabaseAdmin, Member, PushSubscriptionRecord, fetchAllNotificationLogs } from '@/lib/db';
+import {
+  supabaseAdmin,
+  Member,
+  PushSubscriptionRecord,
+  fetchAllNotificationLogs,
+  updateMemberSafe,
+} from '@/lib/db';
 import { checkCooldownPromotion, computeMemberState, getSleepCycleDate } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
 import { sendPushNotification } from '@/lib/pushServer';
@@ -76,23 +82,20 @@ export async function executeNotificationDispatcher(options: {
     const { promoted, activeMember } = checkCooldownPromotion(m, nowUtc);
     if (promoted && !options.dryRun) {
       results.promotionsCount++;
-      await supabaseAdmin
-        .from('members')
-        .update({
-          bedtime_local: activeMember.bedtime_local,
-          wake_time_local: activeMember.wake_time_local,
-          timezone: activeMember.timezone,
-          weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
-          weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
-          pending_bedtime_local: null,
-          pending_wake_time_local: null,
-          pending_timezone: null,
-          pending_weekend_bedtime_local: null,
-          pending_weekend_wake_time_local: null,
-          pending_effective_at: null,
-          updated_at: nowUtc.toISO(),
-        })
-        .eq('id', m.id);
+      await updateMemberSafe(m.id, {
+        bedtime_local: activeMember.bedtime_local,
+        wake_time_local: activeMember.wake_time_local,
+        timezone: activeMember.timezone,
+        weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
+        weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
+        pending_bedtime_local: null,
+        pending_wake_time_local: null,
+        pending_timezone: null,
+        pending_weekend_bedtime_local: null,
+        pending_weekend_wake_time_local: null,
+        pending_effective_at: null,
+        updated_at: nowUtc.toISO(),
+      });
     }
     activeMembers.push(activeMember);
   }
@@ -187,11 +190,21 @@ export async function executeNotificationDispatcher(options: {
     dispatchedSet.add(`${memberId}:${notificationType}:${localDate}`);
     if (options.dryRun) return;
 
-    await supabaseAdmin.from('notification_logs').insert({
-      member_id: memberId,
-      notification_type: notificationType,
-      local_date: localDate,
-      dispatched_at: nowUtc.toISO(),
+    // 1. Audit trail in notification_logs table (idempotent upsert)
+    await supabaseAdmin.from('notification_logs').upsert(
+      {
+        member_id: memberId,
+        notification_type: notificationType,
+        local_date: localDate,
+        dispatched_at: nowUtc.toISO(),
+      },
+      { onConflict: 'member_id,notification_type,local_date' }
+    );
+
+    // 2. Persistent tracking columns on members table for atomic idempotency
+    await updateMemberSafe(memberId, {
+      last_notified_stage: notificationType,
+      last_notified_cycle_date: localDate,
     });
   };
 
@@ -206,16 +219,21 @@ export async function executeNotificationDispatcher(options: {
     if (!localDate) continue;
 
     // Check if sleeper has checked in early via "I'm in Bed" Safe Button for tonight
-    const alreadyInBed = hasBeenDispatched(member.id, 'IN_BED_EARLY', localDate);
+    const alreadyInBed =
+      (member.last_notified_cycle_date === localDate && member.last_notified_stage === 'IN_BED_EARLY') ||
+      hasBeenDispatched(member.id, 'IN_BED_EARLY', localDate);
 
     const state = computeMemberState(member, member.timezone, nowUtc, alreadyInBed);
     const diff = state.diffMinutes;
 
     // Check 1: T-Minus 30 Minutes Window (WIND_DOWN_30M)
     // Due-and-not-yet-logged: Wind-down is due starting 30 minutes before bedtime until bedtime (-30 <= diff < 0)
-    // Works reliably with 1-min, 5-min or jittered schedulers, protected against duplicates by idempotency log
+    // Works reliably with 1-min, 5-min or jittered schedulers, protected against duplicates by persistent tracking columns & audit log
     const isWindDownDue = diff >= -30 && diff < 0;
-    const isWindDownAlreadyLogged = hasBeenDispatched(member.id, 'WIND_DOWN_30M', localDate);
+    const isWindDownAlreadyLogged =
+      (member.last_notified_cycle_date === localDate &&
+        (member.last_notified_stage === 'WIND_DOWN_30M' || member.last_notified_stage === 'BEDTIME_HIT')) ||
+      hasBeenDispatched(member.id, 'WIND_DOWN_30M', localDate);
 
     if (isWindDownDue && !isWindDownAlreadyLogged) {
       if (alreadyInBed) {
@@ -244,10 +262,12 @@ export async function executeNotificationDispatcher(options: {
     }
 
     // Check 2: T-Minus 0 Minutes Bedtime Hit Window (BEDTIME_HIT)
-    // Due-and-not-yet-logged: Bedtime hit applies from bedtime throughout the 60m nag window (0 <= diff < 60)
-    // Dispatches personal reminder, community nags, and Discord webhook on first trigger, then marks logged
-    const isBedtimeDue = diff >= 0 && diff < 60;
-    const isBedtimeAlreadyLogged = hasBeenDispatched(member.id, 'BEDTIME_HIT', localDate);
+    // Evaluates a rolling 30-minute lookback window (0 <= diff <= 30) ensuring triggers even with GitHub Actions cron jitter
+    // Idempotent persistent checks guarantee each notification stage fires at most once per sleep cycle
+    const isBedtimeDue = diff >= 0 && diff <= 30;
+    const isBedtimeAlreadyLogged =
+      (member.last_notified_cycle_date === localDate && member.last_notified_stage === 'BEDTIME_HIT') ||
+      hasBeenDispatched(member.id, 'BEDTIME_HIT', localDate);
 
     if (isBedtimeDue && !isBedtimeAlreadyLogged) {
       if (alreadyInBed) {
@@ -284,7 +304,8 @@ export async function executeNotificationDispatcher(options: {
           // Check if peer is in bed or sleep shielded
           const peerLocalDate = getSleepCycleDate(peer, nowUtc);
           const peerInBed = peerLocalDate
-            ? hasBeenDispatched(peer.id, 'IN_BED_EARLY', peerLocalDate)
+            ? (peer.last_notified_cycle_date === peerLocalDate && peer.last_notified_stage === 'IN_BED_EARLY') ||
+              hasBeenDispatched(peer.id, 'IN_BED_EARLY', peerLocalDate)
             : false;
 
           const peerState = computeMemberState(peer, peer.timezone, nowUtc, peerInBed);

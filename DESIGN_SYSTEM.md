@@ -216,6 +216,36 @@ Whenever `member.pending_effective_at` is in the future, render a dashed sub-ban
 * **Banner Style:** `mt-2.5 px-3 py-1.5 rounded-lg bg-status-amber/10 border border-dashed border-status-amber/40 text-xs text-status-amber flex items-center justify-between tabular-nums`
 * **Text:** `"⏳ Schedule shifting to [Pending Viewer Time] in 34h 12m"`
 
+### 5.6 Accountability Row & Indicator Pips (`MemberCard.tsx`)
+Every `MemberCard` includes a compact, warm dark accountability row positioned directly below the sleep schedule information:
+
+* **Strikes Indicator (`⚡ Strikes: X/3`):**
+  * Color token: Warm rust / terracotta (`#E07A5F` / `fox-rust` / `border-fox-rust/40 text-fox-rust`).
+  * Visual Pips: 3 horizontal mini-dots ($6\text{px} \times 6\text{px}$). Filled dots render in glowing rust (`bg-fox-rust shadow-[0_0_6px_rgba(224,122,95,0.4)]`), unfilled dots render in subtle border tone (`bg-night-border`).
+  * Counter text: `⚡ Strikes: 1/3` (cream text with rust accent).
+* **Metastrikes Indicator (`🛡️ Meta: X/3`):**
+  * Color token: Warm gold / amber (`#F4A261` / `fox-amber` / `border-fox-amber/40 text-fox-amber`).
+  * Visual Pips: 3 horizontal mini-shield dots ($6\text{px} \times 6\text{px}$). Filled dots render in golden amber (`bg-fox-amber shadow-[0_0_6px_rgba(244,162,97,0.4)]`), unfilled dots render in subtle border tone (`bg-night-border`).
+  * Counter text: `🛡️ Meta: 2/3` (cream text with amber accent).
+* **Max Strikes Alert State (3/3 Strikes Used):**
+  * When a member reaches `strikes_used >= 3`, a prominent Sleepy Fox caution badge renders:
+  * Style: `mt-2 px-2.5 py-1 rounded-xl bg-fox-rust/15 border border-fox-rust/50 text-fox-rust text-xs font-semibold flex items-center justify-between`
+  * Text: `"🦊 Out of Strikes • 0 Margin Left"`
+  * Informs the community that the member has exhausted all leeway for the current calendar month.
+
+### 5.7 Action Bar Secondary Pill Variants
+Next to the primary `"Nag in Discord Journal ↗"` button, contextual secondary pills adapt based on bedtime proximity and strike states:
+
+| Pill Variant | Condition | Visual Styling & Label |
+| :--- | :--- | :--- |
+| **Grace Period** | Bedtime hit, within 0–5 minutes | `⏳ Grace: Xm left` (subtle amber border, voting locked) |
+| **Vote Strike (0/2)** | > 5m overdue, 0 votes cast | `Vote Strike (0/2)` (warm coral border `#D96B52`, clickable by community) |
+| **Vote Strike (1/2)** | > 5m overdue, 1 vote cast | `Vote Strike (1/2)` (pulsing coral border `#D96B52`, 1 vote needed to confirm) |
+| **Strike Issued** | 2 votes confirmed tonight | `Strike Issued Tonight` (solid dark coral `#D96B52/20`, locked) |
+| **Metastrike Active** | Proactive pass activated for tonight | `🛡️ Metastrike: [Reason]` (warm golden amber `#F4A261`, voting locked) |
+| **Self-Service Pass** | Member's own card, tonight | `"Use Metastrike Tonight"` button (warm amber secondary action) |
+| **24-Hour Swap** | Member received strike within 24h | `"Convert to Metastrike (24h Pass)"` button (retroactive excuse conversion) |
+
 ---
 
 ## 6. Modals, Drawers & Dialog Architecture
@@ -235,3 +265,17 @@ When a user edits their existing bedtime or timezone, display a clear callout bo
 * **Condition 2 (Push Permission Not Granted):** If `Notification.permission !== 'granted'`, render a prominent banner with fox bell icon:
   * `"🔔 Turn on Bedtime & Nag Notifications"` button (`bg-status-amber text-night-bg font-semibold rounded-xl min-h-[44px]`).
 * **Condition 3 (Subscribed & Ready):** Hide banner and display active badge in header/command bar (`"🔔 Alerts On"`).
+
+### 6.4 Metastrike Excuse Modal (`MetastrikeModal.tsx`)
+* **Purpose:** Allows members to activate an excused Metastrike pass (proactively or retroactively within 24 hours of an issued strike).
+* **Modal Architecture:** Responsive dialog (centered on desktop, slide-up sheet on mobile) with Warm Dark aesthetic and Sleepy Fox shield motif.
+* **Component Features:**
+  * **Passes Remaining Indicator:** Visual meter showing `X of 3 passes remaining this month`.
+  * **Quick Reason Pills:** One-tap preset selections:
+    * `"Monthly Battle"` (e.g. community game or guild event)
+    * `"Family Event"` (family gathering or dinner)
+    * `"Birthday Celebration"`
+    * `"Overtime / Work Deadline"`
+    * `"Health & Emergency"`
+  * **Custom Reason Input:** Clean text field for specific personal notes.
+  * **Action Button:** `"Activate Metastrike Shield"` (proactive) or `"Convert Strike to Metastrike"` (24h retroactive swap).

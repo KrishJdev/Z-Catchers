@@ -35,5 +35,33 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "I'm In Bed",
+      "short_name": "In Bed",
+      "description": "Check in early and activate your Sleep Shield",
+      "url": "/?action=in-bed",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "My Schedule",
+      "short_name": "My Time",
+      "description": "View and update your local bedtime",
+      "url": "/?action=schedule",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
   ]
 }

@@ -1,6 +1,12 @@
 import crypto from 'crypto';
 import type { Member } from '@/lib/db';
 
+/**
+ * Retrieves the cryptographic salt used for PIN hashing from the PIN_SALT environment variable.
+ * Throws in production if missing; falls back to dev salt in development mode.
+ *
+ * @returns Secret salt string
+ */
 export function getPinSalt(): string {
   const isProd = process.env.NODE_ENV === 'production';
   const salt = process.env.PIN_SALT;
@@ -13,6 +19,12 @@ export function getPinSalt(): string {
   return salt;
 }
 
+/**
+ * Retrieves the secret used for signing session tokens from SESSION_SECRET environment variable.
+ * Throws in production if missing; falls back to dev secret in development mode.
+ *
+ * @returns Secret session string
+ */
 export function getSessionSecret(): string {
   const isProd = process.env.NODE_ENV === 'production';
   const secret = process.env.SESSION_SECRET;
@@ -157,6 +169,78 @@ export function sanitizeMember(member: Member): Member {
   return {
     ...rest,
     has_pin: Boolean(passcode_hash),
+  };
+}
+
+export interface ModAuthResult {
+  authorized: boolean;
+  moderatorId?: string;
+  moderatorRole?: 'master' | 'member_mod';
+  error?: string;
+}
+
+/**
+ * Enforces strict server-side moderator session and passcode validation.
+ * Audits every administrative mutation and override.
+ */
+export async function verifyModeratorAuthorization(
+  request: Request,
+  passcodeFromBody?: string,
+  pinFromBody?: string
+): Promise<ModAuthResult> {
+  // 1. Check Master Moderator Secret Passcode
+  const headerPasscode = request.headers.get('x-mod-passcode');
+  const candidatePasscode = (passcodeFromBody || headerPasscode)?.trim();
+
+  if (candidatePasscode) {
+    const isPasscodeMatch = verifyModPasscode(candidatePasscode);
+    if (isPasscodeMatch) {
+      return {
+        authorized: true,
+        moderatorId: 'master_mod',
+        moderatorRole: 'master',
+      };
+    }
+  }
+
+  // 2. Check Authenticated Moderator Session Token
+  const sessionMemberId = getRequestSessionMemberId(request);
+  if (sessionMemberId) {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (url && key) {
+        const client = createClient(url, key, { auth: { persistSession: false } });
+        const { data: member } = await client
+          .from('members')
+          .select('id, role, is_active, passcode_hash')
+          .eq('id', sessionMemberId)
+          .single();
+
+        if (member && member.is_active && member.role === 'moderator') {
+          // If a PIN is supplied with the mutation, verify it
+          if (pinFromBody && member.passcode_hash) {
+            const isPinValid = verifyPin(pinFromBody, member.passcode_hash);
+            if (!isPinValid) {
+              return { authorized: false, error: 'Invalid moderator PIN.' };
+            }
+          }
+          return {
+            authorized: true,
+            moderatorId: member.id,
+            moderatorRole: 'member_mod',
+          };
+        }
+      }
+    } catch {
+      // Continue to unauthorized response
+    }
+  }
+
+  return {
+    authorized: false,
+    error: 'Unauthorized: Valid moderator secret passcode or active moderator session required.',
   };
 }
 

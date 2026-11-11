@@ -10,10 +10,18 @@ import {
   Star,
   CheckCircle2,
   Users,
+  Zap,
+  Shield,
+  Flame,
+  BedDouble,
+  Clock,
+  RefreshCw,
+  Check,
 } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import type { MemberState } from '@/lib/sleepEngine';
 import { formatGmtOffset } from '@/lib/timezone';
+import { FoxMascot } from './FoxMascot';
 
 interface MemberCardProps {
   member: Member;
@@ -24,8 +32,18 @@ interface MemberCardProps {
   onCheckIn?: (memberId: string) => Promise<void>;
   onCancelInBed?: (memberId: string) => Promise<void>;
   isCheckingIn?: boolean;
+  onVoteStrike?: (targetMemberId: string) => Promise<void>;
+  onOpenMetastrike?: (member: Member, mode: 'proactive' | 'convert_retroactive') => void;
+  isVotingStrike?: boolean;
 }
 
+/**
+ * Visual card displaying an individual community member's bedtime status,
+ * streak milestone badge, live nag assist counter, and strike actions.
+ *
+ * @param props - Component properties for member state and interaction handlers
+ * @returns Rendered member card
+ */
 export function MemberCard({
   member,
   state,
@@ -35,34 +53,100 @@ export function MemberCard({
   onCheckIn,
   onCancelInBed,
   isCheckingIn = false,
+  onVoteStrike,
+  onOpenMetastrike,
+  isVotingStrike = false,
 }: MemberCardProps) {
   const { bucket, formattedViewerTime, formattedSleeperTime, pendingNotice, streakMilestone } = state;
   const isViewer = Boolean(currentMemberId && member.id === currentMemberId);
-  const isInBed = Boolean(member.is_in_bed || state.checkedInEarly);
 
-  // Local Nag Assist State
+  // Optimistic UI state for "I'm In Bed" check-in
+  const [optimisticInBed, setOptimisticInBed] = useState<boolean | null>(null);
+  const isInBed = optimisticInBed !== null ? optimisticInBed : Boolean(member.is_in_bed || state.checkedInEarly);
+
+  // Local Nag Assist State with optimistic increment & rollback
   const [localNagCount, setLocalNagCount] = useState<number>(member.nag_assists_count || 0);
   const [hasNagged, setHasNagged] = useState(false);
 
+  // Subtle alert message for rollbacks
+  const [cardError, setCardError] = useState<string | null>(null);
+
+  // Haptic feedback helper (15ms light pulse)
+  const triggerHaptic = (duration = 15) => {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      try {
+        navigator.vibrate(duration);
+      } catch {
+        // Ignore vibration errors
+      }
+    }
+  };
+
+  // Sync server values when member updates
   useEffect(() => {
     if (typeof member.nag_assists_count === 'number') {
       setLocalNagCount(member.nag_assists_count);
     }
-  }, [member.nag_assists_count]);
+    setOptimisticInBed(null);
+  }, [member.nag_assists_count, member.is_in_bed, state.checkedInEarly]);
 
+  // Optimistic Nag Assist Action
   const handleNagJournalClick = async () => {
+    triggerHaptic(15);
     if (!hasNagged) {
       setHasNagged(true);
       setLocalNagCount((prev) => prev + 1);
+      setCardError(null);
       try {
-        await fetch('/api/members/nag-assist', {
+        const res = await fetch('/api/members/nag-assist', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sleeper_id: member.id }),
         });
-      } catch (e) {
-        // Non-blocking assist error
+        if (!res.ok) {
+          // Rollback on server failure
+          setHasNagged(false);
+          setLocalNagCount((prev) => Math.max(0, prev - 1));
+          setCardError('Could not record nag assist.');
+          setTimeout(() => setCardError(null), 3000);
+        }
+      } catch {
+        // Rollback on network failure
+        setHasNagged(false);
+        setLocalNagCount((prev) => Math.max(0, prev - 1));
+        setCardError('Network error recording nag.');
+        setTimeout(() => setCardError(null), 3000);
       }
+    }
+  };
+
+  // Optimistic "I'm in Bed" check-in action
+  const handleCheckInClick = async () => {
+    triggerHaptic(15);
+    if (!onCheckIn) return;
+    setOptimisticInBed(true);
+    setCardError(null);
+    try {
+      await onCheckIn(member.id);
+    } catch {
+      setOptimisticInBed(false);
+      setCardError('Check-in failed. Reverting status.');
+      setTimeout(() => setCardError(null), 3000);
+    }
+  };
+
+  // Optimistic Cancel "I'm in Bed" action
+  const handleCancelInBedClick = async () => {
+    triggerHaptic(15);
+    if (!onCancelInBed) return;
+    setOptimisticInBed(false);
+    setCardError(null);
+    try {
+      await onCancelInBed(member.id);
+    } catch {
+      setOptimisticInBed(true);
+      setCardError('Failed to cancel check-in.');
+      setTimeout(() => setCardError(null), 3000);
     }
   };
 
@@ -71,342 +155,552 @@ export function MemberCard({
     member.avatar_url ||
     `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(member.discord_username)}`;
 
-  // Header meta: Name, avatar, role, streak, and buddy star
-  const renderHeaderLeft = () => (
-    <div className="flex items-center gap-3">
-      <div className="relative">
-        <img
-          src={avatarUrl}
-          alt={member.discord_username}
-          className={`h-10 w-10 rounded-full border bg-night-elevated ${
-            bucket === 'BEDTIME_NOW'
-              ? 'border-status-coral/40'
-              : bucket === 'WINDING_DOWN'
-              ? 'border-status-amber/40'
-              : 'border-night-border'
-          }`}
-        />
-        {isInBed && (
-          <span
-            className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-status-sage text-[9px] text-night-bg shadow"
-            title="Checked into bed early"
+  // Strikes & Metastrikes data
+  const strikesUsed =
+    typeof member.strikes_count === 'number'
+      ? member.strikes_count
+      : typeof member.strikes_used === 'number'
+      ? member.strikes_used
+      : 0;
+  const metastrikesUsed =
+    typeof member.metastrikes_count === 'number'
+      ? member.metastrikes_count
+      : typeof member.metastrikes_used === 'number'
+      ? member.metastrikes_used
+      : 0;
+  const isMetastrikeActive = Boolean(
+    member.is_metastrike_active || member.tonight_strike_log?.record_type === 'metastrike'
+  );
+  const isStrikeIssuedTonight = Boolean(member.tonight_strike_log?.record_type === 'strike');
+  const isStrikeConvertible = Boolean(
+    isStrikeIssuedTonight || member.convertible_strike_log
+  );
+  const strikeVotesCount =
+    member.tonight_strike_log?.record_type === 'pending_vote'
+      ? member.tonight_strike_log.voter_ids?.length || 0
+      : isStrikeIssuedTonight
+      ? 2
+      : 0;
+
+  const isNagNow = bucket === 'BEDTIME_NOW' || bucket === 'BEDTIME_GRACE' || bucket === 'OVERDUE_NAG_NOW';
+
+  // Single-line, non-wrapping status pill configuration
+  const getStatusPillConfig = () => {
+    if (isNagNow) {
+      const isGrace = state.status === 'BEDTIME_GRACE' || bucket === 'BEDTIME_GRACE';
+      const label = isGrace
+        ? `${state.graceMinutesLeft || 5}m grace`
+        : `${Math.max(1, Math.floor(state.diffMinutes))}m overdue`;
+      return {
+        className: 'bg-status-coral/15 text-status-coral',
+        icon: isGrace ? (
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <ShieldAlert className="h-3.5 w-3.5 shrink-0 animate-pulse" />
+        ),
+        label,
+      };
+    }
+    if (bucket === 'WINDING_DOWN') {
+      const minsLeft = Math.abs(Math.floor(state.diffMinutes));
+      return {
+        className: 'bg-status-amber/15 text-status-amber',
+        icon: <Sparkles className="h-3.5 w-3.5 shrink-0" />,
+        label: `in ${minsLeft}m`,
+      };
+    }
+    if (bucket === 'SLEEPING') {
+      return {
+        className: 'bg-night-elevated text-cream-muted',
+        icon: <Moon className="h-3.5 w-3.5 shrink-0 text-cream-muted" />,
+        label: isInBed ? 'In Bed' : 'Sleeping',
+      };
+    }
+    // AWAKE
+    const totalMins = Math.max(0, Math.round(-state.diffMinutes));
+    const hours = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    const label = hours > 0 ? `in ${hours}h ${mins}m` : `in ${mins}m`;
+    return {
+      className: 'bg-night-elevated text-cream-muted',
+      icon: <Sun className="h-3.5 w-3.5 shrink-0 text-cream-muted" />,
+      label,
+    };
+  };
+
+  const statusPillConfig = getStatusPillConfig();
+
+  // Subtle border and resting opacity variations anchored to night-surface
+  let cardBorderAndResting = 'border-night-border';
+  if (isNagNow) {
+    cardBorderAndResting = 'border-status-coral/40 shadow-sm shadow-status-coral/5';
+  } else if (bucket === 'WINDING_DOWN') {
+    cardBorderAndResting = 'border-status-amber/30';
+  } else if (bucket === 'SLEEPING') {
+    cardBorderAndResting = 'border-night-border opacity-85 hover:opacity-100';
+  } else {
+    cardBorderAndResting = 'border-night-border hover:border-night-border/80';
+  }
+
+  return (
+    <div
+      className={`w-full p-5 rounded-2xl bg-night-surface border transition-colors flex flex-col justify-between gap-4 ${cardBorderAndResting}`}
+    >
+      <div className="flex flex-col gap-3.5">
+        {/* Header: Fixed avatar wrapper, consistent metadata sequence, and viewer time + pill */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Avatar with fixed dimensions to prevent squishing */}
+            <div className="relative w-11 h-11 rounded-full shrink-0 flex items-center justify-center">
+              <img
+                src={avatarUrl}
+                alt={member.discord_username}
+                className="w-11 h-11 rounded-full object-cover border border-night-border bg-night-elevated"
+              />
+              {isInBed && (
+                <span
+                  className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-status-amber text-night-bg shadow font-bold"
+                  title="Checked into bed"
+                >
+                  <Check className="h-2.5 w-2.5 stroke-[3]" />
+                </span>
+              )}
+            </div>
+
+            {/* Member Info: Name, YOU badge, Star button, Streak pill in exact same position */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span
+                  className="text-base font-semibold text-cream-primary truncate max-w-[120px] sm:max-w-[150px]"
+                  title={member.discord_username}
+                >
+                  {member.discord_username}
+                </span>
+
+                {isViewer && (
+                  <span className="rounded bg-status-amber/20 border border-status-amber/40 px-1.5 py-0.5 text-[9px] font-bold text-status-amber shrink-0">
+                    YOU
+                  </span>
+                )}
+
+                {member.role === 'moderator' && (
+                  <span className="rounded bg-night-elevated border border-night-border px-1.5 py-0.5 text-[9px] font-medium text-cream-secondary shrink-0">
+                    MOD
+                  </span>
+                )}
+
+                {/* Buddy Star Toggle (Meets 44x44 touch target) */}
+                {onToggleStar && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      triggerHaptic(10);
+                      onToggleStar(member.id);
+                    }}
+                    className={`min-h-[44px] min-w-[44px] -my-2.5 -mx-2 flex items-center justify-center rounded-lg transition-colors shrink-0 ${
+                      isStarred
+                        ? 'text-status-amber hover:text-status-amber/80'
+                        : 'text-cream-secondary/40 hover:text-cream-secondary'
+                    }`}
+                    title={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
+                    aria-label={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
+                  >
+                    <Star className={`h-4 w-4 ${isStarred ? 'fill-status-amber' : ''}`} />
+                  </button>
+                )}
+
+                {/* Streak milestone badge */}
+                {member.streak_days && member.streak_days > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full border border-status-amber/30 bg-status-amber/10 px-2 py-0.5 text-[10px] font-semibold text-status-amber shrink-0"
+                    title={streakMilestone?.description || `${member.streak_days} days on track`}
+                  >
+                    <Flame className="h-3 w-3 fill-status-amber text-status-amber" />
+                    <span>{streakMilestone?.badgeLabel || `${member.streak_days}d`}</span>
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap text-xs text-cream-secondary mt-0.5">
+                <span>
+                  {formattedSleeperTime} local ({formatGmtOffset(member.timezone)})
+                </span>
+                {state.isWeekendSchedule && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30"
+                    title="Weekend bedtime schedule active (Friday/Saturday nights)"
+                  >
+                    <Moon className="h-2.5 w-2.5 text-status-amber" />
+                    <span>Weekend</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Header: Bedtime in viewer timezone & status badge */}
+          <div className="flex flex-col items-end shrink-0 gap-1 text-right">
+            <span className="text-xl font-bold tabular-nums text-cream-primary">
+              {formattedViewerTime}
+            </span>
+            <span
+              className={`whitespace-nowrap px-2.5 py-1 text-xs rounded-full inline-flex items-center gap-1.5 ${statusPillConfig.className}`}
+            >
+              {statusPillConfig.icon}
+              <span>{statusPillConfig.label}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Compact Accountability Row: Strikes & Metastrikes */}
+        <div className="flex items-center justify-between rounded-xl border border-night-border bg-night-elevated/50 px-3 py-1.5 text-[11px]">
+          {/* Strikes Indicator */}
+          <div className="flex items-center gap-1.5" title={`${strikesUsed} of 3 monthly strikes used`}>
+            <span className="font-semibold text-status-coral flex items-center gap-1">
+              <Zap className="h-3 w-3 fill-status-coral text-status-coral" />
+              <span>Strikes:</span>
+              <span className="tabular-nums font-bold">{strikesUsed}/3</span>
+            </span>
+            <div className="flex items-center gap-1 ml-0.5">
+              {[1, 2, 3].map((pip) => (
+                <span
+                  key={`strike-${member.id}-${pip}`}
+                  className={`h-2 w-2 rounded-full transition-colors ${
+                    pip <= strikesUsed
+                      ? 'bg-status-coral ring-1 ring-status-coral/40 shadow-sm shadow-status-coral/50'
+                      : 'bg-night-border border border-night-border/80'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Metastrikes Indicator */}
+          <div
+            className="flex items-center gap-1.5"
+            title={`${metastrikesUsed} of 3 monthly excused metastrikes used`}
           >
-            ✓
-          </span>
+            <span className="font-semibold text-status-amber flex items-center gap-1">
+              <Shield className="h-3 w-3 fill-status-amber/20 text-status-amber" />
+              <span>Meta:</span>
+              <span className="tabular-nums font-bold">{metastrikesUsed}/3</span>
+            </span>
+            <div className="flex items-center gap-1 ml-0.5">
+              {[1, 2, 3].map((pip) => (
+                <span
+                  key={`meta-${member.id}-${pip}`}
+                  className={`h-2 w-2 rounded-full transition-colors ${
+                    pip <= metastrikesUsed
+                      ? 'bg-status-amber ring-1 ring-status-amber/40 shadow-sm shadow-status-amber/50'
+                      : 'bg-night-border border border-night-border/80'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Out of Strikes Sleepy Fox Alert Badge */}
+        {strikesUsed >= 3 && (
+          <div className="flex items-center justify-between rounded-lg border border-status-coral/40 bg-status-coral/10 px-2.5 py-1 text-[11px] font-semibold text-status-coral">
+            <div className="flex items-center gap-1.5">
+              <FoxMascot state="alert" size={16} />
+              <span>Out of Strikes • 0 Margin Left</span>
+            </div>
+            <span className="text-[10px] text-cream-secondary">Resets on 1st</span>
+          </div>
+        )}
+
+        {/* Pending 48-Hour Schedule Shift Cooldown Notice */}
+        {pendingNotice && (
+          <div className="flex items-center justify-between rounded-lg border border-dashed border-status-amber/40 bg-status-amber/10 px-3 py-1.5 text-xs tabular-nums text-status-amber">
+            <span className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5 shrink-0" />
+              <span>{pendingNotice}</span>
+            </span>
+          </div>
+        )}
+
+        {/* Metastrike Active Notice (Body) */}
+        {isMetastrikeActive && !isNagNow && (
+          <div className="flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber min-h-[44px]">
+            <Shield className="h-4 w-4 fill-status-amber/20 shrink-0" />
+            <span>
+              Metastrike Active: {member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'}
+            </span>
+          </div>
+        )}
+
+        {/* Safe Check-In Button for Viewer (Nag Now & Winding Down) */}
+        {isViewer && !isInBed && onCheckIn && (isNagNow || bucket === 'WINDING_DOWN') && (
+          <button
+            onClick={handleCheckInClick}
+            disabled={isCheckingIn}
+            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-3 font-bold text-night-bg shadow transition-transform hover:bg-status-amber/90 active:scale-[0.98]"
+          >
+            <BedDouble className="h-4 w-4" />
+            <span>{isNagNow ? "I'm in Bed Now (Mute Nags)" : "I'm in Bed (Goodnight)"}</span>
+          </button>
+        )}
+
+        {/* Early Bedtime Check-In for Viewer approaching bedtime while Awake */}
+        {isViewer &&
+          !isInBed &&
+          bucket === 'AWAKE' &&
+          state.diffMinutes >= -180 &&
+          state.diffMinutes < -60 &&
+          onCheckIn && (
+            <button
+              onClick={handleCheckInClick}
+              disabled={isCheckingIn}
+              className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/15 text-xs font-semibold text-status-amber transition-colors hover:bg-status-amber/25"
+            >
+              <BedDouble className="h-4 w-4" />
+              <span>Early Bedtime Check-In</span>
+            </button>
+          )}
+
+        {/* Checked-in Confirmation Banner */}
+        {isViewer && isInBed && (isNagNow || bucket === 'WINDING_DOWN') && (
+          <div className="flex items-center justify-between rounded-xl border border-status-amber/30 bg-status-amber/10 px-3 py-2 text-xs font-medium text-status-amber min-h-[44px]">
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>You&apos;re checked in! Nags muted</span>
+            </span>
+            {onCancelInBed && (
+              <button
+                onClick={handleCancelInBedClick}
+                disabled={isCheckingIn}
+                className="text-xs underline opacity-80 hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-end"
+              >
+                Undo
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Checked-in Confirmation Banner for Sleeping State */}
+        {isViewer && isInBed && bucket === 'SLEEPING' && (
+          <div className="flex items-center justify-between rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-muted min-h-[44px]">
+            <span className="flex items-center gap-1.5">
+              <Shield className="h-4 w-4 text-cream-muted shrink-0" />
+              <span>Sleep Shield Active • Nags Muted</span>
+            </span>
+            {onCancelInBed && (
+              <button
+                onClick={handleCancelInBedClick}
+                disabled={isCheckingIn}
+                className="underline opacity-80 hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-end"
+              >
+                Undo
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Viewer Self-Service Metastrike Options */}
+        {isViewer && !isMetastrikeActive && metastrikesUsed < 3 && onOpenMetastrike && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic(10);
+              onOpenMetastrike(member, 'proactive');
+            }}
+            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/10 px-3 py-2 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all"
+          >
+            <Shield className="h-4 w-4 fill-status-amber/20 shrink-0" />
+            <span>Use Metastrike Tonight (Excused Pass)</span>
+          </button>
+        )}
+
+        {/* Viewer Retroactive Strike Conversion */}
+        {isViewer && isStrikeConvertible && metastrikesUsed < 3 && onOpenMetastrike && (
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic(10);
+              onOpenMetastrike(member, 'convert_retroactive');
+            }}
+            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber px-3 py-2 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 transition-all"
+          >
+            <RefreshCw className="h-4 w-4 shrink-0" />
+            <span>Convert Strike to Metastrike (24h Swap)</span>
+          </button>
+        )}
+
+        {/* Nagged Assist Counter */}
+        {isNagNow && localNagCount > 0 && (
+          <div className="flex items-center gap-1.5 rounded-xl border border-status-coral/30 bg-status-coral/10 px-3 py-2 text-xs font-semibold text-status-coral min-h-[40px]">
+            <Users className="h-4 w-4 shrink-0" />
+            <span>
+              {hasNagged
+                ? localNagCount === 1
+                  ? 'You nagged tonight!'
+                  : `You & ${localNagCount - 1} friend${localNagCount - 1 === 1 ? '' : 's'} nagged tonight`
+                : `${localNagCount} friend${localNagCount === 1 ? '' : 's'} checked in tonight`}
+            </span>
+          </div>
+        )}
+
+        {/* Error Toast for Rollbacks */}
+        {cardError && (
+          <div className="rounded-lg border border-status-coral/40 bg-status-coral/10 p-2 text-center text-xs text-status-coral animate-fade-in">
+            {cardError}
+          </div>
         )}
       </div>
 
-      <div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-base font-semibold text-cream-primary">
-            {member.discord_username}
-          </span>
-
-          {isViewer && (
-            <span className="rounded bg-status-amber/20 border border-status-amber/40 px-1.5 py-0.2 text-[9px] font-bold text-status-amber">
-              YOU
-            </span>
-          )}
-
-          {member.role === 'moderator' && (
-            <span className="rounded bg-night-elevated px-1.5 py-0.5 text-[10px] font-medium text-cream-muted">
-              MOD
-            </span>
-          )}
-
-          {/* Streak milestone badge */}
-          {member.streak_days && member.streak_days > 0 ? (
-            <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                streakMilestone?.color || 'text-status-amber border-status-amber/30 bg-status-amber/10'
-              }`}
-              title={streakMilestone?.description || `${member.streak_days} days on track`}
+      {/* Action Bar (Anchored to bottom via flex layout, touch targets >= 44x44px) */}
+      <div className="mt-auto pt-1">
+        {isNagNow && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Primary Action Button: Nag in Discord Journal */}
+            <a
+              href={member.journal_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleNagJournalClick}
+              className="flex-1 min-h-[44px] min-w-[44px] flex items-center justify-center gap-2 rounded-xl bg-status-coral font-semibold text-night-bg transition-all hover:bg-status-coral/90 active:scale-[0.98] text-xs sm:text-sm px-3"
             >
-              <span>{streakMilestone?.icon || '🔥'}</span>
-              <span>{streakMilestone?.badgeLabel || `${member.streak_days}d`}</span>
-            </span>
-          ) : null}
+              <span>{hasNagged ? 'Nagged! Reopen Journal' : 'Nag in Discord Journal'}</span>
+              <ExternalLink className="h-4 w-4 shrink-0" />
+            </a>
 
-          {/* Buddy Star Toggle */}
-          {onToggleStar && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onToggleStar(member.id);
-              }}
-              className={`p-0.5 rounded transition-colors ${
-                isStarred
-                  ? 'text-status-amber hover:text-status-amber/80'
-                  : 'text-cream-muted/30 hover:text-cream-secondary'
-              }`}
-              title={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
-            >
-              <Star className={`h-3.5 w-3.5 ${isStarred ? 'fill-status-amber' : ''}`} />
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1.5 flex-wrap text-xs text-cream-secondary">
-          <span>{formattedSleeperTime} local ({formatGmtOffset(member.timezone)})</span>
-          {state.isWeekendSchedule && (
-            <span
-              className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.2 text-[10px] font-semibold text-status-amber border border-status-amber/30"
-              title="Weekend bedtime schedule active (Friday/Saturday nights)"
-            >
-              <span>🌙</span>
-              <span>Weekend</span>
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-  // Bucket: BEDTIME_NOW
-  if (bucket === 'BEDTIME_NOW') {
-    return (
-      <div className="flex h-full flex-col justify-between rounded-2xl border-2 border-status-coral/80 bg-night-surface p-4 shadow-lg shadow-status-coral/10 transition-all">
-        <div>
-          <div className="flex items-start justify-between gap-3">
-            {renderHeaderLeft()}
-
-            <div className="flex flex-col items-end">
-              <span className="text-xl font-bold tabular-nums text-cream-primary">
-                {formattedViewerTime}
-              </span>
-              <span className="mt-1 flex items-center gap-1 rounded-full border border-status-coral/40 bg-status-coral/20 px-2 py-0.5 text-xs font-semibold text-status-coral animate-pulse">
-                <ShieldAlert className="h-3 w-3" />
-                {state.statusText}
-              </span>
-            </div>
-          </div>
-
-          {pendingNotice && (
-            <div className="mt-2.5 flex items-center justify-between rounded-lg border border-dashed border-status-amber/40 bg-status-amber/10 px-3 py-1.5 text-xs tabular-nums text-status-amber">
-              <span>⏳ {pendingNotice}</span>
-            </div>
-          )}
-
-          {/* "I'm in Bed" Safe Button for current user */}
-          {isViewer && !isInBed && onCheckIn && (
-            <button
-              onClick={() => onCheckIn(member.id)}
-              disabled={isCheckingIn}
-              className="mt-3 flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-3 font-bold text-night-bg shadow transition-transform hover:bg-status-amber/90 active:scale-[0.98]"
-            >
-              <span>🛏️ I&apos;m in Bed Now (Mute Nags)</span>
-            </button>
-          )}
-
-          {isViewer && isInBed && (
-            <div className="mt-2.5 flex items-center justify-between rounded-xl border border-status-sage/40 bg-status-sage/10 px-3 py-1.5 text-xs font-medium text-status-sage">
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                <span>You&apos;re checked in! Nags muted 🌙</span>
-              </span>
-              {onCancelInBed && (
+            {/* Secondary Action Pill: Metastrike / Strike Issued / Grace / Vote Strike */}
+            {isMetastrikeActive ? (
+              <div
+                className="flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber min-h-[44px]"
+                title={`Protected tonight: ${
+                  member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'
+                }`}
+              >
+                <Shield className="h-3.5 w-3.5 fill-status-amber/20 shrink-0" />
+                <span className="truncate max-w-[130px]">
+                  Metastrike Active: {member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'}
+                </span>
+              </div>
+            ) : isStrikeIssuedTonight ? (
+              <div
+                className="flex items-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/15 px-3 py-2 text-xs font-semibold text-status-coral min-h-[44px]"
+                title="2/2 community verification votes reached. Strike issued for tonight."
+              >
+                <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
+                <span>Strike Issued</span>
+              </div>
+            ) : state.status === 'BEDTIME_GRACE' ? (
+              <div
+                className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-2.5 py-2 text-xs text-cream-secondary min-h-[44px]"
+                title="5-minute grace period active. Strike voting is locked."
+              >
+                <Clock className="h-3.5 w-3.5 shrink-0" />
+                <span>Grace: {state.graceMinutesLeft || 5}m left</span>
+              </div>
+            ) : (
+              onVoteStrike &&
+              !isViewer && (
                 <button
-                  onClick={() => onCancelInBed(member.id)}
-                  disabled={isCheckingIn}
-                  className="text-[11px] underline opacity-80 hover:opacity-100"
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(15);
+                    onVoteStrike(member.id);
+                  }}
+                  disabled={isVotingStrike || member.has_voted_strike}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all min-h-[44px] min-w-[44px] ${
+                    member.has_voted_strike
+                      ? 'border border-status-coral/30 bg-night-elevated text-status-coral/60 cursor-not-allowed'
+                      : 'border border-status-coral/50 bg-status-coral/15 text-status-coral hover:bg-status-coral/25 active:scale-95'
+                  }`}
+                  title={
+                    member.has_voted_strike
+                      ? 'You have already voted to strike this member tonight'
+                      : 'Vote to verify bedtime missed (2 community votes needed)'
+                  }
                 >
-                  Undo
+                  <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
+                  <span>
+                    {member.has_voted_strike
+                      ? `Voted (${strikeVotesCount}/2)`
+                      : `Vote Strike (${strikeVotesCount}/2)`}
+                  </span>
                 </button>
-              )}
-            </div>
-          )}
-
-          {/* Nagged Assist Counter */}
-          {localNagCount > 0 && (
-            <div className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-status-coral/30 bg-status-coral/10 px-3 py-1.5 text-xs font-semibold text-status-coral">
-              <Users className="h-3.5 w-3.5" />
-              <span>
-                {hasNagged
-                  ? localNagCount === 1
-                    ? 'You nagged tonight! 🦊'
-                    : `You & ${localNagCount - 1} friend${localNagCount - 1 === 1 ? '' : 's'} nagged tonight 🦊`
-                  : `${localNagCount} friend${localNagCount === 1 ? '' : 's'} checked in tonight`}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <a
-          href={member.journal_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={handleNagJournalClick}
-          className="mt-3.5 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-coral font-semibold text-night-bg transition-all hover:opacity-90 active:scale-[0.98]"
-        >
-          <span>{hasNagged ? 'Nagged! Reopen Journal' : 'Nag in Discord Journal'}</span>
-          <ExternalLink className="h-4 w-4" />
-        </a>
-      </div>
-    );
-  }
-
-  // Bucket: WINDING_DOWN
-  if (bucket === 'WINDING_DOWN') {
-    return (
-      <div className="flex h-full flex-col justify-between rounded-2xl border border-status-amber/60 bg-night-surface p-4 transition-all">
-        <div>
-          <div className="flex items-start justify-between gap-3">
-            {renderHeaderLeft()}
-
-            <div className="flex flex-col items-end">
-              <span className="text-xl font-bold tabular-nums text-cream-primary">
-                {formattedViewerTime}
-              </span>
-              <span className="mt-1 flex items-center gap-1 rounded-full border border-status-amber/30 bg-status-amber/15 px-2.5 py-0.5 text-xs font-medium text-status-amber">
-                <Sparkles className="h-3 w-3" />
-                {state.statusText}
-              </span>
-            </div>
+              )
+            )}
           </div>
+        )}
 
-          {pendingNotice && (
-            <div className="mt-2.5 flex items-center justify-between rounded-lg border border-dashed border-status-amber/40 bg-status-amber/10 px-3 py-1.5 text-xs tabular-nums text-status-amber">
-              <span>⏳ {pendingNotice}</span>
-            </div>
-          )}
-
-          {/* "I'm in Bed" Safe Button for current user */}
-          {isViewer && !isInBed && onCheckIn && (
-            <button
-              onClick={() => onCheckIn(member.id)}
-              disabled={isCheckingIn}
-              className="mt-3 flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-3 font-bold text-night-bg shadow transition-transform hover:bg-status-amber/90 active:scale-[0.98]"
-            >
-              <span>🛏️ I&apos;m in Bed (Goodnight)</span>
-            </button>
-          )}
-
-          {isViewer && isInBed && (
-            <div className="mt-2.5 flex items-center justify-between rounded-xl border border-status-sage/40 bg-status-sage/10 px-3 py-1.5 text-xs font-medium text-status-sage">
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                <span>You&apos;re checked in! Nags muted 🌙</span>
-              </span>
-              {onCancelInBed && (
-                <button
-                  onClick={() => onCancelInBed(member.id)}
-                  disabled={isCheckingIn}
-                  className="text-[11px] underline opacity-80 hover:opacity-100"
-                >
-                  Undo
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        <a
-          href={member.journal_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={handleNagJournalClick}
-          className="mt-3.5 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-night-elevated font-medium text-status-amber transition-colors hover:bg-status-amber/15 active:scale-[0.98]"
-        >
-          <span>{hasNagged ? 'Noted! Reopen Journal' : 'Say Goodnight in Journal'}</span>
-          <ExternalLink className="h-4 w-4" />
-        </a>
-      </div>
-    );
-  }
-
-  // Bucket: SLEEPING
-  if (bucket === 'SLEEPING') {
-    return (
-      <div className="flex h-full flex-col justify-between rounded-2xl border border-night-border/60 bg-night-surface/60 p-4 opacity-75 transition-opacity hover:opacity-100">
-        <div>
-          <div className="flex items-start justify-between gap-3">
-            {renderHeaderLeft()}
-
-            <div className="flex flex-col items-end">
-              <span className="text-base font-bold tabular-nums text-cream-secondary">
-                {formattedViewerTime}
-              </span>
-              <span className="mt-1 flex items-center gap-1 rounded-full border border-status-slumber/30 bg-status-slumber/15 px-2 py-0.5 text-[10px] text-status-slumber">
-                <Moon className="h-2.5 w-2.5" />
-                {isInBed ? 'In Bed (Early) 🌙' : "Catching Z's"}
-              </span>
-            </div>
-          </div>
-
-          {isViewer && isInBed && (
-            <div className="mt-2.5 flex items-center justify-between rounded-lg border border-status-sage/30 bg-status-sage/10 px-2.5 py-1 text-[11px] text-status-sage">
-              <span>Sleep Shield Active • Nags Muted</span>
-              {onCancelInBed && (
-                <button
-                  onClick={() => onCancelInBed(member.id)}
-                  disabled={isCheckingIn}
-                  className="underline opacity-80 hover:opacity-100"
-                >
-                  Undo
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="mt-3 flex justify-end">
+        {bucket === 'WINDING_DOWN' && (
           <a
             href={member.journal_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-cream-muted transition-colors hover:text-cream-secondary"
+            onClick={handleNagJournalClick}
+            className="w-full min-h-[44px] min-w-[44px] flex items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-night-elevated font-medium text-status-amber transition-colors hover:bg-status-amber/15 active:scale-[0.98] text-xs sm:text-sm px-3"
           >
-            <span>Leave quiet note</span>
-            <ExternalLink className="h-3 w-3" />
+            <span>{hasNagged ? 'Noted! Reopen Journal' : 'Say Goodnight in Journal'}</span>
+            <ExternalLink className="h-4 w-4" />
           </a>
-        </div>
-      </div>
-    );
-  }
-
-  // Bucket: AWAKE
-  return (
-    <div className="flex h-full flex-col justify-between rounded-2xl border border-night-border bg-night-surface p-4 transition-all hover:border-night-elevated">
-      <div>
-        <div className="flex items-start justify-between gap-3">
-          {renderHeaderLeft()}
-
-          <div className="text-right">
-            <span className="text-base font-bold tabular-nums text-cream-primary">
-              {formattedViewerTime}
-            </span>
-            <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] tabular-nums text-cream-secondary">
-              <Sun className="h-2.5 w-2.5 text-status-sage" />
-              {state.statusText}
-            </p>
-          </div>
-        </div>
-
-        {/* If viewer is approaching bedtime (within 2h) but technically in AWAKE, allow early check-in */}
-        {isViewer && !isInBed && state.diffMinutes >= -180 && state.diffMinutes < -60 && onCheckIn && (
-          <button
-            onClick={() => onCheckIn(member.id)}
-            disabled={isCheckingIn}
-            className="mt-3 flex min-h-[36px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/15 text-xs font-semibold text-status-amber transition-colors hover:bg-status-amber/25"
-          >
-            <span>🛏️ Early Bedtime Check-In</span>
-          </button>
         )}
-      </div>
 
-      <div className="mt-3 flex justify-end">
-        <a
-          href={member.journal_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-[34px] items-center gap-1 rounded-xl bg-night-elevated px-3 text-xs font-medium text-cream-secondary transition-colors hover:text-cream-primary"
-          title="Open Discord Journal"
-        >
-          <span>Journal</span>
-          <ExternalLink className="h-3 w-3" />
-        </a>
+        {bucket === 'SLEEPING' && (
+          <div className="flex items-center justify-between gap-2 w-full">
+            {!isInBed && !isMetastrikeActive && !isViewer && onVoteStrike ? (
+              <div>
+                {isStrikeIssuedTonight ? (
+                  <span className="text-xs font-semibold text-status-coral flex items-center gap-1 min-h-[44px]">
+                    <Zap className="h-3.5 w-3.5 fill-status-coral" />
+                    <span>Strike Issued</span>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic(15);
+                      onVoteStrike(member.id);
+                    }}
+                    disabled={isVotingStrike || member.has_voted_strike}
+                    className="text-xs font-medium text-status-coral hover:underline flex items-center gap-1 min-h-[44px] min-w-[44px]"
+                  >
+                    <Zap className="h-3.5 w-3.5 fill-status-coral" />
+                    <span>
+                      {member.has_voted_strike
+                        ? `Voted (${strikeVotesCount}/2)`
+                        : `Vote Strike (${strikeVotesCount}/2)`}
+                    </span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div />
+            )}
+
+            <a
+              href={member.journal_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 py-1.5 text-xs text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 ml-auto"
+            >
+              <span>Leave quiet note</span>
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        )}
+
+        {bucket === 'AWAKE' && (
+          <div className="flex items-center justify-end w-full">
+            <a
+              href={member.journal_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 py-1.5 text-xs font-medium text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80"
+              title="Open Discord Journal"
+            >
+              <span>Journal</span>
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );

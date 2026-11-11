@@ -1,12 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-10T15:35:00+05:30  
+> **Last Updated:** 2026-11-11T12:50:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `eec8661`  
-> **Active Integration Pull Request:** [#14 (krish → dev)](https://github.com/KrishJdev/Z-Catchers/pull/14)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` 21/21 routes | All auth, rate limit, and security tests passing)
+> **Latest Commit:** `64eaea5` (in `krish`)  
+> **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
+> **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
+> **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-signup-and-profiles.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | Dev server active on `http://192.168.1.3:3000`)
 
 ---
 
@@ -18,8 +20,8 @@
 In an international Discord server with members spanning US, Europe, India, and Australia, members want to hold each other accountable for going to sleep on time. Because everyone is in different timezones, nobody knows when "11:30 PM" occurs for another person without mental math.
 
 ### The Core Loop:
-1. **Self-Service / Onboarding:** Members register/claim their profile, set their bedtime in their own local time (24h format), set a 4-digit PIN, and provide their dedicated Discord Journal thread link.
-2. **Dynamic Dashboard:** Community members open the app and see everyone's bedtime automatically converted into the **viewer's local timezone**, categorized into 4 live buckets:
+1. **Self-Service / Onboarding (`/join`):** New members land on a standalone onboarding page where they set their bedtime in their own local time (24h format), set a 4-digit PIN, and provide their dedicated Discord Journal thread link. Returning foxes can enter their PIN or select from the den list.
+2. **Dynamic Dashboard (`/`):** Community members open the app and see everyone's bedtime automatically converted into the **viewer's local timezone**, categorized into 4 live buckets:
    * 🚨 **Nag Now! (Bedtime Hit):** Within 0 to 60 minutes after their bedtime. Awake friends are prompted to open their Discord journal and nag them to sleep.
    * 🌙 **Winding Down:** Within 60 minutes before bedtime. Cozy wind-down state.
    * ☀️ **Wide Awake:** Daytime or well before wind-down.
@@ -32,6 +34,7 @@ In an international Discord server with members spanning US, Europe, India, and 
 6. **Buddy Watchlist System:** Members can star their closest friends (`⭐`) to filter the den down to their core accountability circle.
 7. **Automated Discord Channel Webhooks & Morning Slumber Digests:** Automated rich embeds dispatch directly into the community Discord channel at bedtime with sleep streaks, local times, and direct journal links, plus morning recap digests celebrating streak champions.
 8. **"Nagged!" Community Assist Counter:** Live count of how many friends tapped into Discord to nag each sleeper tonight (`"👥 3 friends checked in tonight 🦊"`).
+9. **Monthly Strikes & Metastrikes Accountability System:** Max 3 strikes and 3 excused passes per calendar month, 5-minute grace period after bedtime, 2-vote community verification, and automatic lazy monthly rollover.
 
 ---
 
@@ -44,7 +47,7 @@ In an international Discord server with members spanning US, Europe, India, and 
 | **Styling & Tokens** | Tailwind CSS 3.4 | Warm Dark low-blue-light palette (`#120F0D` night bg, `#1C1714` surface, `#F5EBE1` cream text) |
 | **Icons** | Lucide React | Clean, minimalist icons matching dark aesthetic |
 | **Timezone Math** | Luxon 3.5 | Strict IANA timezone math with DST resilience and midnight wrap-around support |
-| **Database** | Supabase (PostgreSQL) | Managed tables: `members`, `push_subscriptions`, `notification_logs` |
+| **Database** | Supabase (PostgreSQL) | Managed tables: `members`, `push_subscriptions`, `notification_logs`, `nightly_strike_logs` |
 | **Push Notifications** | Web Push API (`web-push` npm) | VAPID key pairs, multi-device support per member, service worker deep linking |
 | **Discord Webhooks** | Discord Incoming Webhooks API | Rich embeds with Warm Dark color tokens, Sleep Shield notices, journal thread deep links |
 | **Deployment & Cron** | Vercel Cron (`vercel.json`) | 1-minute automated trigger targeting `/api/cron/dispatch-notifications` |
@@ -58,332 +61,330 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 * **Active Working Branch:** `krish`
   * All active feature development, edits, testing, and commits occur directly on this branch.
 * **Target Integration Branch:** `dev`
-  * Default repository branch on GitHub. Pull Requests from `krish` target `dev`.
+  * Pull Requests opened from `krish` target `dev`.
 * **Production Branch:** `main`
-  * Tagged releases and production deployments.
+  * Merged from `dev` after QA.
 
 ---
 
-## 4. Chronological Implementation History
+## 4. Comprehensive Task Changelog
 
-### Phase 1: Foundation & Scaffold
-* **Commit `4b980d6` / `e92a56b`:** Initialized project specifications (`PROJECT_SPEC.md`), design token system (`DESIGN_SYSTEM.md`), backend architecture and database schema (`BACKEND_TZ_PWA_SPEC.md`), and agent rules (`AGENT_RULES.md`).
-* **Commit `a7d7d29`:** Scaffolded Next.js 15 PWA foundation with Supabase client (`src/lib/db.ts`), Luxon sleep engine (`src/lib/sleepEngine.ts`), and warm-dark Tailwind configuration.
-* **Commit `733ea23`:** Completed initial UI scaffold with Sleepy Fox mascot (`src/components/FoxMascot.tsx`), responsive layout shell, documentation hierarchy, and Jira workflow integration.
-* **Commit `d61583f`:** Formalized Git branching protocol (`krish` as active working branch, `dev` as target).
+### Phase 38: PR #16 Code Review Remediations, Batched Strike Queries & Docstring Coverage
+* **Isolated Voter Rate Limiting (`src/app/api/members/strikes/route.ts`, `src/lib/rateLimit.ts`):**
+  * Replaced the shared IP and target PIN-failure rate-limit check in the strike-voting flow with persistent voter counter `checkVoteRateLimitPersistent` and `recordVoteAttemptPersistent` keyed directly to the authenticated voter (`vote:voter:${voterId}`).
+  * Removed `getClientIp` from `/api/members/strikes/route.ts` as it is no longer used, ensuring strike vote tracking neither reads nor modifies shared IP or PIN failure counters.
+* **Push Subscription Endpoint Rotation Preference Fallback (`src/app/api/push/subscribe/route.ts`):**
+  * Updated endpoint-rotation flow (`old_endpoint && old_endpoint !== subscription.endpoint`) to query and store the old subscription row's `notify_personal` and `notify_community` preferences before deleting it.
+  * When no existing preferences are found for the new rotated endpoint, falls back to the saved old preferences so omitted flags during background health sync or device token refresh strictly preserve the member's customized notification settings.
+* **Database Consistency & Concurrency Failure Guard (`src/lib/strikes.ts`):**
+  * In `recordStrikeVote`, returned failure when Supabase retry loop exhausts or encounters database errors, preventing unpersisted votes from being incorrectly reported as successful.
+  * Preserved in-memory fallback exclusively for unconfigured environments (unit tests) and unmigrated table schemas (Postgres error code `42P01`).
+* **Row Count Precedence in `resolveMemberStrikeCounts` (`src/lib/strikes.ts`):**
+  * Updated `resolveMemberStrikeCounts` so fetched database member rows take precedence over stale serverless in-memory caches (`memoryStore.memberCounts`) when Supabase is configured and the row contains count columns (`strikes_count` / `strikes_used`).
+  * Preserved memoryStore fallback for unconfigured environments and offline testing suites.
+* **Batched Roster Recent Strikes & Query Date Filtering (`src/lib/strikes.ts`, `src/app/api/members/route.ts`):**
+  * Updated `getNightlyStrikeLogsBatch` to collect distinct requested `sleepCycleDate` values and filter Supabase queries by both `target_member_id` and `sleep_cycle_date`, preserving `requestedKeySet` filtering.
+  * Implemented `getRecentEligibleStrikeLogsBatch` to query recent strikes within 24 hours in a single batched query across all roster members, grouping in memory per member with zero N+1 database roundtrips and zero monthly-reset write side-effects.
+* **100% Docstring Coverage Across Codebase (`src/app/api/...`, `src/components/...`, `src/lib/...`):**
+  * Authored comprehensive JSDoc docstrings for all exported and helper functions missing documentation (`/api/auth/login`, `/api/auth/logout`, `/api/auth/me`, `/api/cron/dispatch-notifications`, `/api/members/cancel-pending`, `/api/members/in-bed`, `/api/members/nag-assist`, `/api/mod/webhook`, `/api/push/test`, `BottomNav`, `FoxMascot`, `Header`, `LoginModal`, `ModDrawer`, `MyScheduleModal`, `PushModal`, `PwaBanner`, `StatusBucket`, `auth.ts`, `db.ts`, `discordWebhook.ts`, `rateLimit.ts`), completely satisfying the pre-merge check threshold.
+* **Test Verification & Regression Suites (`scripts/test-strikes-system.mjs`, `scripts/test-phase1-pwa-push.mjs`):**
+  * Added Section 7 tests in `test-strikes-system.mjs` verifying `getNightlyStrikeLogsBatch` cycle date filtering, `getRecentEligibleStrikeLogsBatch` 24h window filtering, and voter rate limiting isolation from PIN rate limits.
+  * Added assertion in `test-phase1-pwa-push.mjs` verifying preference preservation across endpoint rotation. All test suites passed cleanly.
 
-### Phase 2: Jira Integration & Schedule Cooldown Logic
-* **Commit `f4a696c` / `bd9f0f9` / `ba2fee7`:** Configured and debugged GitHub Actions Jira transition scripts (`.github/workflows/jira-transition.yml`, `scripts/transition-jira-issue.mjs`) tracking ZC issues.
-* **Commit `46025db` (Milestone 4 - Part 1 / Jira ZC-5):**
-  * Built `src/components/MyScheduleModal.tsx` supporting desktop centered dialog and mobile bottom sheet.
-  * Implemented PIN claiming & verification flow (first-time PIN claim vs returning member edit).
-  * Built 48-hour cooldown anti-dodge mechanism: schedule updates set `pending_bedtime_local`, `pending_timezone`, and `pending_effective_at = now + 48 hours`.
-  * Added instant update for Discord Journal URL (not subject to cooldown).
-  * Added Discord Journal URL regex validation (`https://discord.com/channels/...`).
-  * Created API endpoints:
-    * `POST /api/members/update-schedule` — Validates PIN and enqueues 48h pending change.
-    * `POST /api/members/cancel-pending` — Allows member to withdraw their pending change before 48h expires.
-  * Added test script `scripts/test-schedule-cooldown.mjs` verifying cooldown promotion and cancellation logic.
+### Phase 38: Code Review Remediations: Scoped Preferences, Authoritative Strike Readers & Member Safe Insert
+* **Member-Scoped Notification Preferences & Health Sync Isolation (`src/lib/pushClient.ts`, `scripts/test-phase1-pwa-push.mjs`):**
+  * Replaced un-scoped global preference storage (`zcatchers_notify_personal`, `zcatchers_notify_community`) with member-scoped keys generated via `getMemberNotificationStorageKey(baseKey, memberId)`.
+  * Added `getStoredNotificationPreferences(memberId)` and `setStoredNotificationPreferences(memberId, prefs)` helper functions.
+  * In `syncPushSubscriptionHealth`, health sync now reads preferences strictly for the current signed-in member (`memberIdToUse`). If no member is signed in or no member-scoped choice exists, fields remain undefined so `/api/push/subscribe` preserves existing subscription preferences and never leaks or applies another member's stored choices across sessions.
+  * Added test assertions to `scripts/test-phase1-pwa-push.mjs` verifying scoped keys and health-sync isolation.
+* **Authoritative Database Strike Log Readers & Fallback Hardening (`src/lib/strikes.ts`):**
+  * Updated `getNightlyStrikeLog`, `getNightlyStrikeLogsBatch`, `getRecentEligibleStrikeLog`, and `getRecentEligibleStrikeLogsBatch` so that after a successful database query, missing rows are treated as authoritative and are never filled from `memoryStore`.
+  * In-memory fallbacks now execute strictly when Supabase is unconfigured or a query fails/throws.
+* **Resilient Member Safe Insert Integration (`src/app/api/members/route.ts`):**
+  * Replaced raw Supabase `members` insert and inline column-stripping retry block with `insertMemberSafe(insertPayload)`.
+  * Preserves PostgREST schema cache adaptation (stripping only unmigrated columns) and retains automatic in-memory weekend-hours caching (`setInMemoryWeekendHours` and `hydrateMemberWeekendHours`).
+* **Database-Backed Strike Batch Integration Test & Environment Auto-Loading (`scripts/test-strikes-system.mjs`, `scripts/test-signup-and-profiles.mjs`, `scripts/test-login-and-auth.mjs`):**
+  * In `scripts/test-strikes-system.mjs`, added section 7D providing a separate database-backed integration test that seeds valid members with UUIDs directly into the `members` table and strike logs into `nightly_strike_logs`, verifies batched recent strike queries, and cleans up all seeded records in a `finally` block, leaving the existing test fixture intact.
+  * Added `.env.local` auto-loading across `test-strikes-system.mjs`, `test-signup-and-profiles.mjs`, and `test-login-and-auth.mjs`.
 
-### Phase 3: Moderation Drawer & Backend Admin Controls
-* **Commit `18fa314`:** Transitioned Jira issues ZC-9 and ZC-10 to "In Progress".
-* **Commit `a3fc7fa` (Milestone 4 - Part 2 / Jira ZC-10):**
-  * Created moderator backend API routes in `src/app/api/mod/route.ts` and `src/app/api/mod/members/route.ts`.
-  * Secured via `MOD_SECRET_PASSCODE` header / payload check with `src/lib/auth.ts`.
-  * Actions implemented: `approve_pending`, `reject_pending`, `create_member`, `update_member`, `delete_member`, `reset_pin`.
-* **Commit `d66de1f` (Jira ZC-9):**
-  * Built `src/components/ModDrawer.tsx` (over 1,200 lines of fully typed responsive UI):
-    * Passcode lock screen with error shake and persistence in session.
-    * Pending Cooldown Approvals tab: reviews pending bedtime/timezone diffs with countdown pill and one-click "Approve Now" or "Reject".
-    * Roster Management tab: search, filter active/inactive, inline edit, delete confirmation dialog, PIN reset.
-    * "Add Member" modal with timezone selector and bedtime picker.
-* **Commit `4339402`:**
-  * Integrated `ModDrawer` and `MyScheduleModal` into main dashboard `src/app/page.tsx`.
-  * Linked desktop top Header command bar buttons (`"My Schedule"`, `"Mod Panel"`) and mobile bottom navigation tabs (`"My Time"`, `"Mod"`) directly to open the respective modals.
+### Phase 37: Automated Code Review Remediations, Security Hardening & Concurrency Protection
+* **Batched Roster Database Lookups & Required Timezone (`src/app/api/members/route.ts`):**
+  * Refactored `GET /api/members` to avoid sequential per-member queries: batched monthly strike count resolutions with `Promise.all` and replaced N per-member strike log queries with a single batched `getNightlyStrikeLogsBatch` query matching each member's canonical sleep cycle date.
+  * In `POST /api/members`, removed server-side `detectUserTimezone()` fallback; requires non-empty IANA timezone string and returns 400 when missing. Preserves trimmed client-supplied timezone.
+* **Voter Authentication Enforcement & Identity Verification (`src/app/api/members/strikes/route.ts`):**
+  * Removed unauthenticated `voterId`/`voter_id` destructuring from request body. Strictly requires authenticated session member ID from `getRequestSessionMemberId(request)`.
+  * Verifies session member ID belongs to an active existing member in the database, rejecting inactive or nonexistent voters with 403 Forbidden.
+  * Preserved self-voting guardrail rejecting attempts to vote on oneself.
+* **Moderator Passcode Failure Tracking & Flexible 24h Retroactive Window (`src/app/api/members/strikes/metastrike/route.ts`, `src/components/MemberCard.tsx`, `src/components/MetastrikeModal.tsx`):**
+  * In `/api/members/strikes/metastrike`, records failed `candidatePasscode` attempts via `recordPinFailurePersistent(clientIp, member.id)` and enforces persistent sliding-window rate limiting on moderator passcode attempts.
+  * In `convert_retroactive`, accepts explicit `sleep_cycle_date` payload from client or resolves most recent eligible strike within 24 hours via `getRecentEligibleStrikeLog`.
+  * Updated `MemberCard.tsx` and `MetastrikeModal.tsx` so retroactive Metastrike conversion remains available within the 24-hour window even after the member's current sleep cycle rolls over to the next day.
+* **Per-IP & Per-Member Scoped Moderator Rate Limiting (`src/app/api/mod/route.ts`, `src/app/api/members/update-schedule/route.ts`, `src/lib/rateLimit.ts`):**
+  * Replaced shared global `'mod_admin'` and `'mod_passcode_gate'` rate limit target buckets with isolated keys scoped per client IP (`mod_ip:${ip}`) and session member (`mod_member:${sessionMemberId}`), mitigating cross-tenant DoS attacks.
+  * Updated `resetPinFailurePersistent` to clear corresponding IP-scoped keys for moderator operations while preserving client IP attempt counters during regular member PIN resets to prevent brute-forcing.
+  * In `/api/mod` `clear_strike_log` action, added explicit 404 response when target member is not found and validated `cycleDate` before invoking `modClearStrikeLog`.
+* **Complete Low-Blue-Light Warm Dark UI Tokenization & Viewport Zoom Accessibility (`src/app/layout.tsx`, `src/components/MemberCard.tsx`, `src/components/BottomNav.tsx`, `src/components/StatusBucket.tsx`, `src/app/page.tsx`):**
+  * In `src/app/layout.tsx`, updated `viewport` `maximumScale: 5` to allow low-vision users to zoom up to 500% while preserving `initialScale: 1` and preventing iOS auto-zoom on 16px inputs.
+  * In `src/components/MemberCard.tsx`, `BottomNav.tsx`, `StatusBucket.tsx`, and `src/app/page.tsx`, eliminated all remaining hardcoded hex colors (`#F4A261`, `#E07A5F`, `#A89F91`, `#C8B6A6`, `#120F0D`, `#1A1412`, `#261E1A`, `#2C221E`, `#6B9E78`) across all cards, navigation bars, section headers, counters, and status badges.
+  * Standardized strictly on Tailwind design system tokens: `status-amber`, `status-coral`, `status-sage`, `cream-primary`, `cream-secondary`, `cream-muted`, `night-bg`, `night-surface`, `night-elevated`, and `night-border`.
+  * In `src/app/page.tsx`, updated background `/api/auth/me` session check: when server responds with `authenticated === false`, executes `clearAuthSession()`, clears `currentUser` and `claimedMemberId`, and redirects to `/join`.
+* **Client & Server Push Notification Preference Persistence (`src/lib/pushClient.ts`, `src/app/api/push/subscribe/route.ts`, `scripts/test-phase1-pwa-push.mjs`):**
+  * Added `STORAGE_KEY_NOTIFY_PERSONAL` and `STORAGE_KEY_NOTIFY_COMMUNITY` in `pushClient.ts` to mirror user preferences in `localStorage`.
+  * In `syncPushSubscriptionHealth`, reads stored client preferences and transmits them to `/api/push/subscribe` so background/foreground health syncs preserve explicit member preferences alongside backend fallback preservation.
+  * Verified review comment regarding health-sync requests omitting notification preferences: confirmed `/api/push/subscribe` queries existing preferences for the endpoint and preserves `notify_personal` and `notify_community` whenever fields are omitted or nullish, while retaining default `true` for new subscriptions.
+  * Hardened null-safety defense in `/api/push/subscribe` (`undefined || null` checks for both preferences).
+  * Added regression test assertion to `scripts/test-phase1-pwa-push.mjs` verifying preference preservation logic. All Phase 1 PWA tests passing.
+* **Cross-Instance Concurrency, Notification Guard & Monthly Reset Sync (`src/lib/strikes.ts`):**
+  * In monthly reset, replaced direct Supabase update with `updateMemberStrikeCounts(member.id, 0, 0, strike_cycle_month)` to keep in-memory store and database synchronized across both `strikes_used`/`strikes_count` and `metastrikes_used`/`metastrikes_count` alias pairs.
+  * In `recordStrikeVote`, verified in-bed status against `notification_logs` for `IN_BED_EARLY` on the current `cycleDate`, ensuring subsequent `last_notified_stage` transitions cannot revoke check-in protection.
+  * Implemented atomic cross-instance concurrency protection: optimistic locking and conflict retry (`23505`) on nightly strike logs, and conditional atomic update (`.lt('metastrikes_used', 3)`) on metastrike consumption.
+  * Added `isSupabaseConfigured` check in `src/lib/db.ts` to cleanly fall back to in-memory store during offline test execution.
+* **In-Memory Rate Limit Mirroring in `recordPinFailurePersistent` (`src/lib/rateLimit.ts`):**
+  * Verified review comment regarding `recordPinFailurePersistent`: confirmed that in-memory rate-limit keys in `pinRateLimits` map are updated immediately prior to attempting best-effort Supabase writes (lines 208–215). Preserves synchronous fallback behavior for `checkPinRateLimitSync` when Supabase is unreachable or in offline mode. Verified via `node scripts/test-pin-rate-limiting.mjs` (all tests passing).
+* **Production Function Test Suite & JSDoc Docstring Coverage (`scripts/test-strikes-system.mjs`):**
+  * Replaced duplicated `StrikeTestEngine` class with direct imports and tests against real production functions in `src/lib/strikes.ts`. All 26 test sections passing.
+  * Added comprehensive JSDoc docstrings across all modified routes, helper functions, and components to satisfy CodeRabbit pre-merge review threshold.
 
-### Phase 4: Web Push Notification Engine & 1-Minute Cron Dispatcher
-* **Commit `fee9f22` / `223da1d` (ZC-6, ZC-7):**
-  * Enhanced `public/sw.js` with `skipWaiting()`, `clients.claim()`, rich notification formatting (badge, mascot icon, vibration pattern), and `notificationclick` deep linking directly to Discord journal threads.
-  * Implemented `src/lib/pushServer.ts` and `src/lib/pushClient.ts` with VAPID subscription and auto-pruning.
-  * Built `src/components/PushModal.tsx` for alert preferences and Sleep Shield status inspection.
-  * Built 1-minute cron notification dispatcher in `src/lib/cronDispatcher.ts` and `/api/cron/dispatch-notifications`.
+### Phase 36: Ubiquitous Member Log Out & Auth Session De-identification
+* **Ubiquitous Log Out Access in Header Navigation (`src/components/Header.tsx`):**
+  * Added `LogOut` icon button right alongside the `@username` member profile badge.
+  * Formatted with Warm Dark styling (`hover:border-status-coral/40 hover:bg-status-coral/10 hover:text-status-coral`) and standard 44px min touch target.
+  * Responsive layout: displays `[icon] Log Out` on desktop/tablet (`sm:`) and compact touch-friendly icon on mobile viewports.
+  * Unauthenticated state polish: made "Log In" accessible across all screen sizes.
+* **Dual Log Out Touchpoints in My Schedule Modal (`src/components/MyScheduleModal.tsx`):**
+  * Header Log Out button: positioned directly beside the modal close (`X`) button for fast 1-tap exit.
+  * Dedicated "Account & Session Management" card inside the "My Profile" tab: displays authenticated fox avatar, username, and a full-width `"Log Out of Fox Den"` button, accessible regardless of whether the profile edit form is locked or unlocked with PIN.
+* **Profile Badge Quick Log Out in Alerts Modal (`src/components/PushModal.tsx`):**
+  * Added a secondary Log Out action within the active user badge in `PushModal.tsx`, allowing members managing notifications to log out directly.
+* **Session Cleanup Orchestration & Redirect (`src/app/page.tsx`):**
+  * Implemented `handleLogout` orchestrator:
+    1. Invokes `/api/auth/logout` endpoint to expire the HttpOnly `zcatchers_session` cookie.
+    2. Calls `clearAuthSession()` in `src/lib/pushClient.ts` to purge `zcatchers_auth_token`, `zcatchers_auth_member`, and `zcatchers_member_id` from `localStorage`.
+    3. Resets component session states (`currentUser`, `claimedMemberId`, `activeModal`).
+    4. Triggers user-facing toast feedback and routes directly to `/join` onboarding.
+* **Hardened Logout API Endpoint (`src/app/api/auth/logout/route.ts`):**
+  * Added dual method handling (`POST` and `GET`) to eliminate 405 Method Not Allowed exceptions.
+  * Hardened cookie deletion with both `maxAge: 0` and `expires: new Date(0)`.
+* **Verification & Automated Test Suite (`scripts/test-logout-flow.mjs`):**
+  * Created `scripts/test-logout-flow.mjs` verifying 18 automated checks across Header, Schedule modal, Push modal, page controller, API route, and cookie deletion. 18/18 checks passing.
+  * `npx tsc --noEmit`: clean (0 errors).
+  * `npm run build`: 26/26 routes compiled cleanly.
 
-### Phase 5: "I'm In Bed" Safe Button, Sleep Streaks, Buddy Watchlist & Vercel Cron (Commit `f8ddcb2`)
-* **"I'm In Bed" Safe Button & Anti-Spam Check-In (`ZC-8` / Phase 2):**
-  * Created `POST /api/members/in-bed` and `GET /api/members/in-bed`:
-    * Enables one-tap check-in marking member `is_in_bed: true` for their local timezone date (`IN_BED_EARLY` in `notification_logs`).
-    * Supports cancellation / undoing check-in (`action: 'cancel'`).
-  * Updated `src/lib/cronDispatcher.ts`:
-    * When member has checked in early via "I'm in Bed", personal wind-down & bedtime notifications are suppressed.
-    * Outgoing community nag push notifications to friends are **strictly suppressed** (anti-spam guarantee).
-  * Updated `src/lib/sleepEngine.ts`:
-    * `computeMemberState()` accepts `isInBed`. Early check-in immediately moves member into `SLEEPING` bucket with Sleep Shield active.
-* **Sleep Consistency Streaks & Mascot Badges (`ZC-12` / Phase 3.1):**
-  * Implemented pure `calculateSleepStreak(checkinDates, sleeperNow)` in `src/lib/sleepEngine.ts` calculating consecutive check-in days.
-  * Implemented `getStreakMilestoneBadge()` awarding visual mascot badges (Grand Slumber Fox 👑, Night Guardian Fox 🥇, Dream Weaver Fox 🥈, Cozy Den Kit 🥉, First Snooze 🔥).
-  * Displayed badge and streak pill on `MemberCard.tsx` and inside `MyScheduleModal.tsx`.
-* **Selective Buddy Watchlist System (Phase 2):**
-  * Added star toggle (`⭐`) to every member card, persisting starred members in localStorage.
-  * Added dashboard filter pill: `"All Den (N)"` vs `"Starred Buddies (M)"`.
-* **Vercel Cron Deployment (`vercel.json`):**
-  * Added `vercel.json` configuring 1-minute cron trigger to `/api/cron/dispatch-notifications`.
-
-### Phase 6: CodeRabbit AI Code Review Integration (Commit `d06d81f`)
-* Configured `.coderabbit.yaml` adhering to CodeRabbit v2 schema with path instructions for sleep engine, cooldowns, and design tokens.
-
-### Phase 7: Simple Member PIN Login & Profile Session Binding (`ZC-13`)
-* **HMAC-SHA256 Session Engine (`src/lib/auth.ts`):** 30-day cryptographically signed sessions.
-* **Auth Endpoints:** `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`.
-* **Push Subscription Security Enforcement:** Bound push endpoints strictly to authenticated session profiles.
-* **Warm Dark Login Modal (`src/components/LoginModal.tsx`):** Profile selection, claim, PIN entry, and logout.
-
-### Phase 8: Automated Discord Channel Webhooks & "Nagged!" Assist Counter (`ZC-11` / `ZC-12` / `ZC-13`)
-* **Automated Discord Channel Webhook Engine (`src/lib/discordWebhook.ts`):**
-  * Regex validation for incoming Discord Webhooks (`^https:\/\/(ptb\.|canary\.)?discord\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+$`).
-  * Warm Dark embed color tokens: `#E07A5F` (Coral Nag: `14711391`), `#F4A261` (Amber Cozy: `16032353`), `#81B29A` (Sage Rest: `8500122`), `#3D405B` (Slumber Night: `4014171`).
-  * `sendBedtimeDiscordWebhook`: Dispatches rich embeds at bedtime hit with local bedtime, streak days, streak medal, Sleep Shield status, and direct Discord journal thread link.
-  * `sendMorningDigestDiscordWebhook`: Dispatches morning wake-up slumber recap ranking top streak champions and safe check-ins.
-  * `sendTestDiscordWebhook`: Instant test dispatch verifying webhook connectivity.
-* **1-Minute Cron Dispatcher Integration (`src/lib/cronDispatcher.ts`):**
-  * Added Dispatch C: Automatically triggers Discord bedtime webhook for each sleeper when their bedtime hits (unless checked in early).
-  * Idempotency guarantee through `notification_logs`.
-* **Moderator Webhook Management Drawer (`src/components/ModDrawer.tsx`):**
-  * Added 4th tab: `"Discord Webhook"` with live environment connection status, masked URL preview, custom override input, "Send Test Bedtime Embed", and "Post Morning Digest Now" buttons.
-  * Created `src/app/api/mod/webhook/route.ts` with moderator passcode & role authentication.
-* **"Nagged!" Community Assist Counter:**
-  * Created `POST /api/members/nag-assist` and `GET /api/members/nag-assist`.
-  * Enforces helper deduplication per sleeper per local date via `notification_logs` constraint (`NAG_ASSIST:<helper>`).
-  * Added `nag_assists_count` hydration in `GET /api/members`.
-  * Added live assist counter badge on `BEDTIME_NOW` cards (`"👥 X friends checked in tonight 🦊"`).
-  * Added optimistic UI assist recording and micro-feedback when community members click "Nag in Discord Journal".
-* **Verification Suite (`scripts/test-discord-webhook-and-assists.mjs`):**
-  * Validated Discord URL regex (standard, canary, ptb, rejected invalid).
-  * Validated embed colors and Sleep Shield branding.
-  * Live Supabase database test for nag assist logging, helper deduplication, and count aggregation.
-
----
-
-### Phase 9: Weekend Sleep Hours (Friday & Saturday Nights)
-* **Custom Weekend Sleep Hours Engine (`src/lib/sleepEngine.ts`):**
-  * Added `weekend_bedtime_local` and `weekend_wake_time_local` to support distinct sleep hours for Friday nights and Saturday nights.
-  * Added helper functions `isWeekendNight(dt)` (Luxon weekday 5 = Friday, 6 = Saturday) and `getBedtimeForNight(member, dt)`.
-  * `getNightBedtimeDateTime`: Seamlessly handles both before-midnight (e.g. `23:45`) and after-midnight (e.g. `01:30` AM into Saturday/Sunday morning) bedtimes.
-  * `computeMemberState`: Dynamically identifies the closest candidate bedtime across weekdays vs weekend nights, populates `isWeekendSchedule`, and adjusts `formattedSleeperTime` / `formattedViewerTime`.
-  * `checkCooldownPromotion`: Promotes `pending_weekend_bedtime_local` and `pending_weekend_wake_time_local` when the 48-hour cooldown expires.
-* **Database & Migration (`src/lib/db.ts`, `supabase/schema.sql`):**
-  * Extended `Member` interface and PostgreSQL schema with `weekend_bedtime_local`, `weekend_wake_time_local`, `pending_weekend_bedtime_local`, and `pending_weekend_wake_time_local`.
-* **API Endpoints:**
-  * `POST /api/members/update-schedule`: Detects changes to weekend schedule; enqueues into 48-hour pending cooldown for regular members; allows immediate moderator override.
-  * `POST /api/members/cancel-pending`: Clears pending weekend changes.
-  * `GET` & `POST /api/members`: Supports weekend fields in creation and background promotion.
-  * `POST /api/mod`: Moderator drawer actions (`approve_pending`, `cancel_cooldown`, `edit_member`, `add_member`) fully support weekend hours.
-  * `GET /api/auth/me` & `POST /api/auth/login`: Hydrates authenticated member session with weekend hours.
-* **Notification & Webhook Dispatchers (`src/lib/cronDispatcher.ts`, `src/lib/discordWebhook.ts`):**
-  * Push alerts and Discord webhook announcements dynamically use that night's effective local bedtime (`state.formattedSleeperTime`).
-* **Warm Dark UI Components:**
-  * `MyScheduleModal.tsx`: Added Weekend Hours toggle switch and 24h bedtime/wake time inputs with Sleepy Fox helper hint for both Claim/Edit and New Member tabs.
-  * `MemberCard.tsx`: Displays `🌙 Weekend` badge when a member is actively on their Friday/Saturday night schedule.
-  * `ModDrawer.tsx`: Displays pending weekend diffs in Cooldown Approvals tab, adds weekend controls to Edit & Add Member modals, and shows `🌙 Fri/Sat` pill on Roster cards.
-* **Verification Suite (`scripts/test-weekend-hours.mjs`):**
-  * 20 automated tests validating day-of-week classification (Friday & Saturday vs Sun-Thu), before/after midnight crossovers, member state machine buckets, and cooldown promotion.
-
-### Phase 10: Critical Security & Data Protection Fixes (Commit `cd2f009`)
-* **Credential Stripping (`sanitizeMember` in `src/lib/auth.ts`):**
-  * Stripped `passcode_hash` from `GET /api/members`, `POST /api/members`, `/api/members/update-schedule`, `/api/members/cancel-pending`, and `/api/mod`.
-  * Added `has_pin?: boolean` property to `Member` interface in `src/lib/db.ts` to expose claimed status without exposing password hashes.
-  * Updated UI components (`LoginModal.tsx`, `MyScheduleModal.tsx`, `ModDrawer.tsx`) to check `has_pin`.
-* **Secured "I'm In Bed" Check-In (`src/app/api/members/in-bed/route.ts`):**
-  * Enforced authorization gate: caller must supply matching authenticated session cookie/token OR valid 4-digit PIN.
-  * Rejects unauthenticated check-in/cancellation with HTTP 401; rejects cross-user impersonation with HTTP 403.
-  * Updated `handleCheckIn` and `handleCancelInBed` in `page.tsx` to automatically supply bearer auth token and prompt login on 401.
-* **Secured Push Subscriptions (`src/app/api/push/subscribe/route.ts`):**
-  * Strictly requires active session or verified PIN to bind push tokens to a member.
-  * Fixed `PushModal.tsx`: removed arbitrary fallback that defaulted unauthenticated visitors to `members[0].id`.
-* **Verification Suite (`scripts/test-phase1-security.mjs`):**
-  * Added automated test suite validating credential stripping, anonymous check-in blocking, wrong PIN rejection, cross-user hijacking prevention, and valid session authorization.
-
-### Phase 11: Production Crons & PWA Reliability (Commit `c17bd61`)
-* **iOS Safari PWA Icon Fix (`src/app/layout.tsx`):**
-  * Updated `apple` touch icon to point to `/icons/icon-192x192.png` instead of `.svg` so iOS Home Screen icon displays correctly.
-* **Android PWA Manifest & Adaptive Icons (`public/manifest.json`):**
-  * Added `"purpose": "maskable"` and `"purpose": "any"` icon entries, `"id": "/"`, `"scope": "/"`, and categories.
-* **Android / Chrome `beforeinstallprompt` Install Flow (`src/components/PwaBanner.tsx`):**
-  * Captured `beforeinstallprompt` event and surfaced an active "Install App" banner for Android & desktop Chrome users.
-* **Service Worker Offline Caching & Shell (`public/sw.js`):**
-  * Added `CACHE_NAME = 'zcatchers-v2'` pre-caching the HTML shell, icons, and manifest.
-  * Added `fetch` event handler: network-first for navigation with offline fallback, cache-first for static icons, and strictly network-only for dynamic `/api/*` routes.
-* **Cron Dispatcher N+1 Query Elimination (`src/lib/cronDispatcher.ts`):**
-  * Batch pre-fetched all recent `IN_BED_EARLY` and dispatch records in a single query; converted `hasBeenDispatched` to an in-memory `O(1)` check. Prevents Vercel serverless 10s function timeouts.
-* **Dashboard Auto-Refresh & Focus Sync (`src/app/page.tsx`):**
-  * Added 60s periodic polling of `/api/members` and an instant sync on window focus / `visibilitychange` to reflect buddies' check-ins and bedtime shifts in real-time.
-* **External Cron Fallback (`.github/workflows/cron-dispatcher.yml`):**
-  * Created scheduled GitHub Actions runner hitting `/api/cron/dispatch-notifications` every 5 minutes as a free cron fallback for Vercel Hobby deployments.
-* **Production Passcode Protection (`src/lib/auth.ts`):**
-  * Disabled hardcoded `'cozyfox2026'` default passcode when `NODE_ENV === 'production'`. Requires `MOD_SECRET_PASSCODE` in production.
-* **Updated Environment Template (`.env.example`):**
-  * Documented `CRON_SECRET`, `DISCORD_COMMUNITY_WEBHOOK_URL`, `SESSION_SECRET`, and `PIN_SALT`.
-
-### Phase 12: Self-Service Profile Registration & Username PIN Authentication (Commit `75101e8`)
-* **Self-Service Registration Engine (`src/app/api/members/route.ts`, `src/app/api/auth/register/route.ts`):**
-  * Enables friends to directly register their own profiles with username, Discord handle, bedtime, wake time, timezone (auto-detected), Discord journal link, optional weekend sleep schedule, and 4-to-6 digit numeric PIN.
-  * Enforces case-insensitive username uniqueness check (`discord_username ILIKE $1`) preventing duplicate or conflicting profiles.
-  * Implements resilient insertion fallback: gracefully saves member record even if optional weekend schema columns are not yet applied in the database schema cache.
-  * Generates 30-day HMAC-SHA256 session token and sets HttpOnly `zcatchers_session` cookie; returns sanitized profile and session token for immediate automatic authentication without an extra manual claim step.
-* **Username-Based Authentication (`src/app/api/auth/login/route.ts`):**
-  * Supports authenticating by either case-insensitive `username` or `member_id` alongside the 4-to-6 digit numeric PIN.
-  * Allows first-time PIN claiming for legacy or unclaimed profiles; verifies PIN with salted SHA-256 for claimed members.
-* **Pre-Seeded Data Cleanup & Admin Tools:**
-  * Purged the 4 initial demo seed profiles (`Aoi`, `SarahK`, `Marcus`, `Arjun`) from the live Supabase database.
-  * Added `scripts/purge-demo-members.mjs` and `scripts/seed-demo-members.mjs` for one-command maintenance.
-  * Added `purge_seed_members` action in `src/app/api/mod/route.ts` and surfaced a "Purge Demo Profiles" button in `ModDrawer.tsx` with confirmation dialog.
-* **Warm Dark Empty State & Onboarding UX (`src/app/page.tsx`, `src/components/LoginModal.tsx`, `src/components/Header.tsx`):**
-  * Built empty den onboarding hero on `page.tsx`: when `members.length === 0`, displays a welcoming card with Sleepy Fox mascot and a 1-click CTA button `"Join Den & Create Profile"`.
-  * Redesigned `LoginModal.tsx` with segmented tabs: `"Log In"` (username input or roster picker + PIN) and `"Join Den (Create Profile)"` (complete onboarding form with auto-detected timezone, live bedtime preview, and sample journal URL button).
-  * Enhanced `Header.tsx`: surfaces `"Join Den"` (accent amber button) and `"Log In"` buttons when unauthenticated; displays `@username` session pill when logged in.
-  * Mobile Bottom Navigation: added Join/Profile tab for direct access on mobile devices.
-* **Verification & Test Suite:**
-  * Created `scripts/test-signup-and-profiles.mjs` validating self-service registration, PIN hashing, case-insensitive lookup, duplicate username rejection, and session token validation.
-  * Updated `test-e2e-api-endpoints.mjs`, `test-in-bed-and-streaks.mjs`, and `test-discord-webhook-and-assists.mjs` to dynamically create and clean up temporary test records, ensuring 100% test pass rates on clean/empty databases.
-
-### Phase 13: CI/CD, CodeRabbit & Vercel Deployment Hardening
-* **CodeRabbit Configuration Fix (`.coderabbit.yaml`):**
-  * Resolved parsing error on PR #14: CodeRabbit schema v2 enforces a strict `maxLength: 250` character limit on `tone_instructions`.
-  * Condensed `tone_instructions` from 656 characters to 200 characters while preserving all non-negotiable architectural guardrails (strict Luxon TZ math, 48h cooldown anti-dodge, Sleep Shield, and Warm Dark UI). Comprehensive instructions remain active in `knowledge_base.code_guidelines` and `reviews.path_instructions`.
-* **Vercel Deployment Hardening (`vercel.json` & `src/lib/db.ts`):**
-  * `vercel.json`: Changed cron interval from `* * * * *` (which is prohibited on Vercel Hobby accounts and triggers instant deployment failure) to `"0 0 * * *"` (daily midnight UTC). Frequent 5-minute dispatches are handled independently by `.github/workflows/cron-dispatcher.yml`.
-  * `src/lib/db.ts`: Added placeholder fallback URLs and keys for `createClient` to prevent top-level module initialization failures (`Error: supabaseUrl is required`) during Next.js static page collection on fresh Vercel build environments before runtime environment variables are bound.
+### Phase 35: PWA Phone Robustness, Safe Areas, Keyboard dvh & Mobile Offline Resilience
+* **iOS Notch & Dynamic Island Safe-Area Clipping Fix (`src/components/Header.tsx`, `src/app/join/page.tsx`):**
+  * Added `pt-[env(safe-area-inset-top,0px)]` to the sticky `<header>` container in `Header.tsx`, preventing iPhone status bar clocks, battery badges, and Dynamic Islands from overlapping the Sleepy Fox icon and "Z Catchers" brand wordmark.
+  * Added top safe area spacing to `/join/page.tsx` (`pt-[calc(2rem+env(safe-area-inset-top,0px))]`).
+* **Virtual Keyboard Avoidance via Dynamic Viewport Height (`dvh`):**
+  * Upgraded slide-up bottom sheet containers across `PushModal.tsx`, `MyScheduleModal.tsx`, `ModDrawer.tsx`, and `MetastrikeModal.tsx` from static `vh` to `max-h-[90dvh]` / `max-h-[92dvh]`.
+  * Allows bottom sheets to dynamically contract when mobile software keyboards open, ensuring input fields and submission buttons stay accessible without being pushed off-screen.
+* **Warm Dark Palette Compliance in Bottom Navigation (`src/components/BottomNav.tsx`):**
+  * Eliminated cool slate-blue hex tokens (`#12141c` and `#262936`).
+  * Re-anchored bottom navigation to official Warm Dark tokens: `bg-[#1C1714]/95`, `border-t border-[#332B24]`, and `ring-[#1C1714]`.
+* **Touch Ergonomics & Double-Tap Latency Elimination (`src/app/globals.css`):**
+  * Applied `touch-action: manipulation;` across `html, body, button, a, input, select, textarea`, eliminating the standard 300ms mobile browser double-tap zoom delay for immediate button responsiveness.
+  * Added `-webkit-tap-highlight-color: transparent;` to eliminate default gray/blue tap flashes.
+  * Added `overscroll-behavior-y: contain;` to prevent elastic scroll bounces from flashing white browser backgrounds.
+  * Added `user-select: none;` on buttons and bottom navigation to prevent accidental text selections during fast taps.
+* **Interactive Push Notification Actions in Service Worker (`public/sw.js`):**
+  * Added interactive lockscreen notification action buttons to `showNotification`: `"🛌 I'm in Bed"` (`in_bed`) and `"💬 Nag in Discord"` (`open_journal`).
+  * Enhanced `notificationclick` to parse `event.action`, route `in_bed` directly to `/?action=in-bed`, and route `open_journal` straight to the member's Discord journal thread.
+* **Expanded Web App Manifest Shortcuts (`public/manifest.json`, `src/app/page.tsx`):**
+  * Added 1-tap **"My Schedule"** home screen long-press shortcut pointing to `/?action=schedule`.
+  * Wired up `processDeepLinkAction` in `page.tsx` to automatically trigger `setActiveModal('schedule')`.
+* **Offline Roster Caching, Connectivity Banner & App Badging API (`src/app/page.tsx`):**
+  * Implemented localStorage snapshot caching (`STORAGE_KEY_CACHED_ROSTER = 'zcatchers_cached_roster'`) in `fetchRoster` to immediately hydrate the den roster during cold boots or when offline.
+  * Added real-time network connectivity listeners (`online`/`offline`) with a gentle Warm Dark offline notification banner: *"You are offline • Showing cached Fox Den times"*.
+  * Automated silent background roster and push health re-sync when network reconnects.
+  * Integrated mobile Home Screen **App Badging API** (`navigator.setAppBadge` / `clearAppBadge`) syncing the active overdue nag count (`categorized.nagNow.length`) directly to the PWA icon.
 * **Verification:**
-  * Verified `npx tsc --noEmit` clean (0 errors).
-  * Verified `npm run build` succeeds cleanly in isolated environment without environment variables, generating all 21 routes.
+  * Created `scripts/test-phase35-pwa-phone-robustness.mjs`: 15/15 checks passed cleanly.
+  * Verified all existing test suites: `test-phase1-pwa-push.mjs` (25/25), `test-phase2-mobile-touch-ux.mjs` (28/28), `test-weekend-hours.mjs` (32/32), `test-strikes-system.mjs` (24/24).
+  * `npx tsc --noEmit`: 0 errors.
+  * `npm run build`: 26/26 static & dynamic pages successfully compiled.
 
-### Phase 14: Comprehensive CodeRabbit Security, Hook, and Architectural Hardening
-* **React Rules of Hooks Fix (`src/components/MyScheduleModal.tsx`):**
-  * Moved `pendingCooldownNotice` and `previewTime` `useMemo` hooks above the `if (!isOpen) return null;` early return, preventing render crashes when modal opens/closes.
-* **Production Secret Fail-Closed Governance (`src/lib/auth.ts`):**
-  * Hardened `PIN_SALT` and `SESSION_SECRET` to fail closed in production when environment variables are omitted, while retaining dev fallbacks for local test suites.
-* **PIN Brute-Force Rate Limiting (`src/lib/rateLimit.ts`):**
-  * Created sliding-window rate limiter tracking failed attempts per IP and per member target (5 failed attempts per 15m window).
-  * Enforced rate limiting and strict string input validation across `src/app/api/auth/login`, `src/app/api/members/in-bed`, `src/app/api/members/update-schedule`, `src/app/api/members/cancel-pending`, and `src/app/api/push/subscribe`.
-* **Push Testing Endpoint Hardening (`src/app/api/push/test/route.ts` & `src/components/PushModal.tsx`):**
-  * Enforced session authentication (`getRequestSessionMemberId`); restricted test notifications strictly to the caller's registered subscriptions and replaced arbitrary payload inputs with fixed safe system alerts.
-* **Cron Authorization Hardening (`src/app/api/cron/dispatch-notifications/route.ts`):**
-  * Enforced fail-closed behavior in production when `CRON_SECRET` is unset; removed query parameter secret exposure in favor of timing-safe `Authorization: Bearer` and `x-cron-secret` headers.
-* **Moderator Account Enrollment & Atomic PIN Claiming (`src/app/api/auth/login/route.ts`):**
-  * Required moderator master passcode (`mod_passcode`) verification before enrolling unconfigured moderator profiles.
-  * Implemented atomic CAS updates (`.is('passcode_hash', null)`) to eliminate race conditions during profile claiming.
-* **Midnight Wrap-Around Sleep Cycle Alignment (`src/lib/sleepEngine.ts`):**
-  * Implemented `getSleepCycleDate` ensuring members with post-midnight bedtimes (hour < 12) have check-ins, suppression lookups, and `is_in_bed` status mapped consistently to the preceding sleep session date.
-* **PostgREST Row Cap Pagination (`src/lib/db.ts` & `src/app/api/members/route.ts`):**
-  * Implemented `fetchAllNotificationLogs` using `.range()` pagination to prevent row truncation on high-volume notification log tables.
-* **Due-and-Not-Yet-Logged Cron Dispatch Engine (`src/lib/cronDispatcher.ts`):**
-  * Replaced fragile narrow-minute window checks with robust due-and-not-yet-logged evaluation for 30m wind-down (`-30 <= diff < 0`) and bedtime hit (`0 <= diff < 60`), accommodating 1m, 5m, or jittered scheduler intervals. Aborts execution if log prefetch errors occur.
-  * Note on dispatch semantics: Notification logs are written upon push dispatch attempt to prevent runaway retries. Transient push failures are recorded as dispatched and are not retried for that window. In multi-instance deployments without distributed locking or atomic row reservation, overlapping concurrent dispatcher executions that observe an empty log concurrently may send duplicate notifications; full zero-duplicate guarantees require serialized execution or atomic distributed row claiming.
-* **CI/CD Script Injection Prevention (`.github/workflows/jira-transition.yml`):**
-  * Passed `${{ github.event.inputs.* }}` through quoted environment variables to eliminate shell template injection risks.
-* **Safe Demo Member Purging (`src/app/api/mod/route.ts` & `scripts/purge-demo-members.mjs`):**
-  * Filtered demo profile deletions by both username and demo handle fingerprint (`aoi_jp`, `sarah_ny`, `marcus_ldn`, `arjun_in`) to prevent deleting real users.
+### Phase 29: Mobile Layout Bugfixes & Standalone Onboarding Flow (`/join`)
+* **Standalone Onboarding & Join Page (`src/app/join/page.tsx`):**
+  * Created dedicated onboarding route `/join` with centered Sleepy Fox mascot logo (`FoxMascot state="logo" size={56}`), "Z Catchers" title, and warm subtitle: `"Cross-timezone bedtime accountability for the Fox Den"`.
+  * Built two-tab switcher card (`max-w-md mx-auto`):
+    1. **"New Fox (Join Den)":** Display Name, Discord Journal Thread URL (with regex verification and sample URL helper), Target Bedtime (24h), Auto-detected IANA Timezone (with GMT offset selector), and 4-digit PIN.
+    2. **"Returning Fox (Enter PIN)":** Allows selecting an existing profile from the active den roster or entering username directly, plus 4-digit PIN authentication.
+  * On submission, automatically saves authentication session (`setStoredAuthToken`, `setStoredAuthMember`, HttpOnly cookie) and redirects to `/`.
+  * Included reverse route guard: if user already has an active session, redirects to `/` immediately.
+* **Dashboard Route Guard & Join Button Cleanup (`src/app/page.tsx`):**
+  * Added client-side Route Guard: checks localStorage (`getStoredAuthMember`, `getStoredAuthToken`, `getStoredMemberId`) and cookies (`/api/auth/me`). If no member profile is claimed or logged in, automatically redirects to `/join`.
+  * Deleted the orange `"Join Den"` button from the top header.
+  * Deleted the mid-page `"✨ Join Den: Create profile & PIN ->"` pill button.
+  * Updated empty roster state CTA to redirect cleanly to `/join`.
+  * Updated logout flow in `LoginModal` to redirect cleanly to `/join`.
+* **Mobile Top Header Layout Crowding Fix (`src/components/Header.tsx`):**
+  * Replaced rigid height with `flex items-center justify-between px-4 py-3 sm:px-6 lg:px-8 max-w-7xl`.
+  * Left side: Sleepy Fox icon (`shrink-0`) + `"Z Catchers"` (`whitespace-nowrap font-bold text-lg`) with detected timezone rendered as a tiny muted subtitle directly underneath (`text-xs text-[#A89F91]`, e.g. `GMT+05:30`).
+  * Removed the bulky separate mobile timezone pill.
+  * Right side: Shows logged-in user's compact profile pill/avatar (`@{currentUser.discord_username}`).
+  * Hidden redundant push notification bell button and key/login buttons on mobile screens (`hidden md:flex`), relying on the mobile bottom navigation bar.
+* **iOS Safari Install Banner Text Formatting Fix (`src/components/PwaBanner.tsx`):**
+  * Fixed broken 4-column layout caused by `flex` on the text container.
+  * Converted text wrapper to standard block paragraph `<p className="text-sm leading-relaxed text-[#A89F91] mt-1">` so sentences flow naturally from left to right.
+  * Formatted Share icon inline using `<span className="inline-flex items-center align-middle mx-1">` and bolded `'Add to Home Screen'` with `<strong className="text-[#F4F1EA] font-semibold">`.
+* **Mobile Bottom Navigation Bar Cleanup (`src/app/page.tsx`):**
+  * Configured exactly 4 evenly spaced columns using `grid grid-cols-4`: `Roster`, `My Time`, `Alerts`, and `Mod`.
+  * Removed redundant 5th Join/Profile tab.
+  * Maintained `md:hidden` so navigation is strictly mobile-only and hidden on desktop and `/join`.
+* **Next.js Dev Indicator Overlay Disabled (`next.config.mjs`):**
+  * Added `devIndicators: false` to eliminate the floating "N" badge from overlapping the bottom-left "Roster" navigation icon.
+* **Type & Build Verification:**
+  * Fixed typing issue in `src/lib/db.ts` (`insertMemberSafe` conversion to `(data as unknown as Member)`).
+  * Created `src/app/not-found.tsx` to satisfy Next.js 15 App Router prerendering invariants.
+  * `npx tsc --noEmit`: 0 errors.
+  * `npm run build`: Compiled 25/25 static and dynamic pages with 0 errors.
 
-### Phase 15: Shared Per-Member & Per-IP Rate Limiting on PIN Verification Gates (Commit `9666c38`)
-* **Login Route `verifyPin` Gate Hardening (`src/app/api/auth/login/route.ts`):**
-  * Enforced shared per-member rate limit check (`checkPinRateLimit(clientIp, currentMember.id)`) immediately after member profile resolution (lines 58-64), prior to PIN verification and first-time claim enrollment.
-  * Synchronized failed attempt and reset counters across both `currentMember.id` (canonical UUID) and `targetIdentifier` (case-insensitive username), preventing per-member rate limit evasion via username lookups across rotated IPs.
-* **Schedule Cancellation Security Safeguard (`src/app/api/members/cancel-pending/route.ts`):**
-  * Fixed critical authentication bypass where profiles with `passcode_hash: null` allowed unauthenticated callers without moderator credentials to cancel pending schedule changes.
-  * Enforced strict 403 rejection if non-moderator attempts cancellation on profiles lacking PIN protection, and validated rate limits before evaluating `verifyPin`.
-* **Schedule Update Rate Limit Unification (`src/app/api/members/update-schedule/route.ts`):**
-  * Applied `checkPinRateLimit(clientIp, currentMember.id)` unified at the start of non-moderator operations, protecting initial profile claiming, unconfigured moderator enrollment, and existing PIN verification.
-* **Global Rate Limit Storage & Failure Behavior (`src/lib/rateLimit.ts`):**
-  * Bound `pinRateLimits` Map to `globalThis.__pinRateLimits` ensuring persistence across Next.js module reloads, bundle chunks, and warm serverless containers.
-  * Sanitized IP and target identifiers against empty/whitespace keys to prevent cross-request bucket collisions.
-  * Hardened `resetPinFailure`: only purges target-specific buckets upon successful verification and preserves IP failure counts, preventing attackers with valid credentials from resetting IP brute-force thresholds.
-* **Automated Test Suite (`scripts/test-pin-rate-limiting.mjs`):**
-  * Created comprehensive test suite verifying IP blocking at 5 failed attempts, cross-IP per-member lockout, independent member isolation, non-destructive IP tracking on member reset, whitespace sanitization, and sliding window expiration. All 14 tests passing cleanly.
-
-### Phase 16: Demo Profile Identification & Safe Purge via Shared Fingerprint (Commit `46ed131`)
-* **Centralized Demo Seed Fingerprints (`src/lib/demoSeed.ts`):**
-  * Created `DEMO_SEED_FINGERPRINTS` and pure `isDemoSeedMember` helper strictly pairing `discord_username`, `discord_handle`, and the dummy Discord journal thread URL (`https://discord.com/channels/123456789/...`).
-  * Guaranteed zero false positives for real community members sharing common names (`Marcus`, `Arjun`, `Aoi`, `SarahK`).
-* **Unified Moderator Purge Endpoint (`src/app/api/mod/route.ts`):**
-  * Refactored `action === 'purge_seed_members'` to query candidate names and filter through `isDemoSeedMember` before initiating deletions.
-* **Frontend Detection Alignment (`src/components/ModDrawer.tsx`):**
-  * Replaced fragile `hasDemoMembers` name-only check (`demoSet.has(m.discord_username)`) with `modMembers.some(isDemoSeedMember)`, preventing the purge banner from incorrectly showing when real members with matching names join.
-* **CLI Script Synchronization (`scripts/purge-demo-members.mjs`):**
-  * Updated CLI script to fetch `journal_url` and use `isDemoSeedMember`, keeping script and backend API behaviors identical.
-* **Verification Suite (`scripts/test-demo-seed-fingerprint.mjs`):**
-  * 11 unit tests validating positive identification of pre-seeded profiles, case-insensitivity, whitespace resilience, protection of real users with identical names or handles, and safety against falsy/malformed input. All 11 tests passing cleanly.
-
-### Phase 17: Atomic CAS Verification & First-Time PIN Claiming Hardening (Commit `369803b`)
-* **Verified Existing Atomic Claiming in Login (`src/app/api/auth/login/route.ts`):**
-  * Verified that first-time profile claiming already performs an atomic CAS update (`.is('passcode_hash', null)`), selects the updated `id`, and strictly rejects concurrent/already-claimed updates with HTTP 409 without issuing session tokens.
-* **Extended Atomic CAS to Schedule Updates (`src/app/api/members/update-schedule/route.ts`):**
-  * Applied the identical conditional atomic CAS update (`.is('passcode_hash', null)`) when an unconfigured member claims their PIN through schedule updates (`isFirstTimeClaim`), returning HTTP 409 if a concurrent update claimed the profile first.
-
-### Phase 18: CodeRabbit PR Review Trigger & Branch Synchronization (Commit `73aee39`)
-* **Branch Synchronization (`krish` → `origin/krish`):**
-  * Pushed 6 pending security & hardening commits (Phases 15-17) to remote `origin/krish`, updating PR #14 (`krish` → `dev`) HEAD to `73aee39`.
-* **CodeRabbit Re-trigger Execution:**
-  * Dispatched `@coderabbitai review` on PR #14 via GitHub CLI.
-  * Verified GitHub Check Run `CodeRabbit` transitioned to `pending` (active review in progress).
-* **Verification:**
-  * Verified `npx tsc --noEmit` passing cleanly (0 errors).
-  * Verified `npm run build` passing cleanly with all 21 static and dynamic routes compiled.
-
-### Phase 19: Implementation of CodeRabbit Group A Findings (Commit `a10a7ae`)
-* **Login Multi-Target Rate-Limit Fix (`src/app/api/auth/login/route.ts`):**
-  * Fixed IP failure key double counting when users log in by username (`targetIdentifier !== currentMember.id`).
-  * Passed empty IP string (`recordPinFailure('', targetIdentifier)`) on secondary target alias recording, ensuring exactly 1 IP failure is counted per failed attempt while still locking down the target alias across IPs.
-  * Added Section 7 test suite to `scripts/test-pin-rate-limiting.mjs` verifying multi-target lockout at exactly 5 failed attempts without premature IP throttling.
-* **Deterministic PostgREST Pagination (`src/lib/db.ts`):**
-  * Chained `.order('id', { ascending: true })` on `fetchAllNotificationLogs` before `.range(from, to)`, ensuring stable, deterministic row order across PostgREST page boundaries.
-* **Moderator Passcode Rate-Limiting & Query Parameter Removal (`src/app/api/mod/route.ts`):**
-  * Removed insecure `?passcode=` query string handling from `isAuthorized()`, preventing secret leakage into proxy logs and browser history.
-  * Applied IP-based rate limiting (`checkPinRateLimit(clientIp, '')`) and failure logging (`recordPinFailure(clientIp, '')`) to `isAuthorized()`, `/api/mod` GET, and `/api/mod` POST operations. Returns HTTP 429 with `Retry-After` header when throttled.
-  * Updated `fetchModRoster` in `src/components/ModDrawer.tsx` to omit `?passcode=` query parameters and use the `x-mod-passcode` header exclusively.
-  * Extended IP rate-limiting to all `verifyModPasscode` evaluation gates in `src/app/api/members/update-schedule/route.ts`, `src/app/api/members/cancel-pending/route.ts`, and `src/app/api/mod/webhook/route.ts`.
+### Phase 30: MemberCard & Status Bucket Headers Warm Dark Refactor
+* **Identical Card Dimensions & Unified Skeleton (`src/components/MemberCard.tsx`):**
+  * Refactored `MemberCard` to use a single unified layout with standard container `w-full p-5 rounded-2xl bg-[#1A1412] border transition-colors flex flex-col justify-between gap-4`.
+  * Added fixed avatar dimensions: `w-11 h-11 rounded-full shrink-0 flex items-center justify-center` preventing flexbox squeezing into vertical ovals.
+  * Unified header metadata placement: Member Name, `YOU` badge, `MOD` badge, Star button, and Streak badge are now positioned identically across all states.
+  * Prevented status pill text wrapping with `whitespace-nowrap px-2.5 py-1 text-xs rounded-full inline-flex items-center gap-1.5` and shortened verbose copy to clean single-line labels (`58m overdue` / `4m grace`, `in 28m`, `in 6h 15m`, `In Bed` / `Sleeping`).
+* **Unified Warm Dark Color Palette (No Cool Blue or Green):**
+  * Anchored all card surfaces to `#1A1412` espresso surface.
+  * **NAG NOW (Overdue / Grace):** Border `border-[#E07A5F]/40`, status pill `bg-[#E07A5F]/15 text-[#E07A5F]`.
+  * **WINDING DOWN:** Border `border-[#F4A261]/30`, status pill `bg-[#F4A261]/15 text-[#F4A261]`.
+  * **AWAKE:** Border `border-[#2C221E]`, status pill `bg-[#261E1A] text-[#A89F91]`.
+  * **SLEEPING (Shield Active):** Border `border-[#2C221E]`, status pill `bg-[#261E1A] text-[#C8B6A6]`, rested opacity `opacity-85 hover:opacity-100`. Removed cool slate blue (`#5B6B94`) and bright green.
+* **Native 3D Emoji Removal (Strict Lucide Icons):**
+  * Removed all native OS emojis (`🛌`, `🛡️`, `🌙`, `🔥`, `⏳`, `🔄`, `🦊`) from buttons, badges, and status pills.
+  * Replaced with dedicated `lucide-react` icons: `Flame` for streak badges, `BedDouble` for in-bed actions, `Clock` for grace and pending notices, `Shield` for metastrikes, `RefreshCw` for retroactive conversions, and `Moon` for weekend and slumber states.
+* **Status Bucket Headers Unification (`src/components/StatusBucket.tsx` & `src/app/page.tsx`):**
+  * Streamlined bucket titles to `"Nag Now"`, `"Winding Down"`, `"Awake"`, and `"Sleeping"`.
+  * Styled collapsible bucket header with `rounded-xl border border-[#2C221E] bg-[#1A1412] px-4 py-3 hover:border-[#382C27] hover:bg-[#201917]`.
+  * Updated bucket accent colors and icons to match the warm dark palette: Nag Now (`#E07A5F`), Winding Down (`#F4A261`), Awake (`#A89F91`), Sleeping (`#C8B6A6`).
+  * Updated top hero banner quick counters to `#E07A5F` (Nag), `#F4A261` (Wind), and `#C8B6A6` (Asleep).
 * **Verification:**
   * `npx tsc --noEmit`: 0 errors.
-  * `npm run build`: 21/21 routes compiled successfully.
-  * `node scripts/test-pin-rate-limiting.mjs`: All 17 rate-limiting and lockout tests passing.
+  * `npm run build`: 25/25 static & dynamic pages successfully generated.
 
-### Phase 20: Implementation of CodeRabbit Group B Findings (Commit `3f62539`)
-* **Warm Dark Color Token Enforcement (`src/components/ModDrawer.tsx`):**
-  * Replaced forbidden pure white `text-white` (`#FFFFFF`) with design-system cream token `text-cream-primary` (`#F5EBE1`) on the pending count pill badge (line 810) and PIN reset submission button (line 1098).
-* **44px Mobile Touch Targets & Screen Reader Accessibility (`src/components/ModDrawer.tsx`):**
-  * Upgraded member roster action icon controls (`ExternalLink`, `KeyRound`, `Edit2`, `Power`) from sub-28px footprints to full `min-h-[44px] min-w-[44px] inline-flex items-center justify-center` touch targets.
-  * Applied the same 44px minimum sizing to the drawer header close button, header session lock button, edit member form close button, and PIN management close button.
-  * Added descriptive `aria-label` attributes to all icon-only buttons for screen-reader accessibility (`Open Discord Journal Thread for <user>`, `Reset or clear PIN for <user>`, `Edit schedule for <user>`, `Deactivate/Reactivate member <user>`, `Close moderator panel`, `Lock moderator session`, `Close edit form`, `Close PIN form`).
+### Phase 31: Mobile PWA Lifecycle, Service Worker & Multi-Device Push Reliability (Phase 1 Execution)
+* **Service Worker Lifecycle & Offline Fallback Shell (`public/sw.js`):**
+  * Implemented `install` and `activate` listeners calling `self.skipWaiting()` and `self.clients.claim()` for immediate client control without waiting for stale tabs to close.
+  * Defined versioned static cache `z-catchers-shell-v1` pre-caching `/manifest.json`, `/icons/icon-192x192.png`, `/icons/icon-512x512.png`, `/icons/badge-72x72.png`, and `/icons/icon.svg`, and pruning legacy cache names on activate.
+  * Configured network-first navigation strategy with Warm Dark Sleepy Fox offline fallback HTML response (`#120F0D` background, `#1C1714` card, embedded vector mascot, and "Reconnect" retry button) while strictly bypassing `/api/*` routes.
+  * Enhanced `notificationclick` handler: matches window clients on origin, focuses existing window client, navigates or postMessages target action, or opens new window via `clients.openWindow(targetUrl)`.
+  * Added `pushsubscriptionchange` listener that re-subscribes via `self.registration.pushManager.subscribe()` and POSTs the refreshed token to `/api/push/subscribe` for background token rotation recovery.
+* **Web App Manifest Hardening (`public/manifest.json`):**
+  * Explicitly configured `"id": "/"`, `"scope": "/"`, `"start_url": "/"`, `"display": "standalone"`, and `"orientation": "portrait"`.
+  * Split icon declarations into distinct objects for `"purpose": "any"` and `"purpose": "maskable"` across 192x192 and 512x512 png assets to avoid Android launcher clipping.
+  * Added 1-tap **"I'm In Bed"** shortcut pointing to `"url": "/?action=in-bed"` with `/icons/icon-192x192.png`.
+* **Foreground State Sync & Deep-Link Action Handling (`src/app/page.tsx` & `src/lib/pushClient.ts`):**
+  * Added `syncPushSubscriptionHealth()` in `src/lib/pushClient.ts` to silently verify and re-sync active push subscriptions with Supabase on boot and foreground resume.
+  * Implemented throttled foreground sync in `src/app/page.tsx`: triggers on `visibilitychange` (when `visible`) and `window.focus`, throttled to at most once every 5 seconds. Recalculates countdown timers (`setTick`), parallel fetches `/api/members` and `/api/auth/me`, and runs silent push health checks.
+  * Handled deep-link query parameter `/?action=in-bed`: if authenticated, automatically triggers check-in flow (`/api/members/in-bed`) and sanitizes URL query parameters using `window.history.replaceState`.
+  * Added `message` event listener on `navigator.serviceWorker` to handle in-bed actions posted from notification clicks.
+* **Cross-Platform Install Banner (`src/components/PwaBanner.tsx`):**
+  * Detected standalone mode via `matchMedia('(display-mode: standalone)')` and `navigator.standalone`, immediately suppressing the banner if installed.
+  * Preserved `beforeinstallprompt` event capture and install button for Chromium/Android.
+  * Added Apple mobile Safari detection (iOS/iPadOS touch devices) with Warm Dark banner instructing: **Tap Share → Add to Home Screen**.
+  * Persisted banner dismissals in `localStorage` (`zcatchers_pwa_banner_dismissed_at`) with a 7-day cooldown timestamp (`7 * 24 * 60 * 60 * 1000`).
+* **Multi-Device Push Subscriptions & Stale Pruning (`supabase/schema.sql`, `src/app/api/push/subscribe/route.ts`, `src/app/api/push/unsubscribe/route.ts`, `src/lib/pushServer.ts`):**
+  * Verified and updated `supabase/schema.sql` so push subscriptions are uniquely constrained on `endpoint`, allowing a single member to maintain concurrent subscriptions on both mobile PWA and desktop without overwriting.
+  * Updated `/api/push/subscribe/route.ts` to support background token rotation recovery (`old_endpoint`) and upserting on `endpoint`.
+  * Updated `/api/push/unsubscribe/route.ts` to delete only the specific `endpoint` passed in the body, falling back to all member subscriptions only if no specific endpoint is provided.
+  * In `src/lib/pushServer.ts`, wrapped `webpush.sendNotification` to inspect `statusCode === 404 || statusCode === 410`, automatically pruning dead endpoints from Supabase while allowing delivery to continue to the member's remaining active devices. Added `sendPushToMemberSubscriptions` helper.
+* **Verification:**
+  * Created `scripts/test-phase1-pwa-push.mjs` test suite verifying all 6 phases: 25/25 checks passed.
+  * `node scripts/test-push-and-cron.mjs`: all tests passed.
+  * `node scripts/test-e2e-api-endpoints.mjs`: all tests passed.
+  * `npx tsc --noEmit`: 0 errors.
+  * `npm run build`: 25/25 static & dynamic routes compiled cleanly.
+
+### Phase 32: Mobile Navigation, Standalone Onboarding & Touch UX (Phase 2 Execution)
+* **Mobile Bottom Navigation Bar (`src/components/BottomNav.tsx`, `src/app/page.tsx`):**
+  * Created dedicated `BottomNav.tsx` component fixed to the bottom of mobile viewports (`md:hidden`) with frosted Warm Dark glassmorphism styling (`bg-[#12141c]/90 backdrop-blur-md border-t border-[#262936]`).
+  * Four active tabs: **Roster** (`Home`), **My Time** (`Clock`), **Alerts** (`Bell`, with indicator dot when push is enabled), and **Mod** (`Shield`, conditionally displayed only when `currentUser?.role === 'moderator'`).
+  * Dynamic layout: renders 3 columns (`grid-cols-3`) for regular members and 4 columns (`grid-cols-4`) for moderators.
+  * Enforced minimum $44\text{px} \times 44\text{px}$ touch targets (`min-h-[44px] min-w-[44px]`), safe area padding (`pb-[env(safe-area-inset-bottom)]`), and 10ms haptic feedback (`navigator.vibrate(10)`).
+  * In `src/app/page.tsx`, integrated `BottomNav` with `mobileTab` state (`'roster' | 'schedule' | 'alerts' | 'mod'`), opening sheet modals or scrolling to top on Roster tap.
+* **Mobile Slide-Up Bottom Sheet Conversions (`src/components/PushModal.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/ModDrawer.tsx`):**
+  * Transformed `PushModal`, `MyScheduleModal`, and `ModDrawer` into clean mobile slide-up bottom sheets (`flex items-end justify-center md:items-center rounded-t-3xl md:rounded-2xl`).
+  * Added visible mobile drag handle indicator bar (`h-1.5 w-12 rounded-full bg-night-border md:hidden shrink-0`).
+  * Added dynamic safe-area bottom padding (`pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-6`) and enforced $\ge 44\text{px}$ touch targets across all dismiss, close, tab, and action buttons.
+* **Standalone Onboarding & Join Route (`src/app/join/page.tsx`, `src/components/LoginModal.tsx`):**
+  * Created full standalone onboarding and login route at `/join` designed specifically for mobile screens without virtual keyboard overlap (`min-h-[100dvh]`, `p-4 sm:p-6 pb-20`).
+  * Two-tab switcher: **"New Fox (Join Den)"** and **"Returning Fox (Enter PIN)"** with full timezone selection, 24h bedtime input, Discord journal validation, 4-digit PIN setup/login, and Sleepy Fox mascot branding.
+  * Added light 15ms haptic pulses on submit and tab changes.
+  * Updated root auth checks in `src/app/page.tsx` and 401 unauthenticated handlers across check-in and strike voting to cleanly navigate to `/join`.
+  * Deprecated `src/components/LoginModal.tsx` into a lightweight redirect shim to preserve backward compatibility.
+* **Viewport Safe Areas, Dynamic Height & iOS Input Zoom Fixes (`src/app/layout.tsx`, `src/app/globals.css`):**
+  * Configured `viewport: { width: 'device-width', initialScale: 1, maximumScale: 1, viewportFit: 'cover' }` in `src/app/layout.tsx` to handle notched mobile displays.
+  * Set root body `min-h-[100dvh]` for mobile browser viewports.
+  * Enforced `--safe-area-bottom: env(safe-area-inset-bottom, 0px)` and `--safe-area-top: env(safe-area-inset-top, 0px)` in `src/app/globals.css`.
+  * Enforced `font-size: 16px !important` on all `<input>`, `<select>`, and `<textarea>` elements across the project to eliminate iOS Safari and PWA viewports auto-zooming when focusing fields.
+* **Optimistic UI, Touch Targets & Haptics (`src/components/MemberCard.tsx`):**
+  * Added instant optimistic state transitions for **"I'm In Bed"** check-in (`optimisticInBed`) and **"Nag / Assist"** button (`localNagCount`, `hasNagged`) with light 15ms haptic feedback (`triggerHaptic(15)`).
+  * Implemented automated rollback with user-facing error toast alerts if the background API mutation fails.
+  * Enforced minimum $44\text{px} \times 44\text{px}$ touch target sizes (`min-h-[44px] min-w-[44px]`) across all card actions, links, and buttons.
+* **Verification:**
+  * Created `scripts/test-phase2-mobile-touch-ux.mjs` test suite verifying all 28 requirements: 28/28 checks passed.
+  * `node scripts/test-phase1-pwa-push.mjs`: 25/25 checks passed.
+  * `node scripts/test-push-and-cron.mjs`: all tests passed.
+  * `node scripts/test-e2e-api-endpoints.mjs`: all tests passed.
+  * `npx tsc --noEmit`: 0 errors.
+  * `npm run build`: 25/25 static & dynamic routes compiled cleanly.
+
+### Phase 34: Community Accountability Mechanics & Serverless Security (Phase 4 Execution)
+* **Supabase Schema & Table Hardening (`supabase/schema.sql` & `src/lib/db.ts`):**
+  * Added `strikes_count` and `metastrikes_count` alias columns to `members` table in `supabase/schema.sql` with check constraints (`0 <= count <= 3`).
+  * Created persistent serverless rate limiting table `rate_limit_entries` keyed by `key` (indexed on `key + reset_at` and `target_member_id + ip_address`) with service role RLS policies.
+  * Added stored PostgreSQL function `reset_monthly_strikes()` for database-level calendar month rollovers.
+  * Updated TypeScript interfaces in `src/lib/db.ts` (`RateLimitRecord`, `Member.strikes_count`, `Member.metastrikes_count`) and automated alias synchronization in `updateMemberSafe`.
+* **Persistent Serverless Rate Limiter (`src/lib/rateLimit.ts`):**
+  * Refactored from ephemeral in-memory maps to a persistent Supabase-backed table counter keyed by `target_member_id + ip_address` across ephemeral serverless instances.
+  * Implemented dual sync + async interface (`checkPinRateLimitSync`, `checkPinRateLimitPersistent`, `recordPinFailurePersistent`, `resetPinFailurePersistent`, `clearAllPinRateLimitsPersistent`).
+  * Provided thenable return structure on `checkPinRateLimit` ensuring 100% backward compatibility for synchronous unit test suites and awaitable serverless runtime usage.
+  * Applied persistent rate limiting to PIN login attempts in `/api/auth/login/route.ts`, schedule updates in `/api/members/update-schedule/route.ts`, in-bed check-ins in `/api/members/in-bed/route.ts`, and administrative mutations in `/api/mod/route.ts`.
+* **Moderator Route Consolidation & Server-Side Security (`src/app/api/mod/*` & `src/lib/auth.ts`):**
+  * Deleted redundant re-export `src/app/api/mod/members/route.ts` to eliminate duplicate and ambiguous endpoints.
+  * Implemented centralized `verifyModeratorAuthorization` in `src/lib/auth.ts` enforcing strict server-side validation across all handler operations in `/api/mod/route.ts` (supporting master `MOD_SECRET_PASSCODE` and authenticated moderator sessions).
+  * Audited all administrative mutations with structured audit logs.
+* **Community 2-Vote Strike Verification System (`/api/members/strike`, `/api/members/strikes`, `src/lib/strikes.ts`):**
+  * Enforced 2 distinct community member verification votes to confirm a strike against an overdue member.
+  * Strictly locked strike voting during the 5-minute bedtime grace period (`BEDTIME_GRACE`) and blocked voting if the target member has checked into bed for tonight.
+  * Created strike endpoints at `/api/members/strike` and `POST /api/members/strikes` supporting `target_member_id`, `member_id`, and `targetMemberId`.
+* **24-Hour Metastrike Emergency Window & Monthly Resets (`/api/members/metastrike`, `src/lib/strikes.ts`):**
+  * Created `/api/members/metastrike` enabling members or moderators to claim proactive excuse passes or convert active strikes into excused Metastrikes within a strict 24-hour window following missed bedtimes.
+  * Enforced automated monthly resets via `checkMonthlyStrikeReset` and database function `reset_monthly_strikes()`.
+* **Interactive UI Buttons & Status Badges (`src/components/MemberCard.tsx`):**
+  * Updated `MemberCard.tsx` to support both `strikes_count` and `strikes_used` aliases.
+  * Rendered interactive peer 2-vote verification buttons (`Vote Strike (0/2)`, `Voted (1/2)`, `Strike Issued`) with haptic feedback.
+  * Maintained out-of-strikes warning banners, grace countdowns, and self-service Metastrike excuse triggers.
 * **Verification:**
   * `npx tsc --noEmit`: 0 errors.
-  * `npm run build`: 21/21 routes compiled cleanly.
+  * `npm run build`: 26/26 static & dynamic routes compiled cleanly.
+  * All test suites passed: `test-pin-rate-limiting.mjs`, `test-phase1-security.mjs`, `test-strikes-system.mjs`, `test-in-bed-and-streaks.mjs`, `test-gmt-timezones.mjs`, `test-weekend-hours.mjs`, `test-push-and-cron.mjs`, `test-e2e-api-endpoints.mjs`, `test-login-and-auth.mjs`.
 
-### Phase 21: Implementation of CodeRabbit Group C Findings (Commit `5cac7fb`)
-* **Dispatcher Concurrency & Delivery Semantics Clarification (`HANDOFF.md`):**
-  * Removed unconditional "zero duplicate dispatches" claim in Phase 14 documentation.
-  * Documented that push notifications write to logs upon dispatch to prevent runaway spam, noting that transient network push failures are recorded as dispatched and not retried for that window.
-  * Explicitly documented that concurrent overlapping dispatcher executions observing an empty prefetch log simultaneously can dispatch duplicates unless serialized or guarded by distributed atomic claims.
-* **Vercel Pro Native Cron Configuration Guidance (`HANDOFF.md`):**
-  * Expanded deployment configuration guide to explicitly differentiate Vercel Pro operators (who can change `vercel.json` cron expression to `"schedule": "* * * * *"` for native 1-minute scheduling and redeploy) from Vercel Hobby operators (who require external HTTP schedulers like cron-job.org or EasyCron due to Hobby's 1-per-day cron limit).
-
-### Phase 22: Implementation of Remaining CodeRabbit Group D Findings (Commit `9cc8c4b`)
-* **CI/CD Jira Diagnostics & Failure Reporting (`scripts/transition-jira-issue.mjs`):**
-  * Gated `debugJira()` diagnostic output behind `process.env.JIRA_DEBUG === '1'` to prevent sensitive issue summaries and emails from leaking into public CI action logs.
-  * Replaced silent `return;` exits on transition fetch errors and missing transitions with thrown `Error`s, ensuring caller `.catch()` sets exit code 1.
-* **Member Bedtime & Wake Time HH:mm Validation (`src/app/api/members/route.ts`):**
-  * Added strict 24-hour time format regex check (`^([01]\d|2[0-3]):[0-5]\d$`) across `bedtime_local`, `wake_time_local`, `weekend_bedtime_local`, and `weekend_wake_time_local` on member registration before database insertion.
-* **In-Bed Check-In Session Credentials & Error Handling (`src/components/MyScheduleModal.tsx`):**
-  * Added `credentials: 'include'` and safe try/catch error logging to `/api/members/in-bed` check-in and cancel requests to ensure session cookies are passed reliably.
-* **Push Login Trigger Event Object Fix (`src/components/PushModal.tsx`):**
-  * Wrapped `onOpenLogin` call in a clean zero-argument closure `() => onOpenLogin()` to prevent the DOM `MouseEvent` from being passed as the tab parameter.
-* **Verification:**
-  * `npx tsc --noEmit`: 0 errors.
-  * `npm run build`: 21/21 routes compiled cleanly.
-  * Full test suite passing cleanly across rate limits, weekend hours, and demo seed fingerprinting.
-
-### Phase 23: CodeRabbit Production Branch Exemption (Commit `eec8661`)
-* **CodeRabbit Configuration Update (`.coderabbit.yaml`):**
-  * Removed `"main"` from `reviews.auto_review.base_branches`.
-  * Configured CodeRabbit to automatically review only pull requests targeting the integration branch `dev` (`krish -> dev`).
-  * Pull requests merging from `dev` into `main` will skip automated reviews, eliminating redundant duplicate reviews and saving included hourly review allowance.
+### Phase 33: DST-Aware IANA Timezones, Canonical Sleep Cycle Anchor & Idempotent Cron Dispatcher (Phase 3 Core Spec Implementation)
+* **DST-Aware IANA Timezone Refactoring (`src/lib/timezone.ts` & `src/lib/sleepEngine.ts`):**
+  * Transitioned all member timezone storage and sleep calculations from static GMT offsets to strict IANA timezone identifiers (e.g., `Europe/Athens`, `America/New_York`, `Asia/Kolkata`).
+  * Implemented `toValidLuxonZone`, `isValidTimezone`, `COMMON_IANA_TIMEZONES`, and `detectUserTimezone()`.
+  * Preserved full Luxon `Zone` instances across `getNightBedtimeDateTime` and `computeMemberState`, guaranteeing resilience against Daylight Saving Time (DST) shifts (such as EDT/EST and EEST/EET transitions).
+* **Client-Side IANA Auto-Detection & Onboarding (`src/app/join/page.tsx`, `src/app/api/auth/register/route.ts`, `src/app/api/members/route.ts`, `src/app/api/members/update-schedule/route.ts`, `src/components/MyScheduleModal.tsx`, `src/components/ModDrawer.tsx`):**
+  * Auto-detects client timezone via `Intl.DateTimeFormat().resolvedOptions().timeZone` during onboarding (`/join`), self-service schedule editing (`MyScheduleModal`), and profile registration routes.
+  * Validates timezone strings against Luxon's valid zones (`DateTime.now().setZone(tz).isValid`) before writing to Supabase, persisting the raw IANA identifier.
+  * Formatted dropdown items using `formatGmtOffset` to render clear city names and localized GMT offsets without obscuring IANA identifiers.
+* **Canonical Evening Sleep Cycle Anchor (`src/lib/sleepEngine.ts`, `src/app/api/members/in-bed/route.ts`):**
+  * Implemented canonical "Sleep Cycle Date" anchor in `sleepEngine.ts` defined by the local evening date the sleep window begins.
+  * Formulated circular time-delta math across midnight ($\pm 12$ hours / $\pm 720$ minutes relative to target bedtime) so early check-ins before midnight and grace-period check-ins after midnight resolve to the exact same sleep cycle date.
+  * Updated check-in and cancellation flows (`/api/members/in-bed`) to persist `last_notified_stage` (`'IN_BED_EARLY'` / `null`) and `last_notified_cycle_date`.
+* **Weekend Night Schedule Rules (`src/lib/sleepEngine.ts`, `scripts/test-weekend-hours.mjs`):**
+  * Refactored weekend schedule rules (`isWeekendNight`, `isWeekendCycle`) so that weekend bedtimes strictly anchor to Friday and Saturday *nights* (the evenings when sleep begins), rather than Saturday and Sunday mornings.
+  * Expanded `scripts/test-weekend-hours.mjs` with 32 comprehensive tests verifying canonical cycle anchors across midnight and Friday/Saturday evening rules.
+* **Idempotent Cron Dispatcher & Rolling 30m Lookback Window (`src/lib/cronDispatcher.ts`, `supabase/schema.sql`, `src/lib/db.ts`):**
+  * Added persistent tracking columns (`last_notified_stage`, `last_notified_cycle_date`) to `members` table in `supabase/schema.sql` and `Member` interface in `src/lib/db.ts`.
+  * Refactored `executeNotificationDispatcher` in `src/lib/cronDispatcher.ts` to evaluate a rolling 30-minute lookback window (`0 <= diff <= 30` for `BEDTIME_HIT`, `-30 <= diff < 0` for `WIND_DOWN_30M`), protecting against GitHub Actions cron runner queue delays and jitter.
+  * Implemented double-layer idempotency (persistent member row columns + `notification_logs` unique constraint) guaranteeing at most one notification dispatch per stage per sleep cycle.
+* **Verification & Test Suite Hardening:**
+  * Expanded `scripts/test-gmt-timezones.mjs` with tests for strict IANA timezones, Luxon zone mapping, and DST shifts across EDT/EST and EEST/EET (all 7 sections passing).
+  * Expanded `scripts/test-weekend-hours.mjs` to 32 tests verifying Friday/Saturday night anchors and circular midnight boundaries (all 32 checks passing).
+  * Expanded `scripts/test-push-and-cron.mjs` with rolling 30m lookback tests simulating cron runner jitter (+12m, -20m, +45m) and persistent column idempotency (all 4 sections passing).
+  * Verified `npx tsc --noEmit` (0 errors) and `npm run build` (25/25 static & dynamic routes compiled cleanly).
 
 ---
 
@@ -415,11 +416,15 @@ d:\Projects\Z Catchers\
 │   ├── test-gmt-timezones.mjs          # GMT/UTC label formatting and offset tests
 │   ├── test-in-bed-and-streaks.mjs     # Check-in, anti-spam & streak unit tests
 │   ├── test-login-and-auth.mjs         # Member PIN login, session token & profile binding tests
+│   ├── test-phase1-pwa-push.mjs        # 25-check suite for SW lifecycle, manifest, and multi-device push
 │   ├── test-phase1-security.mjs        # Credential stripping & Phase 1 auth tests
+│   ├── test-phase2-mobile-touch-ux.mjs # 28-check suite for BottomNav, 100dvh, iOS input zoom, and touch UX
+│   ├── test-phase35-pwa-phone-robustness.mjs # 15-check suite for notch insets, dvh sheets, warm tokens, badging & offline
 │   ├── test-pin-rate-limiting.mjs      # Shared per-member & per-IP rate limiting tests
 │   ├── test-push-and-cron.mjs          # Push engine & cron Sleep Shield tests
 │   ├── test-schedule-cooldown.mjs      # Verification tests for 48h cooldown logic
 │   ├── test-signup-and-profiles.mjs    # Self-service profile creation tests
+│   ├── test-strikes-system.mjs         # 24-test suite for community strikes, grace period, & metastrikes
 │   ├── test-weekend-hours.mjs          # Weekend night scheduling & midnight crossover tests
 │   └── transition-jira-issue.mjs       # Script invoked by GitHub Action to transition issues
 ├── src/
@@ -434,30 +439,41 @@ d:\Projects\Z Catchers\
 │   │   │   │   └── dispatch-notifications/
 │   │   │   │       └── route.ts        # 1-minute cron notification dispatcher
 │   │   │   ├── members/
-│   │   │   │   ├── route.ts            # GET roster (with streaks, checkins & nag assists), POST member
+│   │   │   │   ├── route.ts            # GET roster (with strikes, streaks, checkins & nag assists), POST member
 │   │   │   │   ├── cancel-pending/     # POST cancel pending schedule change
 │   │   │   │   ├── in-bed/
 │   │   │   │   │   └── route.ts        # POST / GET "I'm in Bed" check-in & undo
 │   │   │   │   ├── nag-assist/
 │   │   │   │   │   └── route.ts        # POST / GET "Nagged!" community assist counter & deduplication
+│   │   │   │   ├── strikes/
+│   │   │   │   │   ├── route.ts        # GET member strike counts & tonight's strike log
+│   │   │   │   │   ├── metastrike/
+│   │   │   │   │   │   └── route.ts    # POST proactive metastrike & 24h retroactive swap
+│   │   │   │   │   └── vote/
+│   │   │   │   │       └── route.ts    # POST community 2-vote strike endpoint
 │   │   │   │   └── update-schedule/    # POST request schedule change (48h queue)
 │   │   │   ├── mod/
-│   │   │   │   ├── route.ts            # Moderator action dispatcher (approve, reject, pin reset)
+│   │   │   │   ├── route.ts            # Moderator action dispatcher (approve, reject, pin reset, strike adjust, clear log)
 │   │   │   │   ├── members/route.ts    # Moderator member CRUD
 │   │   │   │   └── webhook/route.ts    # Moderator Discord webhook test & morning digest trigger
 │   │   │   └── push/
 │   │   │       ├── subscribe/route.ts  # POST link device push subscription
 │   │   │       ├── test/route.ts       # POST send test alert & dead token pruning
 │   │   │       └── unsubscribe/route.ts# POST remove push subscription
+│   │   ├── join/
+│   │   │   └── page.tsx                # Standalone Onboarding & Join Den page
 │   │   ├── globals.css                 # Warm dark theme CSS variables & Tailwind directives
 │   │   ├── layout.tsx                  # Root layout with warm dark bg, metadata, PWA links
+│   │   ├── not-found.tsx               # Warm dark 404 handler with Sleepy Fox mascot
 │   │   └── page.tsx                    # Responsive dashboard (Desktop grid + Mobile PWA)
 │   ├── components/
+│   │   ├── BottomNav.tsx               # Mobile frosted bottom bar with 4 active tabs & moderator badge
 │   │   ├── FoxMascot.tsx               # Minimalist Sleepy Fox mascot vector states
-│   │   ├── Header.tsx                  # Top desktop command bar & mobile top bar
+│   │   ├── Header.tsx                  # Top desktop command bar & clean mobile top bar
 │   │   ├── LoginModal.tsx              # Member 4-digit PIN login & profile claiming modal
-│   │   ├── MemberCard.tsx              # Dual-tz card, streak badge, "I'm in Bed" button, Nag assist counter & Star
-│   │   ├── ModDrawer.tsx               # Moderator drawer with approvals, roster, add member, and Discord webhook
+│   │   ├── MemberCard.tsx              # Dual-tz card, accountability row, strike voting, metastrike buttons & star
+│   │   ├── MetastrikeModal.tsx         # Proactive & 24h retroactive Metastrike excuse modal
+│   │   ├── ModDrawer.tsx               # Moderator drawer with approvals, roster, strike controls, and Discord webhook
 │   │   ├── MyScheduleModal.tsx         # Self-service edit modal with check-in card & PIN verification
 │   │   ├── PushModal.tsx               # Push notification preferences & Sleep Shield modal
 │   │   ├── PwaBanner.tsx               # iOS/Android PWA install instructions & push gate
@@ -465,19 +481,21 @@ d:\Projects\Z Catchers\
 │   └── lib/
 │       ├── auth.ts                     # Moderator passcode & PIN hashing/verification & sessions
 │       ├── cronDispatcher.ts           # Core cron dispatch, early check-in suppression, Discord webhook & Sleep Shield
-│       ├── db.ts                       # Supabase client & TypeScript data models
+│       ├── db.ts                       # Supabase client & TypeScript data models (strikes, metastrikes, nightly logs)
 │       ├── demoSeed.ts                 # Pre-seeded demo profile fingerprints & matching logic
 │       ├── discordWebhook.ts           # Discord webhook API client, embed formatters, and color tokens
 │       ├── pushClient.ts               # Client-side Web Push & service worker registration
 │       ├── pushServer.ts               # Web Push VAPID helper functions & error handling
 │       ├── rateLimit.ts                # Sliding-window shared per-member & per-IP PIN rate limiter
-│       └── sleepEngine.ts              # Luxon timezone calculations, streaks & milestone badges
+│       ├── sleepEngine.ts              # Luxon timezone calculations, grace period, strikes & streaks
+│       └── strikes.ts                  # Community 2-vote, proactive pass, 24h swap, & lazy reset engine
 ├── .coderabbit.yaml                    # CodeRabbit AI code review configuration & guardrails
 ├── AGENT_RULES.md                      # Hard guardrails & architectural constraints for AI agents
 ├── AGENTS.md                           # Multi-agent directives & handoff protocol
 ├── BACKEND_TZ_PWA_SPEC.md              # Technical specification for backend, timezones, & PWA
 ├── DESIGN_SYSTEM.md                    # Visual tokens, Warm Dark palette, & mascot specs
 ├── HANDOFF.md                          # (This file) Complete handoff & project state log
+├── next.config.mjs                     # Next.js configuration (devIndicators: false)
 ├── PROJECT_SPEC.md                     # Master project roadmap & Jira milestone specifications
 ├── tailwind.config.ts                  # Tailwind configuration with warm dark colors
 └── vercel.json                         # Vercel 1-minute automated cron deployment config
@@ -503,40 +521,33 @@ d:\Projects\Z Catchers\
 | **ZC-11**| Epic: Phase 3 Sleep Streaks, Badges & Discord Webhooks | **DONE** | Phase 8 Complete |
 | **ZC-12**| Phase 3.1: Bedtime Compliance Scoring & Streak Tracking | **DONE** | Phase 5 / Phase 8 |
 | **ZC-13**| Phase 3.2: Automated Discord Channel Webhooks & Nag Assists | **DONE** | Phase 8 Complete |
+| **ZC-14**| Epic / Phase 4: Monthly Strikes & Metastrikes Accountability System | **DONE** | Phase 25 |
+| **ZC-15**| Mobile Layout Bugfixes & Standalone Onboarding Flow (`/join`) | **DONE** | Phase 29 |
+| **ZC-16**| MemberCard & Status Bucket Headers Warm Dark Refactor | **DONE** | Phase 30 |
+| **ZC-17**| Phase 1: Mobile PWA Lifecycle, Service Worker & Multi-Device Push | **DONE** | Phase 31 |
+| **ZC-18**| Phase 2: Mobile Navigation, Standalone Onboarding & Touch UX | **DONE** | Phase 32 |
+| **ZC-19**| Phase 3: Sleep Engine, IANA Timezone Math & Idempotent Cron | **DONE** | Phase 33 |
+| **ZC-20**| Phase 4: Community Accountability Mechanics & Serverless Security | **DONE** | Phase 34 |
+| **ZC-21**| Phase 35: PWA Phone Robustness, Safe Areas, Keyboard dvh & Offline Resilience | **DONE** | Phase 35 |
+| **ZC-22**| Phase 36: Ubiquitous Member Log Out & Auth Session De-identification | **DONE** | Commit `ac191d0` |
+| **ZC-23**| Phase 37: Code Review Remediations, Security Hardening & Concurrency Protection | **DONE** | Phase 37 |
 
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-All core features, Phase 10 security hardening, and Phase 11 PWA reliability/crons are complete. The codebase is now ready for production deployment and user testing.
+1. **Monitor & Review Active Pull Request #16 (`krish` → `dev`):**
+   * Review link: [PR #16](https://github.com/KrishJdev/Z-Catchers/pull/16)
+   * Dispatched `@coderabbitai review` comment on PR #16 for latest commits (remediations & docstrings).
+   * Verify CI workflows and CodeRabbit automated code review results.
+   * Address any feedback or comments on the `krish` branch.
 
-1. **Production Environment Configuration:**
-   * Set required production environment variables (see `.env.example` for the full template):
-     * Database & Auth: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-     * Web Push & VAPID: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
-     * Security & Sessions: `SESSION_SECRET`, `PIN_SALT`, `MOD_SECRET_PASSCODE`, `CRON_SECRET`
-     * Integrations: `DISCORD_COMMUNITY_WEBHOOK_URL`
-   * **Cron Scheduling Setup by Vercel Plan:**
-     * **Vercel Pro Plan:** Update `vercel.json` to change the dispatcher schedule to run every minute using the native cron expression `"schedule": "* * * * *"` and redeploy.
-     * **Vercel Hobby Plan:** Vercel Hobby limits native crons to once per day. Operators should configure an external HTTP cron scheduler (e.g. cron-job.org, EasyCron, or Crontap) to send a GET request with `Authorization: Bearer <CRON_SECRET>` to `/api/cron/dispatch-notifications` every 1 to 5 minutes. Dedicated external HTTP schedulers are strongly recommended over GitHub Actions to avoid runner queue jitter.
-2. **Community Roster & Friend Onboarding:**
-   * Demo profiles have been purged from Supabase. Friends can now visit the app URL directly, click **"Join Den"**, input their username, local bedtime, auto-detected timezone, Discord journal thread link, and 4-digit PIN.
-   * To restore demo seed profiles for staging/testing at any time, run `node --env-file=.env.local scripts/seed-demo-members.mjs`.
+2. **Merge PR #16 into `dev` Integration Branch:**
+   * After verification, merge PR #16 into `dev`.
 
+3. **Production Release Pipeline (`dev` → `main`):**
+   * Merge or update PR #15 ([#15](https://github.com/KrishJdev/Z-Catchers/pull/15)) to deploy all Phases 33-36 features to production.
 
-
-3. **Verification Checklist:**
-   * Always verify `npx tsc --noEmit` and `npm run build` pass with 0 errors.
-   * Always keep changes on branch `krish`.
-   * Update `HANDOFF.md` at the conclusion of every turn/task.
-
----
-
-## 8. Non-Negotiable Guardrails Summary (Reminder for Future Agents)
-
-* **Branch:** Always commit to `krish`. Do not push directly to `main` or `dev`.
-* **Date Math:** Always use `luxon`. Never use native JS `new Date().getTimezoneOffset()`.
-* **Cooldown:** Regular members can NEVER immediately change their schedule. Changes take 48 hours. Only moderator passcode bypasses this.
-* **Sleep Shield:** Never notify a user who is within 8 hours after their bedtime (or within 15 minutes before, or who has checked into bed early).
-* **Discord URLs:** Must match `^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$`.
-* **Handoff:** Update `HANDOFF.md` at the conclusion of every turn/task.
+4. **Verification Checklist:**
+   * Verify `npx tsc --noEmit` (0 errors) and `npm run build` (26/26 routes).
+   * Verify `node scripts/test-logout-flow.mjs` (18/18 checks pass).

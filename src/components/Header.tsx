@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Bell, BellOff, Clock, Shield, Moon, KeyRound, UserCheck, UserPlus } from 'lucide-react';
+import { Bell, BellOff, Clock, Shield, Moon, KeyRound, LogOut } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import { FoxMascot } from '@/components/FoxMascot';
 import { DateTime } from 'luxon';
@@ -17,8 +17,16 @@ interface HeaderProps {
   onOpenMod?: () => void;
   currentUser?: Member | null;
   onOpenLogin?: (initialTab?: 'login' | 'register') => void;
+  onLogout?: () => void;
 }
 
+/**
+ * Primary desktop and tablet navigation header.
+ * Displays brand logo, live local clock, viewer timezone, push settings, schedule modal trigger, and session controls.
+ *
+ * @param props - Header configuration and callback properties
+ * @returns React JSX header element
+ */
 export function Header({
   viewerTimezone,
   isPushEnabled,
@@ -29,6 +37,7 @@ export function Header({
   onOpenMod,
   currentUser,
   onOpenLogin,
+  onLogout,
 }: HeaderProps) {
   const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
 
@@ -51,17 +60,17 @@ export function Header({
   const timezoneDisplayName = formatGmtOffset(viewerTimezone);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-night-border bg-night-bg/95 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* Brand Logo & Wordmark with Sleepy Fox Mascot */}
-        <div className="flex items-center gap-2.5">
-          <FoxMascot state="logo" size={32} className="transition-transform hover:scale-105" />
+    <header className="sticky top-0 z-40 border-b border-night-border bg-night-bg/95 backdrop-blur-md pt-[env(safe-area-inset-top,0px)]">
+      <div className="mx-auto flex items-center justify-between px-4 py-3 sm:px-6 lg:px-8 max-w-7xl">
+        {/* Left side: Fox icon + "Z Catchers" with detected timezone as tiny muted subtitle directly underneath */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <FoxMascot state="logo" size={32} className="shrink-0 transition-transform hover:scale-105" />
           <div className="flex flex-col">
-            <span className="text-lg font-bold tracking-tight text-cream-primary">
+            <span className="whitespace-nowrap font-bold text-lg tracking-tight text-cream-primary">
               Z Catchers
             </span>
-            <span className="hidden text-[10px] font-medium text-cream-muted sm:inline-block">
-              Bedtime Accountability Den
+            <span className="text-xs text-[#A89F91] leading-tight">
+              {timezoneDisplayName}
             </span>
           </div>
         </div>
@@ -97,19 +106,13 @@ export function Header({
           </button>
         </div>
 
-        {/* Right Actions: Mobile Compact Controls & Desktop Command Buttons */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Mobile Timezone Pill (hidden on desktop) */}
-          <div className="rounded-full bg-night-elevated px-2.5 py-1 text-xs font-medium text-cream-secondary md:hidden">
-            <span className="text-cream-muted">Viewing: </span>
-            <span className="text-cream-primary">{timezoneDisplayName}</span>
-          </div>
-
+        {/* Right side: Compact profile pill on mobile; desktop command buttons on md:flex */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Desktop Quick-Action Buttons */}
           <button
             type="button"
             onClick={onOpenSchedule}
-            className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 py-1.5 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary md:inline-flex"
+            className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary min-h-[44px] md:inline-flex"
           >
             <Clock className="h-3.5 w-3.5 text-status-amber" />
             <span>My Schedule</span>
@@ -118,18 +121,18 @@ export function Header({
           <button
             type="button"
             onClick={onOpenMod}
-            className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 py-1.5 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary md:inline-flex"
+            className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary min-h-[44px] md:inline-flex"
           >
             <Shield className="h-3.5 w-3.5 text-cream-muted" />
             <span>Mod Panel</span>
           </button>
 
-          {/* Push Notification Toggle (Visible everywhere) */}
+          {/* Push Notification Toggle (Desktop only; on mobile accessed via Alerts bottom tab) */}
           <button
             type="button"
             onClick={onTogglePush}
             title={isPushEnabled ? 'Push notifications active' : 'Turn on bedtime & nag alerts'}
-            className={`flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium transition-all ${
+            className={`hidden md:flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium transition-all min-h-[44px] ${
               isPushEnabled
                 ? 'border border-status-sage/40 bg-status-sage/15 text-status-sage'
                 : 'border border-night-border bg-night-surface text-cream-muted hover:border-night-elevated hover:text-cream-secondary'
@@ -140,45 +143,49 @@ export function Header({
             ) : (
               <BellOff className="h-4 w-4 text-cream-muted" />
             )}
-            <span className="hidden sm:inline">
+            <span>
               {isPushEnabled ? 'Alerts On' : 'Alerts Off'}
             </span>
           </button>
 
-          {/* Member Login / Account Buttons */}
+          {/* Member Profile / Log In / Log Out */}
           {currentUser ? (
-            <button
-              type="button"
-              onClick={() => onOpenLogin?.('login')}
-              title={`Logged in as ${currentUser.discord_username}. Tap to view account or log out.`}
-              className="flex h-9 items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2.5 sm:px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all"
-            >
-              <span className="h-2 w-2 rounded-full bg-status-sage" />
-              <span className="max-w-[100px] truncate sm:max-w-[140px]">
-                @{currentUser.discord_username}
-              </span>
-            </button>
-          ) : (
             <div className="flex items-center gap-1.5 sm:gap-2">
               <button
                 type="button"
-                onClick={() => onOpenLogin?.('register')}
-                title="Create your profile and set your bedtime"
-                className="flex h-9 items-center gap-1.5 rounded-xl bg-status-amber px-2.5 sm:px-3 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 transition-all hover:scale-[1.02] active:scale-95"
+                onClick={onOpenSchedule}
+                title={`Logged in as @${currentUser.discord_username}. Tap to view your schedule.`}
+                className="flex items-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2.5 sm:px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all shrink-0 min-h-[44px]"
               >
-                <UserPlus className="h-3.5 w-3.5" />
-                <span>Join Den</span>
+                <span className="h-2 w-2 rounded-full bg-status-sage shrink-0" />
+                <span className="max-w-[70px] xs:max-w-[100px] truncate sm:max-w-[140px]">
+                  @{currentUser.discord_username}
+                </span>
               </button>
-              <button
-                type="button"
-                onClick={() => onOpenLogin?.('login')}
-                title="Log in with your 4-digit PIN"
-                className="flex h-9 items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 sm:px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary transition-all"
-              >
-                <KeyRound className="h-3.5 w-3.5 text-status-amber" />
-                <span className="hidden xs:inline">Log In</span>
-              </button>
+
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  title={`Log out of @${currentUser.discord_username}`}
+                  aria-label="Log out"
+                  className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 py-2 text-xs font-medium text-cream-muted hover:border-status-coral/40 hover:bg-status-coral/10 hover:text-status-coral transition-all min-h-[44px] shrink-0"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline font-medium">Log Out</span>
+                </button>
+              )}
             </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onOpenLogin?.('login')}
+              title="Log in with your 4-digit PIN"
+              className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary transition-all min-h-[44px]"
+            >
+              <KeyRound className="h-3.5 w-3.5 text-status-amber" />
+              <span>Log In</span>
+            </button>
           )}
         </div>
       </div>

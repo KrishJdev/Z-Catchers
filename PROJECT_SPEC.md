@@ -35,6 +35,12 @@ Members of an international Discord community want to keep each other accountabl
 
 5. **Anti-Cheat Governance (48-Hour Cooldown):** To stop members from pushing their bedtime back 5 minutes before midnight to dodge nagging, any self-service schedule edit enters a **48-hour pending state** before becoming active. Moderators can add/remove members or override changes immediately.
 
+6. **Monthly Strikes & Metastrikes Accountability System:**
+   * **Strikes (Max 3 per month):** Issued when a member goes to bed more than 5 minutes past their scheduled bedtime without a valid excuse.
+   * **Metastrikes (Max 3 per month):** Excused passes used for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
+   * **Monthly Reset:** Both Strikes and Metastrikes reset to 0 used (3 remaining) on the 1st of every calendar month via lazy evaluation.
+   * **No Auto-Strikes:** Because sleep check-ins happen in Discord journal threads, the app **never** auto-assigns a strike based on app inactivity. Instead, it utilizes a **2-Vote Community Verification system** paired with self-service Metastrike passes.
+
 ## 2. Recommended Tech Stack (For Antigravity Execution)
 
 Unless otherwise specified by the workspace, use this streamlined stack to minimize boilerplate and ensure reliable cron scheduling and Web Push delivery:
@@ -133,6 +139,12 @@ CREATE TABLE members (
   role TEXT NOT NULL DEFAULT 'member',      -- 'member' | 'moderator'
   passcode_hash TEXT,                       -- Simple 4-6 digit PIN or auth token for claiming profile
   is_active BOOLEAN NOT NULL DEFAULT true,
+
+  -- Monthly Strikes & Metastrikes Accountability System
+  strikes_used INT NOT NULL DEFAULT 0 CHECK (strikes_used >= 0 AND strikes_used <= 3),
+  metastrikes_used INT NOT NULL DEFAULT 0 CHECK (metastrikes_used >= 0 AND metastrikes_used <= 3),
+  strike_cycle_month TEXT NOT NULL DEFAULT '2026-11', -- 'YYYY-MM' for lazy monthly reset
+
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -168,6 +180,24 @@ CREATE TABLE notification_logs (
   local_date DATE NOT NULL,                 -- The sleeper's local date (YYYY-MM-DD)
   dispatched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(member_id, notification_type, local_date)
+);
+```
+
+### 4.4 `nightly_strike_logs` Table (Community 2-Vote Strike & Metastrike Passes)
+
+Tracks per-night strike votes and excused metastrike passes enforced in the target member's local IANA timezone.
+
+```sql
+CREATE TABLE nightly_strike_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  target_member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  sleep_cycle_date TEXT NOT NULL,           -- Target member's local cycle date "YYYY-MM-DD"
+  record_type TEXT NOT NULL CHECK (record_type IN ('pending_vote', 'strike', 'metastrike')),
+  voter_ids JSONB NOT NULL DEFAULT '[]'::jsonb, -- Array of member IDs / tokens to enforce unique voters
+  reason TEXT,                              -- Optional short note for Metastrikes (e.g., "Monthly Battle", "Birthday", "Family Event")
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(target_member_id, sleep_cycle_date)
 );
 ```
 
@@ -321,6 +351,24 @@ To ship ASAP without waiting on complex OAuth app verification:
 
     4. Click `"Approve Now"` on any member's pending 48-hour change.
 
+### 5.6 Monthly Strikes & Metastrikes Accountability Engine
+
+1. **Core Accountability Rules:**
+   * **Strikes (Max 3 per month):** Issued when a member goes to bed more than 5 minutes past their scheduled bedtime without an excused Metastrike.
+   * **Metastrikes (Max 3 per month):** Excused passes used for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
+   * **Monthly Reset:** Both Strikes and Metastrikes reset to 0 used (3 remaining each) on the 1st of every calendar month via automatic lazy evaluation (`strike_cycle_month`).
+   * **No Auto-Strikes:** Because sleep check-ins happen in Discord journal threads, the app **never** auto-assigns a strike based on app inactivity. It strictly enforces a **2-Vote Community Verification system** paired with self-service Metastrike passes.
+
+2. **5-Minute Grace Period Logic:**
+   * `diffMinutes >= 0 && diffMinutes <= 5`: Status is `BEDTIME_GRACE` (`"Grace Period: Xm left"`). Strike voting is strictly locked during this window.
+   * `diffMinutes > 5 && diffMinutes <= 480`: Status is `OVERDUE_NAG_NOW`. Strike voting becomes active unless the member has checked into bed early or activated a Metastrike for tonight.
+
+3. **Workflows:**
+   * **Community 2-Vote Strike:** Any authenticated member (except the target) can tap `"Vote Strike (0/2)"`. Each member can only vote once per target per `sleep_cycle_date`. When the 2nd unique vote is cast, `record_type` locks as `'strike'` and target member's `strikes_used` increments by 1.
+   * **Proactive Metastrike (Excuse Pass):** On their own profile/card, a member taps `"Use Metastrike Tonight"` and picks or types an excuse ("Monthly Battle", "Family", "Birthday", "Emergency"). This consumes 1 Metastrike (`metastrikes_used + 1`) and renders a `"Protected by Metastrike: [Reason]"` shield badge, locking out strike votes.
+   * **Retroactive Metastrike (24-Hour Swap):** If a member receives a 2-vote Strike within the last 24 hours while away, they can tap `"Convert to Metastrike"` (if `metastrikes_used < 3`). This decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` to `'metastrike'`.
+   * **Moderator Override:** Inside the Moderator Panel, mods can manually adjust any member's Strikes or Metastrikes (0 to 3) and clear accidental votes or strike records.
+
 ## 6. Phased Feature Roadmap
 
 ### Phase 1: The Lean MVP (BUILD THIS NOW)
@@ -345,21 +393,23 @@ To ship ASAP without waiting on complex OAuth app verification:
 
 * [x] **Member PIN Login & Profile Authentication (ZC-13):** Built a simple, secure 4-digit PIN authentication system. Devices bind Web Push notifications and Sleep Shield quiet hours strictly to verified accounts, completely eliminating unauthenticated profile selection and notification misdirection.
 
-* \[ \] **"I'm In Bed" Safe Button:** During the 30-minute wind-down window, the sleeper can tap `"I'm heading to bed now"` in the app, which marks them as `SLEEPING` early and suppresses the outgoing community nag notification for that night.
+* [x] **"I'm In Bed" Safe Button:** During the 30-minute wind-down window, the sleeper can tap `"I'm heading to bed now"` in the app, which marks them as `SLEEPING` early and suppresses the outgoing community nag notification for that night.
 
-* \[ \] **Selective Watchlists (Buddy System):** Allow users to star specific friends so they only get community nag pings for their chosen watchlist rather than the entire server.
+* [x] **Selective Watchlists (Buddy System):** Allow users to star specific friends so they only get community nag pings for their chosen watchlist rather than the entire server.
 
-* \[ \] **Custom Quiet Hours:** Allow users to decouple their notification quiet hours from their strict 8-hour sleep window.
+* [ ] **Custom Quiet Hours:** Allow users to decouple their notification quiet hours from their strict 8-hour sleep window.
 
-* \[ \] **One-Tap "Test Push" Button:** Let users send a test push notification to their own device from the settings tab to verify their phone's OS permissions.
+* [ ] **One-Tap "Test Push" Button:** Let users send a test push notification to their own device from the settings tab to verify their phone's OS permissions.
 
 ### Phase 3: Deep Discord Ecosystem & Gamification (FUTURE EXPANSION)
 
-* \[ \] **Discord Bot / Webhook Integration:** Automatically post an embed inside the user's Discord journal thread when their bedtime hits (`"🚨 Bedtime Alert for @User! Someone make sure they log off."`).
+* [x] **Discord Bot / Webhook Integration:** Automatically post an embed inside the user's Discord journal thread when their bedtime hits (`"🚨 Bedtime Alert for @User! Someone make sure they log off."`).
 
-* \[ \] **"Nagged!" Assist Counter:** A quick counter on the card showing how many members tapped through to check on the sleeper tonight (`"3 friends checked in tonight"`).
+* [x] **"Nagged!" Assist Counter:** A quick counter on the card showing how many members tapped through to check on the sleeper tonight (`"3 friends checked in tonight"`).
 
-* \[ \] **Sleep Consistency Streaks:** Track consecutive days a member checks in on time without using schedule changes.
+* [x] **Sleep Consistency Streaks:** Track consecutive days a member checks in on time without using schedule changes.
+
+* [x] **Monthly Strikes & Metastrikes Accountability System:** 3 strikes max, 3 excused metastrikes max, 5-minute grace period (`BEDTIME_GRACE`), 2-vote community verification (`OVERDUE_NAG_NOW`), retroactive 24h conversion, and moderator controls.
 
 ## 7. Step-by-Step Execution Plan for Antigravity
 

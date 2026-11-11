@@ -1,15 +1,37 @@
 import { NextResponse } from 'next/server';
-import { supabase, supabaseAdmin, Member, fetchAllNotificationLogs } from '@/lib/db';
+import {
+  supabase,
+  supabaseAdmin,
+  Member,
+  fetchAllNotificationLogs,
+  updateMemberSafe,
+  insertMemberSafe,
+  hydrateMemberWeekendHours,
+} from '@/lib/db';
 import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
-import { hashPin, sanitizeMember, createSessionToken } from '@/lib/auth';
+import { hashPin, sanitizeMember, createSessionToken, getRequestSessionMemberId } from '@/lib/auth';
 import { toValidLuxonZone, isValidTimezone, formatGmtOffset } from '@/lib/timezone';
+import {
+  resolveMemberStrikeCounts,
+  getNightlyStrikeLogsBatch,
+  getStrikeLogKey,
+  getRecentEligibleStrikeLogsBatch,
+} from '@/lib/strikes';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-export async function GET() {
+/**
+ * GET: Fetch community roster with hydrated sleep states, streaks, assists, and strike statuses.
+ * Uses batched queries for member strike logs and parallel count resolution.
+ *
+ * @param request - Incoming HTTP request with optional session token
+ * @returns JSON response containing list of processed active members
+ */
+export async function GET(request: Request) {
   try {
+    const sessionMemberId = getRequestSessionMemberId(request);
     const { data: members, error } = await supabase
       .from('members')
       .select('*')
@@ -51,46 +73,95 @@ export async function GET() {
       nagAssistsByMemberAndDate.set(key, (nagAssistsByMemberAndDate.get(key) || 0) + 1);
     }
 
-    // Process self-healing cooldown promotions and calculate streaks
-    const processedMembers: Member[] = [];
+    // Process self-healing cooldown promotions and prepare member metrics
+    const memberItems: {
+      hydratedMember: Member;
+      localDateStr: string;
+      is_in_bed: boolean;
+      streak_days: number;
+      nag_assists_count: number;
+    }[] = [];
+
     for (const member of (members as Member[]) || []) {
       const { promoted, activeMember } = checkCooldownPromotion(member, nowUtc);
       if (promoted) {
-        // Update DB in background with supabaseAdmin
-        await supabaseAdmin
-          .from('members')
-          .update({
-            bedtime_local: activeMember.bedtime_local,
-            wake_time_local: activeMember.wake_time_local,
-            timezone: activeMember.timezone,
-            weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
-            weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
-            pending_bedtime_local: null,
-            pending_wake_time_local: null,
-            pending_timezone: null,
-            pending_weekend_bedtime_local: null,
-            pending_weekend_wake_time_local: null,
-            pending_effective_at: null,
-            updated_at: nowUtc.toISO(),
-          })
-          .eq('id', member.id);
+        // Update DB in background with safe column stripping
+        await updateMemberSafe(member.id, {
+          bedtime_local: activeMember.bedtime_local,
+          wake_time_local: activeMember.wake_time_local,
+          timezone: activeMember.timezone,
+          weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
+          weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
+          pending_bedtime_local: null,
+          pending_wake_time_local: null,
+          pending_timezone: null,
+          pending_weekend_bedtime_local: null,
+          pending_weekend_wake_time_local: null,
+          pending_effective_at: null,
+          updated_at: nowUtc.toISO(),
+        });
       }
 
+      const hydratedMember = hydrateMemberWeekendHours(activeMember);
+
       // Check-in & streak computation
-      const sleeperNow = nowUtc.setZone(toValidLuxonZone(activeMember.timezone));
-      const localDateStr = getSleepCycleDate(activeMember, nowUtc);
-      const memberCheckins = checkinsByMember.get(activeMember.id) || [];
+      const sleeperNow = nowUtc.setZone(toValidLuxonZone(hydratedMember.timezone));
+      const localDateStr = getSleepCycleDate(hydratedMember, nowUtc);
+      const memberCheckins = checkinsByMember.get(hydratedMember.id) || [];
       const is_in_bed = memberCheckins.includes(localDateStr);
       const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);
-      const nag_assists_count = nagAssistsByMemberAndDate.get(`${activeMember.id}_${localDateStr}`) || 0;
+      const nag_assists_count = nagAssistsByMemberAndDate.get(`${hydratedMember.id}_${localDateStr}`) || 0;
 
-      processedMembers.push({
-        ...sanitizeMember(activeMember),
+      memberItems.push({
+        hydratedMember,
+        localDateStr,
         is_in_bed,
         streak_days,
         nag_assists_count,
       });
     }
+
+    // Batched resolution: resolve member strike counts in parallel and batch query nightly & recent strike logs
+    const [strikeInfos, strikeLogsMap, recentStrikesMap] = await Promise.all([
+      Promise.all(memberItems.map((item) => resolveMemberStrikeCounts(item.hydratedMember, nowUtc))),
+      getNightlyStrikeLogsBatch(
+        memberItems.map((item) => ({
+          targetMemberId: item.hydratedMember.id,
+          sleepCycleDate: item.localDateStr,
+        }))
+      ),
+      getRecentEligibleStrikeLogsBatch(
+        memberItems.map((item) => item.hydratedMember.id),
+        nowUtc
+      ),
+    ]);
+
+    const processedMembers: Member[] = memberItems.map((item, index) => {
+      const strikeInfo = strikeInfos[index];
+      const logKey = getStrikeLogKey(item.hydratedMember.id, item.localDateStr);
+      const tonightLog = strikeLogsMap.get(logKey) || null;
+      const is_metastrike_active = tonightLog?.record_type === 'metastrike';
+      const metastrike_reason = tonightLog?.reason || null;
+      const has_voted_strike = Boolean(sessionMemberId && tonightLog?.voter_ids?.includes(sessionMemberId));
+      const convertibleLog = recentStrikesMap.get(item.hydratedMember.id) || null;
+
+      return {
+        ...sanitizeMember(item.hydratedMember),
+        is_in_bed: item.is_in_bed,
+        streak_days: item.streak_days,
+        nag_assists_count: item.nag_assists_count,
+        strikes_used: strikeInfo.strikes_used,
+        strikes_count: strikeInfo.strikes_used,
+        metastrikes_used: strikeInfo.metastrikes_used,
+        metastrikes_count: strikeInfo.metastrikes_used,
+        strike_cycle_month: strikeInfo.strike_cycle_month,
+        tonight_strike_log: tonightLog,
+        convertible_strike_log: convertibleLog,
+        is_metastrike_active,
+        metastrike_reason,
+        has_voted_strike,
+      };
+    });
 
     return NextResponse.json({ members: processedMembers });
   } catch (err: unknown) {
@@ -99,6 +170,13 @@ export async function GET() {
   }
 }
 
+/**
+ * POST: Create a new community member profile with validated sleep schedule and PIN.
+ * Timezone detection must be performed by the client and provided as a non-empty string.
+ *
+ * @param request - Incoming HTTP request containing new member payload
+ * @returns JSON response with created member record and auth cookie
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -114,9 +192,9 @@ export async function POST(request: Request) {
       pin,
     } = body;
 
-    if (!discord_username || !journal_url || !bedtime_local || !timezone) {
+    if (!discord_username || !journal_url || !bedtime_local) {
       return NextResponse.json(
-        { error: 'Missing required fields (username, journal link, bedtime, timezone).' },
+        { error: 'Missing required fields (username, journal link, bedtime).' },
         { status: 400 }
       );
     }
@@ -162,11 +240,18 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate Timezone
+    // Validate Timezone (must be provided by client; no server fallback)
+    if (!timezone || !String(timezone).trim()) {
+      return NextResponse.json(
+        { error: 'Timezone is required. Please provide a valid IANA timezone (e.g. "Europe/Athens", "America/New_York", "Asia/Kolkata").' },
+        { status: 400 }
+      );
+    }
+
     const cleanTz = String(timezone).trim();
     if (!isValidTimezone(cleanTz)) {
       return NextResponse.json(
-        { error: 'Invalid timezone identifier. Please select a valid GMT offset (e.g. "GMT+05:30").' },
+        { error: `Invalid timezone identifier "${cleanTz}". Please provide a valid IANA timezone (e.g. "Europe/Athens", "America/New_York", "Asia/Kolkata").` },
         { status: 400 }
       );
     }
@@ -209,9 +294,12 @@ export async function POST(request: Request) {
       journal_url: cleanJournal,
       bedtime_local: bedtime_local.trim(),
       wake_time_local: wake_time_local.trim(),
-      timezone: formatGmtOffset(cleanTz),
+      timezone: cleanTz,
       role: 'member',
       passcode_hash,
+      strikes_used: 0,
+      metastrikes_used: 0,
+      strike_cycle_month: DateTime.utc().toFormat('yyyy-MM'),
     };
 
     if (weekend_bedtime_local?.trim()) {
@@ -221,30 +309,13 @@ export async function POST(request: Request) {
       insertPayload.weekend_wake_time_local = weekend_wake_time_local.trim();
     }
 
-    let { data, error } = await supabaseAdmin
-      .from('members')
-      .insert(insertPayload)
-      .select()
-      .single();
+    const { data, error } = await insertMemberSafe(insertPayload);
 
-    // Resilient fallback: If weekend columns do not exist in the database schema yet (PGRST204), retry with core fields
-    if (error && error.code === 'PGRST204' && error.message.includes('weekend')) {
-      delete insertPayload.weekend_bedtime_local;
-      delete insertPayload.weekend_wake_time_local;
-      const fallbackRes = await supabaseAdmin
-        .from('members')
-        .insert(insertPayload)
-        .select()
-        .single();
-      data = fallbackRes.data;
-      error = fallbackRes.error;
+    if (error || !data) {
+      return NextResponse.json({ error: error?.message || 'Failed to create member' }, { status: 500 });
     }
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const createdMember = data as Member;
+    const createdMember = data;
     const token = createSessionToken(createdMember.id);
     const sanitized = sanitizeMember(createdMember);
 

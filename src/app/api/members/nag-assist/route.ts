@@ -103,6 +103,12 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * GET: Retrieve the count of community nag assists for a target sleeper member on their current local date.
+ *
+ * @param request - Incoming HTTP request with sleeper_id query parameter
+ * @returns JSON response containing total assists count
+ */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

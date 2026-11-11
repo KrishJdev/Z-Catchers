@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { getRequestSessionMemberId } from '@/lib/auth';
 
+/**
+ * GET: Retrieve the authenticated session member's profile.
+ *
+ * @param request - Incoming HTTP request with session cookie
+ * @returns JSON response with authentication status and member entity
+ */
 export async function GET(request: Request) {
   try {
     const memberId = getRequestSessionMemberId(request);

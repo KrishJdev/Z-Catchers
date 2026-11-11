@@ -3,6 +3,8 @@ import {
   isWeekendNight,
   getBedtimeForNight,
   getNightBedtimeDateTime,
+  getSleepCycleDate,
+  isWeekendCycle,
   computeMemberState,
   checkCooldownPromotion,
 } from '../src/lib/sleepEngine.ts';
@@ -38,7 +40,7 @@ assert(isWeekendNight(friday) === true, 'Friday night IS weekend');
 assert(isWeekendNight(saturday) === true, 'Saturday night IS weekend');
 assert(isWeekendNight(sunday) === false, 'Sunday night is NOT weekend');
 
-// 2. Member Bedtime Resolution
+// 2. Member Bedtime Resolution Across Days
 console.log('\n--- 2. Member Bedtime Resolution Across Days ---');
 const memberWithWeekend = {
   id: 'member-weekend-1',
@@ -158,9 +160,44 @@ assert(promotion.activeMember.weekend_wake_time_local === '10:00', 'Weekend wake
 assert(promotion.activeMember.pending_weekend_bedtime_local === null, 'pending_weekend_bedtime_local cleared');
 assert(promotion.activeMember.pending_effective_at === null, 'pending_effective_at cleared');
 
+// 6. Canonical Sleep Cycle Evening Anchor Across Midnight
+console.log('\n--- 6. Canonical Evening Sleep Cycle Anchor (Friday & Saturday Nights) ---');
+// Friday night 22:30 (before midnight) vs Saturday 01:15 AM (early check-in) vs Saturday 01:35 AM (grace period)
+const fridayEveningUtc = DateTime.fromISO('2026-11-13T22:30:00', { zone: 'America/New_York' }).toUTC();
+const satMorningEarlyUtc = DateTime.fromISO('2026-11-14T01:15:00', { zone: 'America/New_York' }).toUTC();
+const satMorningGraceUtc = DateTime.fromISO('2026-11-14T01:35:00', { zone: 'America/New_York' }).toUTC();
+
+const cycleFridayEvening = getSleepCycleDate(memberWithWeekend, fridayEveningUtc);
+const cycleSatEarly = getSleepCycleDate(memberWithWeekend, satMorningEarlyUtc);
+const cycleSatGrace = getSleepCycleDate(memberWithWeekend, satMorningGraceUtc);
+
+assert(cycleFridayEvening === '2026-11-13', 'Friday evening check-in resolves to Friday 2026-11-13');
+assert(cycleSatEarly === '2026-11-13', 'Saturday 01:15 AM check-in resolves to Friday 2026-11-13');
+assert(cycleSatGrace === '2026-11-13', 'Saturday 01:35 AM grace check-in resolves to Friday 2026-11-13');
+assert(cycleFridayEvening === cycleSatGrace, 'Early and grace check-ins across midnight resolve to exact same cycle date');
+
+assert(isWeekendCycle(memberWithWeekend, fridayEveningUtc) === true, 'Friday night cycle is weekend cycle');
+assert(isWeekendCycle(memberWithWeekend, satMorningEarlyUtc) === true, 'Saturday early morning maps to Friday weekend cycle');
+assert(isWeekendCycle(memberWithWeekend, satMorningGraceUtc) === true, 'Saturday grace morning maps to Friday weekend cycle');
+
+// Saturday night 23:30 vs Sunday 01:35 AM (Saturday night cycle)
+const satNightUtc = DateTime.fromISO('2026-11-14T23:30:00', { zone: 'America/New_York' }).toUTC();
+const sunMorningGraceUtc = DateTime.fromISO('2026-11-15T01:35:00', { zone: 'America/New_York' }).toUTC();
+assert(getSleepCycleDate(memberWithWeekend, satNightUtc) === '2026-11-14', 'Saturday night maps to 2026-11-14');
+assert(getSleepCycleDate(memberWithWeekend, sunMorningGraceUtc) === '2026-11-14', 'Sunday 01:35 AM maps to Saturday 2026-11-14');
+assert(isWeekendCycle(memberWithWeekend, sunMorningGraceUtc) === true, 'Sunday 01:35 AM is Saturday weekend cycle');
+
+// Sunday night 23:00 (Weekday cycle!)
+const sunNightUtc = DateTime.fromISO('2026-11-15T23:00:00', { zone: 'America/New_York' }).toUTC();
+const monMorningGraceUtc = DateTime.fromISO('2026-11-16T00:15:00', { zone: 'America/New_York' }).toUTC();
+assert(getSleepCycleDate(memberWithWeekend, sunNightUtc) === '2026-11-15', 'Sunday night maps to 2026-11-15');
+assert(getSleepCycleDate(memberWithWeekend, monMorningGraceUtc) === '2026-11-15', 'Monday 00:15 AM maps to Sunday 2026-11-15');
+assert(isWeekendCycle(memberWithWeekend, sunNightUtc) === false, 'Sunday night is NOT weekend cycle');
+assert(isWeekendCycle(memberWithWeekend, monMorningGraceUtc) === false, 'Monday morning grace is NOT weekend cycle');
+
 if (failed) {
   console.error('\n❌ SOME TESTS FAILED!');
   process.exit(1);
 } else {
-  console.log('\n🎉 ALL 20 WEEKEND HOURS TESTS PASSED CLEANLY!');
+  console.log('\n🎉 ALL 32 WEEKEND HOURS & CANONICAL SLEEP CYCLE TESTS PASSED CLEANLY!');
 }
