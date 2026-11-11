@@ -340,6 +340,44 @@ export default function HomePage() {
     }
   }, [fetchRoster, router]);
 
+  // Synchronize currentUser in_bed status to active Sleep Shield
+  useEffect(() => {
+    if (currentUser) {
+      setIsSleepShieldActive(Boolean(currentUser.is_in_bed));
+    }
+  }, [currentUser, currentUser?.is_in_bed]);
+
+  // Personal Sleep Shield toggle handler for Header
+  const handleToggleSleepShield = useCallback(async () => {
+    if (!currentUser) {
+      setToastMessage({
+        text: 'Please log in to your profile to toggle your personal Sleep Shield.',
+        type: 'info',
+      });
+      return;
+    }
+
+    try {
+      if (currentUser.is_in_bed) {
+        await handleCancelInBed(currentUser.id);
+        setIsSleepShieldActive(false);
+        setToastMessage({
+          text: 'Sleep Shield turned OFF. Bedtime reminders restored.',
+          type: 'info',
+        });
+      } else {
+        await handleCheckIn(currentUser.id);
+        setIsSleepShieldActive(true);
+        setToastMessage({
+          text: 'Sleep Shield turned ON! Community nag reminders are safely muted.',
+          type: 'success',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to toggle Sleep Shield:', err);
+    }
+  }, [currentUser, handleCancelInBed, handleCheckIn]);
+
   // Deep-Link Action Handler: /?action=in-bed
   const processDeepLinkAction = useCallback(
     async (member: Member | null) => {
@@ -648,7 +686,7 @@ export default function HomePage() {
         isPushEnabled={isPushEnabled}
         onTogglePush={handleOpenPushModal}
         isSleepShieldActive={isSleepShieldActive}
-        onToggleSleepShield={() => setIsSleepShieldActive((prev) => !prev)}
+        onToggleSleepShield={handleToggleSleepShield}
         onOpenSchedule={() => {
           setActiveModal('schedule');
           setMobileTab('schedule');
