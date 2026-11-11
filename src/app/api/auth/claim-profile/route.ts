@@ -66,6 +66,7 @@ export async function GET(request: Request) {
       discordUser: {
         id: payload.discordId,
         username: payload.discordUsername,
+        handle: payload.discordHandle || `@${payload.discordUsername.toLowerCase().replace(/\s+/g, '')}`,
         avatarUrl: payload.avatarUrl,
         isModerator: payload.isModerator,
         suggestedMemberId: payload.suggestedMemberId || null,
@@ -251,6 +252,10 @@ export async function POST(request: Request) {
         {
           discord_id: payload.discordId,
           discord_username: payload.discordUsername || target.discord_username,
+          discord_handle:
+            payload.discordHandle ||
+            target.discord_handle ||
+            (target.discord_username ? `@${target.discord_username.toLowerCase().replace(/\s+/g, '')}` : null),
           avatar_url: payload.avatarUrl || target.avatar_url,
           is_moderator: isDbMod,
           role: finalDbRole,

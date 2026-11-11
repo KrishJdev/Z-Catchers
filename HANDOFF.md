@@ -1,14 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T23:10:00+05:30  
+> **Last Updated:** 2026-11-12T00:30:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 1c42832 (in krish)  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18)  
-> **Active Integration Pull Request:** [#19 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/19)  
-> **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed)
+> **Latest Commit:** 3797e59 (in krish)  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19)  
+> **Active Integration Pull Request:** [#21 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/21)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20)  
+> **Active Production Release Pull Request:** None (PR #20 merged into `main`; PR #21 currently targeting `dev`)  
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
 
 ---
 
@@ -68,6 +69,60 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 46: Schedule Tab Redundancy Elimination & Discord Handle Auto-fill
+* **Header Navigation Redundancy Elimination (`src/components/Header.tsx`):**
+  * Removed the duplicate "My Schedule" button from the desktop command bar.
+  * Tapping the authenticated member profile pill (`@${currentUser.discord_username}`) directly triggers the unified self-service profile and schedule modal (`onOpenSchedule`).
+  * Updated profile pill tooltip to `Logged in as @${currentUser.discord_username}. Tap to view your profile & schedule.`.
+* **Profile Modal Form Field Harmonization (`src/components/MyScheduleModal.tsx`):**
+  * Auto-filled Discord Handle: Eliminated the confusing optional manual input for "Discord Handle". The Discord handle is now auto-filled from the user's authenticated Discord account (with a checkmark badge `Auto-filled from Discord` and lock icon), and rendered as read-only and disabled.
+  * Website Username Modification: Relabeled the editable username input to **"Website Username"** with descriptive caption: *"Your display name shown across Z Catchers. You can modify this anytime."* Members can freely customize their website username without affecting their linked Discord identity.
+  * Unified Modal Title: Updated modal heading to **"My Profile & Schedule"** with subtitle *"Accountability settings, sleep schedule & website profile"*.
+* **Database & Auth Pipeline Auto-Healing (`src/app/api/auth/me/route.ts`, `src/lib/auth.ts`):**
+  * Added fallback auto-population in `/api/auth/me` and `/api/auth/discord/callback` to ensure `discord_handle` is always preserved and auto-healed with `@` formatting.
+  * Verified and updated active member database row in Supabase (`discord_id = 617551062102048779`) with `discord_handle = '@krish'`.
+* **Automated Regression Test Suite (`scripts/test-profile-and-schedule-tab.mjs`):**
+  * Created unit test suite verifying that "My Schedule" is removed from Header, profile pill opens the modal, "Website Username" is editable, and "Discord Handle" is read-only and auto-filled.
+* **Verification Check:**
+  * `npx tsc --noEmit` clean (0 errors).
+  * `npm run build` clean (29/29 routes compiled and prerendered).
+  * `node scripts/test-profile-and-schedule-tab.mjs` passed cleanly.
+  * `node scripts/test-login-and-auth.mjs` passed cleanly.
+  * `node scripts/test-logout-flow.mjs` passed cleanly.
+  * `node scripts/test-phase35-pwa-phone-robustness.mjs` passed cleanly.
+
+### Phase 45: Production Release PR #20 (`dev` → `main`)
+* **Production Release Pull Request Creation:**
+  * Created production release Pull Request [#20 (`dev` → `main`)](https://github.com/KrishJdev/Z-Catchers/pull/20) to promote all verified, hardened features from Phases 33 through 44 into production (`main`).
+  * Encompasses Discord OAuth2 authentication & 90-day rolling sessions (Phases 39–42), community 2-vote strikes & excused metastrikes accountability engine (Phases 34, 37, 38), mobile PWA safe areas, keyboard avoidance, and offline caching (Phases 35–36), DST-resilient timezone calculations (Phase 33), database maintenance profile purges (Phase 43), and root layout hydration protection (Phase 44).
+* **Comprehensive Release Verification Check:**
+  * Clean zero-conflict tree merge verified between `origin/main` and `origin/dev`.
+  * `npx tsc --noEmit` verified clean with 0 errors.
+  * `npm run build` verified clean with all 29/29 static and dynamic routes compiled.
+  * All automated test suites executed and verified passing (`scripts/test-strikes-system.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/test-logout-flow.mjs`, `scripts/test-weekend-hours.mjs`).
+
+
+### Phase 45: Production Deployment Auth Resilience & Cryptographic Fallback (SESSION_SECRET & PIN_SALT)
+* **Resilient Production Key Fallback (`src/lib/auth.ts`):**
+  - **Issue Resolved:** On Vercel production deployments, if `SESSION_SECRET` or `PIN_SALT` was not explicitly set in project environment variables, `getSessionSecret()` threw a fatal unhandled error: `"Authentication error: SESSION_SECRET environment variable is required in production."`, redirecting users to `/join` with an error banner upon Discord login callback.
+  - **Cryptographic Key Derivation:** Updated `getSessionSecret()` and `getPinSalt()` to never throw unhandled exceptions in production. If the explicit environment variable is omitted, the engine deterministically derives a 256-bit HMAC secret key from server credentials (`SUPABASE_SERVICE_ROLE_KEY` or `DISCORD_CLIENT_SECRET`) via `crypto.createHmac('sha256', serverKey).update(...)` or falls back to a stable den secret string.
+  - **Candidate Multi-Key Token Verification (`getVerificationSessionSecrets`):** In `verifySessionToken` and `verifyClaimToken`, incoming HMAC-SHA256 tokens are verified against all candidate secrets (explicit secret, derived key, fallback key). This ensures active 90-day sessions remain valid and seamless even during secret rotations or when `SESSION_SECRET` is later added to hosting provider settings.
+  - **Automated Test Suite (`scripts/test-login-and-auth.mjs`):** Added Section 1B verifying that under `NODE_ENV='production'` without `SESSION_SECRET` or `PIN_SALT`, neither helper throws, session and claim tokens are successfully created and verified, and tokens signed under fallback verify cleanly after explicit `SESSION_SECRET` is subsequently defined.
+* **Profile & Schedule Redundancy Elimination (`src/components/MyScheduleModal.tsx`, `scripts/test-profile-and-schedule-tab.mjs`):**
+  - Clarified user display names by labeling the editable profile input as `"Website Username"`.
+  - Displayed the Discord Handle as an auto-filled, read-only field with a green `"Auto-filled from Discord"` checkmark and lock icon to prevent member impersonation.
+* **Environment Documentation (`.env.example`):**
+  - Updated configuration notes clarifying that while `SESSION_SECRET` and `PIN_SALT` are strongly recommended in production, the engine provides automatic resilient derivation from server credentials to prevent login lockouts.
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run build` verified clean with 29/29 routes compiled.
+  - All automated test suites passed:
+    - `node scripts/test-login-and-auth.mjs` (including Section 1B production secret fallback)
+    - `node scripts/test-profile-and-schedule-tab.mjs`
+    - `node scripts/test-logout-flow.mjs`
+    - `node scripts/test-strikes-system.mjs`
+    - `node scripts/test-phase35-pwa-phone-robustness.mjs`
 
 ### Phase 44: Root Layout Browser Extension Hydration Mismatch Fix
 * **Client Attribute Hydration Suppression (`src/app/layout.tsx`):**
@@ -669,6 +724,8 @@ d:\Projects\Z Catchers\
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
-3. **Monitor & Review Active Pull Request #19 (`krish` → `dev`):**
-   * Review link: [PR #19](https://github.com/KrishJdev/Z-Catchers/pull/19)
-   * Verify all automated checks pass on branch `krish`.
+3. **Review & Merge Integration Pull Request #21 (`krish` → `dev`):**
+   * Integration PR #21: [PR #21](https://github.com/KrishJdev/Z-Catchers/pull/21)
+   * Merges production authentication secret fallback and profile UI improvements into `dev`.
+   * Following integration merge, open a production release PR (`dev` → `main`) to deploy to Vercel production.
+   * (Optional Best Practice) Add `SESSION_SECRET` (random 32+ char string) in Vercel Project Settings > Environment Variables for explicit key configuration.
