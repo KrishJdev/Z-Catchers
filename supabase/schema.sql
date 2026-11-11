@@ -151,6 +151,22 @@ CREATE TABLE IF NOT EXISTS rate_limit_entries (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 6. Persistent Rate Limiting Table (Standardized serverless API/PIN sliding window rate limiter)
+CREATE TABLE IF NOT EXISTS public.rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 1,
+  window_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
+-- 7. Cron Execution & Notification Idempotency Locks (Guarantees single runner per dispatch window)
+CREATE TABLE IF NOT EXISTS public.cron_locks (
+  lock_key TEXT PRIMARY KEY,
+  locked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  metadata JSONB DEFAULT '{}'::jsonb
+);
+
 -- Indexes for high-performance cron lookups & timezone queries
 CREATE INDEX IF NOT EXISTS idx_members_active ON members(is_active);
 CREATE INDEX IF NOT EXISTS idx_members_pending ON members(pending_effective_at) WHERE pending_effective_at IS NOT NULL;
@@ -161,6 +177,8 @@ CREATE INDEX IF NOT EXISTS idx_notification_logs_lookup ON notification_logs(mem
 CREATE INDEX IF NOT EXISTS idx_nightly_strike_logs_target ON nightly_strike_logs(target_member_id, sleep_cycle_date);
 CREATE INDEX IF NOT EXISTS idx_rate_limit_entries_key_reset ON rate_limit_entries(key, reset_at);
 CREATE INDEX IF NOT EXISTS idx_rate_limit_target_ip ON rate_limit_entries(target_member_id, ip_address);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_expires_at ON public.rate_limits (expires_at);
+CREATE INDEX IF NOT EXISTS idx_cron_locks_expires_at ON public.cron_locks (expires_at);
 
 -- ==============================================================================
 -- Row Level Security (RLS) Policies
@@ -170,6 +188,8 @@ ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nightly_strike_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_limit_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cron_locks ENABLE ROW LEVEL SECURITY;
 
 -- Members: Public read for active members (for community roster view)
 DROP POLICY IF EXISTS "Public can view active members" ON members;
@@ -208,6 +228,16 @@ CREATE POLICY "Service role full access on nightly_strike_logs" ON nightly_strik
 -- Rate Limit Entries: Service role full access (strictly internal backend security)
 DROP POLICY IF EXISTS "Service role full access on rate_limit_entries" ON rate_limit_entries;
 CREATE POLICY "Service role full access on rate_limit_entries" ON rate_limit_entries
+  FOR ALL USING (auth.role() = 'service_role');
+
+-- Rate Limits: Service role full access (internal backend security)
+DROP POLICY IF EXISTS "Service role full access on rate_limits" ON public.rate_limits;
+CREATE POLICY "Service role full access on rate_limits" ON public.rate_limits
+  FOR ALL USING (auth.role() = 'service_role');
+
+-- Cron Locks: Service role full access (internal backend dispatcher)
+DROP POLICY IF EXISTS "Service role full access on cron_locks" ON public.cron_locks;
+CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
   FOR ALL USING (auth.role() = 'service_role');
 
 -- ==============================================================================

@@ -114,6 +114,20 @@ export interface RateLimitRecord {
   updated_at: string;
 }
 
+export interface RateLimitRow {
+  key: string;
+  count: number;
+  window_start: string;
+  expires_at: string;
+}
+
+export interface CronLockRow {
+  lock_key: string;
+  locked_at: string;
+  expires_at: string;
+  metadata?: Record<string, unknown>;
+}
+
 /**
  * Safely fetches all rows matching a query despite PostgREST's default 1000-row cap,
  * paging through results using .range(from, to).

@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon';
 import {
   supabaseAdmin,
+  isSupabaseConfigured,
   Member,
   PushSubscriptionRecord,
   fetchAllNotificationLogs,
@@ -10,6 +11,131 @@ import { checkCooldownPromotion, computeMemberState, getSleepCycleDate } from '@
 import { toValidLuxonZone } from '@/lib/timezone';
 import { sendPushNotification } from '@/lib/pushServer';
 import { sendBedtimeDiscordWebhook } from '@/lib/discordWebhook';
+
+// Preserve in-memory fallback cron locks on globalThis across module reloads and chunks
+const globalForCronLocks = globalThis as unknown as {
+  __cronLocks?: Map<string, { lockedAt: number; expiresAt: number; metadata?: Record<string, unknown> }>;
+};
+
+const inMemoryCronLocks =
+  globalForCronLocks.__cronLocks ||
+  new Map<string, { lockedAt: number; expiresAt: number; metadata?: Record<string, unknown> }>();
+globalForCronLocks.__cronLocks = inMemoryCronLocks;
+
+/**
+ * Acquires a distributed idempotency lock backed by Supabase 'cron_locks' table
+ * with seamless in-memory fallback for offline/test environments.
+ *
+ * @param lockKey - Unique lock key (e.g. `cron_window:<YYYY-MM-DDTHH:mm>` or `notif:<member_id>:<date>:<event_type>`)
+ * @param ttlSeconds - Time-to-live in seconds before the lock automatically expires
+ * @param metadata - Optional metadata context stored with the lock record
+ * @returns boolean - True if lock was acquired, false if already held by another runner
+ */
+export async function acquireCronLock(
+  lockKey: string,
+  ttlSeconds: number,
+  metadata: Record<string, unknown> = {}
+): Promise<boolean> {
+  const nowMs = Date.now();
+  const expiresAtMs = nowMs + ttlSeconds * 1000;
+  const nowIso = new Date(nowMs).toISOString();
+  const expiresAtIso = new Date(expiresAtMs).toISOString();
+
+  // 1. In-memory check first
+  const existingMem = inMemoryCronLocks.get(lockKey);
+  if (existingMem && existingMem.expiresAt > nowMs) {
+    return false; // Active lock held in memory
+  }
+
+  // Set local in-memory lock
+  inMemoryCronLocks.set(lockKey, {
+    lockedAt: nowMs,
+    expiresAt: expiresAtMs,
+    metadata,
+  });
+
+  // 2. Persistent Supabase check if configured
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { data: existing, error: selectErr } = await supabaseAdmin
+        .from('cron_locks')
+        .select('lock_key, expires_at')
+        .eq('lock_key', lockKey)
+        .maybeSingle();
+
+      if (!selectErr && existing) {
+        const existingExpiresMs = new Date(existing.expires_at).getTime();
+        if (existingExpiresMs > nowMs) {
+          // Lock is actively held in database
+          inMemoryCronLocks.set(lockKey, {
+            lockedAt: nowMs,
+            expiresAt: existingExpiresMs,
+            metadata,
+          });
+          return false;
+        }
+
+        // Lock expired; renew lock
+        const { error: updateErr } = await supabaseAdmin
+          .from('cron_locks')
+          .update({
+            locked_at: nowIso,
+            expires_at: expiresAtIso,
+            metadata,
+          })
+          .eq('lock_key', lockKey);
+
+        if (updateErr) {
+          return false;
+        }
+        return true;
+      }
+
+      // No existing lock; insert new lock
+      const { error: insertErr } = await supabaseAdmin
+        .from('cron_locks')
+        .insert({
+          lock_key: lockKey,
+          locked_at: nowIso,
+          expires_at: expiresAtIso,
+          metadata,
+        });
+
+      if (insertErr) {
+        // Concurrent runner acquired it first
+        return false;
+      }
+
+      return true;
+    } catch {
+      // Fallback to in-memory lock status
+      return true;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Releases a cron lock early if needed.
+ */
+export async function releaseCronLock(lockKey: string): Promise<void> {
+  inMemoryCronLocks.delete(lockKey);
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      await supabaseAdmin.from('cron_locks').delete().eq('lock_key', lockKey);
+    } catch {
+      // Non-blocking
+    }
+  }
+}
+
+/**
+ * Clears all in-memory cron locks (useful for test resets).
+ */
+export function clearAllCronLocks(): void {
+  inMemoryCronLocks.clear();
+}
 
 export interface DispatchResults {
   timestamp: string;
@@ -64,6 +190,23 @@ export async function executeNotificationDispatcher(options: {
       errors: [],
     },
   };
+
+  // 0. Window-level concurrency lock (prevents dual-execution when multiple runners fire in the same minute)
+  const timeWindowBucket = nowUtc.toFormat("yyyy-MM-dd'T'HH:mm");
+  const windowLockKey = `cron_window:${timeWindowBucket}`;
+
+  if (!options.dryRun && !options.forcedMemberId) {
+    const lockAcquired = await acquireCronLock(windowLockKey, 55, {
+      source: 'cron_dispatcher',
+      window: timeWindowBucket,
+    });
+    if (!lockAcquired) {
+      results.details.errors.push(
+        `Dispatch window ${timeWindowBucket} is already locked by another runner. Skipping execution to prevent duplicate notifications.`
+      );
+      return results;
+    }
+  }
 
   // 1. Fetch all active members
   const { data: rawMembers, error: membersError } = await supabaseAdmin
@@ -236,6 +379,17 @@ export async function executeNotificationDispatcher(options: {
       hasBeenDispatched(member.id, 'WIND_DOWN_30M', localDate);
 
     if (isWindDownDue && !isWindDownAlreadyLogged) {
+      if (!options.dryRun) {
+        const lockAcquired = await acquireCronLock(
+          `notif:${member.id}:${localDate}:WIND_DOWN_30M`,
+          86400,
+          { member_id: member.id, stage: 'WIND_DOWN_30M', local_date: localDate }
+        );
+        if (!lockAcquired) {
+          continue;
+        }
+      }
+
       if (alreadyInBed) {
         // Sleeper is already safely in bed! Suppress wind-down notification
         results.sleepShieldSuppressionsCount++;
@@ -270,6 +424,17 @@ export async function executeNotificationDispatcher(options: {
       hasBeenDispatched(member.id, 'BEDTIME_HIT', localDate);
 
     if (isBedtimeDue && !isBedtimeAlreadyLogged) {
+      if (!options.dryRun) {
+        const lockAcquired = await acquireCronLock(
+          `notif:${member.id}:${localDate}:BEDTIME_HIT`,
+          86400,
+          { member_id: member.id, stage: 'BEDTIME_HIT', local_date: localDate }
+        );
+        if (!lockAcquired) {
+          continue;
+        }
+      }
+
       if (alreadyInBed) {
         // ANTI-SPAM GUARANTEE: Member checked in early via Safe Button!
         // Suppress personal bedtime hit AND suppress community nag notifications!
