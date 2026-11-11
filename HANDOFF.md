@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T01:18:00+05:30  
+> **Last Updated:** 2026-11-12T01:26:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 3bc3943  
+> **Latest Commit:** fba2b30  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21)  
 > **Active Integration Pull Request:** None (all features merged into `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22)  
 > **Active Production Release Pull Request:** None (PR #22 merged into `main`)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 30/30 routes | `node scripts/test-nag-notifications.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
 
 ---
 
@@ -69,6 +69,35 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 48: Real-Time Bedtime Nag Notifications & Sleep Shield Guardrail Enforcement
+* **Real-Time Bedtime Nag Notification Engine (`src/app/api/members/nag-notif/route.ts`):**
+  - **Eligibility Verification:** Enables community members to send push notifications to friends who are within 30 minutes before their bedtime (`-30 <= diffMinutes < 0`) or past their bedtime (`0 <= diffMinutes <= 480`). Awake members well before bedtime (`diffMinutes < -30`) or past their 8-hour sleep cycle are strictly protected against reminder dispatch.
+  - **Sleep Shield Guardrail:** Non-negotiable defense: if the target member has turned on their Sleep Shield (via early check-in `"I'm in Bed"`, active 8-hour sleep window, or excused Metastrike pass), push notifications strictly **will not go** (`shieldActive: true`), and the endpoint returns an informative response confirming that the recipient's Sleep Shield is safely active.
+  - **Multi-Device Push Dispatch & Dead Subscription Pruning:** Dispatches Web Push payloads (`"🌙 Time to Catch Some Z's!"`) directly to all registered client endpoints in `push_subscriptions` via `sendPushNotification()`, automatically pruning expired 404/410 subscriptions.
+  - **Anti-Spam Deduplication & Community Assists:** Restricts manual nags to 1 reminder per sender per sleeper per stage (`WIND_DOWN` vs `OVERDUE`) per local cycle date, and automatically records an assist in `notification_logs` to increment the live community assist counter (`"👥 X friends checked in tonight 🦊"`).
+* **MemberCard Real-Time Nag Notification UI (`src/components/MemberCard.tsx`):**
+  - **Profile Box Nag Notif Button:** Added an intuitive, accessible action button (`min-h-[44px] min-w-[44px]`) on the member's profile card for eligible peers.
+  - **Shield Status Feedback:** If the recipient has turned on their Sleep Shield, the button visually reflects `Shield On` (with muted purple styling `border-status-slumber/40 bg-status-slumber/15 text-status-slumber`), and tapping it displays a gentle feedback toast: `"🛡️ [Name] has turned on their Sleep Shield. Nag notifications are muted."` without dispatching notifications.
+  - **Optimistic State & Assist Counter Synchronization:** When tapped for active friends, the button transitions to `Sending...` with spinner, then updates to `Nag Sent` with a checkmark badge, emits a 15ms light haptic pulse, and increments the on-card assist counter.
+  - **Multi-Bucket Layout Integration:** Elegantly positioned across `NAG NOW` (secondary action row alongside Vote Strike), `WINDING DOWN` (when within 30m of bedtime), and `SLEEPING` (indicating `Shield On (Muted)`).
+* **Header Sleep Shield Toggle Live Synchronization (`src/app/page.tsx`):**
+  - Synchronized `isSleepShieldActive` with authenticated member `currentUser.is_in_bed` state.
+  - Connected the Header `Shield: Active / Off` toggle directly to the member's live Supabase check-in status via `/api/members/in-bed`, enabling instant personal Sleep Shield activation with toast feedback.
+* **404 Not Found Page Component (`src/app/not-found.tsx`):**
+  - Implemented Next.js 15 root `not-found.tsx` adhering to the Warm Dark low-blue-light design system (`#120F0D` background, `#F5EBE1` text, sleeping FoxMascot vector).
+* **Automated Unit & Integration Test Suite (`scripts/test-nag-notifications.mjs`):**
+  - Added unit test suite verifying time-window boundary conditions (`-30m` through `+480m`), Sleep Shield guardrail assertions, PostgreSQL unique constraint anti-spam deduplication, and check-in discovery.
+* **Verification Check:**
+  - `npx tsc --noEmit` clean (0 errors).
+  - `npm run build` clean (all 30/30 dynamic and static routes compiled).
+  - `node scripts/test-nag-notifications.mjs` passed cleanly.
+  - `node scripts/test-strikes-system.mjs` passed cleanly.
+  - `node scripts/test-login-and-auth.mjs` passed cleanly.
+  - `node scripts/test-logout-flow.mjs` passed cleanly.
+  - `node scripts/test-schedule-cooldown.mjs` passed cleanly.
+  - `node scripts/test-phase1-pwa-push.mjs` passed cleanly.
+  - `node scripts/test-profile-and-schedule-tab.mjs` passed cleanly.
 
 ### Phase 47: MemberCard Action Button Layout Stability & UI Button Normalisation
 * **Problem Statement & Root Cause Diagnosis:**
