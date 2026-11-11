@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T03:20:00+05:30  
+> **Last Updated:** 2026-11-12T03:25:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 9e7c839  
+> **Latest Commit:** ab3957f  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
 > **Active Integration Pull Request:** None  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
@@ -69,6 +69,29 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 53: Task 3 - Database-Backed Rate Limiting & Cron Idempotency Locks
+* **Database Schema Enhancement (`supabase/schema.sql`, `src/lib/db.ts`):**
+  - Added `public.rate_limits` table with indexes (`idx_rate_limits_expires_at`) for persistent serverless rate limiting.
+  - Added `public.cron_locks` table with indexes (`idx_cron_locks_expires_at`) for distributed execution locks and notification idempotency.
+  - Added Row-Level Security (RLS) policies for `rate_limits` and `cron_locks` with service-role full access.
+  - Added `RateLimitRow` and `CronLockRow` interfaces to `src/lib/db.ts`.
+* **Database-Backed Rate Limiter Refactor (`src/lib/rateLimit.ts`):**
+  - Upgraded rate limiter to query and store attempt counts and lockouts in the `rate_limits` table via `src/lib/db.ts`.
+  - Maintained synchronized dual-layer caching (global in-memory map + Supabase persistence) with graceful offline fallback for unit tests and local development.
+  - Preserved 100% backward-compatible function signatures across synchronous and async callers (`checkPinRateLimit`, `checkPinRateLimitPersistent`, `recordPinFailure`, `recordPinFailurePersistent`, `resetPinFailure`, `checkVoteRateLimitPersistent`, etc.).
+  - Added opportunistic pruning of expired rate limit rows.
+* **Cron Dispatcher Idempotency Locks (`src/lib/cronDispatcher.ts`):**
+  - Implemented `acquireCronLock`, `releaseCronLock`, and `clearAllCronLocks` backed by `cron_locks` with in-memory fallback.
+  - Added 55-second window-level execution lock (`cron_window:<YYYY-MM-DDTHH:mm>`) to prevent duplicate runs when Vercel Cron and GitHub Actions fire within the same minute window.
+  - Added per-member 24-hour event idempotency locks (`notif:<member_id>:<date>:<event_type>`) ensuring zero duplicate Web Push notifications or Discord webhooks during retries or concurrent dispatches.
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run build` compiled all 26/26 routes cleanly.
+  - `node scripts/test-pin-rate-limiting.mjs` passed cleanly.
+  - `node scripts/test-push-and-cron.mjs` passed cleanly.
+  - `node scripts/test-strikes-system.mjs` passed cleanly.
+  - `node --env-file=.env.local scripts/test-phase1-security.mjs` passed cleanly.
 
 ### Phase 52: Task 2 - Consolidate Redundant API Proxies into Canonical Endpoints
 * **API Proxy Redundancy Audit & Elimination:**
