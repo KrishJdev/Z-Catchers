@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { PwaBanner } from '@/components/PwaBanner';
 import { StatusBucket } from '@/components/StatusBucket';
@@ -9,17 +10,20 @@ import { FoxMascot } from '@/components/FoxMascot';
 import { MyScheduleModal } from '@/components/MyScheduleModal';
 import { ModDrawer } from '@/components/ModDrawer';
 import { PushModal } from '@/components/PushModal';
-import { LoginModal } from '@/components/LoginModal';
+import { BottomNav, type MobileNavTab } from '@/components/BottomNav';
+import { MetastrikeModal } from '@/components/MetastrikeModal';
 import { computeMemberState, MemberState } from '@/lib/sleepEngine';
 import { formatGmtOffset } from '@/lib/timezone';
 import {
   registerServiceWorker,
   getExistingSubscription,
+  syncPushSubscriptionHealth,
   isPushSupported,
   getStoredMemberId,
   getStoredAuthMember,
   setStoredAuthMember,
   getStoredAuthToken,
+  clearAuthSession,
 } from '@/lib/pushClient';
 import type { Member } from '@/lib/db';
 import {
@@ -27,22 +31,29 @@ import {
   Sparkles,
   Sun,
   Moon,
-  Home,
-  Clock,
-  Shield,
   RefreshCw,
-  Bell,
   Star,
   Users,
   KeyRound,
-  User,
+  BedDouble,
 } from 'lucide-react';
 
 const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
+const STORAGE_KEY_CACHED_ROSTER = 'zcatchers_cached_roster';
 
+/**
+ * Main dashboard page for Z Catchers.
+ * Displays the live community member roster sorted by sleep bucket,
+ * real-time timezone conversion, sleep consistency streaks, and strike accountability.
+ *
+ * @returns Rendered Home dashboard component
+ */
 export default function HomePage() {
+  const router = useRouter();
+  const [isSessionChecked, setIsSessionChecked] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
   const [viewerTimezone, setViewerTimezone] = useState<string>('GMT+00:00');
   const [isPushEnabled, setIsPushEnabled] = useState(false);
   const [isSleepShieldActive, setIsSleepShieldActive] = useState(false);
@@ -59,14 +70,121 @@ export default function HomePage() {
   // Check-in loading indicator
   const [isCheckingIn, setIsCheckingIn] = useState(false);
 
-  // Dialog / Modal states: 'schedule' | 'mod' | 'push' | 'login' | null
-  const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | 'push' | 'login' | null>(null);
-  const [loginModalTab, setLoginModalTab] = useState<'login' | 'register'>('login');
+  // Strikes & Metastrikes accountability states
+  const [metastrikeMember, setMetastrikeMember] = useState<Member | null>(null);
+  const [metastrikeMode, setMetastrikeMode] = useState<'proactive' | 'convert_retroactive'>('proactive');
+  const [isVotingStrike, setIsVotingStrike] = useState(false);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  const handleOpenLogin = (tab: 'login' | 'register' = 'login') => {
-    setLoginModalTab(tab);
-    setActiveModal('login');
+  // Dialog / Modal states: 'schedule' | 'mod' | 'push' | null
+  const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | 'push' | null>(null);
+  const [mobileTab, setMobileTab] = useState<MobileNavTab>('roster');
+
+  // Throttled foreground refetch tracking ref
+  const lastForegroundSyncRef = useRef<number>(0);
+
+  const handleOpenLogin = (_tab?: 'login' | 'register') => {
+    router.push('/join');
   };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (err) {
+      console.warn('Logout request error:', err);
+    } finally {
+      clearAuthSession();
+      setCurrentUser(null);
+      setClaimedMemberId(null);
+      setActiveModal(null);
+      setToastMessage({
+        text: 'Logged out of Fox Den successfully.',
+        type: 'info',
+      });
+      router.replace('/join');
+    }
+  };
+
+  const handleMobileTabChange = (tab: MobileNavTab) => {
+    setMobileTab(tab);
+    if (tab === 'roster') {
+      setActiveModal(null);
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } else if (tab === 'schedule') {
+      setActiveModal('schedule');
+    } else if (tab === 'alerts') {
+      setActiveModal('push');
+    } else if (tab === 'mod') {
+      setActiveModal('mod');
+    }
+  };
+
+  const handleCloseModal = () => {
+    setActiveModal(null);
+    setMobileTab('roster');
+  };
+
+  // Route Guard: verify claimed session in localStorage or via /api/auth/me cookie
+  useEffect(() => {
+    let isMounted = true;
+    const cachedMember = getStoredAuthMember<Member>();
+    const cachedToken = getStoredAuthToken();
+    const cachedId = getStoredMemberId();
+
+    if (cachedMember && (cachedToken || cachedId)) {
+      setCurrentUser(cachedMember);
+      setClaimedMemberId(cachedMember.id);
+      setIsSessionChecked(true);
+
+      // Verify in background
+      fetch('/api/auth/me')
+        .then((res) => res.json())
+        .then((data) => {
+          if (!isMounted) return;
+          if (data.authenticated && data.member) {
+            setCurrentUser(data.member);
+            setClaimedMemberId(data.member.id);
+            setStoredAuthMember(data.member);
+          } else if (data.authenticated === false) {
+            clearAuthSession();
+            setCurrentUser(null);
+            setClaimedMemberId(null);
+            router.replace('/join');
+          }
+        })
+        .catch((err) => console.warn('Auth background verify error:', err));
+      return;
+    }
+
+    // No local storage session -> query /api/auth/me to check session cookie
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isMounted) return;
+        if (data.authenticated && data.member) {
+          setCurrentUser(data.member);
+          setClaimedMemberId(data.member.id);
+          setStoredAuthMember(data.member);
+          setIsSessionChecked(true);
+        } else {
+          router.replace('/join');
+        }
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        console.warn('Auth check error:', err);
+        router.replace('/join');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
   // Detect viewer's local timezone (formatted as GMT offset to prevent disclosing physical location)
   useEffect(() => {
@@ -94,27 +212,209 @@ export default function HomePage() {
     }
   }, [activeModal]);
 
-  // Check auth session on mount
-  useEffect(() => {
-    const cached = getStoredAuthMember<Member>();
-    if (cached) {
-      setCurrentUser(cached);
-      setClaimedMemberId(cached.id);
-    }
-
-    fetch('/api/auth/me')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.authenticated && data.member) {
-          setCurrentUser(data.member);
-          setClaimedMemberId(data.member.id);
-          setStoredAuthMember(data.member);
+  // Fetch roster with offline localStorage snapshot caching and fallback
+  const fetchRoster = useCallback(async () => {
+    try {
+      const res = await fetch('/api/members');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.members) {
+          setMembers(json.members);
+          try {
+            localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(json.members));
+          } catch {
+            // Ignore quota errors
+          }
         }
-      })
-      .catch((err) => console.warn('Auth check error:', err));
+      }
+    } catch (err) {
+      console.error('Failed to load roster:', err);
+      // Offline fallback: hydrate from cached snapshot if available
+      try {
+        const cached = localStorage.getItem(STORAGE_KEY_CACHED_ROSTER);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMembers((prev) => (prev.length === 0 ? parsed : prev));
+          }
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Register service worker and inspect existing push subscription
+  // Preload cached roster snapshot on initial mount & track online/offline connectivity
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY_CACHED_ROSTER);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMembers((prev) => (prev.length === 0 ? parsed : prev));
+          setLoading(false);
+        }
+      }
+    } catch {
+      // Ignore
+    }
+
+    if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') {
+      setIsOffline(!navigator.onLine);
+    }
+
+    const handleOnline = () => {
+      setIsOffline(false);
+      fetchRoster();
+      syncPushSubscriptionHealth().catch(() => {});
+    };
+
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [fetchRoster]);
+
+  useEffect(() => {
+    if (isSessionChecked) {
+      fetchRoster();
+    }
+  }, [fetchRoster, isSessionChecked]);
+
+  // "I'm in Bed" Check-In Safe Button handler
+  const handleCheckIn = useCallback(async (memberId: string) => {
+    try {
+      setIsCheckingIn(true);
+      const token = getStoredAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/members/in-bed', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ memberId, action: 'check_in' }),
+      });
+      if (res.ok) {
+        await fetchRoster();
+      } else if (res.status === 401) {
+        router.push('/join');
+      }
+    } catch (err) {
+      console.error('Failed to check in:', err);
+    } finally {
+      setIsCheckingIn(false);
+    }
+  }, [fetchRoster, router]);
+
+  // Cancel "I'm in Bed" check-in handler
+  const handleCancelInBed = useCallback(async (memberId: string) => {
+    try {
+      setIsCheckingIn(true);
+      const token = getStoredAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/members/in-bed', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ memberId, action: 'cancel' }),
+      });
+      if (res.ok) {
+        await fetchRoster();
+      } else if (res.status === 401) {
+        router.push('/join');
+      }
+    } catch (err) {
+      console.error('Failed to cancel check-in:', err);
+    } finally {
+      setIsCheckingIn(false);
+    }
+  }, [fetchRoster, router]);
+
+  // Deep-Link Action Handler: /?action=in-bed
+  const processDeepLinkAction = useCallback(
+    async (member: Member | null) => {
+      if (typeof window === 'undefined') return;
+      try {
+        const url = new URL(window.location.href);
+        const action = url.searchParams.get('action');
+
+        if (action === 'in-bed') {
+          // Clean query parameter from URL immediately to prevent repeated triggers
+          url.searchParams.delete('action');
+          const cleanedUrl = url.pathname + (url.search ? url.search : '') + url.hash;
+          window.history.replaceState({}, '', cleanedUrl);
+
+          if (member) {
+            await handleCheckIn(member.id);
+          }
+        } else if (action === 'schedule') {
+          url.searchParams.delete('action');
+          const cleanedUrl = url.pathname + (url.search ? url.search : '') + url.hash;
+          window.history.replaceState({}, '', cleanedUrl);
+          setActiveModal('schedule');
+          setMobileTab('schedule');
+        }
+      } catch (err) {
+        console.warn('Failed to parse or process deep link action:', err);
+      }
+    },
+    [handleCheckIn]
+  );
+
+  // Throttled foreground resume handler (focus / visibilitychange)
+  const handleForegroundResume = useCallback(async () => {
+    const now = Date.now();
+    // Throttle refetches to at most once every 5 seconds to prevent duplicate bursts
+    if (now - lastForegroundSyncRef.current < 5000) {
+      return;
+    }
+    lastForegroundSyncRef.current = now;
+
+    // 1. Recalculate local countdown timers
+    setTick((prev) => prev + 1);
+
+    // 2. Re-fetch roster and current member session in parallel
+    try {
+      const [rosterRes, authRes] = await Promise.all([
+        fetch('/api/members'),
+        fetch('/api/auth/me'),
+      ]);
+
+      if (rosterRes.ok) {
+        const json = await rosterRes.json();
+        if (json.members) setMembers(json.members);
+      }
+
+      if (authRes.ok) {
+        const authJson = await authRes.json();
+        if (authJson.authenticated && authJson.member) {
+          setCurrentUser(authJson.member);
+          setClaimedMemberId(authJson.member.id);
+          setStoredAuthMember(authJson.member);
+          processDeepLinkAction(authJson.member);
+        }
+      }
+    } catch (err) {
+      console.warn('Foreground sync failed:', err);
+    }
+
+    // 3. Silent push subscription health-check
+    syncPushSubscriptionHealth().catch((err) =>
+      console.warn('Silent push sync error:', err)
+    );
+  }, [processDeepLinkAction]);
+
+  // Register service worker and inspect/re-sync existing push subscription on boot
   useEffect(() => {
     if (isPushSupported()) {
       registerServiceWorker().then(() => {
@@ -123,31 +423,46 @@ export default function HomePage() {
             setIsPushEnabled(true);
           }
         });
+        // Silent subscription health-check on app boot
+        syncPushSubscriptionHealth().then((synced) => {
+          if (synced) setIsPushEnabled(true);
+        });
       });
     }
   }, []);
 
-  // Fetch roster
-  const fetchRoster = useCallback(async () => {
-    try {
-      const res = await fetch('/api/members');
-      if (res.ok) {
-        const json = await res.json();
-        if (json.members) setMembers(json.members);
-      }
-    } catch (err) {
-      console.error('Failed to load roster:', err);
-    } finally {
-      setLoading(false);
+  // Process deep-link actions when user session is available
+  useEffect(() => {
+    if (currentUser) {
+      processDeepLinkAction(currentUser);
     }
-  }, []);
+  }, [currentUser, processDeepLinkAction]);
 
+  // Listen for Service Worker messages (e.g. notification clicks carrying in-bed action)
   useEffect(() => {
-    fetchRoster();
-  }, [fetchRoster]);
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
 
-  // Self-refreshing interval every 30s to advance countdowns and periodically sync roster
+    const handleSwMessage = (event: MessageEvent) => {
+      if (
+        event.data?.action === 'in-bed' ||
+        (event.data?.url && typeof event.data.url === 'string' && event.data.url.includes('action=in-bed'))
+      ) {
+        if (currentUser) {
+          handleCheckIn(currentUser.id);
+        }
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    };
+  }, [currentUser, handleCheckIn]);
+
+  // Self-refreshing interval every 30s and throttled foreground resume listeners
   useEffect(() => {
+    if (!isSessionChecked) return;
+
     const tickInterval = setInterval(() => {
       setTick((prev) => prev + 1);
     }, 30000);
@@ -157,25 +472,27 @@ export default function HomePage() {
       fetchRoster();
     }, 60000);
 
-    // Instant sync on window focus or tab visibility resume
-    const handleFocus = () => {
-      setTick((prev) => prev + 1);
-      fetchRoster();
+    // Throttled sync on window focus or tab visibility resume
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleForegroundResume();
+      }
     };
 
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        handleFocus();
-      }
-    });
+    const onWindowFocus = () => {
+      handleForegroundResume();
+    };
+
+    window.addEventListener('focus', onWindowFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       clearInterval(tickInterval);
       clearInterval(rosterInterval);
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('focus', onWindowFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [fetchRoster]);
+  }, [fetchRoster, handleForegroundResume, isSessionChecked]);
 
   // Toggle buddy star
   const handleToggleStar = (memberId: string) => {
@@ -192,54 +509,54 @@ export default function HomePage() {
     });
   };
 
-  // "I'm in Bed" Check-In Safe Button handler
-  const handleCheckIn = async (memberId: string) => {
+  // Community 2-Vote Strike Handler
+  const handleVoteStrike = async (targetMemberId: string) => {
     try {
-      setIsCheckingIn(true);
+      setIsVotingStrike(true);
       const token = getStoredAuthToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch('/api/members/in-bed', {
+      const res = await fetch('/api/members/strikes/vote', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ memberId, action: 'check_in' }),
+        body: JSON.stringify({ target_member_id: targetMemberId }),
       });
-      if (res.ok) {
-        await fetchRoster();
-      } else if (res.status === 401) {
-        setActiveModal('login');
+
+      const json = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push('/join');
+        }
+        setToastMessage({ text: json.error || 'Failed to cast strike vote.', type: 'error' });
+        setTimeout(() => setToastMessage(null), 4000);
+        return;
       }
+
+      if (json.strike_issued) {
+        setToastMessage({
+          text: '2/2 Votes Reached! Strike officially issued for tonight.',
+          type: 'success',
+        });
+      } else {
+        setToastMessage({
+          text: `Vote recorded (${json.votes_count}/2). One more vote will issue a strike.`,
+          type: 'info',
+        });
+      }
+      setTimeout(() => setToastMessage(null), 4000);
+      await fetchRoster();
     } catch (err) {
-      console.error('Failed to check in:', err);
+      console.error('Strike voting error:', err);
     } finally {
-      setIsCheckingIn(false);
+      setIsVotingStrike(false);
     }
   };
 
-  // Cancel "I'm in Bed" check-in handler
-  const handleCancelInBed = async (memberId: string) => {
-    try {
-      setIsCheckingIn(true);
-      const token = getStoredAuthToken();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch('/api/members/in-bed', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ memberId, action: 'cancel' }),
-      });
-      if (res.ok) {
-        await fetchRoster();
-      } else if (res.status === 401) {
-        setActiveModal('login');
-      }
-    } catch (err) {
-      console.error('Failed to cancel check-in:', err);
-    } finally {
-      setIsCheckingIn(false);
-    }
+  // Metastrike Excuse Modal Handler
+  const handleOpenMetastrike = (member: Member, mode: 'proactive' | 'convert_retroactive') => {
+    setMetastrikeMember(member);
+    setMetastrikeMode(mode);
   };
 
   // Claimed member profile & state
@@ -296,9 +613,33 @@ export default function HomePage() {
     return { nagNow, windingDown, awake, sleeping };
   }, [displayedMembers, viewerTimezone, tick]);
 
+  // Home Screen App Badging API: Sync overdue friend count to mobile PWA icon
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
+      const overdueCount = categorized.nagNow.length;
+      if (overdueCount > 0) {
+        navigator.setAppBadge(overdueCount).catch(() => {});
+      } else if ('clearAppBadge' in navigator) {
+        navigator.clearAppBadge().catch(() => {});
+      }
+    }
+  }, [categorized.nagNow.length]);
+
   const handleOpenPushModal = () => {
     setActiveModal('push');
+    setMobileTab('alerts');
   };
+
+  // If waiting for route guard session verification, show Warm Dark splash
+  if (!isSessionChecked) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-night-bg text-cream-primary p-4">
+        <FoxMascot state="sleeping" size={56} className="animate-pulse mb-3" />
+        <h1 className="text-xl font-bold tracking-tight">Z Catchers</h1>
+        <p className="text-xs text-cream-secondary mt-1">Entering the Fox Den...</p>
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen flex-col bg-night-bg">
@@ -308,13 +649,57 @@ export default function HomePage() {
         onTogglePush={handleOpenPushModal}
         isSleepShieldActive={isSleepShieldActive}
         onToggleSleepShield={() => setIsSleepShieldActive((prev) => !prev)}
-        onOpenSchedule={() => setActiveModal('schedule')}
-        onOpenMod={() => setActiveModal('mod')}
+        onOpenSchedule={() => {
+          setActiveModal('schedule');
+          setMobileTab('schedule');
+        }}
+        onOpenMod={() => {
+          setActiveModal('mod');
+          setMobileTab('mod');
+        }}
         currentUser={currentUser}
         onOpenLogin={handleOpenLogin}
+        onLogout={handleLogout}
       />
 
       <div className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6 pb-28 md:pb-12">
+        {/* Floating Notification Toast */}
+        {toastMessage && (
+          <div
+            className={`mb-4 flex items-center justify-between rounded-xl border px-4 py-2.5 text-xs font-semibold shadow-lg transition-all animate-fade-in ${
+              toastMessage.type === 'success'
+                ? 'border-status-sage/40 bg-status-sage/15 text-status-sage'
+                : toastMessage.type === 'error'
+                ? 'border-status-coral/40 bg-status-coral/15 text-status-coral'
+                : 'border-status-amber/40 bg-status-amber/15 text-status-amber'
+            }`}
+          >
+            <span>{toastMessage.text}</span>
+            <button
+              onClick={() => setToastMessage(null)}
+              className="ml-3 text-cream-muted hover:text-cream-primary"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Offline Connectivity Notification Banner */}
+        {isOffline && (
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-night-border bg-night-surface px-4 py-2.5 text-xs text-cream-secondary shadow-md animate-fade-in">
+            <div className="flex items-center gap-2.5">
+              <span className="h-2 w-2 rounded-full bg-status-amber animate-pulse shrink-0" />
+              <span>You are offline • Showing cached Fox Den times</span>
+            </div>
+            <button
+              onClick={() => fetchRoster()}
+              className="text-xs font-semibold text-status-amber hover:underline ml-2"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         <PwaBanner onEnablePush={handleOpenPushModal} isPushGranted={isPushEnabled} />
 
         {/* Contextual Sleepy Fox Status Banner */}
@@ -336,8 +721,8 @@ export default function HomePage() {
                 {claimedMember && claimedMember.is_in_bed ? (
                   <div className="flex items-center gap-3 flex-wrap">
                     <div>
-                      <h2 className="text-sm font-bold tracking-wide text-status-sage sm:text-base">
-                        Goodnight, {claimedMember.discord_username}! 🌙
+                      <h2 className="text-sm font-bold tracking-wide text-status-amber sm:text-base">
+                        Goodnight, {claimedMember.discord_username}!
                       </h2>
                       <p className="text-xs text-cream-secondary sm:text-sm">
                         You&apos;re safely tucked in. Sleep Shield active; community nags are suppressed.
@@ -372,7 +757,8 @@ export default function HomePage() {
                       disabled={isCheckingIn}
                       className="inline-flex items-center gap-1.5 rounded-xl bg-status-amber px-3.5 py-1.5 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 active:scale-95 transition-all"
                     >
-                      <span>🛏️ I&apos;m in Bed (Goodnight)</span>
+                      <BedDouble className="h-4 w-4" />
+                      <span>I&apos;m in Bed (Goodnight)</span>
                     </button>
                   </div>
                 ) : (
@@ -403,7 +789,7 @@ export default function HomePage() {
             </div>
 
             {/* Quick summary counters */}
-            <div className="flex items-center gap-2 self-start rounded-xl bg-night-elevated px-3 py-1.5 text-xs font-medium text-cream-secondary sm:self-auto">
+            <div className="flex items-center gap-2 self-start rounded-xl bg-night-surface border border-night-border px-3 py-1.5 text-xs font-medium text-cream-secondary sm:self-auto">
               <span className="text-status-coral font-bold tabular-nums">
                 {categorized.nagNow.length} Nag
               </span>
@@ -412,14 +798,14 @@ export default function HomePage() {
                 {categorized.windingDown.length} Wind
               </span>
               <span>•</span>
-              <span className="text-status-slumber font-bold tabular-nums">
+              <span className="text-cream-muted font-bold tabular-nums">
                 {categorized.sleeping.length} Asleep
               </span>
             </div>
           </div>
         </section>
 
-        {/* Buddy Filter & Quick Navigation Bar */}
+        {/* Buddy Filter Bar */}
         <div className="mb-4 flex items-center justify-between flex-wrap gap-2.5">
           <div className="flex items-center rounded-xl bg-night-surface p-1 border border-night-border/80">
             <button
@@ -449,17 +835,6 @@ export default function HomePage() {
               <span>Starred Buddies ({starredMembers.length})</span>
             </button>
           </div>
-
-          {!currentUser && (
-            <button
-              onClick={() => handleOpenLogin('register')}
-              className="text-xs text-status-amber hover:underline flex items-center gap-1.5 font-medium bg-status-amber/10 border border-status-amber/30 px-3 py-1 rounded-lg transition-colors hover:bg-status-amber/20"
-            >
-              <Sparkles className="h-3 w-3" />
-              <span>Join Den: Create profile & PIN</span>
-              <span>→</span>
-            </button>
-          )}
         </div>
 
         {loading ? (
@@ -487,14 +862,14 @@ export default function HomePage() {
               <FoxMascot state="lantern" size={56} />
             </div>
             <h3 className="text-lg font-bold text-cream-primary sm:text-xl">
-              Welcome to the Fox Den! 🌙
+              Welcome to the Fox Den!
             </h3>
             <p className="mt-2 max-w-md text-xs sm:text-sm text-cream-secondary leading-relaxed">
               The den is peaceful and ready for your friends! Create your profile to set your local bedtime, link your Discord journal, and choose a simple 4-digit PIN.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <button
-                onClick={() => handleOpenLogin('register')}
+                onClick={() => router.push('/join')}
                 className="flex items-center gap-2 rounded-xl bg-status-amber px-5 py-2.5 text-xs font-bold text-night-bg shadow-lg hover:bg-status-amber/90 transition-all hover:scale-[1.02] active:scale-95"
               >
                 <Sparkles className="h-4 w-4" />
@@ -513,7 +888,7 @@ export default function HomePage() {
           <>
             {/* 1. Bedtime Hit / Nag Now (Always top priority) */}
             <StatusBucket
-              title="Nag Now (Bedtime Hit)"
+              title="Nag Now"
               count={categorized.nagNow.length}
               accentColor="text-status-coral"
               icon={<ShieldAlert className="h-4 w-4 text-status-coral animate-pulse" />}
@@ -531,13 +906,16 @@ export default function HomePage() {
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
+                  onVoteStrike={handleVoteStrike}
+                  onOpenMetastrike={handleOpenMetastrike}
+                  isVotingStrike={isVotingStrike}
                 />
               ))}
             </StatusBucket>
 
             {/* 2. Winding Down */}
             <StatusBucket
-              title="Winding Down Soon"
+              title="Winding Down"
               count={categorized.windingDown.length}
               accentColor="text-status-amber"
               icon={<Sparkles className="h-4 w-4 text-status-amber" />}
@@ -555,6 +933,9 @@ export default function HomePage() {
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
+                  onVoteStrike={handleVoteStrike}
+                  onOpenMetastrike={handleOpenMetastrike}
+                  isVotingStrike={isVotingStrike}
                 />
               ))}
             </StatusBucket>
@@ -563,8 +944,8 @@ export default function HomePage() {
             <StatusBucket
               title="Awake"
               count={categorized.awake.length}
-              accentColor="text-status-sage"
-              icon={<Sun className="h-4 w-4 text-status-sage" />}
+              accentColor="text-cream-secondary"
+              icon={<Sun className="h-4 w-4 text-cream-secondary" />}
               defaultExpanded={true}
             >
               {categorized.awake.map(({ member, state }) => (
@@ -578,16 +959,19 @@ export default function HomePage() {
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
+                  onVoteStrike={handleVoteStrike}
+                  onOpenMetastrike={handleOpenMetastrike}
+                  isVotingStrike={isVotingStrike}
                 />
               ))}
             </StatusBucket>
 
             {/* 4. Sleeping (Sleep Shield Active) */}
             <StatusBucket
-              title="Sleeping (Shield Active)"
+              title="Sleeping"
               count={categorized.sleeping.length}
-              accentColor="text-status-slumber"
-              icon={<Moon className="h-4 w-4 text-status-slumber" />}
+              accentColor="text-cream-muted"
+              icon={<Moon className="h-4 w-4 text-cream-muted" />}
               defaultExpanded={categorized.awake.length === 0}
               showEmptyState={true}
               emptyMessage="No members currently asleep."
@@ -603,6 +987,9 @@ export default function HomePage() {
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
+                  onVoteStrike={handleVoteStrike}
+                  onOpenMetastrike={handleOpenMetastrike}
+                  isVotingStrike={isVotingStrike}
                 />
               ))}
             </StatusBucket>
@@ -611,115 +998,69 @@ export default function HomePage() {
       </div>
 
       {/* Sticky Bottom Navigation (Mobile Viewports Only: < 768px) */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto flex h-16 w-full items-center justify-around border-t border-night-border bg-night-surface/95 px-6 backdrop-blur-md pb-[env(safe-area-inset-bottom)] md:hidden">
-        <button
-          className="flex flex-col items-center gap-1 text-status-amber"
-          title="Roster"
-        >
-          <Home className="h-5 w-5" />
-          <span className="text-[10px] font-medium">Roster</span>
-        </button>
+      <BottomNav
+        activeTab={mobileTab}
+        onChangeTab={handleMobileTabChange}
+        isPushEnabled={isPushEnabled}
+        isModerator={currentUser?.role === 'moderator'}
+      />
 
-        <button
-          onClick={() => setActiveModal('schedule')}
-          className="flex flex-col items-center gap-1 text-cream-muted transition-colors hover:text-cream-secondary"
-          title="My Bedtime"
-        >
-          <Clock className="h-5 w-5" />
-          <span className="text-[10px] font-medium">My Time</span>
-        </button>
-
-        <button
-          onClick={() => setActiveModal('push')}
-          className={`flex flex-col items-center gap-1 transition-colors ${
-            isPushEnabled ? 'text-status-sage' : 'text-cream-muted hover:text-cream-secondary'
-          }`}
-          title="Bedtime Alerts"
-        >
-          <Bell className="h-5 w-5" />
-          <span className="text-[10px] font-medium">Alerts</span>
-        </button>
-
-        <button
-          onClick={() => setActiveModal('mod')}
-          className="flex flex-col items-center gap-1 text-cream-muted transition-colors hover:text-cream-secondary"
-          title="Moderator Drawer"
-        >
-          <Shield className="h-5 w-5" />
-          <span className="text-[10px] font-medium">Mod</span>
-        </button>
-
-        {currentUser ? (
-          <button
-            onClick={() => handleOpenLogin('login')}
-            className="flex flex-col items-center gap-1 text-cream-muted transition-colors hover:text-cream-secondary"
-            title="My Profile"
-          >
-            <User className="h-5 w-5 text-status-amber" />
-            <span className="text-[10px] font-medium max-w-[50px] truncate">@{currentUser.discord_username}</span>
-          </button>
-        ) : (
-          <button
-            onClick={() => handleOpenLogin('register')}
-            className="flex flex-col items-center gap-1 text-status-amber font-semibold"
-            title="Join Den"
-          >
-            <User className="h-5 w-5" />
-            <span className="text-[10px] font-medium">Join</span>
-          </button>
-        )}
-      </nav>
-
-      {/* Self-Service My Schedule Modal (Phase 1.4 & Check-In) */}
+      {/* Self-Service My Schedule Modal */}
       <MyScheduleModal
         isOpen={activeModal === 'schedule'}
-        onClose={() => setActiveModal(null)}
+        onClose={handleCloseModal}
         members={members}
         viewerTimezone={viewerTimezone}
         onRefreshRoster={fetchRoster}
         currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
-      {/* Push Notification Settings & Sleep Shield Modal (Phase 1.5 & 1.6) */}
+      {/* Push Notification Settings & Sleep Shield Modal */}
       <PushModal
         isOpen={activeModal === 'push'}
-        onClose={() => setActiveModal(null)}
+        onClose={handleCloseModal}
         members={members}
         isPushEnabled={isPushEnabled}
         onPushStateChanged={setIsPushEnabled}
-        onOpenScheduleModal={() => setActiveModal('schedule')}
+        onOpenScheduleModal={() => {
+          setActiveModal('schedule');
+          setMobileTab('schedule');
+        }}
         currentUser={currentUser}
         onOpenLogin={handleOpenLogin}
+        onLogout={handleLogout}
       />
 
-      {/* Member PIN Login & Profile Claiming Modal (ZC-13) */}
-      <LoginModal
-        isOpen={activeModal === 'login'}
-        onClose={() => setActiveModal(null)}
-        members={members}
-        currentUser={currentUser}
-        onLoginSuccess={(member) => {
-          setCurrentUser(member);
-          setClaimedMemberId(member.id);
-          fetchRoster();
-        }}
-        onLogout={() => {
-          setCurrentUser(null);
-          setClaimedMemberId(null);
-          fetchRoster();
-        }}
-        initialTab={loginModalTab}
-        viewerTimezone={viewerTimezone}
-        onRefreshRoster={fetchRoster}
-      />
-
-      {/* Passcode-Protected Moderator Drawer (Phase 2) */}
+      {/* Passcode-Protected Moderator Drawer */}
       <ModDrawer
         isOpen={activeModal === 'mod'}
-        onClose={() => setActiveModal(null)}
+        onClose={handleCloseModal}
         viewerTimezone={viewerTimezone}
         onRosterChanged={fetchRoster}
+        currentUser={currentUser}
       />
+
+      {/* Metastrike Excuse Pass Modal */}
+      {metastrikeMember && (
+        <MetastrikeModal
+          isOpen={true}
+          onClose={() => setMetastrikeMember(null)}
+          member={metastrikeMember}
+          mode={metastrikeMode}
+          onSuccess={async () => {
+            await fetchRoster();
+            setToastMessage({
+              text:
+                metastrikeMode === 'convert_retroactive'
+                  ? 'Metastrike pass applied! Strike successfully converted.'
+                  : 'Protected by Metastrike tonight! Strike votes disabled.',
+              type: 'success',
+            });
+            setTimeout(() => setToastMessage(null), 4000);
+          }}
+        />
+      )}
     </main>
   );
 }

@@ -3,6 +3,13 @@ import { supabaseAdmin } from '@/lib/db';
 import { getRequestSessionMemberId, verifyPin } from '@/lib/auth';
 import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
 
+/**
+ * POST: Register or rotate a Web Push subscription endpoint linked to an authenticated member.
+ * Preserves existing notification preferences when omitted from health sync calls.
+ *
+ * @param request - Incoming HTTP request containing push subscription and credentials
+ * @returns JSON response with linked subscription record
+ */
 export async function POST(request: Request) {
   try {
     const sessionMemberId = getRequestSessionMemberId(request);
@@ -11,8 +18,9 @@ export async function POST(request: Request) {
       member_id,
       pin,
       subscription,
-      notify_personal = true,
-      notify_community = true,
+      old_endpoint,
+      notify_personal,
+      notify_community,
       user_agent,
     } = body;
 
@@ -24,7 +32,23 @@ export async function POST(request: Request) {
     }
 
     // Determine target member ID: Prefer authenticated session member ID
-    const effectiveMemberId = sessionMemberId || member_id;
+    let effectiveMemberId = sessionMemberId || member_id;
+    let isRotationRecovery = false;
+
+    // Background pushsubscriptionchange recovery: if old_endpoint is provided and matches an existing subscription,
+    // recover the linked member_id without requiring active user credentials
+    if (!effectiveMemberId && old_endpoint) {
+      const { data: oldSub } = await supabaseAdmin
+        .from('push_subscriptions')
+        .select('member_id')
+        .eq('endpoint', old_endpoint)
+        .maybeSingle();
+
+      if (oldSub) {
+        effectiveMemberId = oldSub.member_id;
+        isRotationRecovery = true;
+      }
+    }
 
     if (!effectiveMemberId) {
       return NextResponse.json(
@@ -64,11 +88,11 @@ export async function POST(request: Request) {
     }
 
     // Security Gate:
-    // Must be authenticated via session OR provide valid PIN matching member's passcode_hash
+    // Must be authenticated via session, valid PIN, or verified background rotation recovery
     const isSessionMatch = Boolean(sessionMemberId && sessionMemberId === member.id);
     let isPinMatch = false;
 
-    if (!isSessionMatch) {
+    if (!isSessionMatch && !isRotationRecovery) {
       if (pin !== undefined && pin !== null) {
         if (typeof pin !== 'string') {
           return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
@@ -97,7 +121,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!isSessionMatch && !isPinMatch) {
+    if (!isSessionMatch && !isPinMatch && !isRotationRecovery) {
       return NextResponse.json(
         {
           error: 'Authentication required. Please log in or provide your 4-digit PIN to link push notifications.',
@@ -107,7 +131,59 @@ export async function POST(request: Request) {
       );
     }
 
-    // Upsert subscription (unique on endpoint)
+    // If an old endpoint was rotated, capture its preferences before pruning (scoped to member.id)
+    let oldSubPrefs: { notify_personal?: boolean; notify_community?: boolean } | null = null;
+    if (old_endpoint && old_endpoint !== subscription.endpoint) {
+      const { data: oldData } = await supabaseAdmin
+        .from('push_subscriptions')
+        .select('notify_personal, notify_community')
+        .eq('endpoint', old_endpoint)
+        .eq('member_id', member.id)
+        .maybeSingle();
+
+      if (oldData) {
+        oldSubPrefs = oldData;
+      }
+
+      await supabaseAdmin
+        .from('push_subscriptions')
+        .delete()
+        .eq('endpoint', old_endpoint)
+        .eq('member_id', member.id);
+    }
+
+    // Preserve existing preferences when omitted in request (e.g. background health sync or endpoint rotation)
+    let existingSub: { notify_personal?: boolean; notify_community?: boolean } | null = null;
+    if (
+      notify_personal === undefined ||
+      notify_personal === null ||
+      notify_community === undefined ||
+      notify_community === null
+    ) {
+      const { data } = await supabaseAdmin
+        .from('push_subscriptions')
+        .select('notify_personal, notify_community')
+        .eq('endpoint', subscription.endpoint)
+        .maybeSingle();
+      if (data) {
+        existingSub = data;
+      } else if (oldSubPrefs) {
+        existingSub = oldSubPrefs;
+      }
+    }
+
+    const finalNotifyPersonal =
+      notify_personal !== undefined && notify_personal !== null
+        ? Boolean(notify_personal)
+        : (existingSub?.notify_personal ?? true);
+
+    const finalNotifyCommunity =
+      notify_community !== undefined && notify_community !== null
+        ? Boolean(notify_community)
+        : (existingSub?.notify_community ?? true);
+
+    // Upsert subscription uniquely by endpoint tied to member_id.
+    // This allows a single member to maintain separate rows for mobile PWA and desktop simultaneously.
     const { data: subData, error: subErr } = await supabaseAdmin
       .from('push_subscriptions')
       .upsert(
@@ -116,8 +192,8 @@ export async function POST(request: Request) {
           endpoint: subscription.endpoint,
           p256dh_key: subscription.keys.p256dh,
           auth_key: subscription.keys.auth,
-          notify_personal: Boolean(notify_personal),
-          notify_community: Boolean(notify_community),
+          notify_personal: finalNotifyPersonal,
+          notify_community: finalNotifyCommunity,
           user_agent: user_agent || null,
         },
         { onConflict: 'endpoint' }

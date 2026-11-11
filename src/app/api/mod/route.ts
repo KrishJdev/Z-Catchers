@@ -1,35 +1,40 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member } from '@/lib/db';
-import { verifyModPasscode, hashPin, sanitizeMember } from '@/lib/auth';
-import { getClientIp, checkPinRateLimit, recordPinFailure } from '@/lib/rateLimit';
+import {
+  supabaseAdmin,
+  Member,
+  updateMemberSafe,
+  insertMemberSafe,
+  hydrateMemberWeekendHours,
+} from '@/lib/db';
+import { verifyModPasscode, hashPin, sanitizeMember, verifyModeratorAuthorization, getRequestSessionMemberId } from '@/lib/auth';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 import { DEMO_SEED_FINGERPRINTS, isDemoSeedMember } from '@/lib/demoSeed';
-import { checkCooldownPromotion } from '@/lib/sleepEngine';
+import { checkCooldownPromotion, getSleepCycleDate } from '@/lib/sleepEngine';
 import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
+import { resolveMemberStrikeCounts, modAdjustStrikes, modClearStrikeLog } from '@/lib/strikes';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
- * Helper to extract and verify moderator passcode from headers or body with IP rate limiting
- */
-function isAuthorized(request: Request, passcodeFromBody?: string): boolean {
-  const headerPasscode = request.headers.get('x-mod-passcode');
-  const candidate = passcodeFromBody || headerPasscode;
-  const ip = getClientIp(request);
-  if (!checkPinRateLimit(ip, '').allowed) return false;
-  const ok = verifyModPasscode(candidate);
-  if (!ok && candidate) recordPinFailure(ip, '');
-  return ok;
-}
-
-/**
- * GET: Fetch all members (including inactive and pending schedules) for moderator view
+ * GET: Fetch all members (including inactive and pending schedules) for moderator view.
+ *
+ * @param request - Incoming HTTP request with moderator credentials or session
+ * @returns JSON response containing list of all members
  */
 export async function GET(request: Request) {
   try {
     const clientIp = getClientIp(request);
-    const rateCheck = checkPinRateLimit(clientIp, '');
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const modTarget = sessionMemberId ? `mod_member:${sessionMemberId}` : `mod_ip:${clientIp}`;
+
+    const rateCheck = await checkPinRateLimitPersistent(clientIp, modTarget);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
@@ -42,12 +47,16 @@ export async function GET(request: Request) {
       );
     }
 
-    if (!isAuthorized(request)) {
+    const authResult = await verifyModeratorAuthorization(request);
+    if (!authResult.authorized) {
+      await recordPinFailurePersistent(clientIp, modTarget);
       return NextResponse.json(
-        { error: 'Unauthorized: Invalid moderator passcode.' },
+        { error: authResult.error || 'Unauthorized: Invalid moderator passcode or session.' },
         { status: 401 }
       );
     }
+
+    await resetPinFailurePersistent(clientIp, modTarget);
 
     // Fetch all members with service role (includes is_active = false)
     const { data: members, error } = await supabaseAdmin
@@ -64,25 +73,29 @@ export async function GET(request: Request) {
     for (const member of (members as Member[]) || []) {
       const { promoted, activeMember } = checkCooldownPromotion(member);
       if (promoted) {
-        await supabaseAdmin
-          .from('members')
-          .update({
-            bedtime_local: activeMember.bedtime_local,
-            wake_time_local: activeMember.wake_time_local,
-            timezone: activeMember.timezone,
-            weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
-            weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
-            pending_bedtime_local: null,
-            pending_wake_time_local: null,
-            pending_timezone: null,
-            pending_weekend_bedtime_local: null,
-            pending_weekend_wake_time_local: null,
-            pending_effective_at: null,
-            updated_at: DateTime.utc().toISO() as string,
-          })
-          .eq('id', member.id);
+        await updateMemberSafe(member.id, {
+          bedtime_local: activeMember.bedtime_local,
+          wake_time_local: activeMember.wake_time_local,
+          timezone: activeMember.timezone,
+          weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
+          weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
+          pending_bedtime_local: null,
+          pending_wake_time_local: null,
+          pending_timezone: null,
+          pending_weekend_bedtime_local: null,
+          pending_weekend_wake_time_local: null,
+          pending_effective_at: null,
+          updated_at: DateTime.utc().toISO() as string,
+        });
       }
-      processedMembers.push(sanitizeMember(activeMember));
+      const hydrated = hydrateMemberWeekendHours(activeMember);
+      const strikeCounts = await resolveMemberStrikeCounts(hydrated);
+      processedMembers.push({
+        ...sanitizeMember(hydrated),
+        strikes_used: strikeCounts.strikes_used,
+        metastrikes_used: strikeCounts.metastrikes_used,
+        strike_cycle_month: strikeCounts.strike_cycle_month,
+      });
     }
 
     return NextResponse.json({
@@ -107,10 +120,19 @@ export async function GET(request: Request) {
  * - 'reset_pin': Reset or clear a member's 4-digit PIN
  * - 'delete_member': Permanently remove a member
  */
+/**
+ * POST: Execute moderator administration actions.
+ *
+ * @param request - Incoming HTTP request with action name, moderator credentials, and action payload
+ * @returns JSON response with action execution results
+ */
 export async function POST(request: Request) {
   try {
     const clientIp = getClientIp(request);
-    const rateCheck = checkPinRateLimit(clientIp, '');
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const modTarget = sessionMemberId ? `mod_member:${sessionMemberId}` : `mod_ip:${clientIp}`;
+
+    const rateCheck = await checkPinRateLimitPersistent(clientIp, modTarget);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
@@ -124,20 +146,26 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { action, mod_passcode } = body;
+    const { action, mod_passcode, pin } = body;
 
-    if (!isAuthorized(request, mod_passcode)) {
+    const authResult = await verifyModeratorAuthorization(request, mod_passcode);
+    if (!authResult.authorized) {
+      await recordPinFailurePersistent(clientIp, modTarget);
       return NextResponse.json(
-        { error: 'Unauthorized: Invalid moderator secret passcode.' },
+        { error: authResult.error || 'Unauthorized: Invalid moderator secret passcode or session.' },
         { status: 401 }
       );
     }
+
+    await resetPinFailurePersistent(clientIp, modTarget);
 
     // 1. Verify Passcode action
     if (action === 'verify') {
       return NextResponse.json({
         success: true,
         message: 'Moderator passcode verified successfully.',
+        moderatorId: authResult.moderatorId,
+        moderatorRole: authResult.moderatorRole,
       });
     }
 
@@ -174,28 +202,23 @@ export async function POST(request: Request) {
           ? member.pending_weekend_wake_time_local
           : member.weekend_wake_time_local;
 
-      const { data: updated, error: updateErr } = await supabaseAdmin
-        .from('members')
-        .update({
-          bedtime_local: member.pending_bedtime_local || member.bedtime_local,
-          wake_time_local: member.pending_wake_time_local || member.wake_time_local,
-          timezone: member.pending_timezone || member.timezone,
-          weekend_bedtime_local: nextWeekendBedtime,
-          weekend_wake_time_local: nextWeekendWakeTime,
-          pending_bedtime_local: null,
-          pending_wake_time_local: null,
-          pending_timezone: null,
-          pending_weekend_bedtime_local: null,
-          pending_weekend_wake_time_local: null,
-          pending_effective_at: null,
-          updated_at: DateTime.utc().toISO() as string,
-        })
-        .eq('id', member_id)
-        .select('*')
-        .single();
+      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, {
+        bedtime_local: member.pending_bedtime_local || member.bedtime_local,
+        wake_time_local: member.pending_wake_time_local || member.wake_time_local,
+        timezone: member.pending_timezone || member.timezone,
+        weekend_bedtime_local: nextWeekendBedtime,
+        weekend_wake_time_local: nextWeekendWakeTime,
+        pending_bedtime_local: null,
+        pending_wake_time_local: null,
+        pending_timezone: null,
+        pending_weekend_bedtime_local: null,
+        pending_weekend_wake_time_local: null,
+        pending_effective_at: null,
+        updated_at: DateTime.utc().toISO() as string,
+      });
 
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      if (updateErr || !updated) {
+        return NextResponse.json({ error: updateErr?.message || 'Failed to approve change' }, { status: 500 });
       }
 
       return NextResponse.json({
@@ -212,23 +235,18 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
       }
 
-      const { data: updated, error: updateErr } = await supabaseAdmin
-        .from('members')
-        .update({
-          pending_bedtime_local: null,
-          pending_wake_time_local: null,
-          pending_timezone: null,
-          pending_weekend_bedtime_local: null,
-          pending_weekend_wake_time_local: null,
-          pending_effective_at: null,
-          updated_at: DateTime.utc().toISO() as string,
-        })
-        .eq('id', member_id)
-        .select('*')
-        .single();
+      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, {
+        pending_bedtime_local: null,
+        pending_wake_time_local: null,
+        pending_timezone: null,
+        pending_weekend_bedtime_local: null,
+        pending_weekend_wake_time_local: null,
+        pending_effective_at: null,
+        updated_at: DateTime.utc().toISO() as string,
+      });
 
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      if (updateErr || !updated) {
+        return NextResponse.json({ error: updateErr?.message || 'Failed to cancel cooldown' }, { status: 500 });
       }
 
       return NextResponse.json({
@@ -317,6 +335,7 @@ export async function POST(request: Request) {
         );
       }
 
+      const isTargetMod = role === 'moderator';
       const updates: Partial<Member> = {
         discord_username: discord_username?.trim() || existing.discord_username,
         discord_handle:
@@ -324,7 +343,8 @@ export async function POST(request: Request) {
             ? discord_handle?.trim() || null
             : existing.discord_handle,
         journal_url: journal_url?.trim() || existing.journal_url,
-        role: role === 'moderator' ? 'moderator' : 'member',
+        role: isTargetMod ? 'moderator' : 'member',
+        is_moderator: isTargetMod,
         updated_at: DateTime.utc().toISO() as string,
       };
 
@@ -339,7 +359,7 @@ export async function POST(request: Request) {
         updates.pending_wake_time_local = null;
       }
       if (timezone) {
-        updates.timezone = formatGmtOffset(timezone.trim());
+        updates.timezone = timezone.trim();
         updates.pending_timezone = null;
       }
       if (weekend_bedtime_local !== undefined) {
@@ -357,15 +377,10 @@ export async function POST(request: Request) {
         updates.pending_weekend_wake_time_local = null;
       }
 
-      const { data: updated, error: updateErr } = await supabaseAdmin
-        .from('members')
-        .update(updates)
-        .eq('id', member_id)
-        .select('*')
-        .single();
+      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, updates);
 
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      if (updateErr || !updated) {
+        return NextResponse.json({ error: updateErr?.message || 'Failed to update member' }, { status: 500 });
       }
 
       return NextResponse.json({
@@ -453,27 +468,23 @@ export async function POST(request: Request) {
         discord_username.trim()
       )}`;
 
-      const { data, error } = await supabaseAdmin
-        .from('members')
-        .insert({
-          discord_username: discord_username.trim(),
-          discord_handle: discord_handle?.trim() || null,
-          avatar_url,
-          journal_url: journal_url.trim(),
-          bedtime_local: bedtime_local.trim(),
-          wake_time_local: wake_time_local.trim(),
-          timezone: formatGmtOffset(timezone.trim()),
-          weekend_bedtime_local: weekend_bedtime_local?.trim() || null,
-          weekend_wake_time_local: weekend_wake_time_local?.trim() || null,
-          role: role === 'moderator' ? 'moderator' : 'member',
-          passcode_hash,
-          is_active: true,
-        })
-        .select('*')
-        .single();
+      const { data, error } = await insertMemberSafe({
+        discord_username: discord_username.trim(),
+        discord_handle: discord_handle?.trim() || null,
+        avatar_url,
+        journal_url: journal_url.trim(),
+        bedtime_local: bedtime_local.trim(),
+        wake_time_local: wake_time_local.trim(),
+        timezone: timezone.trim(),
+        weekend_bedtime_local: weekend_bedtime_local?.trim() || null,
+        weekend_wake_time_local: weekend_wake_time_local?.trim() || null,
+        role: role === 'moderator' ? 'moderator' : 'member',
+        passcode_hash,
+        is_active: true,
+      });
 
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error || !data) {
+        return NextResponse.json({ error: error?.message || 'Failed to create member' }, { status: 500 });
       }
 
       return NextResponse.json({
@@ -493,18 +504,13 @@ export async function POST(request: Request) {
         );
       }
 
-      const { data: updated, error: updateErr } = await supabaseAdmin
-        .from('members')
-        .update({
-          is_active,
-          updated_at: DateTime.utc().toISO() as string,
-        })
-        .eq('id', member_id)
-        .select('*')
-        .single();
+      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, {
+        is_active,
+        updated_at: DateTime.utc().toISO() as string,
+      });
 
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      if (updateErr || !updated) {
+        return NextResponse.json({ error: updateErr?.message || 'Failed to update member status' }, { status: 500 });
       }
 
       return NextResponse.json({
@@ -532,18 +538,13 @@ export async function POST(request: Request) {
         passcode_hash = hashPin(new_pin.trim());
       }
 
-      const { data: updated, error: updateErr } = await supabaseAdmin
-        .from('members')
-        .update({
-          passcode_hash,
-          updated_at: DateTime.utc().toISO() as string,
-        })
-        .eq('id', member_id)
-        .select('*')
-        .single();
+      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, {
+        passcode_hash,
+        updated_at: DateTime.utc().toISO() as string,
+      });
 
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      if (updateErr || !updated) {
+        return NextResponse.json({ error: updateErr?.message || 'Failed to reset PIN' }, { status: 500 });
       }
 
       return NextResponse.json({
@@ -615,6 +616,67 @@ export async function POST(request: Request) {
         success: true,
         message: `Successfully purged ${count} demo seed profiles from the den.`,
         purged: deleted,
+      });
+    }
+
+    // 10. Adjust Member Strikes & Metastrikes
+    if (action === 'adjust_strikes') {
+      const { member_id, strikes_used, metastrikes_used } = body;
+      if (!member_id) {
+        return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
+      }
+
+      const strikesNum = Math.max(0, Math.min(3, parseInt(String(strikes_used ?? 0), 10)));
+      const metasNum = Math.max(0, Math.min(3, parseInt(String(metastrikes_used ?? 0), 10)));
+
+      const result = await modAdjustStrikes(member_id, strikesNum, metasNum);
+      if (!result.success) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Member strikes and metastrikes updated successfully.',
+        strikes_used: strikesNum,
+        metastrikes_used: metasNum,
+      });
+    }
+
+    // 11. Clear Nightly Strike Log (Clear accidental vote / strike)
+    if (action === 'clear_strike_log') {
+      const { member_id, sleep_cycle_date } = body;
+      if (!member_id) {
+        return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
+      }
+
+      let cycleDate = sleep_cycle_date;
+      if (!cycleDate) {
+        const { data: member, error: memberErr } = await supabaseAdmin
+          .from('members')
+          .select('*')
+          .eq('id', member_id)
+          .maybeSingle();
+
+        if (memberErr || !member) {
+          return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+        }
+
+        cycleDate = getSleepCycleDate(member as Member, DateTime.utc());
+      }
+
+      if (!cycleDate) {
+        return NextResponse.json({ error: 'Could not resolve sleep cycle date' }, { status: 400 });
+      }
+
+      const result = await modClearStrikeLog(member_id, cycleDate);
+      if (!result.success) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Nightly strike log and associated counts cleared successfully.',
+        sleep_cycle_date: cycleDate,
       });
     }
 

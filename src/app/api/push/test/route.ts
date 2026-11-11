@@ -3,6 +3,12 @@ import { supabaseAdmin } from '@/lib/db';
 import { sendPushNotification } from '@/lib/pushServer';
 import { getRequestSessionMemberId } from '@/lib/auth';
 
+/**
+ * POST: Send an authenticated test push notification to the logged-in member's registered devices.
+ *
+ * @param request - Incoming HTTP request with member session cookie
+ * @returns JSON response with delivered and failed subscription counts
+ */
 export async function POST(request: Request) {
   try {
     const sessionMemberId = getRequestSessionMemberId(request);

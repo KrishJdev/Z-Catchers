@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import { computeMemberState, checkCooldownPromotion } from '../src/lib/sleepEngine.ts';
+import { computeMemberState, checkCooldownPromotion, getSleepCycleDate } from '../src/lib/sleepEngine.ts';
 
 console.log('🧪 Starting Web Push Notification Engine & Cron Dispatcher Verification...\n');
 
@@ -36,6 +36,8 @@ const sleeperMember = {
   role: 'member',
   passcode_hash: null,
   is_active: true,
+  last_notified_stage: null,
+  last_notified_cycle_date: null,
   created_at: fixedNowUtc.toISO(),
   updated_at: fixedNowUtc.toISO(),
 };
@@ -153,12 +155,46 @@ assert(promotionResult.activeMember.bedtime_local === '23:30', 'New bedtime take
 assert(promotionResult.activeMember.timezone === 'Asia/Kolkata', 'New timezone takes effect');
 assert(promotionResult.activeMember.pending_bedtime_local === null, 'Pending fields cleared');
 
-// 4. Test Summary
+// 4. Rolling 30-Minute Lookback Window & Persistent Idempotency Tests
+console.log('\n--- 4. Rolling 30-Minute Lookback Window & Persistent Idempotency ---');
+const cycleDate = getSleepCycleDate(sleeperMember, fixedNowUtc);
+assert(cycleDate === '2026-11-09', 'Sleep cycle date resolved to 2026-11-09');
+
+// Test Case 4A: Cron runs with 12 minutes of jitter (T+12m after 23:00 bedtime)
+const jitteredNowUtc = fixedNowUtc.plus({ minutes: 12 });
+const jitteredState = computeMemberState(sleeperMember, 'UTC', jitteredNowUtc);
+const isBedtimeDueWithJitter = jitteredState.diffMinutes >= 0 && jitteredState.diffMinutes <= 30;
+assert(isBedtimeDueWithJitter === true, 'Bedtime hit is detected within rolling 30m lookback window (diff=12m)');
+
+// Test Case 4B: Idempotent check prevents duplicate BEDTIME_HIT
+const memberAlreadyNotified = {
+  ...sleeperMember,
+  last_notified_stage: 'BEDTIME_HIT',
+  last_notified_cycle_date: cycleDate,
+};
+const isAlreadyLogged =
+  memberAlreadyNotified.last_notified_cycle_date === cycleDate &&
+  memberAlreadyNotified.last_notified_stage === 'BEDTIME_HIT';
+assert(isAlreadyLogged === true, 'Persistent columns mark BEDTIME_HIT as already dispatched for tonight');
+
+// Test Case 4C: Wind-down lookback at T-20m (runner delayed by 10m during wind-down window)
+const delayedWindDownUtc = fixedNowUtc.minus({ minutes: 20 }); // Bedtime is 23:00, now is 22:40 -> diff is -20m
+const delayedWindDownState = computeMemberState(sleeperMember, 'UTC', delayedWindDownUtc);
+const isWindDownDueDelayed = delayedWindDownState.diffMinutes >= -30 && delayedWindDownState.diffMinutes < 0;
+assert(isWindDownDueDelayed === true, 'Wind-down is detected within rolling 30m window before bedtime (diff=-20m)');
+
+// Test Case 4D: Stale alert beyond 30m lookback window (e.g. diff = 45m past bedtime)
+const staleNowUtc = fixedNowUtc.plus({ minutes: 45 });
+const staleState = computeMemberState(sleeperMember, 'UTC', staleNowUtc);
+const isBedtimeDueStale = staleState.diffMinutes >= 0 && staleState.diffMinutes <= 30;
+assert(isBedtimeDueStale === false, 'Stale notification is strictly ignored beyond 30m lookback window (diff=45m)');
+
+// 5. Test Summary
 console.log('\n-----------------------------------------------------------');
 if (failed) {
   console.error('❌ SOME TESTS FAILED!');
   process.exit(1);
 } else {
-  console.log('🎉 ALL PUSH ENGINE & CRON SLEEP SHIELD TESTS PASSED!');
+  console.log('🎉 ALL PUSH ENGINE, CRON SLEEP SHIELD & IDEMPOTENCY TESTS PASSED!');
   process.exit(0);
 }

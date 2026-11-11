@@ -1,13 +1,24 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member } from '@/lib/db';
-import { hashPin, verifyPin, verifyModPasscode, sanitizeMember } from '@/lib/auth';
+import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
+import { hashPin, verifyPin, verifyModPasscode, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
 import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
-import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/**
+ * POST: Update a member's bedtime schedule with 48-hour cooldown protection or moderator override.
+ *
+ * @param request - Incoming HTTP request containing schedule updates and PIN/passcode
+ * @returns JSON response with updated or pending schedule status
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -44,63 +55,32 @@ export async function POST(request: Request) {
     const currentMember = memberData as Member;
     const clientIp = getClientIp(request);
 
-    // 2. PIN verification / Claiming profile
+    // 2. PIN verification / Session Authorization / Claiming profile
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const isSessionOwner = Boolean(sessionMemberId && sessionMemberId === currentMember.id);
     let isModeratorOverride = false;
     if (mod_passcode) {
-      if (checkPinRateLimit(clientIp, '').allowed) {
+      const modGateTarget = sessionMemberId ? `mod_gate_member:${sessionMemberId}` : `mod_gate_ip:${clientIp}`;
+      const modRate = await checkPinRateLimitPersistent(clientIp, modGateTarget);
+      if (modRate.allowed) {
         isModeratorOverride = verifyModPasscode(mod_passcode);
         if (!isModeratorOverride) {
-          recordPinFailure(clientIp, '');
+          await recordPinFailurePersistent(clientIp, modGateTarget);
+        } else {
+          await resetPinFailurePersistent(clientIp, modGateTarget);
         }
       }
     }
-    const isFirstTimeClaim = !isModeratorOverride && !currentMember.passcode_hash;
+    const isFirstTimeClaim = !isModeratorOverride && !isSessionOwner && !currentMember.passcode_hash;
 
     let updatedPasscodeHash = currentMember.passcode_hash;
 
     if (!isModeratorOverride) {
-      const rateCheck = checkPinRateLimit(clientIp, currentMember.id);
-      if (!rateCheck.allowed) {
-        return NextResponse.json(
-          {
-            error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-          },
-          {
-            status: 429,
-            headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-          }
-        );
-      }
-
-      if (!currentMember.passcode_hash) {
-        if (currentMember.role === 'moderator') {
-          recordPinFailure(clientIp, currentMember.id);
-          return NextResponse.json(
-            { error: 'Claiming an initial moderator profile requires moderator authorization.' },
-            { status: 403 }
-          );
+      if (isSessionOwner) {
+        if (!currentMember.is_active) {
+          return NextResponse.json({ error: 'Member is inactive.' }, { status: 403 });
         }
-        // Unclaimed profile: user must set a 4-digit PIN to claim and protect it
-        if (!pin || typeof pin !== 'string' || pin.trim().length < 4 || !/^\d{4,6}$/.test(pin.trim())) {
-          return NextResponse.json(
-            { error: 'Please choose a 4-to-6 digit PIN to claim and protect your profile.' },
-            { status: 400 }
-          );
-        }
-        updatedPasscodeHash = hashPin(pin.trim());
-        resetPinFailure(clientIp, currentMember.id);
-      } else {
-        // Profile already claimed: verify PIN with rate limit protection
-        if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), currentMember.passcode_hash)) {
-          recordPinFailure(clientIp, currentMember.id);
-          return NextResponse.json(
-            { error: 'Invalid 4-digit PIN. Please enter your correct PIN.' },
-            { status: 401 }
-          );
-        }
-        resetPinFailure(clientIp, currentMember.id);
-
-        // If updating PIN
+        // Authenticated owner session: no PIN required; allow PIN update if new_pin supplied
         if (new_pin) {
           if (typeof new_pin !== 'string' || !/^\d{4,6}$/.test(new_pin.trim())) {
             return NextResponse.json(
@@ -109,6 +89,67 @@ export async function POST(request: Request) {
             );
           }
           updatedPasscodeHash = hashPin(new_pin.trim());
+        }
+      } else {
+        // Non-owner: If profile is linked to Discord, only authenticated owner or moderator can update it
+        if (currentMember.discord_id) {
+          return NextResponse.json(
+            { error: 'This profile is linked to a Discord account and can only be updated by its owner or a moderator.' },
+            { status: 403 }
+          );
+        }
+
+        const rateCheck = await checkPinRateLimitPersistent(clientIp, currentMember.id);
+        if (!rateCheck.allowed) {
+          return NextResponse.json(
+            {
+              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
+            },
+            {
+              status: 429,
+              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+            }
+          );
+        }
+
+        if (!currentMember.passcode_hash) {
+          if (currentMember.role === 'moderator') {
+            await recordPinFailurePersistent(clientIp, currentMember.id);
+            return NextResponse.json(
+              { error: 'Claiming an initial moderator profile requires moderator authorization.' },
+              { status: 403 }
+            );
+          }
+          // Unclaimed unlinked profile: user must set a 4-digit PIN to claim and protect it
+          if (!pin || typeof pin !== 'string' || pin.trim().length < 4 || !/^\d{4,6}$/.test(pin.trim())) {
+            return NextResponse.json(
+              { error: 'Please choose a 4-to-6 digit PIN to claim and protect your profile.' },
+              { status: 400 }
+            );
+          }
+          updatedPasscodeHash = hashPin(pin.trim());
+          await resetPinFailurePersistent(clientIp, currentMember.id);
+        } else {
+          // Profile already claimed: verify PIN with rate limit protection
+          if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), currentMember.passcode_hash)) {
+            await recordPinFailurePersistent(clientIp, currentMember.id);
+            return NextResponse.json(
+              { error: 'Invalid 4-digit PIN. Please enter your correct PIN.' },
+              { status: 401 }
+            );
+          }
+          await resetPinFailurePersistent(clientIp, currentMember.id);
+
+          // If updating PIN
+          if (new_pin) {
+            if (typeof new_pin !== 'string' || !/^\d{4,6}$/.test(new_pin.trim())) {
+              return NextResponse.json(
+                { error: 'New PIN must be 4 to 6 digits.' },
+                { status: 400 }
+              );
+            }
+            updatedPasscodeHash = hashPin(new_pin.trim());
+          }
         }
       }
     }
@@ -126,11 +167,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // 4. Validate Timezone (Must be a valid GMT offset or IANA timezone)
+    // 4. Validate Timezone (Must be a valid IANA timezone or supported offset)
     if (timezone) {
       if (!isValidTimezone(timezone)) {
         return NextResponse.json(
-          { error: `Invalid timezone "${timezone}". Please select a valid GMT offset (e.g. "GMT+05:30").` },
+          { error: `Invalid timezone "${timezone}". Please select a valid IANA timezone (e.g. "Europe/Athens", "America/New_York", "Asia/Kolkata").` },
           { status: 400 }
         );
       }
@@ -173,7 +214,7 @@ export async function POST(request: Request) {
     // 6. Check for Schedule Changes vs Immediate Profile Changes
     const targetBedtime = bedtime_local || currentMember.bedtime_local;
     const targetWakeTime = wake_time_local || currentMember.wake_time_local;
-    const targetTimezone = timezone ? formatGmtOffset(timezone) : currentMember.timezone;
+    const targetTimezone = timezone ? timezone.trim() : currentMember.timezone;
     const targetWeekendBedtime =
       weekend_bedtime_local !== undefined
         ? weekend_bedtime_local && weekend_bedtime_local.trim() !== ''
@@ -237,19 +278,14 @@ export async function POST(request: Request) {
     }
 
     // 7. Persist to Supabase
-    let updateQuery = supabaseAdmin
-      .from('members')
-      .update(updates)
-      .eq('id', member_id);
-
-    // Conditional atomic CAS update if claiming an unconfigured profile
-    if (isFirstTimeClaim) {
-      updateQuery = updateQuery.is('passcode_hash', null);
-    }
-
-    const { data: updatedMember, error: updateError } = await updateQuery
-      .select('*')
-      .maybeSingle();
+    const { data: updatedMember, error: updateError } = await updateMemberSafe(
+      member_id,
+      updates,
+      {
+        isFirstTimeClaim,
+        requireUnlinkedDiscord: isFirstTimeClaim && !isSessionOwner && !isModeratorOverride,
+      }
+    );
 
     if (updateError || !updatedMember) {
       return NextResponse.json(

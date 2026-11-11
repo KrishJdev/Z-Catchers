@@ -2,8 +2,49 @@ import { DateTime } from 'luxon';
 import type { Member } from './db';
 
 /**
+ * Curated list of popular IANA timezones spanning global Discord communities.
+ * Used for auto-complete and select inputs while preserving exact IANA identifiers.
+ */
+export const COMMON_IANA_TIMEZONES = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Toronto',
+  'America/Vancouver',
+  'America/Sao_Paulo',
+  'America/Buenos_Aires',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Amsterdam',
+  'Europe/Athens',
+  'Europe/Helsinki',
+  'Europe/Madrid',
+  'Europe/Rome',
+  'Africa/Cairo',
+  'Africa/Johannesburg',
+  'Africa/Lagos',
+  'Asia/Dubai',
+  'Asia/Jerusalem',
+  'Asia/Kolkata',
+  'Asia/Bangkok',
+  'Asia/Singapore',
+  'Asia/Hong_Kong',
+  'Asia/Tokyo',
+  'Asia/Seoul',
+  'Asia/Shanghai',
+  'Australia/Sydney',
+  'Australia/Melbourne',
+  'Australia/Perth',
+  'Pacific/Auckland',
+  'Pacific/Honolulu',
+  'UTC',
+] as const;
+
+/**
  * Standard list of global GMT / UTC offsets spanning all inhabited timezones (-12:00 to +14:00).
- * Replaces city / location names so community members do not have to disclose their physical location.
+ * Kept for backward compatibility and manual offset selections.
  */
 export const GMT_OFFSETS = [
   'GMT-12:00',
@@ -49,8 +90,8 @@ export const GMT_OFFSETS = [
 export type GmtOffset = (typeof GMT_OFFSETS)[number];
 
 /**
- * Translates any timezone identifier (GMT offset, bare offset, or legacy IANA string)
- * into a specifier that Luxon's `DateTime.setZone()` natively supports (e.g. `UTC+05:30`).
+ * Translates any timezone identifier (strict IANA identifier, GMT offset, or bare offset)
+ * into a specifier that Luxon's `DateTime.setZone()` natively supports (e.g. `UTC+05:30` or `Europe/Athens`).
  */
 export function toValidLuxonZone(zoneStr: string | null | undefined): string {
   if (!zoneStr) return 'UTC';
@@ -91,7 +132,7 @@ export function toValidLuxonZone(zoneStr: string | null | undefined): string {
 }
 
 /**
- * Validates whether the given string represents a valid timezone (GMT offset or IANA zone).
+ * Validates whether the given string represents a valid IANA timezone identifier or supported offset in Luxon.
  */
 export function isValidTimezone(zoneStr: string | null | undefined): boolean {
   if (!zoneStr || typeof zoneStr !== 'string') return false;
@@ -101,8 +142,8 @@ export function isValidTimezone(zoneStr: string | null | undefined): boolean {
 }
 
 /**
- * Converts any timezone identifier (including legacy IANA city names) into a
- * privacy-friendly standard `GMT±HH:mm` representation.
+ * Converts any timezone identifier (including IANA city names) into a
+ * standard `GMT±HH:mm` representation for UI display and location privacy.
  */
 export function formatGmtOffset(zoneStr: string | null | undefined): string {
   if (!zoneStr) return 'GMT+00:00';
@@ -113,7 +154,36 @@ export function formatGmtOffset(zoneStr: string | null | undefined): string {
   return `GMT${dt.toFormat('ZZ')}`;
 }
 
-export type SleepBucket = 'BEDTIME_NOW' | 'WINDING_DOWN' | 'SLEEPING' | 'AWAKE';
+/**
+ * Automatically captures the local system IANA timezone using the Intl API.
+ * Falls back to 'UTC' if detection fails or runs on an unsupported runtime.
+ */
+export function detectUserTimezone(): string {
+  try {
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (detected && isValidTimezone(detected)) {
+      return detected;
+    }
+  } catch {
+    // Ignore runtime exceptions in non-browser or sandbox environments
+  }
+  return 'UTC';
+}
+
+export type SleepBucket =
+  | 'BEDTIME_NOW'
+  | 'BEDTIME_GRACE'
+  | 'OVERDUE_NAG_NOW'
+  | 'WINDING_DOWN'
+  | 'SLEEPING'
+  | 'AWAKE';
+
+export type SleepStatus =
+  | 'BEDTIME_GRACE'
+  | 'OVERDUE_NAG_NOW'
+  | 'WINDING_DOWN'
+  | 'SLEEPING'
+  | 'AWAKE';
 
 export interface StreakMilestone {
   title: string;
@@ -125,11 +195,14 @@ export interface StreakMilestone {
 
 export interface MemberState {
   bucket: SleepBucket;
+  status: SleepStatus;
   statusText: string;
   isSleepShieldActive: boolean;
   formattedViewerTime: string;
   formattedSleeperTime: string;
   diffMinutes: number;
+  graceMinutesLeft?: number;
+  canVoteStrike?: boolean;
   pendingNotice?: string | null;
   checkedInEarly?: boolean;
   streakMilestone?: StreakMilestone | null;
@@ -280,7 +353,7 @@ export function getStreakMilestoneBadge(streakDays: number): StreakMilestone | n
 }
 
 /**
- * Determines whether a night date falls on a weekend night.
+ * Determines whether a given night date falls on a weekend night.
  * Weekend nights are explicitly defined as Friday nights and Saturday nights.
  * In Luxon: 5 = Friday, 6 = Saturday.
  */
@@ -303,9 +376,10 @@ export function getBedtimeForNight(
 }
 
 /**
- * Calculates the exact DateTime when a given night's bedtime occurs in the sleeper's timezone.
+ * Calculates the exact DateTime when a given night's bedtime occurs in the sleeper's IANA timezone.
  * If bedtime hour >= 12, it takes place on the nightDate calendar day (e.g. Friday 23:30).
  * If bedtime hour < 12, it takes place on the following calendar day morning (e.g. Friday night's 01:00 AM sleep hits Saturday 01:00 AM).
+ * Preserves the IANA zone to accurately account for Daylight Saving Time (DST) transitions.
  */
 export function getNightBedtimeDateTime(
   member: Member,
@@ -330,9 +404,10 @@ export function getNightBedtimeDateTime(
 
 /**
  * Computes the canonical sleep cycle night date ("YYYY-MM-DD") for a member at a given moment.
- * If the member's target bedtime hour < 12 (i.e. after midnight, e.g. 01:30 AM),
- * the night date belongs to the prior evening (targetBedtime minus 1 day).
- * This ensures check-ins before midnight or in the early hours map to the same sleep session.
+ * Defined strictly by the local evening the sleep window begins.
+ * Applies circular time-delta math across midnight (±12 hours relative to the target bedtime)
+ * so early check-ins before midnight and grace-period check-ins after midnight resolve to the
+ * exact same sleep cycle.
  */
 export function getSleepCycleDate(member: Member, nowUtc = DateTime.utc()): string {
   const normalizedSleeperZone = toValidLuxonZone(member.timezone);
@@ -341,6 +416,7 @@ export function getSleepCycleDate(member: Member, nowUtc = DateTime.utc()): stri
     : 'UTC';
   const sleeperNow = nowUtc.setZone(sleeperZone);
 
+  // Candidate evening dates around sleeperNow (-2 to +2 days)
   const candidateNights = [
     sleeperNow.minus({ days: 2 }),
     sleeperNow.minus({ days: 1 }),
@@ -349,24 +425,42 @@ export function getSleepCycleDate(member: Member, nowUtc = DateTime.utc()): stri
     sleeperNow.plus({ days: 2 }),
   ];
 
-  const candidates = candidateNights.map((nightDate) =>
-    getNightBedtimeDateTime(member, nightDate)
-  );
+  const candidates = candidateNights.map((nightDt) => {
+    const eveningDate = nightDt.startOf('day');
+    const { bedtimeDateTime, isWeekend, bedtimeStr } = getNightBedtimeDateTime(member, eveningDate);
+    const diffMinutes = sleeperNow.diff(bedtimeDateTime, 'minutes').minutes;
+    return {
+      cycleEveningDate: eveningDate.toISODate()!,
+      bedtimeDateTime,
+      diffMinutes,
+      absDiffMinutes: Math.abs(diffMinutes),
+      isWeekend,
+      bedtimeStr,
+    };
+  });
 
+  // Find candidate whose bedtime is closest to sleeperNow using circular time-delta math (±12h / ±720m)
   const closest = candidates.reduce((best, curr) =>
-    Math.abs(curr.bedtimeDateTime.diff(sleeperNow, 'minutes').minutes) <
-    Math.abs(best.bedtimeDateTime.diff(sleeperNow, 'minutes').minutes)
-      ? curr
-      : best
+    curr.absDiffMinutes < best.absDiffMinutes ? curr : best
   );
 
-  const target = closest.bedtimeDateTime;
-  const nightDt = target.hour < 12 ? target.minus({ days: 1 }) : target;
-  return nightDt.toISODate() || sleeperNow.toISODate()!;
+  return closest.cycleEveningDate || sleeperNow.toISODate()!;
+}
+
+/**
+ * Checks whether the active sleep cycle (anchored strictly to the local evening) is a weekend night.
+ * Weekend nights are explicitly defined as Friday nights and Saturday nights.
+ */
+export function isWeekendCycle(member: Member, nowUtc = DateTime.utc()): boolean {
+  const cycleDateStr = getSleepCycleDate(member, nowUtc);
+  const normalizedZone = toValidLuxonZone(member.timezone);
+  const dt = DateTime.fromISO(cycleDateStr, { zone: normalizedZone });
+  return dt.weekday === 5 || dt.weekday === 6;
 }
 
 /**
  * Computes a member's sleep bucket, viewer-adjusted bedtime, and sleep shield state.
+ * Fully DST-aware using Luxon's IANA timezone conversion engine.
  * Supports distinct weekend hours for Friday night and Saturday night bedtimes.
  */
 export function computeMemberState(
@@ -375,7 +469,7 @@ export function computeMemberState(
   nowUtc = DateTime.utc(),
   isInBed?: boolean
 ): MemberState {
-  // Validate timezone (supports GMT offsets and IANA) or fallback
+  // Validate timezone (supports strict IANA zones and GMT offsets)
   const normalizedSleeperZone = toValidLuxonZone(member.timezone);
   const normalizedViewerZone = toValidLuxonZone(viewerTz);
 
@@ -388,7 +482,7 @@ export function computeMemberState(
 
   const sleeperNow = nowUtc.setZone(sleeperZone);
 
-  // Consider night dates around now: 2 days ago, yesterday, today, tomorrow, and 2 days ahead
+  // Consider candidate evening dates around now: 2 days ago, yesterday, today, tomorrow, and 2 days ahead
   const candidateNights = [
     sleeperNow.minus({ days: 2 }),
     sleeperNow.minus({ days: 1 }),
@@ -397,28 +491,39 @@ export function computeMemberState(
     sleeperNow.plus({ days: 2 }),
   ];
 
-  const candidates = candidateNights.map((nightDate) =>
-    getNightBedtimeDateTime(member, nightDate)
-  );
+  const candidates = candidateNights.map((nightDt) => {
+    const eveningDate = nightDt.startOf('day');
+    const { bedtimeDateTime, isWeekend, bedtimeStr } = getNightBedtimeDateTime(member, eveningDate);
+    const diffMinutes = sleeperNow.diff(bedtimeDateTime, 'minutes').minutes;
+    return {
+      eveningDate,
+      cycleEveningDate: eveningDate.toISODate()!,
+      bedtimeDateTime,
+      diffMinutes,
+      absDiffMinutes: Math.abs(diffMinutes),
+      isWeekend,
+      bedtimeStr,
+    };
+  });
 
-  // Find candidate whose bedtimeDateTime is closest to sleeperNow
+  // Find candidate whose bedtimeDateTime is closest to sleeperNow (circular ±12h / ±720m math)
   const closestCandidate = candidates.reduce((closest, curr) =>
-    Math.abs(curr.bedtimeDateTime.diff(sleeperNow, 'minutes').minutes) <
-    Math.abs(closest.bedtimeDateTime.diff(sleeperNow, 'minutes').minutes)
-      ? curr
-      : closest
+    curr.absDiffMinutes < closest.absDiffMinutes ? curr : closest
   );
 
   const targetBedtime = closestCandidate.bedtimeDateTime;
   const isWeekendSchedule = closestCandidate.isWeekend && Boolean(member.weekend_bedtime_local);
   const activeBedtimeLocal = closestCandidate.bedtimeStr;
 
-  const diffMinutes = sleeperNow.diff(targetBedtime, 'minutes').minutes;
+  const diffMinutes = closestCandidate.diffMinutes;
 
   let bucket: SleepBucket = 'AWAKE';
+  let status: SleepStatus = 'AWAKE';
   let statusText = '';
   let isSleepShieldActive = false;
   let checkedInEarly = false;
+  let graceMinutesLeft = 0;
+  let canVoteStrike = false;
 
   const effectiveInBed = isInBed !== undefined ? isInBed : Boolean(member.is_in_bed);
 
@@ -426,22 +531,41 @@ export function computeMemberState(
   // (Applies when within 3h before bedtime through 8h sleep window)
   if (effectiveInBed && diffMinutes >= -180 && diffMinutes <= 480) {
     bucket = 'SLEEPING';
-    statusText = "In Bed (Checked In) • Resting";
+    status = 'SLEEPING';
+    statusText = 'In Bed (Checked In) • Resting';
     isSleepShieldActive = true;
     checkedInEarly = true;
-  } else if (diffMinutes >= 0 && diffMinutes <= 60) {
+    canVoteStrike = false;
+  } else if (diffMinutes >= 0 && diffMinutes <= 5) {
+    // 5-minute grace window: Strike voting is strictly locked
     bucket = 'BEDTIME_NOW';
+    status = 'BEDTIME_GRACE';
+    graceMinutesLeft = Math.max(1, Math.ceil(5 - diffMinutes));
+    statusText = `Grace Period: ${graceMinutesLeft}m left`;
+    canVoteStrike = false;
+  } else if (diffMinutes > 5 && diffMinutes <= 60) {
+    // Overdue within the immediate nag window: Strike voting unlocked
+    bucket = 'BEDTIME_NOW';
+    status = 'OVERDUE_NAG_NOW';
     statusText = `Bedtime hit ${Math.floor(diffMinutes)}m ago — Nag them!`;
+    canVoteStrike = true;
   } else if (diffMinutes < 0 && diffMinutes >= -60) {
     bucket = 'WINDING_DOWN';
+    status = 'WINDING_DOWN';
     statusText = `Bedtime in ${Math.abs(Math.floor(diffMinutes))}m`;
+    canVoteStrike = false;
   } else if (diffMinutes > 60 && diffMinutes <= 480) {
-    // 8 hour sleep shield window (60m to 480m)
+    // Active sleep window (60m to 480m) without safe check-in:
+    // Status is OVERDUE_NAG_NOW (overdue past 5m through active sleep window), strike voting remains active
     bucket = 'SLEEPING';
+    status = 'OVERDUE_NAG_NOW';
     statusText = `Catching Z's (Asleep)`;
     isSleepShieldActive = true;
+    canVoteStrike = true;
   } else {
     bucket = 'AWAKE';
+    status = 'AWAKE';
+    canVoteStrike = false;
     // Find next upcoming bedtime strictly in the future
     const upcomingCandidates = candidates
       .map((c) => c.bedtimeDateTime)
@@ -453,7 +577,7 @@ export function computeMemberState(
     statusText = `Awake • in ${hoursUntil}h ${minsUntil}m`;
   }
 
-  // Convert bedtime to viewer's local time
+  // Convert bedtime to viewer's local time (DST-aware Luxon conversion)
   const viewerBedtime = targetBedtime.setZone(targetViewerZone);
   const formattedViewerTime = viewerBedtime.toFormat('h:mm a');
   const formattedSleeperTime = targetBedtime.toFormat('h:mm a');
@@ -471,15 +595,57 @@ export function computeMemberState(
 
   return {
     bucket,
+    status,
     statusText,
     isSleepShieldActive,
     formattedViewerTime,
     formattedSleeperTime,
     diffMinutes,
+    graceMinutesLeft,
+    canVoteStrike,
     pendingNotice,
     checkedInEarly,
     streakMilestone,
     isWeekendSchedule,
     activeBedtimeLocal,
   };
+}
+
+/**
+ * Returns the current calendar month in the member's local timezone (format: 'YYYY-MM', e.g. '2026-11').
+ */
+export function getCurrentStrikeMonth(member: Member, nowUtc = DateTime.utc()): string {
+  const normalizedSleeperZone = toValidLuxonZone(member.timezone);
+  const sleeperZone = DateTime.now().setZone(normalizedSleeperZone).isValid
+    ? normalizedSleeperZone
+    : 'UTC';
+  const sleeperNow = nowUtc.setZone(sleeperZone);
+  return sleeperNow.toFormat('yyyy-MM');
+}
+
+/**
+ * Checks if a member's strike cycle month has rolled over to a new calendar month.
+ * If so, lazily resets strikes_used and metastrikes_used to 0 (3 remaining each).
+ */
+export function checkMonthlyStrikeReset(
+  member: Member,
+  nowUtc = DateTime.utc()
+): {
+  reset: boolean;
+  activeMember: Member;
+} {
+  const currentMonth = getCurrentStrikeMonth(member, nowUtc);
+  const cycleMonth = member.strike_cycle_month || '2026-01';
+
+  if (cycleMonth !== currentMonth) {
+    const updated: Member = {
+      ...member,
+      strikes_used: 0,
+      metastrikes_used: 0,
+      strike_cycle_month: currentMonth,
+    };
+    return { reset: true, activeMember: updated };
+  }
+
+  return { reset: false, activeMember: member };
 }

@@ -10,6 +10,13 @@ interface FoxMascotProps {
   size?: number | string;
 }
 
+/**
+ * Sleepy Fox mascot vector component adhering to the Warm Dark design system.
+ * Renders four contextual states: logo, lantern (winding down), alert (overdue nag), and sleeping (in-bed/resting).
+ *
+ * @param props - Component props with state, className, and size
+ * @returns React JSX SVG element
+ */
 export function FoxMascot({
   state = 'logo',
   className = '',
