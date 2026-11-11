@@ -8,7 +8,7 @@
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19)  
 > **Active Integration Pull Request:** None (all features merged into `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20)  
-> **Active Production Release Pull Request:** Pending PR (`krish` → `main`)  
+> **Active Production Release Pull Request:** [#21 (krish → main) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/21)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
 
 ---
@@ -724,7 +724,7 @@ d:\Projects\Z Catchers\
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
-3. **Production Release Pull Request (`krish` → `main`):**
-   * Production release PR to promote the production authentication secret fallback and profile UI improvements to `main`.
+3. **Review & Merge Production Release Pull Request #21 (`krish` → `main`):**
+   * Production release PR #21: [PR #21](https://github.com/KrishJdev/Z-Catchers/pull/21)
    * Verify deployment logs and Discord login flow in Vercel following merge to production `main`.
-   * (Optional Best Practice) Add `SESSION_SECRET` (random 32+ char hex string) in Vercel Project Settings > Environment Variables for explicit key configuration.
+   * (Optional Best Practice) Add `SESSION_SECRET` (random 32+ char string) in Vercel Project Settings > Environment Variables for explicit key configuration.
