@@ -309,33 +309,13 @@ export async function POST(request: Request) {
       insertPayload.weekend_wake_time_local = weekend_wake_time_local.trim();
     }
 
-    let { data, error } = await supabaseAdmin
-      .from('members')
-      .insert(insertPayload)
-      .select()
-      .single();
+    const { data, error } = await insertMemberSafe(insertPayload);
 
-    // Resilient fallback: If strikes/weekend columns do not exist in the database schema yet, retry with core fields
-    if (error && (error.code === 'PGRST204' || error.code === '42703')) {
-      delete insertPayload.weekend_bedtime_local;
-      delete insertPayload.weekend_wake_time_local;
-      delete insertPayload.strikes_used;
-      delete insertPayload.metastrikes_used;
-      delete insertPayload.strike_cycle_month;
-      const fallbackRes = await supabaseAdmin
-        .from('members')
-        .insert(insertPayload)
-        .select()
-        .single();
-      data = fallbackRes.data;
-      error = fallbackRes.error;
+    if (error || !data) {
+      return NextResponse.json({ error: error?.message || 'Failed to create member' }, { status: 500 });
     }
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const createdMember = data as Member;
+    const createdMember = data;
     const token = createSessionToken(createdMember.id);
     const sanitized = sanitizeMember(createdMember);
 

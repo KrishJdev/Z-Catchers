@@ -109,6 +109,16 @@ async function run() {
       pushClientContent.includes("Notification.permission === 'granted'"),
       'syncPushSubscriptionHealth checks permission is granted'
     );
+    assert(
+      pushClientContent.includes('getStoredNotificationPreferences') &&
+      pushClientContent.includes('getMemberNotificationStorageKey'),
+      'pushClient.ts keys notification choices to the signed-in member'
+    );
+    assert(
+      pushClientContent.includes('if (memberIdToUse) {') &&
+      pushClientContent.includes('getStoredNotificationPreferences(memberIdToUse)'),
+      'syncPushSubscriptionHealth uses only the current member preferences'
+    );
 
     const pushServerPath = path.resolve(process.cwd(), 'src/lib/pushServer.ts');
     const pushServerContent = fs.readFileSync(pushServerPath, 'utf8');

@@ -1,4 +1,28 @@
+import fs from 'fs';
+import path from 'path';
 import { DateTime } from 'luxon';
+
+// Auto-load .env.local if present
+try {
+  const envPath = path.resolve(process.cwd(), '.env.local');
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    for (const line of envContent.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx > 0) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim();
+        if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  }
+} catch {
+  // Ignore missing .env.local
+}
 import {
   computeMemberState,
   checkMonthlyStrikeReset,
@@ -431,6 +455,114 @@ async function run() {
   // Confirm PIN rate limiting is NOT affected by voter counter
   const pinCheck = checkPinRateLimitSync('127.0.0.1', voterKey);
   assert(pinCheck.allowed === true, 'PIN rate limit remains allowed and unaffected by voter rate limit');
+
+  // 7D: Batched Recent Eligible Strikes Database-Backed Integration Test
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (supabaseUrl && supabaseKey) {
+    console.log('\n--- 7D: Database-Backed Batched Recent Eligible Strikes Integration Test ---');
+    const { createClient } = await import('@supabase/supabase-js');
+    const dbAdmin = createClient(supabaseUrl, supabaseKey);
+    const testNow = DateTime.utc();
+
+    let dbMember1Id = null;
+    let dbMember2Id = null;
+
+    try {
+      const u1 = `DbTest1_${Date.now()}`;
+      const u2 = `DbTest2_${Date.now()}`;
+
+      const { data: m1, error: m1Err } = await dbAdmin
+        .from('members')
+        .insert({
+          discord_username: u1,
+          discord_handle: `@${u1.toLowerCase()}`,
+          journal_url: 'https://discord.com/channels/123456789/987654321',
+          bedtime_local: '23:00',
+          wake_time_local: '07:00',
+          timezone: 'GMT+00:00',
+          role: 'member',
+          is_active: true,
+        })
+        .select()
+        .single();
+      assert(!m1Err && m1?.id, 'Seeded valid DB member 1 with UUID');
+      if (m1?.id) dbMember1Id = m1.id;
+
+      const { data: m2, error: m2Err } = await dbAdmin
+        .from('members')
+        .insert({
+          discord_username: u2,
+          discord_handle: `@${u2.toLowerCase()}`,
+          journal_url: 'https://discord.com/channels/123456789/987654322',
+          bedtime_local: '23:00',
+          wake_time_local: '07:00',
+          timezone: 'GMT+00:00',
+          role: 'member',
+          is_active: true,
+        })
+        .select()
+        .single();
+      assert(!m2Err && m2?.id, 'Seeded valid DB member 2 with UUID');
+      if (m2?.id) dbMember2Id = m2.id;
+
+      if (dbMember1Id && dbMember2Id) {
+        // Strike within 24h for member 1
+        const { data: log1, error: log1Err } = await dbAdmin
+          .from('nightly_strike_logs')
+          .insert({
+            target_member_id: dbMember1Id,
+            sleep_cycle_date: '2026-11-11',
+            record_type: 'strike',
+            voter_ids: ['voter-db-1'],
+            created_at: testNow.minus({ hours: 2 }).toISO(),
+            updated_at: testNow.minus({ hours: 2 }).toISO(),
+          })
+          .select()
+          .single();
+
+        if (log1Err && (log1Err.code === 'PGRST205' || log1Err.code === '42P01')) {
+          console.log(
+            'ℹ️ Table nightly_strike_logs is pending migration in remote Supabase schema cache; skipping live DB strike row assertions.'
+          );
+        } else {
+          assert(!log1Err && log1?.id, 'Seeded valid DB strike log fixture within 24h');
+
+          // Expired strike (>24h) for member 2
+          const { data: log2, error: log2Err } = await dbAdmin
+            .from('nightly_strike_logs')
+            .insert({
+              target_member_id: dbMember2Id,
+              sleep_cycle_date: '2026-11-09',
+              record_type: 'strike',
+              voter_ids: ['voter-db-2'],
+              created_at: testNow.minus({ hours: 26 }).toISO(),
+              updated_at: testNow.minus({ hours: 26 }).toISO(),
+            })
+            .select()
+            .single();
+          assert(!log2Err && log2?.id, 'Seeded valid DB expired strike log fixture (>24h)');
+
+          const dbBatchResults = await getRecentEligibleStrikeLogsBatch([dbMember1Id, dbMember2Id], testNow);
+          assert(dbBatchResults instanceof Map, 'DB batch query returns Map');
+          assert(dbBatchResults.has(dbMember1Id), 'DB batch includes strike within 24h');
+          assert(dbBatchResults.get(dbMember1Id)?.id === log1?.id, 'DB batch resolves correct strike log ID from database');
+          assert(!dbBatchResults.has(dbMember2Id), 'DB batch excludes strike older than 24h');
+        }
+      }
+    } finally {
+      // Clean up all seeded fixtures in database
+      const idsToDelete = [dbMember1Id, dbMember2Id].filter(Boolean);
+      if (idsToDelete.length > 0) {
+        await dbAdmin.from('nightly_strike_logs').delete().in('target_member_id', idsToDelete);
+        await dbAdmin.from('members').delete().in('id', idsToDelete);
+        console.log('🧹 Cleaned up all seeded database integration test fixtures');
+      }
+    }
+  } else {
+    console.log('\n--- 7D: DB-Backed Batched Recent Eligible Strikes Test Skipped (Supabase credentials not in env) ---');
+  }
 
   console.log('\n======================================================');
   if (failed) {

@@ -12,6 +12,53 @@ export const STORAGE_KEY_NOTIFY_PERSONAL = 'zcatchers_notify_personal';
 export const STORAGE_KEY_NOTIFY_COMMUNITY = 'zcatchers_notify_community';
 
 /**
+ * Scopes a notification preference localStorage key to a specific member ID.
+ */
+export function getMemberNotificationStorageKey(
+  baseKey: string,
+  memberId: string
+): string {
+  return `${baseKey}_${memberId}`;
+}
+
+/**
+ * Retrieves client-stored notification preferences scoped to a specific member ID.
+ * Returns empty object if no member is specified or preferences are not set.
+ */
+export function getStoredNotificationPreferences(memberId?: string | null): {
+  notifyPersonal?: boolean;
+  notifyCommunity?: boolean;
+} {
+  if (typeof localStorage === 'undefined' || !memberId) return {};
+  const personalKey = getMemberNotificationStorageKey(STORAGE_KEY_NOTIFY_PERSONAL, memberId);
+  const communityKey = getMemberNotificationStorageKey(STORAGE_KEY_NOTIFY_COMMUNITY, memberId);
+  const storedPersonal = localStorage.getItem(personalKey);
+  const storedCommunity = localStorage.getItem(communityKey);
+  return {
+    notifyPersonal: storedPersonal !== null ? storedPersonal === 'true' : undefined,
+    notifyCommunity: storedCommunity !== null ? storedCommunity === 'true' : undefined,
+  };
+}
+
+/**
+ * Persists notification preferences in localStorage scoped to a specific member ID.
+ */
+export function setStoredNotificationPreferences(
+  memberId: string | null | undefined,
+  prefs: { notifyPersonal?: boolean; notifyCommunity?: boolean }
+): void {
+  if (typeof localStorage === 'undefined' || !memberId) return;
+  const personalKey = getMemberNotificationStorageKey(STORAGE_KEY_NOTIFY_PERSONAL, memberId);
+  const communityKey = getMemberNotificationStorageKey(STORAGE_KEY_NOTIFY_COMMUNITY, memberId);
+  if (prefs.notifyPersonal !== undefined) {
+    localStorage.setItem(personalKey, String(prefs.notifyPersonal));
+  }
+  if (prefs.notifyCommunity !== undefined) {
+    localStorage.setItem(communityKey, String(prefs.notifyCommunity));
+  }
+}
+
+/**
  * Converts a URL-safe Base64 VAPID public key into a Uint8Array backed by an ArrayBuffer
  * required by navigator.serviceWorker.pushManager.subscribe()
  */
@@ -140,14 +187,15 @@ export async function syncPushSubscriptionHealth(): Promise<boolean> {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    // Preserve any client-stored notification preferences if present
+    // Preserve client-stored notification preferences ONLY for the current signed-in member.
+    // If no member is signed in or no member-scoped choice exists, leave as undefined so
+    // another member's stored choices are never applied or transmitted.
     let notifyPersonal: boolean | undefined = undefined;
     let notifyCommunity: boolean | undefined = undefined;
-    if (typeof localStorage !== 'undefined') {
-      const storedPersonal = localStorage.getItem(STORAGE_KEY_NOTIFY_PERSONAL);
-      if (storedPersonal !== null) notifyPersonal = storedPersonal === 'true';
-      const storedCommunity = localStorage.getItem(STORAGE_KEY_NOTIFY_COMMUNITY);
-      if (storedCommunity !== null) notifyCommunity = storedCommunity === 'true';
+    if (memberIdToUse) {
+      const prefs = getStoredNotificationPreferences(memberIdToUse);
+      notifyPersonal = prefs.notifyPersonal;
+      notifyCommunity = prefs.notifyCommunity;
     }
 
     const res = await fetch('/api/push/subscribe', {
@@ -264,17 +312,15 @@ export async function subscribeToPush(
       };
     }
 
-    // Record push enabled in local storage
+    // Record push enabled and member-scoped preferences in local storage
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_KEY_PUSH_ENABLED, 'true');
       if (memberIdToUse) {
         localStorage.setItem(STORAGE_KEY_MEMBER_ID, memberIdToUse);
-      }
-      if (options.notifyPersonal !== undefined) {
-        localStorage.setItem(STORAGE_KEY_NOTIFY_PERSONAL, String(options.notifyPersonal));
-      }
-      if (options.notifyCommunity !== undefined) {
-        localStorage.setItem(STORAGE_KEY_NOTIFY_COMMUNITY, String(options.notifyCommunity));
+        setStoredNotificationPreferences(memberIdToUse, {
+          notifyPersonal: options.notifyPersonal,
+          notifyCommunity: options.notifyCommunity,
+        });
       }
     }
 

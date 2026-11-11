@@ -173,22 +173,26 @@ export async function getNightlyStrikeLog(
         .eq('sleep_cycle_date', sleepCycleDate)
         .maybeSingle();
 
-      if (!error && data) {
-        const parsedLog: NightlyStrikeLog = {
-          id: data.id,
-          target_member_id: data.target_member_id,
-          sleep_cycle_date: data.sleep_cycle_date,
-          record_type: data.record_type as StrikeRecordType,
-          voter_ids: Array.isArray(data.voter_ids) ? data.voter_ids : [],
-          reason: data.reason || null,
-          created_at: data.created_at,
-          updated_at: data.updated_at,
-        };
-        memoryStore.logs.set(key, parsedLog);
-        return parsedLog;
+      if (!error) {
+        if (data) {
+          const parsedLog: NightlyStrikeLog = {
+            id: data.id,
+            target_member_id: data.target_member_id,
+            sleep_cycle_date: data.sleep_cycle_date,
+            record_type: data.record_type as StrikeRecordType,
+            voter_ids: Array.isArray(data.voter_ids) ? data.voter_ids : [],
+            reason: data.reason || null,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          };
+          memoryStore.logs.set(key, parsedLog);
+          return parsedLog;
+        }
+        // After a successful query, treat missing row as authoritative and do not fill from memory
+        return null;
       }
     } catch {
-      // Fall back to memory store
+      // Fall back to memory store on exception
     }
   }
 
@@ -211,6 +215,7 @@ export async function getNightlyStrikeLogsBatch(
   const cycleDates = Array.from(new Set(requests.map((r) => r.sleepCycleDate)));
   const requestedKeySet = new Set(requests.map((r) => getStrikeLogKey(r.targetMemberId, r.sleepCycleDate)));
 
+  let querySucceeded = false;
   if (isSupabaseConfigured) {
     try {
       const { data, error } = await supabaseAdmin
@@ -220,6 +225,7 @@ export async function getNightlyStrikeLogsBatch(
         .in('sleep_cycle_date', cycleDates);
 
       if (!error && Array.isArray(data)) {
+        querySucceeded = true;
         for (const row of data) {
           const key = getStrikeLogKey(row.target_member_id, row.sleep_cycle_date);
           if (requestedKeySet.has(key)) {
@@ -243,13 +249,16 @@ export async function getNightlyStrikeLogsBatch(
     }
   }
 
-  // Populate any missing from memory store
-  for (const req of requests) {
-    const key = getStrikeLogKey(req.targetMemberId, req.sleepCycleDate);
-    if (!result.has(key)) {
-      const fallback = memoryStore.logs.get(key);
-      if (fallback) {
-        result.set(key, fallback);
+  // Populate from in-memory store ONLY when Supabase is unconfigured or the query failed.
+  // After a successful query, treat missing rows as authoritative and do not fill them from memory.
+  if (!querySucceeded) {
+    for (const req of requests) {
+      const key = getStrikeLogKey(req.targetMemberId, req.sleepCycleDate);
+      if (!result.has(key)) {
+        const fallback = memoryStore.logs.get(key);
+        if (fallback) {
+          result.set(key, fallback);
+        }
       }
     }
   }
@@ -280,27 +289,31 @@ export async function getRecentEligibleStrikeLog(
         .limit(1)
         .maybeSingle();
 
-      if (!error && data) {
-        const createdAt = DateTime.fromISO(data.created_at, { zone: 'utc' });
-        if (nowUtc.diff(createdAt, 'hours').hours <= 24) {
-          return {
-            id: data.id,
-            target_member_id: data.target_member_id,
-            sleep_cycle_date: data.sleep_cycle_date,
-            record_type: data.record_type as StrikeRecordType,
-            voter_ids: Array.isArray(data.voter_ids) ? data.voter_ids : [],
-            reason: data.reason || null,
-            created_at: data.created_at,
-            updated_at: data.updated_at,
-          };
+      if (!error) {
+        if (data) {
+          const createdAt = DateTime.fromISO(data.created_at, { zone: 'utc' });
+          if (nowUtc.diff(createdAt, 'hours').hours <= 24) {
+            return {
+              id: data.id,
+              target_member_id: data.target_member_id,
+              sleep_cycle_date: data.sleep_cycle_date,
+              record_type: data.record_type as StrikeRecordType,
+              voter_ids: Array.isArray(data.voter_ids) ? data.voter_ids : [],
+              reason: data.reason || null,
+              created_at: data.created_at,
+              updated_at: data.updated_at,
+            };
+          }
         }
+        // After a successful query, treat missing row as authoritative and do not fill from memory
+        return null;
       }
     } catch {
-      // Fall through to memory store
+      // Fall through to memory store on exception
     }
   }
 
-  // Check in-memory store
+  // Check in-memory store ONLY when Supabase is unconfigured or query failed
   let bestCandidate: NightlyStrikeLog | null = null;
   let bestTime = 0;
   for (const log of memoryStore.logs.values()) {
@@ -336,6 +349,7 @@ export async function getRecentEligibleStrikeLogsBatch(
   const uniqueIds = Array.from(new Set(targetMemberIds));
   const sinceIso = nowUtc.minus({ hours: 24 }).toISO();
 
+  let querySucceeded = false;
   if (isSupabaseConfigured) {
     try {
       const { data, error } = await supabaseAdmin
@@ -347,6 +361,7 @@ export async function getRecentEligibleStrikeLogsBatch(
         .order('created_at', { ascending: false });
 
       if (!error && Array.isArray(data)) {
+        querySucceeded = true;
         for (const row of data) {
           if (!result.has(row.target_member_id)) {
             const createdAt = DateTime.fromISO(row.created_at, { zone: 'utc' });
@@ -371,23 +386,26 @@ export async function getRecentEligibleStrikeLogsBatch(
     }
   }
 
-  // Populate from in-memory store for any members missing or when unconfigured
-  for (const memberId of uniqueIds) {
-    if (!result.has(memberId)) {
-      let bestCandidate: NightlyStrikeLog | null = null;
-      let bestTime = 0;
-      for (const log of memoryStore.logs.values()) {
-        if (log.target_member_id === memberId && log.record_type === 'strike') {
-          const createdAt = DateTime.fromISO(log.created_at, { zone: 'utc' });
-          const ageHours = nowUtc.diff(createdAt, 'hours').hours;
-          if (ageHours <= 24 && createdAt.toMillis() > bestTime) {
-            bestTime = createdAt.toMillis();
-            bestCandidate = log;
+  // Populate from in-memory store ONLY when Supabase is unconfigured or the query failed.
+  // After a successful query, treat missing rows as authoritative and do not fill them from memory.
+  if (!querySucceeded) {
+    for (const memberId of uniqueIds) {
+      if (!result.has(memberId)) {
+        let bestCandidate: NightlyStrikeLog | null = null;
+        let bestTime = 0;
+        for (const log of memoryStore.logs.values()) {
+          if (log.target_member_id === memberId && log.record_type === 'strike') {
+            const createdAt = DateTime.fromISO(log.created_at, { zone: 'utc' });
+            const ageHours = nowUtc.diff(createdAt, 'hours').hours;
+            if (ageHours <= 24 && createdAt.toMillis() > bestTime) {
+              bestTime = createdAt.toMillis();
+              bestCandidate = log;
+            }
           }
         }
-      }
-      if (bestCandidate) {
-        result.set(memberId, bestCandidate);
+        if (bestCandidate) {
+          result.set(memberId, bestCandidate);
+        }
       }
     }
   }
