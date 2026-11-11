@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T20:59:00+05:30  
+> **Last Updated:** 2026-11-11T21:24:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** c96f149 (in krish)  
+>  (in krish)  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Integration Pull Request:** [#17 (krish → dev) [OPEN - 27/27 CodeRabbit Threads Resolved (100%)]](https://github.com/KrishJdev/Z-Catchers/pull/17)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
@@ -68,6 +68,13 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 43: Website Profile Cleanup & Purge of Legacy / Test Profiles
+* **Purge of Legacy Test Accounts (`scripts/purge-old-profiles.mjs`):**
+  * Created dedicated idempotent maintenance script to inspect, safely unlink, and purge all legacy test/development accounts from Supabase (`Krish` and `FoxOAuth_1794391141330`).
+  * Purged cascading dependencies in `push_subscriptions` and `notification_logs` to ensure no orphaned foreign key rows or lingering push tokens.
+  * Verified Supabase tables (`members`, `push_subscriptions`, `notification_logs`) have 0 residual records, leaving the website in a pristine state ready for genuine member onboarding.
+  * Verification check clean (`npx tsc --noEmit` passing with 0 errors).
 
 ### Phase 42: Comprehensive Follow-Up CodeRabbit Review Remediations (14/14 Threads Resolved, 27/27 Total on PR #17)
 * **Live Allowlist Recheck on Profile Claiming (`src/app/api/auth/claim-profile/route.ts`):**
