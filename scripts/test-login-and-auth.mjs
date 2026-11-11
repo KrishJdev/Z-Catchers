@@ -157,14 +157,35 @@ async function run() {
     console.log('   Testing Discord profile claim binding...');
     const avatarUrl = `https://cdn.discordapp.com/avatars/${testDiscordId}/mock_avatar.png`;
 
-    const { data: claimedMember, error: claimErr } = await updateMemberSafe(newMember.id, {
-      discord_id: testDiscordId,
-      avatar_url: avatarUrl,
-      onboarding_completed: true,
-      updated_at: new Date().toISOString(),
-    });
+    const { data: claimedMember, error: claimErr } = await updateMemberSafe(
+      newMember.id,
+      {
+        discord_id: testDiscordId,
+        avatar_url: avatarUrl,
+        onboarding_completed: true,
+        updated_at: new Date().toISOString(),
+      },
+      { requireUnlinkedDiscord: true }
+    );
 
     assert(!claimErr && claimedMember, 'updateMemberSafe successfully claimed profile without schema crashes');
+
+    // Attempt concurrent/duplicate claim on already linked member with requireUnlinkedDiscord: true
+    const { data: rivalClaimData, error: rivalClaimErr } = await updateMemberSafe(
+      newMember.id,
+      {
+        discord_id: 'rival_discord_id_123',
+        avatar_url: 'https://cdn.discordapp.com/avatars/rival/avatar.png',
+        onboarding_completed: true,
+        updated_at: new Date().toISOString(),
+      },
+      { requireUnlinkedDiscord: true }
+    );
+
+    assert(
+      !rivalClaimErr && rivalClaimData === null,
+      'requireUnlinkedDiscord returns null data without error on lost race/already linked profile (HTTP 409 trigger)'
+    );
 
     // Generate authenticated 90-day session token
     const memberSessionToken = createSessionToken(
