@@ -134,7 +134,7 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
 
         <button
           onClick={handleInstallClick}
-          className="shrink-0 rounded-xl bg-status-amber px-3.5 py-2 text-xs font-semibold text-night-bg transition-opacity hover:opacity-90 active:scale-95"
+          className="shrink-0 h-10 min-h-[40px] flex items-center justify-center rounded-xl bg-status-amber px-3.5 text-xs font-semibold text-night-bg transition-opacity hover:opacity-90 active:scale-95 whitespace-nowrap"
         >
           Install App
         </button>
@@ -189,7 +189,7 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
 
       <button
         onClick={onEnablePush}
-        className="shrink-0 rounded-xl bg-status-amber px-3 py-2 text-xs font-semibold text-night-bg transition-opacity hover:opacity-90"
+        className="shrink-0 h-10 min-h-[40px] flex items-center justify-center rounded-xl bg-status-amber px-3.5 text-xs font-semibold text-night-bg transition-opacity hover:opacity-90 active:scale-95 whitespace-nowrap"
       >
         Turn On
       </button>
