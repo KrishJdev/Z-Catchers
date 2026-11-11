@@ -344,10 +344,10 @@ export function MyScheduleModal({
                 id="modal-schedule-title"
                 className="text-base font-bold text-cream-primary sm:text-lg"
               >
-                My Bedtime Schedule
+                My Profile &amp; Schedule
               </h2>
               <p className="text-xs text-cream-secondary">
-                Self-service accountability & bedtime controls
+                Accountability settings, sleep schedule &amp; website profile
               </p>
             </div>
           </div>
@@ -616,32 +616,50 @@ export function MyScheduleModal({
                     </div>
                   )}
 
-                {/* Discord Username */}
+                {/* Website Username (User Editable) */}
                 <div>
                   <label className="block text-xs font-medium text-cream-secondary mb-1">
-                    Discord Display Name
+                    Website Username
                   </label>
                   <input
                     type="text"
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Your display name on the website"
                     className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
                   />
+                  <p className="mt-1 text-[11px] text-cream-muted">
+                    Your display name shown across Z Catchers. You can modify this anytime.
+                  </p>
                 </div>
 
-                {/* Discord Handle */}
+                {/* Discord Handle (Auto-filled & Linked) */}
                 <div>
-                  <label className="block text-xs font-medium text-cream-secondary mb-1">
-                    Discord Handle <span className="text-cream-muted">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="@username or user ID"
-                    value={handle}
-                    onChange={(e) => setHandle(e.target.value)}
-                    className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-cream-secondary">
+                      Discord Handle
+                    </label>
+                    <span className="flex items-center gap-1 text-[10px] text-status-sage font-medium">
+                      <CheckCircle2 className="h-3 w-3" />
+                      <span>Auto-filled from Discord</span>
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      readOnly
+                      disabled
+                      value={handle}
+                      className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface/60 px-3 py-2 text-xs text-cream-secondary cursor-not-allowed outline-none select-none opacity-85"
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-cream-muted">
+                      <Lock className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-[11px] text-cream-muted leading-relaxed">
+                    Linked to your authenticated Discord account. Cannot be modified manually.
+                  </p>
                 </div>
 
                 {/* Discord Journal Link with live regex validation */}
