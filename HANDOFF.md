@@ -6,9 +6,9 @@
 > **Production Branch:** `main`  
 > **Latest Commit:** 5509649 (in krish)  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19)  
-> **Active Integration Pull Request:** None (all features merged into `dev`)  
+> **Active Integration Pull Request:** [#21 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/21)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20)  
-> **Active Production Release Pull Request:** [#21 (krish → main) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/21)  
+> **Active Production Release Pull Request:** None (PR #20 merged into `main`; PR #21 currently targeting `dev`)  
 > **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
 
 ---
