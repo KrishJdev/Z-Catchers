@@ -25,7 +25,7 @@ async function run() {
 
   // 2. My Schedule / Profile Modal Logout Option
   console.log('\n--- 2. MyScheduleModal Logout UI & Session Card ---');
-  const scheduleContent = fs.readFileSync(path.resolve('src/components/MyScheduleModal.tsx'), 'utf8');
+  const scheduleContent = fs.readFileSync(path.resolve('src/components/MyScheduleModal.tsx'), 'utf8').replace(/\r\n/g, '\n');
   assert(scheduleContent.includes('LogOut') && scheduleContent.includes('lucide-react'), 'MyScheduleModal imports LogOut icon');
   assert(scheduleContent.includes('onLogout?: () => void'), 'MyScheduleModalProps defines onLogout callback');
   assert(scheduleContent.includes('Log Out of Fox Den'), 'MyScheduleModal provides prominent "Log Out of Fox Den" session card');

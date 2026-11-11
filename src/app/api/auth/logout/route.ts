@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
+import { SESSION_COOKIE_NAME } from '@/lib/auth';
 
 /**
- * Helper to construct a logout response that clears the zcatchers_session HTTP-only cookie.
+ * Constructs a logout response clearing authentication and claim cookies.
  *
- * @returns NextResponse with expired session cookie
+ * @returns NextResponse with expired session cookies
  */
 function createLogoutResponse() {
   const response = NextResponse.json({
@@ -14,6 +15,29 @@ function createLogoutResponse() {
   // Clear session cookie
   response.cookies.set({
     name: 'zcatchers_session',
+    value: '',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+    expires: new Date(0),
+  });
+
+  // Clear claim and state cookies
+  response.cookies.set({
+    name: 'zcatchers_claim_token',
+    value: '',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+    expires: new Date(0),
+  });
+
+  response.cookies.set({
+    name: 'zcatchers_oauth_state',
     value: '',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -43,4 +67,3 @@ export async function POST() {
 export async function GET() {
   return createLogoutResponse();
 }
-

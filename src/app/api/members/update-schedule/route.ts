@@ -55,7 +55,9 @@ export async function POST(request: Request) {
     const currentMember = memberData as Member;
     const clientIp = getClientIp(request);
 
-    // 2. PIN verification / Claiming profile
+    // 2. PIN verification / Session Authorization / Claiming profile
+    const sessionMemberId = getRequestSessionMemberId(request);
+    const isSessionOwner = Boolean(sessionMemberId && sessionMemberId === currentMember.id);
     let isModeratorOverride = false;
     if (mod_passcode) {
       const sessionMemberId = getRequestSessionMemberId(request);
@@ -63,7 +65,7 @@ export async function POST(request: Request) {
       const modRate = await checkPinRateLimitPersistent(clientIp, modGateTarget);
       if (modRate.allowed) {
         isModeratorOverride = verifyModPasscode(mod_passcode);
-        if (!isModeratorOverride) {
+        if (!isModeratorOverride && !isSessionOwner) {
           await recordPinFailurePersistent(clientIp, modGateTarget);
         } else {
           await resetPinFailurePersistent(clientIp, modGateTarget);

@@ -8,7 +8,7 @@
 > **Merged Integration Pull Request:** [#14 (krish → dev) [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14)  
 > **Active Integration Pull Request:** [#16 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-signup-and-profiles.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | Dev server active on `http://192.168.1.3:3000`)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 29/29 routes | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | Dev server active on `http://192.168.1.3:3000`)
 
 ---
 
@@ -539,18 +539,25 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Monitor & Review Active Pull Request #16 (`krish` → `dev`):**
+1. **Database Migration Execution in Supabase SQL Editor:**
+   * Run the idempotent migration block from `supabase/schema.sql` on the remote Supabase database:
+     ```sql
+     ALTER TABLE members ADD COLUMN IF NOT EXISTS discord_id TEXT;
+     ALTER TABLE members ADD COLUMN IF NOT EXISTS is_moderator BOOLEAN DEFAULT FALSE;
+     ALTER TABLE members ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE;
+     ALTER TABLE members ALTER COLUMN passcode_hash DROP NOT NULL;
+     DO $ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'members_discord_id_key') THEN
+         ALTER TABLE members ADD CONSTRAINT members_discord_id_key UNIQUE (discord_id);
+       END IF;
+     END $;
+     CREATE INDEX IF NOT EXISTS idx_members_discord_id ON members(discord_id);
+     ```
+
+2. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
+   * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
+   * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
+
+3. **Monitor & Review Active Pull Request #16 (`krish` → `dev`):**
    * Review link: [PR #16](https://github.com/KrishJdev/Z-Catchers/pull/16)
-   * Dispatched `@coderabbitai review` comment on PR #16 for latest commits (remediations & docstrings).
-   * Verify CI workflows and CodeRabbit automated code review results.
-   * Address any feedback or comments on the `krish` branch.
-
-2. **Merge PR #16 into `dev` Integration Branch:**
-   * After verification, merge PR #16 into `dev`.
-
-3. **Production Release Pipeline (`dev` → `main`):**
-   * Merge or update PR #15 ([#15](https://github.com/KrishJdev/Z-Catchers/pull/15)) to deploy all Phases 33-36 features to production.
-
-4. **Verification Checklist:**
-   * Verify `npx tsc --noEmit` (0 errors) and `npm run build` (26/26 routes).
-   * Verify `node scripts/test-logout-flow.mjs` (18/18 checks pass).
+   * Verify all automated checks pass on branch `krish`.

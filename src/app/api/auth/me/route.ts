@@ -1,63 +1,81 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member } from '@/lib/db';
-import { getRequestSessionMemberId } from '@/lib/auth';
+import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
+import {
+  getRequestSession,
+  createSessionToken,
+  setSessionCookie,
+  sanitizeMember,
+  isModDiscordId,
+} from '@/lib/auth';
+import { DateTime } from 'luxon';
 
 /**
- * GET: Retrieve the authenticated session member's profile.
+ * GET: Retrieve the authenticated session member's profile and perform rolling session renewal.
+ * Refreshes the 90-day session cookie and synchronizes moderator status against MOD_DISCORD_IDS.
  *
- * @param request - Incoming HTTP request with session cookie
- * @returns JSON response with authentication status and member entity
+ * @param request - Incoming HTTP request with session cookie or Authorization header
+ * @returns JSON response with authentication status and member entity, plus renewed Set-Cookie
  */
 export async function GET(request: Request) {
   try {
-    const memberId = getRequestSessionMemberId(request);
+    const session = getRequestSession(request);
 
-    if (!memberId) {
+    if (!session || !session.memberId) {
       return NextResponse.json({ authenticated: false, member: null }, { status: 200 });
     }
 
-    const { data: member, error } = await supabaseAdmin
+    const { data: memberData, error } = await supabaseAdmin
       .from('members')
       .select('*')
-      .eq('id', memberId)
+      .eq('id', session.memberId)
       .eq('is_active', true)
       .single();
 
-    if (error || !member) {
+    if (error || !memberData) {
       return NextResponse.json({ authenticated: false, member: null }, { status: 200 });
     }
 
-    const currentMember = member as Member;
+    const currentMember = memberData as Member;
 
-    // Sanitize member before returning
-    const sanitizedMember: Omit<Member, 'passcode_hash'> & { has_pin: boolean } = {
-      id: currentMember.id,
-      discord_username: currentMember.discord_username,
-      discord_handle: currentMember.discord_handle,
-      avatar_url: currentMember.avatar_url,
-      journal_url: currentMember.journal_url,
-      bedtime_local: currentMember.bedtime_local,
-      wake_time_local: currentMember.wake_time_local,
-      timezone: currentMember.timezone,
-      weekend_bedtime_local: currentMember.weekend_bedtime_local,
-      weekend_wake_time_local: currentMember.weekend_wake_time_local,
-      pending_bedtime_local: currentMember.pending_bedtime_local,
-      pending_wake_time_local: currentMember.pending_wake_time_local,
-      pending_timezone: currentMember.pending_timezone,
-      pending_weekend_bedtime_local: currentMember.pending_weekend_bedtime_local,
-      pending_weekend_wake_time_local: currentMember.pending_weekend_wake_time_local,
-      pending_effective_at: currentMember.pending_effective_at,
-      role: currentMember.role,
-      is_active: currentMember.is_active,
-      created_at: currentMember.created_at,
-      updated_at: currentMember.updated_at,
-      has_pin: Boolean(currentMember.passcode_hash),
-    };
+    // Synchronize moderator privileges against MOD_DISCORD_IDS and role
+    const isMod = Boolean(
+      isModDiscordId(currentMember.discord_id) ||
+        currentMember.role === 'moderator' ||
+        currentMember.is_moderator === true
+    );
 
-    return NextResponse.json({
+    if (isMod !== Boolean(currentMember.is_moderator)) {
+      await updateMemberSafe(currentMember.id, {
+        is_moderator: isMod,
+        role: isMod ? 'moderator' : currentMember.role,
+        updated_at: DateTime.utc().toISO() as string,
+      });
+      currentMember.is_moderator = isMod;
+      if (isMod) currentMember.role = 'moderator';
+    }
+
+    // Rolling 90-Day Session Renewal: Generate fresh token and extend expiration
+    const renewedToken = createSessionToken(
+      {
+        memberId: currentMember.id,
+        discordId: currentMember.discord_id || session.discordId || null,
+        isModerator: isMod,
+      },
+      90
+    );
+
+    const sanitized = sanitizeMember(currentMember);
+
+    const response = NextResponse.json({
       authenticated: true,
-      member: sanitizedMember,
+      member: sanitized,
+      token: renewedToken,
     });
+
+    // Refresh rolling 90-day HttpOnly cookie
+    setSessionCookie(response, renewedToken);
+
+    return response;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown server error';
     return NextResponse.json({ error: message }, { status: 500 });

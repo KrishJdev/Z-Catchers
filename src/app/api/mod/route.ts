@@ -148,7 +148,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action, mod_passcode, pin } = body;
 
-    const authResult = await verifyModeratorAuthorization(request, mod_passcode, pin);
+    const authResult = await verifyModeratorAuthorization(request, mod_passcode);
     if (!authResult.authorized) {
       await recordPinFailurePersistent(clientIp, modTarget);
       return NextResponse.json(

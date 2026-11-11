@@ -25,6 +25,7 @@ export const supabaseAdmin = supabaseServiceKey
 
 export interface Member {
   id: string;
+  discord_id?: string | null;
   discord_username: string;
   discord_handle: string | null;
   avatar_url: string | null;
@@ -41,6 +42,8 @@ export interface Member {
   pending_weekend_wake_time_local?: string | null;
   pending_effective_at: string | null; // ISO timestamp
   role: 'member' | 'moderator';
+  is_moderator?: boolean;
+  onboarding_completed?: boolean;
   passcode_hash?: string | null;
   has_pin?: boolean;
   is_active: boolean;
@@ -222,6 +225,7 @@ export async function getExistingMemberColumns(): Promise<Set<string>> {
   // Baseline known columns in initial migration
   return new Set([
     'id',
+    'discord_id',
     'discord_username',
     'discord_handle',
     'avatar_url',
@@ -234,6 +238,8 @@ export async function getExistingMemberColumns(): Promise<Set<string>> {
     'pending_timezone',
     'pending_effective_at',
     'role',
+    'is_moderator',
+    'onboarding_completed',
     'passcode_hash',
     'is_active',
     'strikes_used',

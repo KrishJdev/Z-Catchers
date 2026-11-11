@@ -110,8 +110,9 @@ export function MyScheduleModal({
       setSuccessMessage(null);
       setPin('');
       // If member has no PIN, auto-unlock so they can set initial PIN
+      const isOwner = Boolean(currentUser && activeMember && currentUser.id === activeMember.id);
       const isClaimed = Boolean(activeMember.has_pin ?? activeMember.passcode_hash);
-      setIsUnlocked(!isClaimed);
+      setIsUnlocked(isOwner || !isClaimed);
     } else if (currentUser) {
       setSelectedMemberId(currentUser.id);
     } else if (members.length > 0 && !selectedMemberId && tab === 'claim') {
@@ -222,8 +223,9 @@ export function MyScheduleModal({
       return;
     }
 
+    const isOwner = Boolean(currentUser && activeMember && currentUser.id === activeMember.id);
     const isClaimed = Boolean(activeMember?.has_pin ?? activeMember?.passcode_hash);
-    if (!isClaimed && (!pin || pin.length < 4)) {
+    if (!isOwner && !isClaimed && (!pin || pin.length < 4)) {
       setErrorMessage('Please create a 4-digit PIN to claim and secure your profile.');
       return;
     }
