@@ -17,6 +17,7 @@ import {
   Clock,
   RefreshCw,
   Check,
+  Bell,
 } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import type { MemberState } from '@/lib/sleepEngine';
@@ -443,10 +444,10 @@ export function MemberCard({
           <button
             onClick={handleCheckInClick}
             disabled={isCheckingIn}
-            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-3 font-bold text-night-bg shadow transition-transform hover:bg-status-amber/90 active:scale-[0.98]"
+            className="flex h-11 min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-3 font-bold text-night-bg shadow transition-transform hover:bg-status-amber/90 active:scale-[0.98] whitespace-nowrap"
           >
-            <BedDouble className="h-4 w-4" />
-            <span>{isNagNow ? "I'm in Bed Now (Mute Nags)" : "I'm in Bed (Goodnight)"}</span>
+            <BedDouble className="h-4 w-4 shrink-0" />
+            <span className="truncate">{isNagNow ? "I'm in Bed Now (Mute Nags)" : "I'm in Bed (Goodnight)"}</span>
           </button>
         )}
 
@@ -460,17 +461,17 @@ export function MemberCard({
             <button
               onClick={handleCheckInClick}
               disabled={isCheckingIn}
-              className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/15 text-xs font-semibold text-status-amber transition-colors hover:bg-status-amber/25"
+              className="flex h-11 min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/15 text-xs font-semibold text-status-amber transition-colors hover:bg-status-amber/25 whitespace-nowrap"
             >
-              <BedDouble className="h-4 w-4" />
+              <BedDouble className="h-4 w-4 shrink-0" />
               <span>Early Bedtime Check-In</span>
             </button>
           )}
 
         {/* Checked-in Confirmation Banner */}
         {isViewer && isInBed && (isNagNow || bucket === 'WINDING_DOWN') && (
-          <div className="flex items-center justify-between rounded-xl border border-status-amber/30 bg-status-amber/10 px-3 py-2 text-xs font-medium text-status-amber min-h-[44px]">
-            <span className="flex items-center gap-1.5">
+          <div className="flex h-11 min-h-[44px] items-center justify-between rounded-xl border border-status-amber/30 bg-status-amber/10 px-3 text-xs font-medium text-status-amber whitespace-nowrap">
+            <span className="flex items-center gap-1.5 truncate">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
               <span>You&apos;re checked in! Nags muted</span>
             </span>
@@ -478,7 +479,7 @@ export function MemberCard({
               <button
                 onClick={handleCancelInBedClick}
                 disabled={isCheckingIn}
-                className="text-xs underline opacity-80 hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-end"
+                className="text-xs underline opacity-80 hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-end shrink-0 ml-2"
               >
                 Undo
               </button>
@@ -488,8 +489,8 @@ export function MemberCard({
 
         {/* Checked-in Confirmation Banner for Sleeping State */}
         {isViewer && isInBed && bucket === 'SLEEPING' && (
-          <div className="flex items-center justify-between rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-muted min-h-[44px]">
-            <span className="flex items-center gap-1.5">
+          <div className="flex h-11 min-h-[44px] items-center justify-between rounded-xl border border-night-border bg-night-elevated px-3 text-xs text-cream-muted whitespace-nowrap">
+            <span className="flex items-center gap-1.5 truncate">
               <Shield className="h-4 w-4 text-cream-muted shrink-0" />
               <span>Sleep Shield Active • Nags Muted</span>
             </span>
@@ -497,7 +498,7 @@ export function MemberCard({
               <button
                 onClick={handleCancelInBedClick}
                 disabled={isCheckingIn}
-                className="underline opacity-80 hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-end"
+                className="underline opacity-80 hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-end shrink-0 ml-2"
               >
                 Undo
               </button>
@@ -513,10 +514,10 @@ export function MemberCard({
               triggerHaptic(10);
               onOpenMetastrike(member, 'proactive');
             }}
-            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/10 px-3 py-2 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all"
+            className="flex h-11 min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/10 px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all whitespace-nowrap"
           >
             <Shield className="h-4 w-4 fill-status-amber/20 shrink-0" />
-            <span>Use Metastrike Tonight (Excused Pass)</span>
+            <span className="truncate">Use Metastrike Tonight (Excused Pass)</span>
           </button>
         )}
 
@@ -528,18 +529,18 @@ export function MemberCard({
               triggerHaptic(10);
               onOpenMetastrike(member, 'convert_retroactive');
             }}
-            className="flex min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber px-3 py-2 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 transition-all"
+            className="flex h-11 min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber px-3 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 transition-all whitespace-nowrap"
           >
             <RefreshCw className="h-4 w-4 shrink-0" />
-            <span>Convert Strike to Metastrike (24h Swap)</span>
+            <span className="truncate">Convert Strike to Metastrike (24h Swap)</span>
           </button>
         )}
 
         {/* Nagged Assist Counter */}
         {isNagNow && localNagCount > 0 && (
-          <div className="flex items-center gap-1.5 rounded-xl border border-status-coral/30 bg-status-coral/10 px-3 py-2 text-xs font-semibold text-status-coral min-h-[40px]">
+          <div className="flex h-10 min-h-[40px] items-center gap-1.5 rounded-xl border border-status-coral/30 bg-status-coral/10 px-3 text-xs font-semibold text-status-coral whitespace-nowrap">
             <Users className="h-4 w-4 shrink-0" />
-            <span>
+            <span className="truncate">
               {hasNagged
                 ? localNagCount === 1
                   ? 'You nagged tonight!'
@@ -551,87 +552,84 @@ export function MemberCard({
 
         {/* Error Toast for Rollbacks */}
         {cardError && (
-          <div className="rounded-lg border border-status-coral/40 bg-status-coral/10 p-2 text-center text-xs text-status-coral animate-fade-in">
+          <div className="rounded-lg border border-status-coral/40 bg-status-coral/10 p-2 text-center text-xs text-status-coral animate-fade-in whitespace-nowrap">
             {cardError}
           </div>
         )}
       </div>
 
       {/* Action Bar (Anchored to bottom via flex layout, touch targets >= 44x44px) */}
-      <div className="mt-auto pt-1">
+      <div className="mt-auto pt-1 w-full">
         {isNagNow && (
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Primary Action Button: Nag in Discord Journal */}
+          <div className="flex flex-col gap-2 w-full">
+            {/* Primary Action Button: Nag in Discord Journal - Normalized Full-Width, Height-Locked */}
             <a
               href={member.journal_url}
               target="_blank"
               rel="noopener noreferrer"
               onClick={handleNagJournalClick}
-              className="flex-1 min-h-[44px] min-w-[44px] flex items-center justify-center gap-2 rounded-xl bg-status-coral font-semibold text-night-bg transition-all hover:bg-status-coral/90 active:scale-[0.98] text-xs sm:text-sm px-3"
+              className="w-full h-11 min-h-[44px] flex items-center justify-center gap-2 rounded-xl bg-status-coral font-semibold text-night-bg transition-all hover:bg-status-coral/90 active:scale-[0.98] text-xs sm:text-sm px-3 whitespace-nowrap shadow-sm"
             >
-              <span>{hasNagged ? 'Nagged! Reopen Journal' : 'Nag in Discord Journal'}</span>
+              <span className="truncate">{hasNagged ? 'Nagged! Reopen Journal' : 'Nag in Discord Journal'}</span>
               <ExternalLink className="h-4 w-4 shrink-0" />
             </a>
 
-            {/* Secondary Action Pill: Metastrike / Strike Issued / Grace / Vote Strike */}
+            {/* Contextual Secondary Status / Action Row: Grace / Vote Strike / Strike Issued / Metastrike */}
             {isMetastrikeActive ? (
               <div
-                className="flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber min-h-[44px]"
+                className="w-full h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 text-xs font-semibold text-status-amber whitespace-nowrap"
                 title={`Protected tonight: ${
                   member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'
                 }`}
               >
                 <Shield className="h-3.5 w-3.5 fill-status-amber/20 shrink-0" />
-                <span className="truncate max-w-[130px]">
+                <span className="truncate">
                   Metastrike Active: {member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'}
                 </span>
               </div>
             ) : isStrikeIssuedTonight ? (
               <div
-                className="flex items-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/15 px-3 py-2 text-xs font-semibold text-status-coral min-h-[44px]"
+                className="w-full h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/15 px-3 text-xs font-semibold text-status-coral whitespace-nowrap"
                 title="2/2 community verification votes reached. Strike issued for tonight."
               >
                 <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                <span>Strike Issued</span>
+                <span>Strike Issued Tonight</span>
               </div>
             ) : state.status === 'BEDTIME_GRACE' ? (
               <div
-                className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-2.5 py-2 text-xs text-cream-secondary min-h-[44px]"
+                className="w-full h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3 text-xs text-cream-secondary whitespace-nowrap"
                 title="5-minute grace period active. Strike voting is locked."
               >
                 <Clock className="h-3.5 w-3.5 shrink-0" />
                 <span>Grace: {state.graceMinutesLeft || 5}m left</span>
               </div>
-            ) : (
-              onVoteStrike &&
-              !isViewer && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic(15);
-                    onVoteStrike(member.id);
-                  }}
-                  disabled={isVotingStrike || member.has_voted_strike}
-                  className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all min-h-[44px] min-w-[44px] ${
-                    member.has_voted_strike
-                      ? 'border border-status-coral/30 bg-night-elevated text-status-coral/60 cursor-not-allowed'
-                      : 'border border-status-coral/50 bg-status-coral/15 text-status-coral hover:bg-status-coral/25 active:scale-95'
-                  }`}
-                  title={
-                    member.has_voted_strike
-                      ? 'You have already voted to strike this member tonight'
-                      : 'Vote to verify bedtime missed (2 community votes needed)'
-                  }
-                >
-                  <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                  <span>
-                    {member.has_voted_strike
-                      ? `Voted (${strikeVotesCount}/2)`
-                      : `Vote Strike (${strikeVotesCount}/2)`}
-                  </span>
-                </button>
-              )
-            )}
+            ) : onVoteStrike && !isViewer ? (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic(15);
+                  onVoteStrike(member.id);
+                }}
+                disabled={isVotingStrike || member.has_voted_strike}
+                className={`w-full h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-semibold transition-all whitespace-nowrap ${
+                  member.has_voted_strike
+                    ? 'border border-status-coral/30 bg-night-elevated text-status-coral/60 cursor-not-allowed'
+                    : 'border border-status-coral/50 bg-status-coral/15 text-status-coral hover:bg-status-coral/25 active:scale-95'
+                }`}
+                title={
+                  member.has_voted_strike
+                    ? 'You have already voted to strike this member tonight'
+                    : 'Vote to verify bedtime missed (2 community votes needed)'
+                }
+              >
+                <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
+                <span>
+                  {member.has_voted_strike
+                    ? `Voted (${strikeVotesCount}/2)`
+                    : `Vote Strike (${strikeVotesCount}/2)`}
+                </span>
+              </button>
+            ) : null}
           </div>
         )}
 
@@ -641,10 +639,10 @@ export function MemberCard({
             target="_blank"
             rel="noopener noreferrer"
             onClick={handleNagJournalClick}
-            className="w-full min-h-[44px] min-w-[44px] flex items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-night-elevated font-medium text-status-amber transition-colors hover:bg-status-amber/15 active:scale-[0.98] text-xs sm:text-sm px-3"
+            className="w-full h-11 min-h-[44px] min-w-[44px] flex items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-night-elevated font-medium text-status-amber transition-colors hover:bg-status-amber/15 active:scale-[0.98] text-xs sm:text-sm px-3 whitespace-nowrap"
           >
-            <span>{hasNagged ? 'Noted! Reopen Journal' : 'Say Goodnight in Journal'}</span>
-            <ExternalLink className="h-4 w-4" />
+            <span className="truncate">{hasNagged ? 'Noted! Reopen Journal' : 'Say Goodnight in Journal'}</span>
+            <ExternalLink className="h-4 w-4 shrink-0" />
           </a>
         )}
 
@@ -653,8 +651,8 @@ export function MemberCard({
             {!isInBed && !isMetastrikeActive && !isViewer && onVoteStrike ? (
               <div>
                 {isStrikeIssuedTonight ? (
-                  <span className="text-xs font-semibold text-status-coral flex items-center gap-1 min-h-[44px]">
-                    <Zap className="h-3.5 w-3.5 fill-status-coral" />
+                  <span className="text-xs font-semibold text-status-coral flex items-center gap-1 h-11 min-h-[44px] whitespace-nowrap">
+                    <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
                     <span>Strike Issued</span>
                   </span>
                 ) : (
@@ -665,9 +663,9 @@ export function MemberCard({
                       onVoteStrike(member.id);
                     }}
                     disabled={isVotingStrike || member.has_voted_strike}
-                    className="text-xs font-medium text-status-coral hover:underline flex items-center gap-1 min-h-[44px] min-w-[44px]"
+                    className="text-xs font-medium text-status-coral hover:underline flex items-center gap-1 h-11 min-h-[44px] min-w-[44px] whitespace-nowrap"
                   >
-                    <Zap className="h-3.5 w-3.5 fill-status-coral" />
+                    <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
                     <span>
                       {member.has_voted_strike
                         ? `Voted (${strikeVotesCount}/2)`
@@ -684,10 +682,10 @@ export function MemberCard({
               href={member.journal_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 py-1.5 text-xs text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 ml-auto"
+              className="inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 text-xs text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 ml-auto whitespace-nowrap"
             >
               <span>Leave quiet note</span>
-              <ExternalLink className="h-3.5 w-3.5" />
+              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
             </a>
           </div>
         )}
@@ -698,11 +696,11 @@ export function MemberCard({
               href={member.journal_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 py-1.5 text-xs font-medium text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80"
+              className="inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 text-xs font-medium text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 whitespace-nowrap"
               title="Open Discord Journal"
             >
               <span>Journal</span>
-              <ExternalLink className="h-3.5 w-3.5" />
+              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
             </a>
           </div>
         )}

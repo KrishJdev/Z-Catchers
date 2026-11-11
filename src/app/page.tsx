@@ -755,7 +755,7 @@ export default function HomePage() {
                     <button
                       onClick={() => handleCheckIn(claimedMember.id)}
                       disabled={isCheckingIn}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-status-amber px-3.5 py-1.5 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 active:scale-95 transition-all"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-status-amber px-3.5 h-11 min-h-[44px] text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 active:scale-95 transition-all whitespace-nowrap"
                     >
                       <BedDouble className="h-4 w-4" />
                       <span>I&apos;m in Bed (Goodnight)</span>
@@ -810,7 +810,7 @@ export default function HomePage() {
           <div className="flex items-center rounded-xl bg-night-surface p-1 border border-night-border/80">
             <button
               onClick={() => setBuddyFilter('all')}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-colors whitespace-nowrap ${
                 buddyFilter === 'all'
                   ? 'bg-night-elevated text-cream-primary'
                   : 'text-cream-muted hover:text-cream-secondary'
@@ -821,7 +821,7 @@ export default function HomePage() {
             </button>
             <button
               onClick={() => setBuddyFilter('buddies')}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-colors whitespace-nowrap ${
                 buddyFilter === 'buddies'
                   ? 'bg-status-amber/20 text-status-amber border border-status-amber/40'
                   : 'text-cream-muted hover:text-cream-secondary'
@@ -870,14 +870,14 @@ export default function HomePage() {
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <button
                 onClick={() => router.push('/join')}
-                className="flex items-center gap-2 rounded-xl bg-status-amber px-5 py-2.5 text-xs font-bold text-night-bg shadow-lg hover:bg-status-amber/90 transition-all hover:scale-[1.02] active:scale-95"
+                className="flex items-center justify-center gap-2 rounded-xl bg-status-amber px-5 h-11 min-h-[44px] text-xs font-bold text-night-bg shadow-lg hover:bg-status-amber/90 transition-all hover:scale-[1.02] active:scale-95 whitespace-nowrap"
               >
                 <Sparkles className="h-4 w-4" />
                 <span>Join Den & Create Profile</span>
               </button>
               <button
                 onClick={() => handleOpenLogin('login')}
-                className="flex items-center gap-2 rounded-xl border border-night-border bg-night-elevated px-4 py-2.5 text-xs font-semibold text-cream-primary hover:bg-night-border transition-all"
+                className="flex items-center justify-center gap-2 rounded-xl border border-night-border bg-night-elevated px-4 h-11 min-h-[44px] text-xs font-semibold text-cream-primary hover:bg-night-border transition-all whitespace-nowrap"
               >
                 <KeyRound className="h-4 w-4 text-status-amber" />
                 <span>Log In with Existing Profile</span>

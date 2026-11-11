@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T00:44:00+05:30  
+> **Last Updated:** 2026-11-12T01:18:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** b22de7c (in main)  
+> **Latest Commit:** bc0472c  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21)  
 > **Active Integration Pull Request:** None (all features merged into `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22)  
@@ -69,6 +69,30 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 47: MemberCard Action Button Layout Stability & UI Button Normalisation
+* **Problem Statement & Root Cause Diagnosis:**
+  - In `MemberCard.tsx`, the primary `"Nag in Discord Journal"` action button and secondary contextual pills (Grace countdown, Vote Strike, Strike Issued, Metastrike Active) were rendered in a flex row with `flex-wrap` and `flex-1`.
+  - When rendered in multi-column desktop grids or mobile single columns, the available width inside the card (~250px-300px) could not accommodate both elements side-by-side without wrapping.
+  - Because `"Nag in Discord Journal"` lacked `whitespace-nowrap`, its text wrapped onto 3 vertical lines ("Nag in / Discord / Journal"), causing the button height to balloon from 44px to ~76px.
+  - Furthermore, as time progressed (e.g. from 0-5m Grace period to >5m Overdue Vote Strike), the sibling element changed widths. This triggered erratic flex layout recalculations where the button wrapped onto two rows, snapped from 3 lines tall to 1 line tall, or shifted vertically whenever nag assist counters or strike logs updated.
+* **MemberCard Action Bar Stabilization (`src/components/MemberCard.tsx`):**
+  - **Height-Locked, Full-Width Primary Action:** The primary `"Nag in Discord Journal ↗"` button now spans the full card width (`w-full`) with height-locked dimensions (`h-11 min-h-[44px]`), single-line text (`whitespace-nowrap truncate`), and an invariant rounded shape (`rounded-xl`).
+  - **Dedicated Secondary Action / Status Row:** Secondary contextual pills (Grace countdown `Grace: Xm left`, community verification `Vote Strike (X/2)`, `Strike Issued Tonight`, and `Metastrike Active: Reason`) now render in a dedicated, height-locked row directly below the primary button (`w-full h-9 min-h-[36px] whitespace-nowrap`).
+  - **Zero Shape Shifting or Jumping:** Regardless of time progression, grace countdown, strike voting, or nag counter increments, the primary button retains its exact shape, size, and position without ever wrapping or distorting.
+  - **Normalized Other MemberCard Buttons:** Normalized viewer "I'm in Bed Now" check-in (`h-11 min-h-[44px] whitespace-nowrap`), early check-in (`h-11 min-h-[44px] whitespace-nowrap`), viewer check-in undo banners (`h-11 min-h-[44px] whitespace-nowrap`), and viewer Metastrike excuse buttons (`h-11 min-h-[44px] whitespace-nowrap`).
+* **Global UI Button Normalisation:**
+  - `src/components/Header.tsx`: Normalized Mod Panel button, Alerts toggle button, member profile pill, log out button, and log in button to `h-11 min-h-[44px] whitespace-nowrap`.
+  - `src/components/PwaBanner.tsx`: Normalized native "Install App" and "Turn On" push buttons to `h-10 min-h-[40px] whitespace-nowrap flex items-center justify-center`.
+  - `src/components/PushModal.tsx`: Normalized "Send Test Alert", "Turn Off", and "Turn On Bedtime & Nag Alerts" buttons to `h-11 min-h-[44px] whitespace-nowrap`.
+  - `src/components/MetastrikeModal.tsx`: Normalized "Cancel" and "Protect Tonight / Convert to Metastrike" submit buttons to `h-11 min-h-[44px] whitespace-nowrap`.
+  - `src/components/MyScheduleModal.tsx`: Normalized "Lock", "Queue 48h Schedule Change / Save Profile Changes", and "Log Out of Fox Den" buttons to `h-11 min-h-[44px] whitespace-nowrap`.
+  - `src/app/page.tsx`: Normalized banner "I'm in Bed (Goodnight)" button, Buddy filter toggles, and empty state CTA buttons to `h-11 min-h-[44px] whitespace-nowrap`.
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run build` verified clean with all 29/29 routes compiled and prerendered.
+  - `node scripts/test-phase2-mobile-touch-ux.mjs` passed cleanly.
+  - `node scripts/test-login-and-auth.mjs` passed cleanly.
 
 ### Phase 46: Schedule Tab Redundancy Elimination & Discord Handle Auto-fill
 * **Header Navigation Redundancy Elimination (`src/components/Header.tsx`):**
