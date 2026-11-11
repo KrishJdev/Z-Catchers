@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T23:05:00+05:30  
+> **Last Updated:** 2026-11-11T23:10:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -71,7 +71,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 ### Phase 44: Root Layout Browser Extension Hydration Mismatch Fix
 * **Client Attribute Hydration Suppression (`src/app/layout.tsx`):**
-  * Added `suppressHydrationWarning` to the root `<html>` and `<body>` elements in [`src/app/layout.tsx`](file:///d:/Projects/Z%20Catchers/src/app/layout.tsx).
+  * Added `suppressHydrationWarning` to the root `<html>` and `<body>` elements in [`src/app/layout.tsx`](./src/app/layout.tsx).
   * Resolved the React 19 / Next.js 15 SSR-to-client hydration mismatch error caused by third-party browser extensions (e.g. WebCRX injecting `webcrx` and `webcrx-bridged` attributes onto `<html>` before React loads).
 * **Verification Check:**
   * `npx tsc --noEmit` verified clean with 0 errors.
