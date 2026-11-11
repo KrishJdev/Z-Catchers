@@ -96,7 +96,12 @@ export function MyScheduleModal({
 
     if (activeMember) {
       setUsername(activeMember.discord_username);
-      setHandle(activeMember.discord_handle || '');
+      const rawHandle =
+        activeMember.discord_handle ||
+        (activeMember.discord_username
+          ? `@${activeMember.discord_username.toLowerCase().replace(/\s+/g, '')}`
+          : '');
+      setHandle(rawHandle ? (rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`) : '');
       setJournalUrl(activeMember.journal_url);
       setBedtime(activeMember.bedtime_local);
       setWakeTime(activeMember.wake_time_local);
