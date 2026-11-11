@@ -90,8 +90,10 @@ export function MyScheduleModal({
   );
   const isOwner = Boolean(currentUser && activeMember && currentUser.id === activeMember.id);
 
-  // Sync selected member data into form fields when selected
+  // Sync selected member data into form fields when selected or modal opens
   useEffect(() => {
+    if (!isOpen) return;
+
     if (activeMember) {
       setUsername(activeMember.discord_username);
       setHandle(activeMember.discord_handle || '');
@@ -120,23 +122,17 @@ export function MyScheduleModal({
     } else if (members.length > 0 && !selectedMemberId && tab === 'claim') {
       setSelectedMemberId(members[0].id);
     }
-  }, [activeMember, members, selectedMemberId, tab]);
+  }, [isOpen, activeMember, members, selectedMemberId, tab, currentUser]);
 
-  // Reset states & recompute owner unlock when modal is opened/closed
+  // Reset states when modal is opened/closed
   useEffect(() => {
     if (isOpen) {
       setErrorMessage(null);
       setSuccessMessage(null);
-      const targetMember = currentUser || (selectedMemberId ? members.find((m) => m.id === selectedMemberId) : members[0]);
       if (currentUser) {
         setSelectedMemberId(currentUser.id);
       } else if (members.length > 0 && !selectedMemberId) {
         setSelectedMemberId(members[0].id);
-      }
-      if (targetMember) {
-        const isOwner = Boolean(currentUser && targetMember && currentUser.id === targetMember.id);
-        const isClaimed = Boolean(targetMember.has_pin ?? targetMember.passcode_hash);
-        setIsUnlocked(isOwner || !isClaimed);
       }
     } else {
       setIsUnlocked(false);

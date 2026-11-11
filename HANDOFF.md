@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T18:40:00+05:30  
+> **Last Updated:** 2026-11-11T18:43:00+05:30
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** fbe10e8 (in krish)  
+> **Latest Commit:** 50b30c1 (in krish)  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16)  
 > **Active Integration Pull Request:** [#17 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/17)  
 > **Active Production Release Pull Request:** [#15 (dev → main)](https://github.com/KrishJdev/Z-Catchers/pull/15)  
@@ -89,6 +89,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   * Fixed moderator passcode failure rate limiting so invalid passcode attempts always record failures and count toward the moderator rate limit, even when attempted by the session owner.
   * Updated `/api/members/cancel-pending` to recognize the authenticated shift owner (`sessionMemberId === member.id`) to cancel pending cooldown shifts without requiring a PIN.
   * In `MyScheduleModal.tsx`, recomputed owner unlock state on `isOpen`, allowed session owners to submit profile/schedule updates and cancel pending shifts without entering a PIN, rendered a "Verified Owner Session" badge, and replaced legacy registration with a Discord onboarding card.
+    * Refined the effect calling `setIsUnlocked` (lines 94–125) to watch `[isOpen, activeMember, members, selectedMemberId, tab, currentUser]` with early return on `!isOpen`. This guarantees owner/unclaimed unlock state is recomputed every time the modal opens even when active member and roster remain unchanged, preserving the `isOwner || !isClaimed` condition and eliminating redundant unlock logic in the reset effect.
 * **Moderator Role Synchronization & Shared Webhook Authorization (`src/app/api/mod/route.ts`, `src/app/api/mod/webhook/route.ts`, `src/components/ModDrawer.tsx`):**
   * In `edit_member` (`/api/mod`), updated role change logic so demoting a profile to member clears its `is_moderator` database flag (`is_moderator: isTargetMod`), keeping role and flag synchronized.
   * Evaluated and verified review finding at `src/app/api/mod/route.ts` line 345: confirmed role-change logic already clears `is_moderator` flag on member demotion (`is_moderator: isTargetMod`) and preserves the flag when the role remains moderator in both `/api/mod` and `/api/auth/claim-profile`, ensuring full consistency with `verifyModeratorAuthorization`. Skipped further modifications as the issue is already resolved and verified.
