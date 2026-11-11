@@ -69,8 +69,9 @@ export function MemberCard({
   const [localNagCount, setLocalNagCount] = useState<number>(member.nag_assists_count || 0);
   const [hasNagged, setHasNagged] = useState(false);
 
-  // Subtle alert message for rollbacks
+  // Subtle alert message for rollbacks and action feedback
   const [cardError, setCardError] = useState<string | null>(null);
+  const [cardFeedback, setCardFeedback] = useState<{ text: string; type: 'error' | 'shield' | 'success' } | null>(null);
 
   // Haptic feedback helper (15ms light pulse)
   const triggerHaptic = (duration = 15) => {
