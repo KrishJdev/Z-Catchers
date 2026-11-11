@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-11T23:52:00+05:30  
+> **Last Updated:** 2026-11-12T00:30:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 5509649 (in krish)  
+> **Latest Commit:** daeb41e (in krish)  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19)  
 > **Active Integration Pull Request:** [#21 (krish → dev) [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/21)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20)  
@@ -724,7 +724,8 @@ d:\Projects\Z Catchers\
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
-3. **Review & Merge Production Release Pull Request #21 (`krish` → `main`):**
-   * Production release PR #21: [PR #21](https://github.com/KrishJdev/Z-Catchers/pull/21)
-   * Verify deployment logs and Discord login flow in Vercel following merge to production `main`.
+3. **Review & Merge Integration Pull Request #21 (`krish` → `dev`):**
+   * Integration PR #21: [PR #21](https://github.com/KrishJdev/Z-Catchers/pull/21)
+   * Merges production authentication secret fallback and profile UI improvements into `dev`.
+   * Following integration merge, open a production release PR (`dev` → `main`) to deploy to Vercel production.
    * (Optional Best Practice) Add `SESSION_SECRET` (random 32+ char string) in Vercel Project Settings > Environment Variables for explicit key configuration.
