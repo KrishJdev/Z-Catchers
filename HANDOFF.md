@@ -1,14 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T15:10:00+05:30  
+> **Last Updated:** 2026-11-12T18:15:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 629cbae  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
-> **Active Integration Pull Request:** [#27 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
-> **Active Production Release Pull Request:** [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26)  
+> **Latest Commit:** `1b16b4d`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
+> **Active Integration Pull Request:** [#44 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/44)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
+> **Active Production Release Pull Request:** None (all merged)  
 > **Build Status:** Passing (`npm run typecheck` clean, 0 errors | `npm run build` clean, 26/26 routes | `npm run test:unit` clean, 19/19 suites passed | `npm run test:all` clean, 20/20 suites passed)
 
 ---
@@ -69,6 +69,131 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 62: Integration Pull Request #44 (`krish` → `dev`)
+* **Created Integration Pull Request #44:**
+  - Opened PR: [#44 `chore: sync code audit issues to Jira, cross-link GitHub issues, and update transition tooling`](https://github.com/KrishJdev/Z-Catchers/pull/44)
+  - Targets `dev` from `krish`.
+  - Integrates all Phase 61 audit synchronization and Jira transition tooling into `dev`:
+    1. **Jira Issue Synchronization (`scripts/create-all-audit-issues.mjs`, `scripts/sync-audit-issues-to-jira.mjs`):**
+       - Automated creation of 14 audit tasks (`ZC-14` through `ZC-27`) in Jira under project `ZC` with complete technical breakdowns, impact analysis, code references, and acceptance criteria.
+       - Standardized issue type to top-level Task (`10071`).
+    2. **Audit Mapping & Cross-Linking (`scripts/audit-issues-map.json`, `scripts/link-gh-to-jira.mjs`):**
+       - Complete taxonomy mapping of all 14 audit issues across security, push/PWA robustness, timezone math, and rate limiting.
+       - Cross-linked Jira keys to GitHub issues `#30` through `#43` with automated linking comments.
+    3. **Transition Script Hardening (`scripts/transition-jira-issue.mjs`, `.github/workflows/jira-transition.yml`):**
+       - Added credential sanitization, improved error handling, and transition idempotency.
+       - Added GitHub Actions workflow dispatch options.
+    4. **Documentation & Handoff Updates (`HANDOFF.md`):**
+       - Documented Phase 59–61 audit findings, Jira issue mappings, and current production release status.
+* **Verification Check:**
+  - `npm run test:unit` clean (19/19 suites passed).
+  - `npx tsc --noEmit` clean (0 errors).
+
+### Phase 61: Comprehensive Website & PWA Code Audit, GitHub Issues & Jira Synchronization
+* **Full-Stack Robustness & Security Audit:**
+  - Executed a deep-dive code audit across `src/lib/`, `src/app/api/`, `src/components/`, `public/sw.js`, and PWA lifecycle handlers to identify robustness flaws, edge cases, race conditions, and security risks.
+  - Identified 14 distinct issues categorized into three priority tiers:
+    - **P1 - High Priority (Security & Authorization Integrity):** Issues 1–5 (`#30`–`#34` / `ZC-16`–`ZC-20`).
+    - **P2 - Medium Priority (PWA, Push Desync & Timing Race Conditions):** Issues 6–10 (`#35`–`#39` / `ZC-21`–`ZC-25`).
+    - **P3 - Low/Medium Priority (State Machine Inconsistencies & Caching):** Issues 11–14 (`#40`–`#43` / `ZC-26`, `ZC-27`, `ZC-14`, `ZC-15`).
+* **GitHub Issues & Taxonomy:**
+  - Established taxonomy labels: `security`, `pwa`, `backend`, `frontend`, `bug`, `enhancement`, `priority: high`, `priority: medium`, `priority: low`.
+  - Created 14 detailed GitHub issues (`#30` through `#43`) with comprehensive technical breakdowns including Problem Statement, Root Cause Analysis, Impact & Threat Model, Exact File & Line References, and Actionable Remediation Plans.
+* **Jira Cloud Project `ZC` Synchronization:**
+  - Created 14 matching Jira issues in project `ZC` (Project ID `10033`, Cloud Domain `krishjaiswal2182003.atlassian.net`) using top-level Task type (`10071`).
+  - Parsed structured Markdown into compliant Atlassian Document Format (ADF) v1 with headings, bullet lists, ordered lists, code blocks, and hard breaks.
+  - Mapped priorities cleanly (`High` for P1, `Medium` for P2/P3-medium, `Low` for P3-low) and attached corresponding labels.
+* **Bidirectional Issue Cross-Linking:**
+  - Added native Atlassian remote links on Jira tickets pointing directly to corresponding GitHub issue URLs.
+  - Posted cross-linking comments on each GitHub issue (`#30` through `#43`) pointing back to its corresponding Jira issue.
+* **Comprehensive Cross-Reference Matrix:**
+  | Issue # | Jira Key | Priority | Domain | Summary |
+  |---|---|---|---|---|
+  | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | [ZC-16](https://krishjaiswal2182003.atlassian.net/browse/ZC-16) | High (P1) | Security | Remove hardcoded fallback session secrets & dev PIN salt in production |
+  | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) | [ZC-17](https://krishjaiswal2182003.atlassian.net/browse/ZC-17) | High (P1) | Security / PWA | Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` |
+  | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | [ZC-18](https://krishjaiswal2182003.atlassian.net/browse/ZC-18) | High (P1) | Security | Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` |
+  | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) | [ZC-19](https://krishjaiswal2182003.atlassian.net/browse/ZC-19) | High (P1) | Security | Sanitize and validate `x-forwarded-host` in OAuth redirect base URL |
+  | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | [ZC-20](https://krishjaiswal2182003.atlassian.net/browse/ZC-20) | High (P1) | Security | Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded |
+  | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | [ZC-21](https://krishjaiswal2182003.atlassian.net/browse/ZC-21) | Medium (P2) | PWA / Push | Prevent race condition by recording nag deduplication before sending push |
+  | [#36](https://github.com/KrishJdev/Z-Catchers/issues/36) | [ZC-22](https://krishjaiswal2182003.atlassian.net/browse/ZC-22) | Medium (P2) | PWA / Frontend | Add Authorization Bearer header to push test and unsubscribe requests |
+  | [#37](https://github.com/KrishJdev/Z-Catchers/issues/37) | [ZC-23](https://krishjaiswal2182003.atlassian.net/browse/ZC-23) | Medium (P2) | Backend / Timezones | Align nag-assist date calculation with `getSleepCycleDate()` |
+  | [#38](https://github.com/KrishJdev/Z-Catchers/issues/38) | [ZC-24](https://krishjaiswal2182003.atlassian.net/browse/ZC-24) | Medium (P2) | PWA / Service Worker | Resolve `notificationclick` message dropping during tab navigation |
+  | [#39](https://github.com/KrishJdev/Z-Catchers/issues/39) | [ZC-25](https://krishjaiswal2182003.atlassian.net/browse/ZC-25) | Medium (P2) | Backend | Remove `wake_time_local` default destructuring to prevent schedule overwrites |
+  | [#40](https://github.com/KrishJdev/Z-Catchers/issues/40) | [ZC-26](https://krishjaiswal2182003.atlassian.net/browse/ZC-26) | Medium (P3) | State Machine | Reconcile Sleep Shield active vs `canVoteStrike` in 60-480m overdue window |
+  | [#41](https://github.com/KrishJdev/Z-Catchers/issues/41) | [ZC-27](https://krishjaiswal2182003.atlassian.net/browse/ZC-27) | Low (P3) | State Machine | Enforce mutual exclusion between `is_in_bed` and `is_woke_up` flags |
+  | [#42](https://github.com/KrishJdev/Z-Catchers/issues/42) | [ZC-14](https://krishjaiswal2182003.atlassian.net/browse/ZC-14) | Low (P3) | Security / Frontend | Avoid storing plaintext moderator passcode in `sessionStorage` |
+  | [#43](https://github.com/KrishJdev/Z-Catchers/issues/43) | [ZC-15](https://krishjaiswal2182003.atlassian.net/browse/ZC-15) | Low (P3) | PWA / Caching | Implement versioned cache invalidation for `_next/static` assets in Service Worker |
+* **Verification Check:**
+  - `npm run typecheck` clean (0 errors).
+  - `npm run test:unit` clean (19/19 suites passed in 10.25s).
+
+### Phase 60: Production Release Pull Request #28 (`dev` → `main`)
+* **Created Production Release PR #28:**
+  - Opened PR: [#28 `release: promote global IANA timezones, persistent rate limiting, cron idempotency locks, and CI pipeline to main`](https://github.com/KrishJdev/Z-Catchers/pull/28)
+  - Targets `main` from `dev`.
+  - Promotes all merged Phase 51 through Phase 59 features, security hardenings, and architectural improvements into production:
+    1. **Global IANA Timezone Catalog & Searchable GMT Offsets Selector:**
+       - Full 424 IANA timezone database and 38 GMT offsets (`GMT-12:00` to `GMT+14:00`).
+       - Categorized `<optgroup>`s with real-time query filtering.
+       - Reusable `<TimezoneSelect />` component ensuring zero mutation of existing user timezones.
+    2. **Persistent Supabase Rate Limiting & Distributed Cron Idempotency:**
+       - Persistent `rate_limits` table with sliding window and automatic DB cleanup.
+       - Distributed `cron_locks` table preventing duplicate background cron runs and overlapping push/Discord notifications.
+       - Idempotent database schema definitions in `supabase/schema.sql`.
+    3. **Canonical API Consolidation & Optimistic Concurrency:**
+       - Canonical endpoints for strike voting, strikes, and metastrikes with backward compatibility.
+       - Optimistic concurrency locking and precision timezone calculations.
+    4. **Unified CI/CD Pipeline & Automated Testing Suite:**
+       - GitHub Actions CI workflow (`.github/workflows/ci.yml`) on Node.js 22.
+       - Unified test runner (`scripts/run-tests.mjs`) with automated CI offline gating for live database calls.
+       - Mandatory unit testing directive codified in `AGENTS.md` and `AGENT_RULES.md`.
+    5. **CodeRabbit Review Hardening:**
+       - All CodeRabbit review findings resolved across rate limiting schemas, cron lease expiries, and test isolation.
+* **Verification & Merge Pre-Checks:**
+  - `git merge-tree origin/main origin/dev` confirmed 0 conflicts.
+  - `npx tsc --noEmit` clean (0 errors).
+  - `npm run test:unit` clean (all 19 test suites passed in 21.46s).
+
+### Phase 59: GitHub & Jira Issue Status Audit and Lifecycle Synchronization
+* **GitHub Open Issues Audit & Completion:**
+  - Audited all 7 open GitHub issues (`#1`, `#5`, `#6`, `#7`, `#8`, `#9`, `#10`).
+  - Confirmed 100% of underlying features, APIs, unit tests, and security guardrails are fully implemented, verified, and merged into production:
+    - `[ZC-1] Phase 1 MVP: Core Cross-Timezone Accountability`: Updated epic checklist with all 6 deliverables marked done; closed issue #1 as completed.
+    - `[ZC-5] Phase 1.4: Self-Service Schedule Edit Modal & 48-Hour Cooldown`: Closed issue #5 with complete audit notes referencing `MyScheduleModal.tsx`, 48-hour cooldown queue, and Discord journal validation regex.
+    - `[ZC-6] Phase 1.5: Web Push Notification Engine & Service Worker`: Closed issue #6 with audit notes referencing `public/sw.js`, VAPID key pairing, and multi-device preference management via `/api/push/subscribe`.
+    - `[ZC-7] Phase 1.6: 1-Minute Cron Dispatcher & Sleep Shield Guardrail`: Closed issue #7 with audit notes referencing `/api/cron/dispatch-notifications`, distributed locks, short leases, and Sleep Shield guarantees.
+    - `[ZC-8] Phase 2: Moderation & Anti-Dodge Controls`: Closed issue #8 with audit notes referencing `ModDrawer.tsx`, passcode/session unlock, and roster admin API `/api/mod`.
+    - `[ZC-9] Phase 2.1: Passcode-Protected Moderator Drawer (ModDrawer.tsx)`: Closed issue #9 with audit notes referencing drawer UI, pending queue, and `<TimezoneSelect />`.
+    - `[ZC-10] Phase 2.2: Instant Cooldown Override & Roster Admin API`: Closed issue #10 with audit notes referencing `/api/mod` CRUD, rate limiting, and live allowlist authorization.
+  - Verified `gh issue list --state open` is now 100% clean (0 open issues).
+* **Jira Board & Cloud API Synchronization:**
+  - Updated GitHub Repository secret `JIRA_TOKEN` via `gh secret set JIRA_TOKEN` with the refreshed Atlassian API key.
+  - Authenticated against `krishjaiswal2182003.atlassian.net` as `krish.jaiswal2182003@gmail.com`.
+  - Discovered all 13 issues in project `ZC` and transitioned all active tasks to `Done` (IDs verified on Jira):
+    - `ZC-1`: Phase 1 MVP: Core Cross-Timezone Accountability -> `Done`
+    - `ZC-2`: Phase 1.1: Database Schema & Supabase Configuration -> `Done`
+    - `ZC-3`: Phase 1.2: Luxon Sleep Engine & Cross-Timezone Calculations -> `Done`
+    - `ZC-4`: Phase 1.3: Warm Dark Mobile Dashboard UI & Status Buckets -> `Done`
+    - `ZC-5`: Phase 1.4: Self-Service Schedule Edit Modal & 48-Hour Cooldown -> `Done`
+    - `ZC-6`: Phase 1.5: Web Push Notification Engine & Service Worker -> `Done`
+    - `ZC-7`: Phase 1.6: 1-Minute Cron Dispatcher & Sleep Shield Guardrail -> `Done`
+    - `ZC-8`: Phase 2: Moderation & Anti-Dodge Controls -> `Done`
+    - `ZC-9`: Phase 2.1: Passcode-Protected Moderator Drawer (ModDrawer.tsx) -> `Done`
+    - `ZC-10`: Phase 2.2: Instant Cooldown Override & Roster Admin API -> `Done`
+    - `ZC-11`: Phase 3: Sleep Streaks, Badges & Discord Webhooks -> `Done`
+    - `ZC-12`: Phase 3.1: Bedtime Compliance Scoring & Streak Tracking -> `Done`
+    - `ZC-13`: Phase 3.2: Automated Discord Channel Webhooks & Polish -> `Done`
+  - Added idempotency check to `scripts/transition-jira-issue.mjs` verifying current status before fetching transitions, preventing errors when issues are already in target status.
+  - Updated JQL search endpoint in `scripts/transition-jira-issue.mjs` to request explicit fields (`id,key,summary,status`).
+* **Architecture & Roadmap Change of Plans Documentation:**
+  - Documented deprecation of legacy unauthenticated registration `POST /api/members` (HTTP 410 Gone) in favor of Discord OAuth2 authentication.
+  - Documented evolution of "Custom Quiet Hours" into dynamic Sleep Shield early check-in ("I'm In Bed") and excused Metastrike passes.
+  - Documented locking of Discord handles (auto-filled from Discord OAuth) to prevent member impersonation.
+  - Documented consolidation of legacy API proxy routes into canonical endpoints (`/api/cron/dispatch-notifications`, `/api/members/strikes`, `/api/members/strikes/metastrike`).
+* **Verification Check:**
+  - `npx tsc --noEmit` clean (0 errors).
+  - `npm run test:unit` clean (19/19 suites passed).
 
 ### Phase 58: Mandatory Unit Testing Directive in Agent Specifications
 * **Multi-Agent Directive Update (`AGENTS.md`):**
@@ -956,6 +1081,27 @@ d:\Projects\Z Catchers\
 
 ## 6. Current Status of Jira Tasks & Milestones
 
+### Active Backlog Tasks: Phase 61 Robustness & Security Audit
+
+| Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
+|---|---|---|---|---|---|
+| **ZC-16** | **High (P1)** | Security: Remove hardcoded fallback session secrets & dev PIN salt in production | `src/lib/auth.ts` | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | **TODO** |
+| **ZC-17** | **High (P1)** | Security: Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` | `src/app/api/push/unsubscribe/route.ts` | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) | **TODO** |
+| **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | **TODO** |
+| **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) | **TODO** |
+| **ZC-20** | **High (P1)** | Security: Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded | `src/app/api/members/update-schedule/route.ts` | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | **TODO** |
+| **ZC-21** | **Medium (P2)** | PWA / Notifications: Prevent race condition by recording nag deduplication before sending push | `src/app/api/members/nag-notif/route.ts` | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | **TODO** |
+| **ZC-22** | **Medium (P2)** | PWA / Push: Add Authorization Bearer header to push test and unsubscribe requests | `src/components/PushModal.tsx`, `src/lib/pushClient.ts` | [#36](https://github.com/KrishJdev/Z-Catchers/issues/36) | **TODO** |
+| **ZC-23** | **Medium (P2)** | Backend: Align nag-assist date calculation with `getSleepCycleDate()` | `src/app/api/members/nag-assist/route.ts` | [#37](https://github.com/KrishJdev/Z-Catchers/issues/37) | **TODO** |
+| **ZC-24** | **Medium (P2)** | PWA / Service Worker: Resolve `notificationclick` message dropping during tab navigation | `public/sw.js` | [#38](https://github.com/KrishJdev/Z-Catchers/issues/38) | **TODO** |
+| **ZC-25** | **Medium (P2)** | Backend: Remove `wake_time_local` default destructuring to prevent schedule overwrites | `src/app/api/members/update-schedule/route.ts` | [#39](https://github.com/KrishJdev/Z-Catchers/issues/39) | **TODO** |
+| **ZC-26** | **Medium (P3)** | State Machine: Reconcile Sleep Shield active vs `canVoteStrike` in 60-480m overdue window | `src/lib/sleepEngine.ts`, `src/components/MemberCard.tsx` | [#40](https://github.com/KrishJdev/Z-Catchers/issues/40) | **TODO** |
+| **ZC-27** | **Low (P3)** | State Machine: Enforce mutual exclusion between `is_in_bed` and `is_woke_up` flags | `src/app/api/auth/me/route.ts`, `src/app/api/members/route.ts` | [#41](https://github.com/KrishJdev/Z-Catchers/issues/41) | **TODO** |
+| **ZC-14** | **Low (P3)** | Security / ModDrawer: Avoid storing plaintext moderator passcode in `sessionStorage` | `src/components/ModDrawer.tsx` | [#42](https://github.com/KrishJdev/Z-Catchers/issues/42) | **TODO** |
+| **ZC-15** | **Low (P3)** | PWA / Cache: Implement versioned cache invalidation for `_next/static` assets in Service Worker | `public/sw.js` | [#43](https://github.com/KrishJdev/Z-Catchers/issues/43) | **TODO** |
+
+### Historical Implementation Milestones (Completed & Verified)
+
 | Issue Key | Summary / Milestone | Status | Completed In |
 |---|---|---|---|
 | **ZC-1** | Epic: Phase 1 MVP Core Application | DONE | MVP Complete |
@@ -965,45 +1111,46 @@ d:\Projects\Z Catchers\
 | **ZC-5** | Phase 1.4: Self-Service Schedule Edit Modal & 48h Cooldown | DONE | Commit `46025db` |
 | **ZC-6** | Phase 1.5: Web Push Notification Engine & Service Worker | DONE | Commit `fee9f22` |
 | **ZC-7** | Phase 1.6: 1-Minute Cron Dispatcher & Sleep Shield Guardrail | DONE | Commit `fee9f22` |
-| **ZC-8** | Epic: Phase 2 Moderation & Anti-Dodge Controls | **DONE** | Commit `f8ddcb2` |
+| **ZC-8** | Epic: Phase 2 Moderation & Anti-Dodge Controls | DONE | Commit `f8ddcb2` |
 | **ZC-9** | Phase 2.1: Passcode-Protected Moderator Drawer (`ModDrawer.tsx`)| DONE | Commit `d66de1f` / `4339402` |
 | **ZC-10**| Phase 2.2: Instant Cooldown Override & Roster Admin API | DONE | Commit `a3fc7fa` |
-| **ZC-13**| Phase 2.3: Simple Member PIN Login & Session Profile Binding | **DONE** | ZC-13 / Milestone 6 |
-| **ZC-11**| Epic: Phase 3 Sleep Streaks, Badges & Discord Webhooks | **DONE** | Phase 8 Complete |
-| **ZC-12**| Phase 3.1: Bedtime Compliance Scoring & Streak Tracking | **DONE** | Phase 5 / Phase 8 |
-| **ZC-13**| Phase 3.2: Automated Discord Channel Webhooks & Nag Assists | **DONE** | Phase 8 Complete |
-| **ZC-14**| Epic / Phase 4: Monthly Strikes & Metastrikes Accountability System | **DONE** | Phase 25 |
-| **ZC-15**| Mobile Layout Bugfixes & Standalone Onboarding Flow (`/join`) | **DONE** | Phase 29 |
-| **ZC-16**| MemberCard & Status Bucket Headers Warm Dark Refactor | **DONE** | Phase 30 |
-| **ZC-17**| Phase 1: Mobile PWA Lifecycle, Service Worker & Multi-Device Push | **DONE** | Phase 31 |
-| **ZC-18**| Phase 2: Mobile Navigation, Standalone Onboarding & Touch UX | **DONE** | Phase 32 |
-| **ZC-19**| Phase 3: Sleep Engine, IANA Timezone Math & Idempotent Cron | **DONE** | Phase 33 |
-| **ZC-20**| Phase 4: Community Accountability Mechanics & Serverless Security | **DONE** | Phase 34 |
-| **ZC-21**| Phase 35: PWA Phone Robustness, Safe Areas, Keyboard dvh & Offline Resilience | **DONE** | Phase 35 |
-| **ZC-22**| Phase 36: Ubiquitous Member Log Out & Auth Session De-identification | **DONE** | Commit `ac191d0` |
-| **ZC-23**| Phase 37: Code Review Remediations, Security Hardening & Concurrency Protection | **DONE** | Phase 37 |
-| **ZC-24**| Phase 40: Comprehensive Code Review Remediations, Session Owner Auth & A11y | **DONE** | Phase 40 |
-| **ZC-25**| Phase 41: Complete CodeRabbit Review Remediations & PR #17 Update | **DONE** | Phase 41 |
-| **ZC-26**| Phase 49: Sleeping State to Awake Undo Action & Leave Quiet Note Overflow Fix | **DONE** | PR #25 (Commit `4aa2d40`) |
-| **ZC-27**| Phase 54: Global IANA & GMT Timezones Expansion & Reusable Selector | **DONE** | Commit `95762f3` |
-| **ZC-28**| Phase 55: Immediate Codebase & Architectural Fixes (Tasks 1-5) | **DONE** | Commit `16de25b` |
-| **ZC-29**| Phase 57: CI Pipeline Test Runner TypeScript Loader Fix (`tsx`) | **DONE** | PR #27 |
+| **ZC-11**| Epic: Phase 3 Sleep Streaks, Badges & Discord Webhooks | DONE | Phase 8 Complete |
+| **ZC-12**| Phase 3.1: Bedtime Compliance Scoring & Streak Tracking | DONE | Phase 5 / Phase 8 |
+| **ZC-13**| Phase 3.2: Automated Discord Channel Webhooks & Nag Assists | DONE | Phase 8 Complete |
 
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Review & Merge Active Integration Pull Request (`krish` -> `dev`):**
-   * Active PR: `feat(timezone): add comprehensive global IANA timezones and GMT offsets selector` targets `dev` from `krish`.
-   * Integrates full canonical IANA timezone catalog (424 timezones) + all 38 standard GMT offsets, categorized `<optgroup>`s, real-time query filtering, and preservation of existing user timezones across `/join`, `MyScheduleModal.tsx`, and `ModDrawer.tsx`.
-   * Verify automated CI checks (`.github/workflows/ci.yml`) and merge into `dev`.
+1. **Sprint 1 — P1 (High Priority) Security & Auth Hardening:**
+   * **ZC-16 / GH #30 (`src/lib/auth.ts`):** Fail closed in production for `SESSION_SECRET` and `PIN_SALT`. Strip fallback secrets when `NODE_ENV === 'production'`.
+   * **ZC-17 / GH #31 (`src/app/api/push/unsubscribe/route.ts`):** Require active authenticated session for unsubscriptions; scope deletion to `sessionMemberId`.
+   * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** Replace in-memory rate limiting with `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
+   * **ZC-19 / GH #33 (`src/lib/auth.ts`):** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
+   * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles.
 
-2. **Review & Merge Active Production Release Pull Request [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26):**
-   * Active PR: [#26 `release: promote sleep state undo option and leave quiet note overflow fix to main`](https://github.com/KrishJdev/Z-Catchers/pull/26) targets `main` from `dev`.
-   * Promotes Phase 49 verified features (PR #25) into production: awake state machine transition, early wake-up/undo buttons, `WOKE_UP` notification logging, and "Leave quiet note" overflow fix.
-   * Verify CI and merge into `main`.
+2. **Sprint 2 — P2 (Medium Priority) PWA, Push & Concurrency Fixes:**
+   * **ZC-21 / GH #35 (`src/app/api/members/nag-notif/route.ts`):** Commit notification log deduplication record before dispatching push notifications.
+   * **ZC-22 / GH #36 (`src/components/PushModal.tsx`, `src/lib/pushClient.ts`):** Attach `Authorization: Bearer <token>` header to `/api/push/test` and `/api/push/unsubscribe`.
+   * **ZC-23 / GH #37 (`src/app/api/members/nag-assist/route.ts`):** Calculate local date using `getSleepCycleDate()` instead of standard calendar day.
+   * **ZC-24 / GH #38 (`public/sw.js`):** Clean up `postMessage` during `client.navigate()` in service worker `notificationclick` handler to avoid dropped deep link actions.
+   * **ZC-25 / GH #39 (`src/app/api/members/update-schedule/route.ts`):** Remove default `= '07:00'` destructuring to prevent unintentional overwriting of custom wake times.
 
-3. **Database Migration Execution in Supabase SQL Editor:**
+3. **Sprint 3 — P3 (Low Priority) State Machine, UI Polish & SW Cache Invalidation:**
+   * **ZC-26 / GH #40 (`src/lib/sleepEngine.ts`, `src/components/MemberCard.tsx`):** Reconcile conflicting `isSleepShieldActive` vs `canVoteStrike` states in 60-480m overdue window.
+   * **ZC-27 / GH #41 (`src/app/api/auth/me/route.ts`, `src/app/api/members/route.ts`):** Enforce mutual exclusion between `is_in_bed` and `is_woke_up`.
+   * **ZC-14 / GH #42 (`src/components/ModDrawer.tsx`):** Avoid storing plaintext master moderator passcode in browser `sessionStorage`.
+   * **ZC-15 / GH #43 (`public/sw.js`):** Implement build-hash or versioned cache busting for `_next/static` assets to prevent hydration mismatches on new deployments.
+
+4. **Review & Merge Active Integration Pull Request [#44 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/44):**
+   * Active PR: [#44 `chore: sync code audit issues to Jira, cross-link GitHub issues, and update transition tooling`](https://github.com/KrishJdev/Z-Catchers/pull/44) targets `dev` from `krish`.
+   * Integrates all verified Phase 61 audit synchronization and Jira transition tooling into `dev`:
+     - Jira audit issues `ZC-14` through `ZC-27` mapped to GitHub issues `#30` through `#43`.
+     - Hardened Jira transition workflow and idempotent transition scripts.
+     - Documented audit matrix and taxonomy in `HANDOFF.md`.
+   * Note: Production release PR [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28) was successfully merged into `main`.
+
+5. **Database Migration Execution in Supabase SQL Editor:**
    * Run the idempotent migration block from `supabase/schema.sql` on the remote Supabase database:
      ```sql
      -- Members table columns
@@ -1049,11 +1196,11 @@ d:\Projects\Z Catchers\
        FOR ALL USING (auth.role() = 'service_role');
      ```
 
-4. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
+6. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
-3. **Verify Production Deployment Following PR #22 Merge (`main`):**
-   * Production release PR #22 successfully merged into `main`: [PR #22](https://github.com/KrishJdev/Z-Catchers/pull/22)
+7. **Verify Production Deployment Following Release Merges (`main`):**
+   * Production releases up to PR #26 successfully merged into `main`.
    * Verify deployment logs and Discord login flow in Vercel following merge to production `main`.
    * (Optional Best Practice) Add `SESSION_SECRET` (random 32+ char string) in Vercel Project Settings > Environment Variables for explicit key configuration.

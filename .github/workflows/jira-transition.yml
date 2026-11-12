@@ -34,6 +34,7 @@ jobs:
           JIRA_DOMAIN: krishjaiswal2182003.atlassian.net
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+          JIRA_DEBUG: '1'
           EVENT_NAME: ${{ github.event_name }}
           INPUT_ISSUE_KEY: ${{ github.event.inputs.issue_key }}
           INPUT_TARGET_STATUS: ${{ github.event.inputs.target_status }}
