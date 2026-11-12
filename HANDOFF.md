@@ -1,14 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T15:10:00+05:30  
+> **Last Updated:** 2026-11-12T15:40:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 629cbae  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
-> **Active Integration Pull Request:** [#27 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
-> **Active Production Release Pull Request:** [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26)  
+> **Latest Commit:** 457b380  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
+> **Active Integration Pull Request:** None (all merged)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26)  
+> **Active Production Release Pull Request:** None (all merged)  
 > **Build Status:** Passing (`npm run typecheck` clean, 0 errors | `npm run build` clean, 26/26 routes | `npm run test:unit` clean, 19/19 suites passed | `npm run test:all` clean, 20/20 suites passed)
 
 ---
@@ -69,6 +69,31 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 59: GitHub & Jira Issue Status Audit and Lifecycle Synchronization
+* **GitHub Open Issues Audit & Completion:**
+  - Audited all 7 open GitHub issues (`#1`, `#5`, `#6`, `#7`, `#8`, `#9`, `#10`).
+  - Confirmed 100% of underlying features, APIs, unit tests, and security guardrails are fully implemented, verified, and merged into production:
+    - `[ZC-1] Phase 1 MVP: Core Cross-Timezone Accountability`: Updated epic checklist with all 6 deliverables marked done; closed issue #1 as completed.
+    - `[ZC-5] Phase 1.4: Self-Service Schedule Edit Modal & 48-Hour Cooldown`: Closed issue #5 with complete audit notes referencing `MyScheduleModal.tsx`, 48-hour cooldown queue, and Discord journal validation regex.
+    - `[ZC-6] Phase 1.5: Web Push Notification Engine & Service Worker`: Closed issue #6 with audit notes referencing `public/sw.js`, VAPID key pairing, and multi-device preference management via `/api/push/subscribe`.
+    - `[ZC-7] Phase 1.6: 1-Minute Cron Dispatcher & Sleep Shield Guardrail`: Closed issue #7 with audit notes referencing `/api/cron/dispatch-notifications`, distributed locks, short leases, and Sleep Shield guarantees.
+    - `[ZC-8] Phase 2: Moderation & Anti-Dodge Controls`: Closed issue #8 with audit notes referencing `ModDrawer.tsx`, passcode/session unlock, and roster admin API `/api/mod`.
+    - `[ZC-9] Phase 2.1: Passcode-Protected Moderator Drawer (ModDrawer.tsx)`: Closed issue #9 with audit notes referencing drawer UI, pending queue, and `<TimezoneSelect />`.
+    - `[ZC-10] Phase 2.2: Instant Cooldown Override & Roster Admin API`: Closed issue #10 with audit notes referencing `/api/mod` CRUD, rate limiting, and live allowlist authorization.
+  - Verified `gh issue list --state open` is now 100% clean (0 open issues).
+* **Jira Sync & Transition Automation Diagnostic:**
+  - Updated `.jira-transition` with `ZC-1`, `ZC-5`, `ZC-6`, `ZC-7`, `ZC-8`, `ZC-9`, and `ZC-10` set to `Done`.
+  - Added debug logging in `scripts/transition-jira-issue.mjs` and `.github/workflows/jira-transition.yml`.
+  - Triggered and inspected GitHub Actions transition workflow run: identified that repository secret `JIRA_TOKEN` is currently unauthorized (`HTTP 401: Client must be authenticated to access this resource`), preventing remote transition execution until credentials are refreshed.
+* **Architecture & Roadmap Change of Plans Documentation:**
+  - Documented deprecation of legacy unauthenticated registration `POST /api/members` (HTTP 410 Gone) in favor of Discord OAuth2 authentication.
+  - Documented evolution of "Custom Quiet Hours" into dynamic Sleep Shield early check-in ("I'm In Bed") and excused Metastrike passes.
+  - Documented locking of Discord handles (auto-filled from Discord OAuth) to prevent member impersonation.
+  - Documented consolidation of legacy API proxy routes into canonical endpoints (`/api/cron/dispatch-notifications`, `/api/members/strikes`, `/api/members/strikes/metastrike`).
+* **Verification Check:**
+  - `npx tsc --noEmit` clean (0 errors).
+  - `npm run test:unit` clean (19/19 suites passed).
 
 ### Phase 58: Mandatory Unit Testing Directive in Agent Specifications
 * **Multi-Agent Directive Update (`AGENTS.md`):**
@@ -993,17 +1018,19 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Review & Merge Active Integration Pull Request (`krish` -> `dev`):**
-   * Active PR: `feat(timezone): add comprehensive global IANA timezones and GMT offsets selector` targets `dev` from `krish`.
-   * Integrates full canonical IANA timezone catalog (424 timezones) + all 38 standard GMT offsets, categorized `<optgroup>`s, real-time query filtering, and preservation of existing user timezones across `/join`, `MyScheduleModal.tsx`, and `ModDrawer.tsx`.
-   * Verify automated CI checks (`.github/workflows/ci.yml`) and merge into `dev`.
+1. **Refresh Atlassian Jira API Token in GitHub Secrets:**
+   * In GitHub Actions, the `Jira Issue Transition` workflow confirmed that the current secret `JIRA_TOKEN` returns HTTP 401 Unauthorized against `krishjaiswal2182003.atlassian.net`.
+   * To automatically complete the remote Jira transition for keys `ZC-1`, `ZC-5`, `ZC-6`, `ZC-7`, `ZC-8`, `ZC-9`, and `ZC-10`:
+     1. Generate an API token at: [Atlassian API Tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
+     2. Update `JIRA_TOKEN` in GitHub repository settings: `Settings > Secrets and variables > Actions > Repository secrets`.
+     3. Verify `JIRA_EMAIL` is set to `krish.jaiswal2182003@gmail.com`.
+     4. Trigger the workflow via GitHub CLI or Actions UI:
+        ```bash
+        gh workflow run jira-transition.yml
+        ```
+     *(Note: `.jira-transition` has already been pre-staged and committed with all 7 keys set to `Done`)*.
 
-2. **Review & Merge Active Production Release Pull Request [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26):**
-   * Active PR: [#26 `release: promote sleep state undo option and leave quiet note overflow fix to main`](https://github.com/KrishJdev/Z-Catchers/pull/26) targets `main` from `dev`.
-   * Promotes Phase 49 verified features (PR #25) into production: awake state machine transition, early wake-up/undo buttons, `WOKE_UP` notification logging, and "Leave quiet note" overflow fix.
-   * Verify CI and merge into `main`.
-
-3. **Database Migration Execution in Supabase SQL Editor:**
+2. **Database Migration Execution in Supabase SQL Editor:**
    * Run the idempotent migration block from `supabase/schema.sql` on the remote Supabase database:
      ```sql
      -- Members table columns
