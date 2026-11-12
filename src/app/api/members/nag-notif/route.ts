@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { getRequestSessionMemberId } from '@/lib/auth';
 import { DateTime } from 'luxon';
-import { computeMemberState, getSleepCycleDate, toValidLuxonZone } from '@/lib/sleepEngine';
+import { computeMemberState, getNightScheduleDateTime, getSleepCycleDate, toValidLuxonZone } from '@/lib/sleepEngine';
 import { sendPushNotification } from '@/lib/pushServer';
 import crypto from 'crypto';
 
@@ -150,9 +150,10 @@ export async function POST(request: Request) {
     if (isWakeUpNag) {
       // WAKE UP NAG LOGIC:
       // A. Check if target member has already marked themselves awake
+      const activeSleepCycleDate = getSleepCycleDate(targetMember, nowUtc);
       const hasLoggedWakeUp = Boolean(
-        targetMember.is_woke_up ||
         (targetMember.last_wake_cycle_date && targetMember.last_wake_cycle_date === cycleDate) ||
+        (targetMember.is_woke_up && cycleDate === activeSleepCycleDate) ||
         targetState.hasLoggedWakeUp
       );
 
@@ -163,16 +164,31 @@ export async function POST(request: Request) {
         );
       }
 
-      // B. Must be past target member's awake time
-      if (!targetState.isPastWakeTime) {
+      // B. Excused Metastrike pass strictly suppresses community nag reminders
+      if (isMetastrikeActive) {
         return NextResponse.json({
           success: false,
           shieldActive: true,
-          message: `${targetMember.discord_username}'s Sleep Shield is active until their wake time (${targetState.activeWakeTimeLocal || '07:00'}). Nag notifications are muted.`,
+          message: `${targetMember.discord_username} has an active Metastrike pass. Nag notifications are muted.`,
         });
       }
 
-      // C. 15-minute anti-spam cooldown per sender for wake-up nag
+      // C. Must be past target member's awake time for the selected sleep cycle
+      const sleeperZone = toValidLuxonZone(targetMember.timezone);
+      const sleeperNow = nowUtc.setZone(sleeperZone);
+      const cycleDt = DateTime.fromISO(cycleDate, { zone: sleeperZone }).startOf('day');
+      const selectedNightSchedule = getNightScheduleDateTime(targetMember, cycleDt);
+      const isPastWakeTimeForCycle = sleeperNow >= selectedNightSchedule.wakeDateTime;
+
+      if (!isPastWakeTimeForCycle) {
+        return NextResponse.json({
+          success: false,
+          shieldActive: true,
+          message: `${targetMember.discord_username}'s Sleep Shield is active until their wake time (${selectedNightSchedule.wakeTimeStr || '07:00'}). Nag notifications are muted.`,
+        });
+      }
+
+      // D. 15-minute anti-spam cooldown per sender for wake-up nag
       nagLogType = `MANUAL_NAG:WAKE_UP:${helperKey}`;
       const { data: existingNagLog } = await supabaseAdmin
         .from('notification_logs')

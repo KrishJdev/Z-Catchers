@@ -10,6 +10,9 @@
  */
 
 import assert from 'assert';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { issues } from './create-all-audit-issues.mjs';
 import { markdownToAdf } from './sync-audit-issues-to-jira.mjs';
 
@@ -114,45 +117,93 @@ for (const issue of issues) {
 console.log('  ✅ All 14 issue bodies parsed to ADF with intact headings and content nodes.\n');
 
 // ---------------------------------------------------------------------------
-// Test 4: Checkpointing and map retention simulation
+// Test 4: Checkpointing and atomic file persistence integration
 // ---------------------------------------------------------------------------
-console.log('▶ Test 4: Verifying map entry retention and checkpointing logic');
-const initialEntry = {
-  id: 1,
-  title: issues[0].title,
-  issueTypeId: '10071',
-  ghNumber: '30',
-  ghUrl: 'https://github.com/KrishJdev/Z-Catchers/issues/30',
-};
+console.log('▶ Test 4: Verifying map entry retention and atomic checkpointing logic');
 
-// Simulate Jira creation checkpointing before remote link
-const checkpointed = {
-  ...initialEntry,
-  jiraKey: 'ZC-16',
-  jiraUrl: 'https://krishjaiswal2182003.atlassian.net/browse/ZC-16',
-};
-assert.strictEqual(checkpointed.jiraKey, 'ZC-16');
-assert(checkpointed.jiraUrl.includes('ZC-16'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jira-sync-test-'));
+const testMapFile = path.join(tempDir, 'audit-issues-map.json');
+const testSyncedFile = path.join(tempDir, 'audit-issues-synced.json');
 
-// Simulate remote link failure after creation: identity must remain intact
-const linkFailed = {
-  ...checkpointed,
-  remoteLinked: false,
-  remoteLinkError: 'Network timeout',
-};
-assert.strictEqual(linkFailed.jiraKey, 'ZC-16', 'Jira key must be retained after remote link failure');
-assert.strictEqual(linkFailed.remoteLinked, false);
+try {
+  const initialEntries = [
+    {
+      id: 1,
+      title: issues[0].title,
+      issueTypeId: '10071',
+      ghNumber: '30',
+      ghUrl: 'https://github.com/KrishJdev/Z-Catchers/issues/30',
+    },
+  ];
 
-// Simulate retry: retry links existing Jira key without changing identity
-const retrySucceeded = {
-  ...linkFailed,
-  remoteLinked: true,
-};
-delete retrySucceeded.remoteLinkError;
-assert.strictEqual(retrySucceeded.jiraKey, 'ZC-16');
-assert.strictEqual(retrySucceeded.remoteLinked, true);
-assert.strictEqual(retrySucceeded.remoteLinkError, undefined);
+  // Seed initial file without jiraKey
+  fs.writeFileSync(testMapFile, JSON.stringify(initialEntries, null, 2), 'utf8');
 
-console.log('  ✅ Checkpointing and retry state flow verified successfully.\n');
+  // Simulate Pass 1: Jira creation succeeds, checkpoint is atomically written before link attempt
+  const pass1List = JSON.parse(fs.readFileSync(testMapFile, 'utf8'));
+  const currentItem = { ...pass1List[0] };
+  currentItem.jiraKey = 'ZC-16';
+  currentItem.jiraUrl = 'https://krishjaiswal2182003.atlassian.net/browse/ZC-16';
+  pass1List[0] = currentItem;
+
+  // Atomic checkpoint write
+  const tmpSyncedFile1 = `${testSyncedFile}.tmp`;
+  fs.writeFileSync(tmpSyncedFile1, JSON.stringify(pass1List, null, 2), 'utf8');
+  fs.renameSync(tmpSyncedFile1, testSyncedFile);
+
+  // Assert intermediate file on disk retains jiraKey even before linking
+  const intermediateDisk = JSON.parse(fs.readFileSync(testSyncedFile, 'utf8'));
+  assert.strictEqual(intermediateDisk[0].jiraKey, 'ZC-16', 'Intermediate file must retain created Jira key');
+
+  // Link attempt fails: record failure without losing jiraKey
+  currentItem.remoteLinked = false;
+  currentItem.remoteLinkError = 'Network timeout';
+  pass1List[0] = currentItem;
+
+  const serialized1 = JSON.stringify(pass1List, null, 2);
+  for (const dest of [testSyncedFile, testMapFile]) {
+    const tmp = `${dest}.tmp`;
+    fs.writeFileSync(tmp, serialized1, 'utf8');
+    fs.renameSync(tmp, dest);
+  }
+
+  const diskAfterPass1 = JSON.parse(fs.readFileSync(testSyncedFile, 'utf8'));
+  assert.strictEqual(diskAfterPass1[0].jiraKey, 'ZC-16', 'Jira key must be retained after remote link failure');
+  assert.strictEqual(diskAfterPass1[0].remoteLinked, false);
+
+  // Simulate Pass 2: Retry with existing Jira key
+  let jiraCreateCallCount = 0;
+  const pass2List = JSON.parse(fs.readFileSync(testSyncedFile, 'utf8'));
+  for (let i = 0; i < pass2List.length; i++) {
+    const item = { ...pass2List[i] };
+    if (!item.jiraKey) {
+      jiraCreateCallCount++;
+    } else {
+      // Existing key: link without creating duplicate
+      item.remoteLinked = true;
+      delete item.remoteLinkError;
+    }
+    pass2List[i] = item;
+  }
+
+  assert.strictEqual(jiraCreateCallCount, 0, 'Must NOT recreate Jira issue when jiraKey already exists');
+  assert.strictEqual(pass2List[0].jiraKey, 'ZC-16');
+  assert.strictEqual(pass2List[0].remoteLinked, true);
+
+  const serialized2 = JSON.stringify(pass2List, null, 2);
+  for (const dest of [testSyncedFile, testMapFile]) {
+    const tmp = `${dest}.tmp`;
+    fs.writeFileSync(tmp, serialized2, 'utf8');
+    fs.renameSync(tmp, dest);
+  }
+
+  const diskAfterPass2 = JSON.parse(fs.readFileSync(testSyncedFile, 'utf8'));
+  assert.strictEqual(diskAfterPass2[0].remoteLinked, true);
+  assert.strictEqual(diskAfterPass2[0].jiraKey, 'ZC-16');
+} finally {
+  fs.rmSync(tempDir, { recursive: true, force: true });
+}
+
+console.log('  ✅ Atomic checkpointing, disk persistence, and retry flow verified successfully.\n');
 
 console.log('🎉 All audit issue synchronization & parser tests passed!\n');

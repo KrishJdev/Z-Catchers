@@ -262,32 +262,34 @@ export function MemberCard({
   useEffect(() => {
     const checkCooldown = () => {
       // 1. Bedtime reminder cooldown
-      let bedDiffMs = 0;
+      let bedDiffMs = inMemoryExpiriesRef.current.bedtime - Date.now();
       try {
         const stored = localStorage.getItem(bedtimeStorageKey);
         if (stored) {
-          bedDiffMs = Number(stored) - Date.now();
-          if (bedDiffMs <= 0) {
+          const storedDiff = Number(stored) - Date.now();
+          bedDiffMs = Math.max(bedDiffMs, storedDiff);
+          if (storedDiff <= 0) {
             localStorage.removeItem(bedtimeStorageKey);
           }
         }
       } catch {
-        bedDiffMs = inMemoryExpiriesRef.current.bedtime - Date.now();
+        // in-memory expiry already applied
       }
       setBedtimeCooldownSeconds(bedDiffMs > 0 ? Math.ceil(bedDiffMs / 1000) : 0);
 
       // 2. Wake-up reminder cooldown
-      let wakeDiffMs = 0;
+      let wakeDiffMs = inMemoryExpiriesRef.current.wake - Date.now();
       try {
         const stored = localStorage.getItem(wakeStorageKey);
         if (stored) {
-          wakeDiffMs = Number(stored) - Date.now();
-          if (wakeDiffMs <= 0) {
+          const storedDiff = Number(stored) - Date.now();
+          wakeDiffMs = Math.max(wakeDiffMs, storedDiff);
+          if (storedDiff <= 0) {
             localStorage.removeItem(wakeStorageKey);
           }
         }
       } catch {
-        wakeDiffMs = inMemoryExpiriesRef.current.wake - Date.now();
+        // in-memory expiry already applied
       }
       setWakeCooldownSeconds(wakeDiffMs > 0 ? Math.ceil(wakeDiffMs / 1000) : 0);
     };

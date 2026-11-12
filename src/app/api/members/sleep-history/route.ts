@@ -104,6 +104,7 @@ export async function GET(request: Request) {
         }
 
         for (const strike of strikeRows) {
+          if (strike.record_type === 'pending_vote') continue;
           const date = strike.sleep_cycle_date;
           const existing = logMap.get(date);
           const strikeStatus: SleepLog['status'] =

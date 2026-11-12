@@ -172,6 +172,10 @@ export async function POST(request: Request) {
     let wakeSource: 'button' | 'manual';
     let wokeUpDateTime: DateTime;
 
+    if (mode !== 'button' && mode !== 'manual') {
+      return NextResponse.json({ error: 'Invalid wake-up mode.' }, { status: 400 });
+    }
+
     if (mode === 'button' && cycleDate && cycleDate !== currentCycleDate) {
       return NextResponse.json(
         { error: 'Historical wake-up entries require manual mode with a specified wake time.' },

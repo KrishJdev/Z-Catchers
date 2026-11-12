@@ -223,6 +223,35 @@ CREATE TABLE IF NOT EXISTS public.sleep_logs (
   UNIQUE (member_id, cycle_date)
 );
 
+-- Guarded migration: Convert sleep_logs.member_id from TEXT to UUID and link foreign key if upgrading existing table
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'sleep_logs'
+      AND column_name = 'member_id' AND data_type = 'text'
+  ) THEN
+    -- Delete orphan or non-UUID records before conversion to avoid migration failures
+    DELETE FROM public.sleep_logs
+    WHERE member_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       OR member_id::uuid NOT IN (SELECT id FROM public.members);
+
+    ALTER TABLE public.sleep_logs
+      ALTER COLUMN member_id TYPE UUID USING member_id::uuid;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.table_constraints
+      WHERE constraint_schema = 'public'
+        AND table_name = 'sleep_logs'
+        AND constraint_name = 'sleep_logs_member_id_fkey'
+    ) THEN
+      ALTER TABLE public.sleep_logs
+        ADD CONSTRAINT sleep_logs_member_id_fkey
+        FOREIGN KEY (member_id) REFERENCES public.members(id) ON DELETE CASCADE;
+    END IF;
+  END IF;
+END $$;
+
 -- Indexes for high-performance cron lookups & timezone queries
 CREATE INDEX IF NOT EXISTS idx_members_active ON members(is_active);
 CREATE INDEX IF NOT EXISTS idx_members_pending ON members(pending_effective_at) WHERE pending_effective_at IS NOT NULL;

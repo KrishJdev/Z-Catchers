@@ -285,6 +285,10 @@ export async function POST(request: Request) {
       target_wake_time: activeCycle.activeWakeTimeLocal,
       in_bed_at: nowUtc.toISO(),
       in_bed_local_time: sleeperNow.toFormat('HH:mm'),
+      woke_up_at: null,
+      woke_up_local_time: null,
+      wake_source: null,
+      duration_minutes: null,
       status: activeCycle.diffMinutes > 5 ? 'late' : 'on_time',
     });
 

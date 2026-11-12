@@ -547,16 +547,23 @@ export async function insertMemberSafe(
  * In-memory fallback map for members (testing and offline development)
  */
 const memoryMembers = new Map<string, Member>();
+const testFixtures = new Set<string>();
+
+export function isTestMemberFixture(memberId: string): boolean {
+  return testFixtures.has(memberId) || memberId.startsWith('mem_');
+}
 
 export function getInMemoryMember(memberId: string): Member | undefined {
   return memoryMembers.get(memberId);
 }
 
 export function setInMemoryMember(member: Member): void {
+  testFixtures.add(member.id);
   memoryMembers.set(member.id, hydrateMemberWeekendHours(member));
 }
 
 export function clearInMemoryMembers(): void {
+  testFixtures.clear();
   memoryMembers.clear();
 }
 
@@ -564,6 +571,13 @@ export function clearInMemoryMembers(): void {
  * Safely fetches a member by ID, checking live Supabase first and falling back to in-memory store.
  */
 export async function getMemberByIdSafe(memberId: string): Promise<{ data: Member | null; error: any }> {
+  if (isTestMemberFixture(memberId)) {
+    const inMem = memoryMembers.get(memberId);
+    if (inMem) {
+      return { data: inMem, error: null };
+    }
+  }
+
   if (isSupabaseConfigured) {
     try {
       const { data, error } = await supabaseAdmin
@@ -576,6 +590,10 @@ export async function getMemberByIdSafe(memberId: string): Promise<{ data: Membe
         const hydrated = hydrateMemberWeekendHours(data as Member);
         memoryMembers.set(memberId, hydrated);
         return { data: hydrated, error: null };
+      }
+      if (!error) {
+        memoryMembers.delete(memberId);
+        return { data: null, error: new Error('Member not found') };
       }
     } catch (err: any) {
       console.warn('[db] Supabase getMemberByIdSafe exception:', err.message);
@@ -634,20 +652,25 @@ export async function upsertSleepLog(
 ): Promise<{ data: SleepLog | null; error: any; isDurable: boolean }> {
   const memKey = getSleepLogMemoryKey(entry.member_id, entry.cycle_date);
   let existing = memorySleepLogs.get(memKey);
+  const isTestFixture = isTestMemberFixture(entry.member_id);
 
-  if (isSupabaseConfigured) {
+  if (isSupabaseConfigured && !isTestFixture) {
     try {
-      const { data: dbRow } = await supabaseAdmin
+      const { data: dbRow, error: readErr } = await supabaseAdmin
         .from('sleep_logs')
         .select('*')
         .eq('member_id', entry.member_id)
         .eq('cycle_date', entry.cycle_date)
         .maybeSingle();
+      if (readErr) {
+        console.warn('[db] upsertSleepLog pre-read failed; skipping durable write:', readErr.message);
+        return { data: null, error: readErr, isDurable: false };
+      }
       if (dbRow) {
         existing = { ...(existing || {}), ...(dbRow as SleepLog) };
       }
-    } catch {
-      // Continue with in-memory existing
+    } catch (err: any) {
+      return { data: null, error: err, isDurable: false };
     }
   }
 
@@ -674,7 +697,7 @@ export async function upsertSleepLog(
   // Keep in-memory cache synchronized
   memorySleepLogs.set(memKey, merged);
 
-  if (isSupabaseConfigured) {
+  if (isSupabaseConfigured && !isTestFixture) {
     try {
       const { data, error } = await supabaseAdmin
         .from('sleep_logs')
@@ -725,7 +748,7 @@ export async function getMemberSleepLogs(
   startCycleDate?: string,
   endCycleDate?: string
 ): Promise<{ data: SleepLog[]; error: any }> {
-  if (isSupabaseConfigured) {
+  if (isSupabaseConfigured && !isTestMemberFixture(memberId)) {
     try {
       let query = supabaseAdmin
         .from('sleep_logs')

@@ -503,7 +503,9 @@ export async function createGitHubIssues() {
       : item;
   });
 
-  fs.writeFileSync(mapFile, JSON.stringify(finalResults, null, 2), 'utf8');
+  const finalTmpMapFile = `${mapFile}.tmp`;
+  fs.writeFileSync(finalTmpMapFile, JSON.stringify(finalResults, null, 2), 'utf8');
+  fs.renameSync(finalTmpMapFile, mapFile);
   console.log(`\nGitHub issues processing finished! Saved map to ${mapFile}`);
 
   if (hasError) {

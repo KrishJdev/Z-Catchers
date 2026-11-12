@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T02:41:00+05:30  
+> **Last Updated:** 2026-11-13T04:06:27+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -69,6 +69,37 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 75: PR #49 CodeRabbit Review Suggestions Resolution & Full Hardening
+* **PostgreSQL Schema Migration Guarding (`supabase/schema.sql` & `HANDOFF.md`):**
+  - Added guarded conversion block following `CREATE TABLE IF NOT EXISTS public.sleep_logs`.
+  - Safely purges orphan records and non-UUID values before executing `ALTER COLUMN member_id TYPE UUID USING member_id::uuid`.
+  - Added `sleep_logs_member_id_fkey` constraint with `ON DELETE CASCADE` referencing `public.members(id)` if not already present.
+* **Sleep Log Prior Wake Field Clearance on Re-Check-In (`src/app/api/members/in-bed/route.ts`):**
+  - When a member checks in early or re-checks in, explicitly passed `woke_up_at: null`, `woke_up_local_time: null`, `wake_source: null`, and `duration_minutes: null` to `upsertSleepLog` alongside clearing `last_wake_cycle_date` on the member row, ensuring stale morning wake records are wiped for the fresh sleep session.
+* **Wake-Up Nag Shield & Selected Cycle Schedule Verification (`src/app/api/members/nag-notif/route.ts`):**
+  - Extended Metastrike pass shield suppression to the wake-up nag flow (`if (isMetastrikeActive)` returns `{ success: false, shieldActive: true }`), ensuring members with excused passes are never nagged in the morning.
+  - Calculated wake-up time eligibility against the target member's selected cycle schedule (`getNightScheduleDateTime(targetMember, cycleDt)`) rather than relying on `computeMemberState`'s active cycle date, preventing erroneous shield blocks when reviewing yesterday's cycle after 13:00.
+* **Sleep History Pending Vote Exclusion (`src/app/api/members/sleep-history/route.ts`):**
+  - Updated strike merge loop to ignore records where `record_type === 'pending_vote'`, ensuring unconfirmed active community strike votes do not register as missed nights or skew the on-time percentage calculation.
+* **Wake-Up Mode Validation (`src/app/api/members/wake-up/route.ts`):**
+  - Added early input validation: rejects any mode other than `'button'` and `'manual'` with HTTP 400 before historical cycle checks or calculation branches execute.
+* **In-Memory Cooldown Expiry Fallback (`src/components/MemberCard.tsx`):**
+  - Updated `checkCooldown` logic to initialize with `inMemoryExpiriesRef.current[type] - Date.now()`, ensuring that in browsers where `localStorage.setItem` fails (e.g. private browsing or full quota) but `getItem` returns null, the in-memory expiry countdown is strictly preserved.
+* **Request Sequence Verification (`src/components/SleepCalendarModal.tsx`):**
+  - Replaced composite key checks in `fetchHistory` with monotonically increasing `requestSeqRef.current = ++requestId` guard, ensuring stale asynchronous responses cannot overwrite fresh calendar data or cause loading state discrepancies.
+* **Pre-Read Failure Protection & Test Fixture Isolation (`src/lib/db.ts`):**
+  - Pre-read query in `upsertSleepLog` checks for both returned errors and exceptions; on failure, halts durable write and returns `data: null` to prevent partial data from overwriting persisted columns in Supabase.
+  - Added `isTestMemberFixture` detection to isolate unit test mock members (`mem_fox_test_*`), preventing test runs from querying remote Supabase tables while guaranteeing complete cache eviction for deleted members in production.
+* **Uniform Weekly Schedule Weekend Badge Handling (`src/lib/sleepEngine.ts`):**
+  - Updated `hasWeekendOverride` in both `getBedtimeForNight` and `getNightScheduleDateTime`: when `weekly_schedule` is configured, the weekend override flag is only enabled if the night's bedtime or wake time differs from at least one other weekday, preventing uniform schedules from incorrectly displaying the "Weekend" badge.
+* **Atomic Map & Synced Results Persistence (`scripts/create-all-audit-issues.mjs` & `scripts/sync-audit-issues-to-jira.mjs`):**
+  - Wrapped final JSON serialization writes in temporary file replacement (`.tmp` write followed by `fs.renameSync`) to ensure atomic persistence and prevent file corruption if interrupted.
+* **Integration Test for Atomic Persistence (`scripts/test-audit-issue-sync.mjs`):**
+  - Upgraded Test 4 to an isolated integration test in a temporary working directory verifying initial seeding, intermediate atomic Jira key retention, failure tolerance, and non-duplicate retry linking.
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 25/25 test suites passing (12.56s).
 
 ### Phase 74: PR #49 Comprehensive Review Verification & Atomic Persistence Hardening
 * **Specification Documents Synchronization:**
@@ -1575,6 +1606,34 @@ d:\Projects\Z Catchers\
        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
        UNIQUE (member_id, cycle_date)
      );
+
+     -- Guarded migration: Convert sleep_logs.member_id from TEXT to UUID and link foreign key if upgrading existing table
+     DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'sleep_logs'
+           AND column_name = 'member_id' AND data_type = 'text'
+       ) THEN
+         DELETE FROM public.sleep_logs
+         WHERE member_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            OR member_id::uuid NOT IN (SELECT id FROM public.members);
+
+         ALTER TABLE public.sleep_logs
+           ALTER COLUMN member_id TYPE UUID USING member_id::uuid;
+
+         IF NOT EXISTS (
+           SELECT 1 FROM information_schema.table_constraints
+           WHERE constraint_schema = 'public'
+             AND table_name = 'sleep_logs'
+             AND constraint_name = 'sleep_logs_member_id_fkey'
+         ) THEN
+           ALTER TABLE public.sleep_logs
+             ADD CONSTRAINT sleep_logs_member_id_fkey
+             FOREIGN KEY (member_id) REFERENCES public.members(id) ON DELETE CASCADE;
+         END IF;
+       END IF;
+     END $$;
 
      CREATE INDEX IF NOT EXISTS idx_sleep_logs_member_cycle
        ON public.sleep_logs (member_id, cycle_date DESC);

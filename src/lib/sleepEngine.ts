@@ -1125,10 +1125,13 @@ export function getBedtimeForNight(
   const isWeekend = isWeekendNight(nightDate);
   const sched = getScheduleForDay(member, nightDate);
 
-  const hasWeekendOverride = Boolean(
-    (member.weekend_bedtime_local && member.weekend_bedtime_local.trim() !== '') ||
-    (member.weekly_schedule && isWeekend)
-  );
+  const nightSched = getScheduleForDay(member, nightDate);
+  const hasWeekendOverride = member.weekly_schedule
+    ? ([1, 2, 3, 4, 5, 6, 7] as const).some((weekday) => {
+        const other = getScheduleForDay(member, nightDate.set({ weekday }));
+        return other.bedtime !== nightSched.bedtime || other.wake_time !== nightSched.wake_time;
+      })
+    : Boolean(member.weekend_bedtime_local && member.weekend_bedtime_local.trim() !== '');
 
   return {
     bedtimeStr: sched.bedtime,
@@ -1201,10 +1204,13 @@ export function getNightScheduleDateTime(
     wakeDateTime = wakeDateTime.plus({ days: 1 });
   }
 
-  const hasWeekendOverride = Boolean(
-    (member.weekend_bedtime_local && member.weekend_bedtime_local.trim() !== '') ||
-    (member.weekly_schedule && isWeekend)
-  );
+  const nightSched = getScheduleForDay(member, nightDate);
+  const hasWeekendOverride = member.weekly_schedule
+    ? ([1, 2, 3, 4, 5, 6, 7] as const).some((weekday) => {
+        const other = getScheduleForDay(member, nightDate.set({ weekday }));
+        return other.bedtime !== nightSched.bedtime || other.wake_time !== nightSched.wake_time;
+      })
+    : Boolean(member.weekend_bedtime_local && member.weekend_bedtime_local.trim() !== '');
 
   return {
     bedtimeDateTime,

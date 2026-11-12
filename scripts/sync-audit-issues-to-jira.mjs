@@ -307,8 +307,12 @@ export async function syncAllToJira() {
   }
 
   // Use one authoritative mapping for reads and writes, preserving existing mappings and preventing already-synced records from being created again
-  fs.writeFileSync(finalMapFile, JSON.stringify(synchedResults, null, 2), 'utf8');
-  fs.writeFileSync(mapFile, JSON.stringify(synchedResults, null, 2), 'utf8');
+  const serializedResults = JSON.stringify(synchedResults, null, 2);
+  for (const destination of [finalMapFile, mapFile]) {
+    const temporaryFile = `${destination}.tmp`;
+    fs.writeFileSync(temporaryFile, serializedResults, 'utf8');
+    fs.renameSync(temporaryFile, destination);
+  }
 
   console.log(`\n============================================================`);
   console.log(`Synchronization Complete! Results saved to ${finalMapFile} and ${mapFile}`);

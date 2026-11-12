@@ -157,7 +157,7 @@ export function SleepCalendarModal({
     return DateTime.now().toFormat('yyyy-MM');
   });
 
-  const activeRequestRef = useRef({ memberId: '', currentMonth: '' });
+  const requestSeqRef = useRef(0);
 
   // Selected date ("YYYY-MM-DD") in the calendar inspector
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -190,7 +190,7 @@ export function SleepCalendarModal({
   // Fetch sleep history from API
   const fetchHistory = useCallback(
     async (mId: string, monthStr: string) => {
-      activeRequestRef.current = { memberId: mId, currentMonth: monthStr };
+      const requestId = ++requestSeqRef.current;
       setLoading(true);
       setError(null);
       setData(null);
@@ -199,10 +199,7 @@ export function SleepCalendarModal({
           `/api/members/sleep-history?memberId=${encodeURIComponent(mId)}&month=${encodeURIComponent(monthStr)}`
         );
         const json = await res.json();
-        if (
-          activeRequestRef.current.memberId !== mId ||
-          activeRequestRef.current.currentMonth !== monthStr
-        ) {
+        if (requestSeqRef.current !== requestId) {
           return;
         }
         if (!res.ok) {
@@ -210,18 +207,12 @@ export function SleepCalendarModal({
         }
         setData(json);
       } catch (err: unknown) {
-        if (
-          activeRequestRef.current.memberId === mId &&
-          activeRequestRef.current.currentMonth === monthStr
-        ) {
+        if (requestSeqRef.current === requestId) {
           const message = err instanceof Error ? err.message : 'Unknown error';
           setError(message);
         }
       } finally {
-        if (
-          activeRequestRef.current.memberId === mId &&
-          activeRequestRef.current.currentMonth === monthStr
-        ) {
+        if (requestSeqRef.current === requestId) {
           setLoading(false);
         }
       }
