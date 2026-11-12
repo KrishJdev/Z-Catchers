@@ -1,10 +1,9 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T14:07:00+05:30  
+> **Last Updated:** 2026-11-12T14:38:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 16de25b  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
 > **Active Integration Pull Request:** [#27 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
@@ -69,6 +68,16 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 57: CI Pipeline Test Runner TypeScript Loader Fix (`tsx`)
+* **TypeScript ESM Module Resolution in CI (`package.json`, `package-lock.json`):**
+  - Added `tsx` (`^4.23.15`) to `devDependencies` so Node.js 20 on Ubuntu CI runner (`.github/workflows/ci.yml`) can cleanly resolve and transpile TypeScript modules (`.ts` files like `src/lib/sleepEngine.ts`, `src/lib/auth.ts`, `src/lib/rateLimit.ts`) imported by `.mjs` test suites.
+  - Updated npm test scripts (`"test"`, `"test:unit"`, `"test:all"`) to invoke `node --import tsx scripts/run-tests.mjs ...`.
+* **Universal Test Subprocess Loader Propagation (`scripts/run-tests.mjs`):**
+  - Enhanced child process argument construction in `scripts/run-tests.mjs` to detect active TypeScript loaders (`tsx` or `strip-types`) in `process.execArgv` and forward them, or prepend `--import tsx` when spawning child test suites via `child_process.spawnSync`.
+  - Guarantees all 19 offline unit test suites run cleanly across local workstations and GitHub Actions CI without `ERR_UNKNOWN_FILE_EXTENSION` errors.
+* **Specification Sync (`BACKEND_TZ_PWA_SPEC.md`):**
+  - Updated Section 5 test execution commands to reflect `node --import tsx` runner syntax.
 
 ### Phase 56: Code Review & Security Hardening
 * **Timezone Selector Accessibility & Touch Target UX (`src/components/TimezoneSelect.tsx`):**
@@ -937,6 +946,7 @@ d:\Projects\Z Catchers\
 | **ZC-26**| Phase 49: Sleeping State to Awake Undo Action & Leave Quiet Note Overflow Fix | **DONE** | PR #25 (Commit `4aa2d40`) |
 | **ZC-27**| Phase 54: Global IANA & GMT Timezones Expansion & Reusable Selector | **DONE** | Commit `95762f3` |
 | **ZC-28**| Phase 55: Immediate Codebase & Architectural Fixes (Tasks 1-5) | **DONE** | Commit `16de25b` |
+| **ZC-29**| Phase 57: CI Pipeline Test Runner TypeScript Loader Fix (`tsx`) | **DONE** | PR #27 |
 
 ---
 

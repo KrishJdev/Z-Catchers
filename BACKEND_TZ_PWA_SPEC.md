@@ -299,5 +299,5 @@ All user-submitted journal links must be validated against this strict regex bef
   * Steps: `npm ci` -> `npm run typecheck` -> `npm run build` -> `npm run test:unit`.
 * **NPM Helper Scripts:**
   * `npm run typecheck`: Runs `tsc --noEmit` across all project files.
-  * `npm run test:unit`: Runs all 19 offline unit/static test suites via `scripts/run-tests.mjs --unit`.
-  * `npm run test:all`: Runs all 20 verification suites including live Supabase integration tests via `scripts/run-tests.mjs --all`.
+  * `npm run test:unit`: Runs all 19 offline unit/static test suites via `node --import tsx scripts/run-tests.mjs --unit`.
+  * `npm run test:all`: Runs all 20 verification suites including live Supabase integration tests via `node --import tsx scripts/run-tests.mjs --all`.

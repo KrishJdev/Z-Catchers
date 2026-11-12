@@ -55,7 +55,16 @@ for (const file of testFiles) {
   }
 
   process.stdout.write(`▶ Running scripts/${file} ... `);
-  const result = spawnSync(process.execPath, [filePath], {
+  const childArgs = [];
+  const hasTsLoader = process.execArgv.some((arg) => arg.includes('tsx') || arg.includes('strip-types'));
+  if (hasTsLoader) {
+    childArgs.push(...process.execArgv);
+  } else {
+    childArgs.push('--import', 'tsx');
+  }
+  childArgs.push(filePath);
+
+  const result = spawnSync(process.execPath, childArgs, {
     stdio: 'pipe',
     env: process.env,
     encoding: 'utf8',
