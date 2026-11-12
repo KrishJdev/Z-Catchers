@@ -594,7 +594,7 @@ export default function HomePage() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch('/api/members/strikes/vote', {
+      const res = await fetch('/api/members/strikes', {
         method: 'POST',
         headers,
         body: JSON.stringify({ target_member_id: targetMemberId }),

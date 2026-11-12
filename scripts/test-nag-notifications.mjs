@@ -81,11 +81,19 @@ assert(
 // -------------------------------------------------------------
 console.log('\n--- 3. Database & Notification Logs Integration Tests ---');
 
+const runnerMode = process.env.RUNNER_MODE || (process.argv.includes('--all') ? 'all' : 'unit');
+const isAllMode = runnerMode === 'all';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const hasCredentials = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
+const isSupabaseLive = isAllMode && hasCredentials;
 
-if (!supabaseUrl || !supabaseKey) {
-  console.log('⚠️ Skipping live Supabase tests (credentials missing in environment).');
+if (!isSupabaseLive) {
+  if (!isAllMode) {
+    console.log('ℹ️ Running in unit mode (RUNNER_MODE != "all"). Skipping live Supabase tests.');
+  } else {
+    console.log('⚠️ Skipping live Supabase tests (credentials missing or placeholder in environment).');
+  }
 } else {
   const sb = createClient(supabaseUrl, supabaseKey);
 

@@ -6,6 +6,15 @@ import {
   formatGmtOffset,
   detectUserTimezone,
   COMMON_IANA_TIMEZONES,
+  BASE_IANA_TIMEZONES,
+  ALL_IANA_TIMEZONES,
+  ALL_TIMEZONES,
+  isKnownTimezone,
+  getTimezoneGroups,
+  filterTimezoneGroups,
+  matchesTimezoneQuery,
+  type TimezoneOption,
+  type TimezoneGroup,
 } from './sleepEngine';
 
 export {
@@ -16,4 +25,13 @@ export {
   formatGmtOffset,
   detectUserTimezone,
   COMMON_IANA_TIMEZONES,
+  BASE_IANA_TIMEZONES,
+  ALL_IANA_TIMEZONES,
+  ALL_TIMEZONES,
+  isKnownTimezone,
+  getTimezoneGroups,
+  filterTimezoneGroups,
+  matchesTimezoneQuery,
+  type TimezoneOption,
+  type TimezoneGroup,
 };

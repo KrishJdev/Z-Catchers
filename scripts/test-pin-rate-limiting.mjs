@@ -3,6 +3,8 @@ import {
   recordPinFailure,
   resetPinFailure,
   clearAllPinRateLimits,
+  RateLimitConflictError,
+  atomicIncrementRateLimitKey,
 } from '../src/lib/rateLimit.ts';
 
 console.log('🧪 Starting PIN Verification Rate Limiting Verification Suite...\n');
@@ -161,6 +163,142 @@ const checkAfter5 = checkPinRateLimit(multiTargetIp, canonicalId);
 assert(checkAfter5.allowed === false, 'IP is blocked on exactly the 5th attempt');
 const checkAliasBlocked = checkPinRateLimit('9.9.9.9', usernameAlias);
 assert(checkAliasBlocked.allowed === false, 'Username alias target is also tracked and blocked across IPs');
+
+// -------------------------------------------------------------
+// 8. Optimistic Concurrency Control & Retry Exhaustion Handling
+// -------------------------------------------------------------
+console.log('\n--- 8. OCC Retry Exhaustion & RateLimitConflictError Tests ---');
+
+// Test 8A: Verify RateLimitConflictError structure
+const testErr = new RateLimitConflictError('pin:ip:1.2.3.4', 5);
+assert(testErr instanceof Error, 'RateLimitConflictError is an instance of Error');
+assert(testErr.name === 'RateLimitConflictError', 'Error name is RateLimitConflictError');
+assert(testErr.code === 'RATE_LIMIT_RETRY_EXHAUSTED', 'Error code is RATE_LIMIT_RETRY_EXHAUSTED');
+assert(testErr.key === 'pin:ip:1.2.3.4', 'Error stores conflicting key');
+assert(testErr.message.includes('Exhausted 5 optimistic concurrency retry attempts'), 'Error message describes exhausted retries');
+
+// Test 8B: Verify atomicIncrementRateLimitKey throws RateLimitConflictError when retries are exhausted
+let attemptsCount = 0;
+const mockFailingClient = {
+  from(tableName) {
+    return {
+      select() {
+        return {
+          eq() {
+            return {
+              maybeSingle: async () => {
+                attemptsCount++;
+                return {
+                  data: {
+                    count: 1,
+                    expires_at: new Date(Date.now() + 60000).toISOString(),
+                  },
+                  error: null,
+                };
+              },
+            };
+          },
+        };
+      },
+      update() {
+        return {
+          eq() {
+            return {
+              eq() {
+                return {
+                  gt() {
+                    return {
+                      select() {
+                        return {
+                          // Simulate CAS failure: another worker already updated count
+                          maybeSingle: async () => ({ data: null, error: null }),
+                        };
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    };
+  },
+};
+
+let threwConflictError = false;
+try {
+  await atomicIncrementRateLimitKey(mockFailingClient, 'test-contended-key', Date.now(), 60000, 3);
+} catch (err) {
+  if (err instanceof RateLimitConflictError) {
+    threwConflictError = true;
+  }
+}
+assert(threwConflictError, 'atomicIncrementRateLimitKey throws RateLimitConflictError when CAS retries exhaust');
+assert(attemptsCount === 3, 'Retried exactly maxAttempts (3) times before throwing');
+
+// Test 8C: Verify atomicIncrementRateLimitKey succeeds when CAS condition succeeds on subsequent retry
+let retryCount = 0;
+const mockRecoveringClient = {
+  from() {
+    return {
+      select() {
+        return {
+          eq() {
+            return {
+              maybeSingle: async () => {
+                retryCount++;
+                return {
+                  data: {
+                    count: retryCount,
+                    expires_at: new Date(Date.now() + 60000).toISOString(),
+                  },
+                  error: null,
+                };
+              },
+            };
+          },
+        };
+      },
+      update() {
+        return {
+          eq() {
+            return {
+              eq() {
+                return {
+                  gt() {
+                    return {
+                      select() {
+                        return {
+                          maybeSingle: async () => {
+                            if (retryCount < 2) {
+                              return { data: null, error: null }; // First attempt fails
+                            }
+                            return { data: { key: 'recovering-key' }, error: null }; // Second attempt succeeds
+                          },
+                        };
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    };
+  },
+};
+
+let succeededWithoutError = false;
+try {
+  await atomicIncrementRateLimitKey(mockRecoveringClient, 'recovering-key', Date.now(), 60000, 3);
+  succeededWithoutError = true;
+} catch {
+  succeededWithoutError = false;
+}
+assert(succeededWithoutError, 'atomicIncrementRateLimitKey succeeds gracefully when CAS succeeds on retry');
+assert(retryCount === 2, 'Succeeded on the second retry attempt');
 
 // -------------------------------------------------------------
 // Summary
