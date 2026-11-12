@@ -1,5 +1,22 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Polyfill minimal WebSocket for headless environments without native WebSocket (e.g. Node < 22)
+if (typeof globalThis.WebSocket === 'undefined') {
+  class DummyWebSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
+    readyState = 3;
+    close() {}
+    addEventListener() {}
+    removeEventListener() {}
+    send() {}
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).WebSocket = DummyWebSocket;
+}
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';

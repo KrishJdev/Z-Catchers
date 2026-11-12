@@ -295,7 +295,7 @@ All user-submitted journal links must be validated against this strict regex bef
 ## 5. Automated CI Pipeline & Unified Test Runner
 * **GitHub Actions Pipeline (`.github/workflows/ci.yml`):**
   * Triggered on `push` to `main`, `dev`, `krish` and `pull_request` to `main`, `dev`.
-  * Runs on Ubuntu with Node.js 20.
+  * Runs on Ubuntu with Node.js 22.
   * Steps: `npm ci` -> `npm run typecheck` -> `npm run build` -> `npm run test:unit`.
 * **NPM Helper Scripts:**
   * `npm run typecheck`: Runs `tsc --noEmit` across all project files.
