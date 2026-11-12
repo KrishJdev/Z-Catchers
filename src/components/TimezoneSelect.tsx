@@ -17,6 +17,7 @@ export interface TimezoneSelectProps {
   disabled?: boolean;
   showSearch?: boolean;
   searchPlaceholder?: string;
+  ariaLabel?: string;
 }
 
 export function TimezoneSelect({
@@ -29,6 +30,7 @@ export function TimezoneSelect({
   disabled = false,
   showSearch = true,
   searchPlaceholder = 'Filter by city, country or ±GMT (e.g. Karachi, London, +5:30)...',
+  ariaLabel = 'Timezone',
 }: TimezoneSelectProps) {
   const [search, setSearch] = useState('');
 
@@ -75,13 +77,13 @@ export function TimezoneSelect({
             onChange={(e) => setSearch(e.target.value)}
             placeholder={searchPlaceholder}
             disabled={disabled}
-            className="w-full rounded-lg border border-night-border bg-night-bg/70 px-2.5 py-1.5 text-xs text-cream-primary placeholder-cream-muted focus:border-status-amber focus:outline-none pr-7 transition-colors"
+            className="w-full rounded-lg border border-night-border bg-night-bg/70 px-2.5 py-1.5 text-xs text-cream-primary placeholder-cream-muted focus:border-status-amber focus:outline-none pr-11 transition-colors"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-cream-muted hover:text-cream-primary transition-colors px-1"
+              className="absolute right-0 top-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] w-11 h-11 flex items-center justify-center text-xs text-cream-muted hover:text-cream-primary transition-colors"
               aria-label="Clear timezone filter"
             >
               ✕
@@ -93,6 +95,7 @@ export function TimezoneSelect({
       <select
         id={id}
         name={name}
+        aria-label={ariaLabel}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}

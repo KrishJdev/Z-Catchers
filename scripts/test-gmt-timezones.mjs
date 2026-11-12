@@ -235,6 +235,29 @@ assert(
   'Must match GMT-05:00 for "GMT-5"'
 );
 
+// Precise hour-only search (+1 must NOT match +10..+14, while +5 matches partial-minute +05:30)
+const plus1Filtered = filterTimezoneGroups(groups, '+1');
+assert(plus1Filtered.length > 0, 'Must find matches for "+1"');
+assert(
+  plus1Filtered.some((g) => g.options.some((o) => o.value === 'GMT+01:00')),
+  'Must match GMT+01:00 for "+1"'
+);
+assert(
+  !plus1Filtered.some((g) => g.options.some((o) => o.value === 'GMT+10:00')),
+  'Must NOT match GMT+10:00 for "+1"'
+);
+assert(
+  !plus1Filtered.some((g) => g.options.some((o) => o.value === 'GMT+12:00')),
+  'Must NOT match GMT+12:00 for "+1"'
+);
+
+const plus5Filtered = filterTimezoneGroups(groups, '+5');
+assert(plus5Filtered.length > 0, 'Must find matches for "+5"');
+assert(
+  plus5Filtered.some((g) => g.options.some((o) => o.value === 'Asia/Kolkata' || o.value === 'GMT+05:30')),
+  'Must match partial-minute GMT+05:30 (Asia/Kolkata) when querying hour "+5"'
+);
+
 // 11. Preserving existing user timezones
 console.log('11. Verifying existing user timezones are preserved and valid...');
 const existingUserZones = ['Asia/Tokyo', 'America/New_York', 'Europe/London', 'Asia/Kolkata'];
@@ -242,6 +265,7 @@ for (const tz of existingUserZones) {
   assert(isKnownTimezone(tz), `Existing user timezone ${tz} must be recognized`);
   assert(isValidTimezone(tz), `Existing user timezone ${tz} must remain valid`);
 }
+assert(ALL_IANA_TIMEZONES.every(isValidTimezone), 'All exposed ALL_IANA_TIMEZONES must pass isValidTimezone');
 console.log('   ✅ All existing user timezones remain intact and fully supported.');
 
 console.log('🎉 All IANA & GMT Timezone Precision and DST test cases passed successfully!');

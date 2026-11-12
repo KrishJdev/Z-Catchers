@@ -619,13 +619,13 @@ export const ALL_IANA_TIMEZONES: readonly string[] = (() => {
           'Europe/Kyiv',
           'UTC',
         ]);
-        return Array.from(merged).sort();
+        return Array.from(merged).filter(isValidTimezone).sort();
       }
     }
   } catch {
     // Fall back to BASE_IANA_TIMEZONES on non-supporting runtimes
   }
-  return BASE_IANA_TIMEZONES;
+  return BASE_IANA_TIMEZONES.filter(isValidTimezone);
 })();
 
 /**
@@ -681,10 +681,23 @@ export function matchesTimezoneQuery(value: string, label: string, query: string
   const cleanValue = lowerValue.replace(/_/g, ' ');
 
   if (nq.isOffset && nq.sign && nq.h) {
-    const fullOffset = nq.sign + nq.h + (nq.m ? ':' + nq.m : '');
-    if (lowerLabel.includes(fullOffset) || lowerValue.includes(fullOffset)) return true;
-    const shortOffset = nq.sign + parseInt(nq.h, 10) + (nq.m ? ':' + nq.m : '');
-    if (lowerLabel.includes(shortOffset) || lowerValue.includes(shortOffset)) return true;
+    if (nq.m) {
+      const fullOffset = nq.sign + nq.h + ':' + nq.m;
+      const shortOffset = nq.sign + parseInt(nq.h, 10) + ':' + nq.m;
+      return (
+        lowerLabel.includes(fullOffset) ||
+        lowerValue.includes(fullOffset) ||
+        lowerLabel.includes(shortOffset) ||
+        lowerValue.includes(shortOffset)
+      );
+    } else {
+      // Hour-only query: match a complete hour token (e.g. +01:, +1:, or token boundary)
+      // to avoid matching longer hour values such as +1 against +10..+14, while preserving
+      // partial-minute matches (e.g. +5 matching GMT+05:30)
+      const escapedSign = nq.sign === '+' ? '\\+' : '-';
+      const hourRegex = new RegExp(`(?:gmt|utc)?${escapedSign}(?:${nq.h}|${parseInt(nq.h, 10)})(?::|\\b|$)`, 'i');
+      return hourRegex.test(lowerLabel) || hourRegex.test(lowerValue);
+    }
   }
 
   const rawQ = query.toLowerCase().trim();

@@ -184,6 +184,84 @@ export function checkPinRateLimit(
 }
 
 /**
+ * Atomically records an increment or window reset for a persistent rate limit key in Supabase.
+ * Uses optimistic concurrency control with CAS (.eq('count', existing.count)) and conditional
+ * window resets (.lte('expires_at', nowIso)) to prevent race conditions without overwriting
+ * concurrent workers' increments.
+ */
+async function atomicIncrementRateLimitKey(
+  client: NonNullable<ReturnType<typeof getSupabase>>,
+  key: string,
+  nowMs: number,
+  windowMs: number
+): Promise<void> {
+  const resetAtMs = nowMs + windowMs;
+  const resetAtIso = new Date(resetAtMs).toISOString();
+  const nowIso = new Date(nowMs).toISOString();
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data: existing } = await client
+      .from('rate_limits')
+      .select('count, expires_at')
+      .eq('key', key)
+      .maybeSingle();
+
+    if (existing) {
+      const isExpired = new Date(existing.expires_at).getTime() <= nowMs;
+      if (isExpired) {
+        // Window expired; reset counter to 1 conditioning on row still being expired
+        const { data: resetRow, error: resetErr } = await client
+          .from('rate_limits')
+          .update({
+            count: 1,
+            window_start: nowIso,
+            expires_at: resetAtIso,
+          })
+          .eq('key', key)
+          .lte('expires_at', nowIso)
+          .select('key')
+          .maybeSingle();
+
+        if (!resetErr && resetRow) {
+          return;
+        }
+      } else {
+        // Window active; atomically increment conditioning on un-mutated count and active window
+        const { data: updatedRow, error: updateErr } = await client
+          .from('rate_limits')
+          .update({
+            count: existing.count + 1,
+          })
+          .eq('key', key)
+          .eq('count', existing.count)
+          .gt('expires_at', nowIso)
+          .select('key')
+          .maybeSingle();
+
+        if (!updateErr && updatedRow) {
+          return;
+        }
+      }
+    } else {
+      // First attempt; insert with count 1
+      const { error: insertErr } = await client
+        .from('rate_limits')
+        .insert({
+          key,
+          count: 1,
+          window_start: nowIso,
+          expires_at: resetAtIso,
+        });
+
+      if (!insertErr) {
+        return;
+      }
+      // If concurrent worker inserted first (unique violation), loop and retry to increment
+    }
+  }
+}
+
+/**
  * Serverless-persistent failure recording. Updates local memory map and Supabase rate_limits table.
  */
 export async function recordPinFailurePersistent(
@@ -215,30 +293,7 @@ export async function recordPinFailurePersistent(
     if (!client) return;
 
     for (const key of keys) {
-      const { data: existing } = await client
-        .from('rate_limits')
-        .select('count, expires_at')
-        .eq('key', key)
-        .maybeSingle();
-
-      if (existing && new Date(existing.expires_at).getTime() > nowMs) {
-        await client
-          .from('rate_limits')
-          .update({
-            count: existing.count + 1,
-          })
-          .eq('key', key);
-      } else {
-        await client.from('rate_limits').upsert(
-          {
-            key,
-            count: 1,
-            window_start: nowIso,
-            expires_at: resetAtIso,
-          },
-          { onConflict: 'key' }
-        );
-      }
+      await atomicIncrementRateLimitKey(client, key, nowMs, windowMs);
     }
 
     // Opportunistically prune expired records (5% probability)
@@ -439,30 +494,7 @@ export async function recordVoteAttemptPersistent(
     const client = getSupabase();
     if (!client) return;
 
-    const { data: existing } = await client
-      .from('rate_limits')
-      .select('count, expires_at')
-      .eq('key', key)
-      .maybeSingle();
-
-    if (existing && new Date(existing.expires_at).getTime() > nowMs) {
-      await client
-        .from('rate_limits')
-        .update({
-          count: existing.count + 1,
-        })
-        .eq('key', key);
-    } else {
-      await client.from('rate_limits').upsert(
-        {
-          key,
-          count: 1,
-          window_start: nowIso,
-          expires_at: resetAtIso,
-        },
-        { onConflict: 'key' }
-      );
-    }
+    await atomicIncrementRateLimitKey(client, key, nowMs, windowMs);
   } catch {
     // Non-blocking in case table is temporarily unavailable
   }

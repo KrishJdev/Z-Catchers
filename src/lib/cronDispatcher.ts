@@ -75,17 +75,21 @@ export async function acquireCronLock(
           return false;
         }
 
-        // Lock expired; renew lock
-        const { error: updateErr } = await supabaseAdmin
+        // Lock expired; renew lock conditioning on row still being expired
+        const { data: updatedRow, error: updateErr } = await supabaseAdmin
           .from('cron_locks')
           .update({
             locked_at: nowIso,
             expires_at: expiresAtIso,
             metadata,
           })
-          .eq('lock_key', lockKey);
+          .eq('lock_key', lockKey)
+          .lte('expires_at', nowIso)
+          .select('lock_key')
+          .maybeSingle();
 
-        if (updateErr) {
+        if (updateErr || !updatedRow) {
+          inMemoryCronLocks.delete(lockKey);
           return false;
         }
         return true;
@@ -103,6 +107,7 @@ export async function acquireCronLock(
 
       if (insertErr) {
         // Concurrent runner acquired it first
+        inMemoryCronLocks.delete(lockKey);
         return false;
       }
 

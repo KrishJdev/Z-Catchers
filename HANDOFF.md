@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T14:00:00+05:30  
+> **Last Updated:** 2026-11-12T14:05:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** f30111c  
+> **Latest Commit:** 9035f9d  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
 > **Active Integration Pull Request:** [#27 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
@@ -69,6 +69,24 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 56: Code Review & Security Hardening
+* **Timezone Selector Accessibility & Touch Target UX (`src/components/TimezoneSelect.tsx`):**
+  - Added default accessible name `aria-label="Timezone"` (with optional `ariaLabel` prop override) to `<select>`, ensuring screen readers and automated accessibility checkers can reliably identify the control when parent integrations lack an explicit `<label>`.
+  - Updated the clear filter button to meet WCAG 2.5.5 minimum 44x44px touch targets (`min-w-[44px] min-h-[44px] w-11 h-11 flex items-center justify-center`), positioned cleanly in the search control.
+  - Increased search input right padding to `pr-11` (44px) so input text does not overlap with the touch-accessible clear button.
+* **Cron Execution Lock Concurrency & Memory Hygiene (`src/lib/cronDispatcher.ts`):**
+  - Hardened `acquireCronLock` so database update or insert errors immediately delete provisional in-memory lock entries (`inMemoryCronLocks.delete(lockKey)`) before returning false, retaining the local lock only when the database confirms an active lock and its expiry.
+  - Conditioned lock renewal updates with `.lte('expires_at', nowIso)` and `.select('lock_key').maybeSingle()` to prevent race conditions where concurrent runners both renew expired locks simultaneously.
+* **Atomic Persistent Rate Limiting (`src/lib/rateLimit.ts`):**
+  - Implemented `atomicIncrementRateLimitKey` utilizing optimistic concurrency control (CAS) via `.eq('count', existing.count)` on updates, conditional window resets via `.lte('expires_at', nowIso)`, and retry loops handling concurrent first-attempt insert collisions.
+  - Applied atomic increments to both `recordPinFailurePersistent` and `recordVoteAttemptPersistent`.
+  - Preserved read idempotency and failure-only tracking semantics for `checkPinRateLimit` / `checkPinRateLimitPersistent`, avoiding premature rate limit exhaustion on valid PINs or read checks.
+* **Precise Timezone Search Query Filtering (`src/lib/sleepEngine.ts`):**
+  - Refined `matchesTimezoneQuery` so hour-only queries (`!nq.m`) match a complete hour token boundary via regex `(?:gmt|utc)?${escapedSign}(?:${nq.h}|${parseInt(nq.h, 10)})(?::|\\b|$)`, preventing queries like `+1` from false-positive matching `+10`..`+14` while preserving partial-minute matches like `+5` matching `GMT+05:30`.
+  - Filtered both merged runtime timezones and `BASE_IANA_TIMEZONES` fallback in `ALL_IANA_TIMEZONES` through `isValidTimezone`.
+* **Automated Verification (`scripts/test-gmt-timezones.mjs`):**
+  - Added assertions verifying `+1` matches `GMT+01:00` without matching `GMT+10:00`/`GMT+12:00`, `+5` matches `Asia/Kolkata` (`GMT+05:30`), and all `ALL_IANA_TIMEZONES` pass `isValidTimezone`.
 
 ### Phase 55: Automated CI Pipeline & Unified Test Runner
 * **Helper Scripts Configuration (`package.json`):**
@@ -918,6 +936,7 @@ d:\Projects\Z Catchers\
 | **ZC-25**| Phase 41: Complete CodeRabbit Review Remediations & PR #17 Update | **DONE** | Phase 41 |
 | **ZC-26**| Phase 49: Sleeping State to Awake Undo Action & Leave Quiet Note Overflow Fix | **DONE** | PR #25 (Commit `4aa2d40`) |
 | **ZC-27**| Phase 54: Global IANA & GMT Timezones Expansion & Reusable Selector | **DONE** | Commit `95762f3` |
+| **ZC-28**| Phase 55: Immediate Codebase & Architectural Fixes (Tasks 1-5) | **DONE** | Commit `9035f9d` |
 
 ---
 
@@ -926,16 +945,17 @@ d:\Projects\Z Catchers\
 1. **Review & Merge Active Integration Pull Request (`krish` -> `dev`):**
    * Active PR: `feat(timezone): add comprehensive global IANA timezones and GMT offsets selector` targets `dev` from `krish`.
    * Integrates full canonical IANA timezone catalog (424 timezones) + all 38 standard GMT offsets, categorized `<optgroup>`s, real-time query filtering, and preservation of existing user timezones across `/join`, `MyScheduleModal.tsx`, and `ModDrawer.tsx`.
-   * Verify automated CI checks and merge into `dev`.
+   * Verify automated CI checks (`.github/workflows/ci.yml`) and merge into `dev`.
 
 2. **Review & Merge Active Production Release Pull Request [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26):**
    * Active PR: [#26 `release: promote sleep state undo option and leave quiet note overflow fix to main`](https://github.com/KrishJdev/Z-Catchers/pull/26) targets `main` from `dev`.
    * Promotes Phase 49 verified features (PR #25) into production: awake state machine transition, early wake-up/undo buttons, `WOKE_UP` notification logging, and "Leave quiet note" overflow fix.
    * Verify CI and merge into `main`.
 
-2. **Database Migration Execution in Supabase SQL Editor:**
+3. **Database Migration Execution in Supabase SQL Editor:**
    * Run the idempotent migration block from `supabase/schema.sql` on the remote Supabase database:
      ```sql
+     -- Members table columns
      ALTER TABLE members ADD COLUMN IF NOT EXISTS discord_id TEXT;
      ALTER TABLE members ADD COLUMN IF NOT EXISTS is_moderator BOOLEAN DEFAULT FALSE;
      ALTER TABLE members ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE;
@@ -946,9 +966,27 @@ d:\Projects\Z Catchers\
        END IF;
      END $$;
      CREATE INDEX IF NOT EXISTS idx_members_discord_id ON members(discord_id);
+
+     -- Persistent Rate Limiting Table
+     CREATE TABLE IF NOT EXISTS public.rate_limits (
+       key TEXT PRIMARY KEY,
+       count INTEGER NOT NULL DEFAULT 1,
+       window_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       expires_at TIMESTAMPTZ NOT NULL
+     );
+     CREATE INDEX IF NOT EXISTS idx_rate_limits_expires_at ON public.rate_limits (expires_at);
+
+     -- Cron Execution & Notification Idempotency Locks
+     CREATE TABLE IF NOT EXISTS public.cron_locks (
+       lock_key TEXT PRIMARY KEY,
+       locked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       expires_at TIMESTAMPTZ NOT NULL,
+       metadata JSONB DEFAULT '{}'::jsonb
+     );
+     CREATE INDEX IF NOT EXISTS idx_cron_locks_expires_at ON public.cron_locks (expires_at);
      ```
 
-2. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
+4. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
