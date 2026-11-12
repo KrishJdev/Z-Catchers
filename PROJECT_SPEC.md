@@ -411,6 +411,8 @@ To ship ASAP without waiting on complex OAuth app verification:
 
 * [x] **Monthly Strikes & Metastrikes Accountability System:** 3 strikes max, 3 excused metastrikes max, 5-minute grace period (`BEDTIME_GRACE`), 2-vote community verification (`OVERDUE_NAG_NOW`), retroactive 24h conversion, and moderator controls.
 
+* [x] **7-Day Variable Sleep Schedule Engine:** Full `mon` through `sun` custom routine support stored in `weekly_schedule JSONB`, with cross-midnight cycle resolution, fallback synchronization to flat columns, 48-hour cooldown enforcement, and 3-mode mobile-friendly schedule editor (Every Day, Weekdays/Weekends, Custom Per Day).
+
 ## 7. Step-by-Step Execution Plan for Antigravity
 
 Follow these exact milestones in order. Verify each milestone compiles and passes logic checks before moving to the next.

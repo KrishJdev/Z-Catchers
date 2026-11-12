@@ -1,13 +1,14 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 export const issues = [
   {
     id: 1,
     priorityTag: 'P1 - High',
     jiraPriority: 'High',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P1 - High] Security: Remove hardcoded fallback session secrets & dev PIN salt in production',
     labels: ['security', 'backend', 'bug', 'priority: high'],
     file: 'src/lib/auth.ts',
@@ -35,7 +36,7 @@ In production deployments, the authentication module must strictly enforce stron
     id: 2,
     priorityTag: 'P1 - High',
     jiraPriority: 'High',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P1 - High] Security: Fix unauthenticated push endpoint deletion in /api/push/unsubscribe',
     labels: ['security', 'pwa', 'backend', 'bug', 'priority: high'],
     file: 'src/app/api/push/unsubscribe/route.ts',
@@ -62,7 +63,7 @@ When a request provides an \`endpoint\` string, the query filters only by \`endp
     id: 3,
     priorityTag: 'P1 - High',
     jiraPriority: 'High',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P1 - High] Security: Enforce database-backed persistent rate limiting in cancel-pending and push/subscribe',
     labels: ['security', 'backend', 'bug', 'priority: high'],
     file: 'src/app/api/members/cancel-pending/route.ts',
@@ -89,7 +90,7 @@ Two API routes still rely on in-memory rate limiting, which is ineffective in se
     id: 4,
     priorityTag: 'P1 - High',
     jiraPriority: 'High',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P1 - High] Security: Sanitize and validate x-forwarded-host in OAuth redirect base URL',
     labels: ['security', 'backend', 'bug', 'priority: high'],
     file: 'src/lib/auth.ts',
@@ -121,7 +122,7 @@ The header \`x-forwarded-host\` is used directly to build the Discord OAuth call
     id: 5,
     priorityTag: 'P1 - High',
     jiraPriority: 'High',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P1 - High] Security: Prevent IDOR / unauthenticated claim in update-schedule when mod rate limit is exceeded',
     labels: ['security', 'backend', 'bug', 'priority: high'],
     file: 'src/app/api/members/update-schedule/route.ts',
@@ -146,7 +147,7 @@ When \`modRate.allowed === false\`, the code logs a warning and leaves \`isModer
     id: 6,
     priorityTag: 'P2 - Medium',
     jiraPriority: 'Medium',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P2 - Medium] PWA / Notifications: Prevent race condition by recording nag deduplication before sending push',
     labels: ['pwa', 'backend', 'bug', 'priority: medium'],
     file: 'src/app/api/members/nag-notif/route.ts',
@@ -173,7 +174,7 @@ In \`/api/members/nag-notif\`, Web Push notifications are dispatched across netw
     id: 7,
     priorityTag: 'P2 - Medium',
     jiraPriority: 'Medium',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P2 - Medium] PWA / Push: Add Authorization Bearer header to push test and unsubscribe requests',
     labels: ['pwa', 'frontend', 'bug', 'priority: medium'],
     file: 'src/components/PushModal.tsx',
@@ -198,7 +199,7 @@ Push test and unsubscription calls omit the client's stored authentication token
     id: 8,
     priorityTag: 'P2 - Medium',
     jiraPriority: 'Medium',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P2 - Medium] Backend: Align nag-assist date calculation with getSleepCycleDate()',
     labels: ['backend', 'bug', 'priority: medium'],
     file: 'src/app/api/members/nag-assist/route.ts',
@@ -224,7 +225,7 @@ In contrast, \`nag-notif\` and the main roster endpoint use \`getSleepCycleDate(
     id: 9,
     priorityTag: 'P2 - Medium',
     jiraPriority: 'Medium',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P2 - Medium] PWA / Service Worker: Resolve notificationclick message dropping during tab navigation',
     labels: ['pwa', 'bug', 'priority: medium'],
     file: 'public/sw.js',
@@ -256,7 +257,7 @@ Calling \`client.navigate()\` causes the document to tear down and navigate, dis
     id: 10,
     priorityTag: 'P2 - Medium',
     jiraPriority: 'Medium',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P2 - Medium] Backend: Remove wake_time_local default destructuring to prevent schedule overwrites',
     labels: ['backend', 'bug', 'priority: medium'],
     file: 'src/app/api/members/update-schedule/route.ts',
@@ -288,7 +289,7 @@ Because \`wake_time_local\` defaults to \`'07:00'\`, it is never \`undefined\` a
     id: 11,
     priorityTag: 'P3 - Medium',
     jiraPriority: 'Medium',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P3 - Medium] State Machine: Reconcile Sleep Shield active vs canVoteStrike in 60-480m overdue window',
     labels: ['frontend', 'backend', 'bug', 'priority: medium'],
     file: 'src/lib/sleepEngine.ts',
@@ -313,7 +314,7 @@ In the 60-480 minute window past bedtime for unchecked-in members, the sleep eng
     id: 12,
     priorityTag: 'P3 - Low',
     jiraPriority: 'Low',
-    issueTypeId: '10067', // Bug
+    issueTypeId: '10071', // Task
     title: '[P3 - Low] State Machine: Enforce mutual exclusion between is_in_bed and is_woke_up flags',
     labels: ['backend', 'frontend', 'bug', 'priority: low'],
     file: 'src/app/api/auth/me/route.ts',
@@ -394,11 +395,61 @@ Assets are matched against cache first while revalidating in background. When a 
   },
 ];
 
-async function createGitHubIssues() {
+export async function createGitHubIssues() {
   console.log('Creating 14 GitHub Issues with proper tags and descriptions...\n');
-  const results = [];
+
+  const mapFile = path.join(process.cwd(), 'scripts', 'audit-issues-map.json');
+  const syncedFile = path.join(process.cwd(), 'scripts', 'audit-issues-synced.json');
+  const isReset = process.argv.includes('--reset') || process.env.RESET_MAP === 'true';
+
+  // Load existing mappings unless an explicit reset is requested
+  const existingMap = new Map();
+  if (fs.existsSync(mapFile) && !isReset) {
+    try {
+      const existingData = JSON.parse(fs.readFileSync(mapFile, 'utf8'));
+      if (Array.isArray(existingData)) {
+        for (const entry of existingData) {
+          if (entry && entry.id != null) {
+            existingMap.set(entry.id, entry);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`Warning: Could not parse existing ${mapFile}:`, e.message);
+    }
+  }
+
+  // Incorporate saved Jira keys from audit-issues-synced.json if present
+  if (fs.existsSync(syncedFile) && !isReset) {
+    try {
+      const syncedData = JSON.parse(fs.readFileSync(syncedFile, 'utf8'));
+      if (Array.isArray(syncedData)) {
+        for (const s of syncedData) {
+          if (s && s.id != null) {
+            const current = existingMap.get(s.id) || {};
+            existingMap.set(s.id, {
+              ...current,
+              jiraKey: current.jiraKey || s.jiraKey,
+              jiraUrl: current.jiraUrl || s.jiraUrl,
+              remoteLinked: current.remoteLinked ?? s.remoteLinked,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`Warning: Could not parse existing ${syncedFile}:`, e.message);
+    }
+  }
+
+  let hasError = false;
 
   for (const item of issues) {
+    const existing = existingMap.get(item.id);
+    if (!isReset && existing && existing.ghNumber) {
+      console.log(`[Issue #${item.id}] Already created on GitHub: #${existing.ghNumber} (${item.title.slice(0, 40)}...)`);
+      continue;
+    }
+
     console.log(`[Issue #${item.id}] Creating: "${item.title}"...`);
     const tempFile = path.join(process.cwd(), 'scripts', `_temp_issue_${item.id}.md`);
     fs.writeFileSync(tempFile, item.body, 'utf8');
@@ -412,22 +463,41 @@ async function createGitHubIssues() {
       const issueNumMatch = output.match(/\/issues\/(\d+)$/);
       const issueNum = issueNumMatch ? issueNumMatch[1] : null;
 
-      results.push({
+      // Update entry only after successful operation, retaining existing Jira keys
+      existingMap.set(item.id, {
+        ...(existing || {}),
         ...item,
         ghUrl: output,
         ghNumber: issueNum,
       });
     } catch (err) {
+      hasError = true;
       console.error(`  -> Failed to create issue #${item.id}:`, err.message);
+      // Retain existing entry; do not overwrite or discard
     } finally {
       if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
     }
   }
 
-  const mapFile = path.join(process.cwd(), 'scripts', 'audit-issues-map.json');
-  fs.writeFileSync(mapFile, JSON.stringify(results, null, 2), 'utf8');
-  console.log(`\nSuccessfully created ${results.length} GitHub issues! Saved map to ${mapFile}`);
-  return results;
+  const finalResults = issues.map((item) => {
+    const existing = existingMap.get(item.id);
+    return existing ? { ...item, ...existing } : item;
+  });
+
+  fs.writeFileSync(mapFile, JSON.stringify(finalResults, null, 2), 'utf8');
+  console.log(`\nGitHub issues processing finished! Saved map to ${mapFile}`);
+
+  if (hasError) {
+    process.exitCode = 1;
+  }
+
+  return finalResults;
 }
 
-createGitHubIssues().catch(console.error);
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMain) {
+  createGitHubIssues().catch((err) => {
+    console.error('Fatal error during issue creation:', err);
+    process.exit(1);
+  });
+}

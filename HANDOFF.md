@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T18:15:00+05:30  
+> **Last Updated:** 2026-11-12T20:50:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `1b16b4d`  
+> **Latest Commit:** `e3956a1`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
 > **Active Integration Pull Request:** [#44 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/44)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
 > **Active Production Release Pull Request:** None (all merged)  
-> **Build Status:** Passing (`npm run typecheck` clean, 0 errors | `npm run build` clean, 26/26 routes | `npm run test:unit` clean, 19/19 suites passed | `npm run test:all` clean, 20/20 suites passed)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 20/20 suites passed | `npm run build` clean, 26/26 routes)
 
 ---
 
@@ -70,6 +70,47 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 ## 4. Comprehensive Task Changelog
 
+### Phase 63: 7-Day Variable Sleep Schedule Engine & 3-Mode Schedule Editor Implementation
+* **Database Schema & Backfill Migration (`supabase/schema.sql`):**
+  - Added `weekly_schedule JSONB` and `pending_weekly_schedule JSONB` to `members` table definition and migration statements.
+  - Implemented idempotent SQL backfill migration mapping `mon`..`thu` & `sun` to `bedtime_local`/`wake_time_local` and `fri`..`sat` to `COALESCE(weekend_bedtime_local, bedtime_local)`.
+* **Seed Members & In-Memory Hydration (`scripts/seed-demo-members.mjs`, `src/lib/db.ts`):**
+  - Updated all seeded demo profiles (Aoi, SarahK, Marcus, Arjun) with realistic `weekly_schedule` objects, including mid-week schedule variations (e.g. SarahK's Tue/Thu shifts).
+  - Maintained `scripts/test-demo-seed-fingerprint.mjs` verification passing (11/11 tests).
+  - Exported canonical types `DayKey`, `DailySchedule`, and `WeeklySchedule` from `src/lib/db.ts` and `src/lib/timezone.ts`.
+  - Updated `knownMemberColumns`, `memoryScheduleData`, `hydrateMemberWeekendHours`, `updateMemberSafe`, and `insertMemberSafe` to preserve both `weekly_schedule` and `pending_weekly_schedule`.
+* **Sleep Engine & Cross-Midnight Resolution (`src/lib/sleepEngine.ts`, `src/lib/timezone.ts`):**
+  - Defined `DAY_KEYS` (`mon`..`sun`) and `WEEKDAY_TO_DAY_KEY`.
+  - Implemented `getScheduleForDay(member, luxonDateTime): DailySchedule` with full fallback resolution.
+  - Implemented `resolveActiveSleepCycle(member, sleeperNow, isInBed)`: evaluates yesterday's cycle first (`sleeperNow.minus({ days: 1 })`) from bedtime - 180m until wake time or 8-hour sleep shield window has elapsed; evaluates today's cycle second.
+  - Updated `computeMemberState` to return `activeBedtimeLocal`, `activeWakeTimeLocal`, `isCustomScheduleToday`, `isWeekendSchedule`, and `dayKey`.
+  - Updated `getBedtimeForNight`, `getNightBedtimeDateTime`, `getSleepCycleDate`, `isWeekendCycle`, and `checkCooldownPromotion` (promoting `pending_weekly_schedule` -> `weekly_schedule`).
+* **Subsystems & APIs Integration:**
+  - `src/lib/strikes.ts`: Sleep cycle dates and strike evaluations resolve against active 7-day schedule.
+  - `src/app/api/members/in-bed/route.ts`: Check-in eligibility and streak tracking utilize resolved cycle.
+  - `src/lib/cronDispatcher.ts` & `src/app/api/members/route.ts`: Cron dispatches and cooldown promotions promote `pending_weekly_schedule`.
+  - `src/app/api/members/cancel-pending/route.ts`: Clears `pending_weekly_schedule: null`.
+  - `src/app/api/members/update-schedule/route.ts`: Accepts `weekly_schedule` in POST/PUT payloads, validates 24h format and `bedtime !== wake_time`, auto-synthesizes 7-day schedule from flat columns if legacy, syncs `mon` to `bedtime_local` and `sat` to `weekend_bedtime_local`, and preserves 48h cooldown.
+  - `src/app/api/auth/claim-profile/route.ts` & `src/app/join/page.tsx`: Initializes complete `weekly_schedule` on claim and registration.
+  - `src/app/api/mod/route.ts` & `src/components/ModDrawer.tsx`: Added 7-day variable schedule editor for privileged moderator overrides with instant effect.
+* **UI/UX 7-Day Variable Schedule Editor Redesign (`src/components/MyScheduleModal.tsx`):**
+  - Replaced weekend toggle with 3-Mode Preset Switcher:
+    1. **Every Day:** Single bedtime/wake time applied to all 7 days.
+    2. **Weekdays / Weekends:** Classic Mon–Thu+Sun vs. Fri–Sat setup.
+    3. **Custom Per Day:** Interactive 7-day selector pills (Mon–Sun) with min 44px touch targets.
+  - Added quick copy actions ("Copy to Weekdays", "Copy to Weekend", "Apply to All 7 Days").
+  - Added compact 7-day summary preview before Save.
+  - Preserved all profile constraints, locked Discord handle, website username editing, and 48-hour cooldown notice.
+* **MemberCard Active Schedule & 7-Day Routine Tray (`src/components/MemberCard.tsx`):**
+  - Displays resolved active bedtime and wake time (`activeBedtimeLocal` → `activeWakeTimeLocal`).
+  - Renders subtle "Custom today" badge when current day differs from Monday baseline.
+  - Added expandable 7-day sleep routine tray displaying the full week's routine with active day highlighted.
+* **Verification & Automated Test Coverage:**
+  - Expanded `scripts/test-weekend-hours.mjs`: Added Section 7 with 17 mid-week variable schedule test assertions (all 49/49 passed cleanly).
+  - All 20 unit test suites passed cleanly via `npm run test:unit`.
+  - Full production build verified via `npm run build` (26/26 routes compiled).
+  - Strict TypeScript check verified via `npx tsc --noEmit` (0 errors).
+
 ### Phase 62: Integration Pull Request #44 (`krish` → `dev`)
 * **Created Integration Pull Request #44:**
   - Opened PR: [#44 `chore: sync code audit issues to Jira, cross-link GitHub issues, and update transition tooling`](https://github.com/KrishJdev/Z-Catchers/pull/44)
@@ -88,6 +129,36 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
        - Documented Phase 59–61 audit findings, Jira issue mappings, and current production release status.
 * **Verification Check:**
   - `npm run test:unit` clean (19/19 suites passed).
+  - `npx tsc --noEmit` clean (0 errors).
+
+### Phase 62: Review Remediation — Audit Issue Sync Robustness & Markdown ADF Parsing
+* **Resolved All Review Feedback Across Audit Issue Scripts & Deployment Specs:**
+  1. **Deployment Guidance & Production Security Preconditions (`HANDOFF.md`):**
+     - Updated production deployment instructions to clarify that `SESSION_SECRET` and `PIN_SALT` are strictly mandatory environment configurations, not optional.
+     - Documented that configuring `SESSION_SECRET` alone does not secure authentication while fallback-secret verification remains active in `src/lib/auth.ts`.
+     - Specified that `ZC-16` / GH #30 must be resolved (removing hardcoded fallback session secrets and enforcing fail-closed secret validation in production) before claiming the deployment is protected.
+  2. **Standardized Issue Type in Audit Definitions (`scripts/create-all-audit-issues.mjs`):**
+     - Updated `issueTypeId` across all 14 audit issue definitions to the top-level Task type (`10071`) so `audit-issues-map.json` retains `10071` consistently.
+  3. **Robust Mapping Load/Write Flow (`scripts/create-all-audit-issues.mjs`):**
+     - Updated `createGitHubIssues()` to load existing mappings and incorporate saved Jira keys from `audit-issues-synced.json`.
+     - Changed entries only after their corresponding issue creation succeeds, ensuring failed or partial runs never discard existing entries.
+     - Implemented `--reset` / `RESET_MAP=true` as the sole mechanism for clearing mapping state.
+     - Guarded direct execution via `fileURLToPath(import.meta.url) === path.resolve(process.argv[1])` to prevent accidental execution when imported.
+  4. **Markdown ADF Description Parsing Fix (`scripts/sync-audit-issues-to-jira.mjs`):**
+     - Updated `markdownToAdf()` to parse headings on an individual line basis rather than treating entire blank-line-delimited blocks as a single heading.
+     - Preserved and processed all text following each heading as section content (paragraphs, ordered lists, bullet lists, code blocks), ensuring summaries, root causes, and remediation plans are fully populated in Jira.
+  5. **Jira Checkpointing, Remote Link Retries & Failure Exit Codes (`scripts/sync-audit-issues-to-jira.mjs`):**
+     - Checkpointed `jiraKey` and `jiraUrl` immediately upon successful Jira issue creation before requesting remote links.
+     - Separated remote link failures from Jira creation errors; retries now link the existing Jira issue rather than creating duplicates.
+     - Set process exit code to failure (`process.exitCode = 1`) whenever creation or remote linking fails, while still persisting result files (`audit-issues-synced.json` and `audit-issues-map.json`).
+     - Hardened top-level rejection handler to exit with status code 1.
+  6. **Authoritative Mapping Synchronization (`scripts/sync-audit-issues-to-jira.mjs`):**
+     - Updated load/write flow to incorporate saved Jira keys by stable audit ID before creating issues, writing the authoritative mapping to both `audit-issues-synced.json` and `audit-issues-map.json`.
+  7. **Automated Unit Testing (`scripts/test-audit-issue-sync.mjs`, `scripts/run-tests.mjs`):**
+     - Added a dedicated test suite verifying ADF heading parsing, section content preservation, issueTypeId conformance, and checkpointing/retry flows.
+     - Integrated `test-audit-issue-sync.mjs` into `UNIT_TESTS` in `scripts/run-tests.mjs`.
+* **Verification Check:**
+  - `npm run test:unit` clean (20/20 suites passed).
   - `npx tsc --noEmit` clean (0 errors).
 
 ### Phase 61: Comprehensive Website & PWA Code Audit, GitHub Issues & Jira Synchronization
@@ -1203,4 +1274,7 @@ d:\Projects\Z Catchers\
 7. **Verify Production Deployment Following Release Merges (`main`):**
    * Production releases up to PR #26 successfully merged into `main`.
    * Verify deployment logs and Discord login flow in Vercel following merge to production `main`.
-   * (Optional Best Practice) Add `SESSION_SECRET` (random 32+ char string) in Vercel Project Settings > Environment Variables for explicit key configuration.
+   * **Mandatory Environment Configuration & Security Precondition:**
+     * `SESSION_SECRET` (random 32+ char string) and `PIN_SALT` must be explicitly configured in Vercel Project Settings > Environment Variables. Do not treat `SESSION_SECRET` as optional.
+     * Note that configuring `SESSION_SECRET` alone does **not** secure authentication: production deployments must **not** be considered secure while fallback-secret verification remains active in `src/lib/auth.ts`.
+     * **ZC-16 / GH #30** must be resolved (removing hardcoded fallback session secrets and enforcing fail-closed secret validation in production) before claiming the production deployment is protected.

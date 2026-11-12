@@ -1,5 +1,19 @@
 import { DateTime } from 'luxon';
-import type { Member } from './db';
+import type { Member, DayKey, DailySchedule, WeeklySchedule } from './db';
+
+export type { DayKey, DailySchedule, WeeklySchedule };
+
+export const DAY_KEYS: readonly DayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+
+export const WEEKDAY_TO_DAY_KEY: Record<number, DayKey> = {
+  1: 'mon',
+  2: 'tue',
+  3: 'wed',
+  4: 'thu',
+  5: 'fri',
+  6: 'sat',
+  7: 'sun',
+};
 
 /**
  * Curated list of popular IANA timezones spanning global Discord communities.
@@ -833,7 +847,10 @@ export interface MemberState {
   checkedInEarly?: boolean;
   streakMilestone?: StreakMilestone | null;
   isWeekendSchedule?: boolean;
+  isCustomScheduleToday?: boolean;
   activeBedtimeLocal?: string;
+  activeWakeTimeLocal?: string;
+  dayKey?: DayKey;
 }
 
 /**
@@ -861,6 +878,10 @@ export function checkCooldownPromotion(
       member.pending_weekend_wake_time_local !== undefined
         ? (member.pending_weekend_wake_time_local || null)
         : (member.weekend_wake_time_local || null);
+    const nextWeeklySchedule =
+      member.pending_weekly_schedule !== undefined
+        ? (member.pending_weekly_schedule || null)
+        : (member.weekly_schedule || null);
 
     const updated: Member = {
       ...member,
@@ -869,11 +890,13 @@ export function checkCooldownPromotion(
       timezone: member.pending_timezone || member.timezone,
       weekend_bedtime_local: nextWeekendBedtime,
       weekend_wake_time_local: nextWeekendWakeTime,
+      weekly_schedule: nextWeeklySchedule,
       pending_bedtime_local: null,
       pending_wake_time_local: null,
       pending_timezone: null,
       pending_weekend_bedtime_local: null,
       pending_weekend_wake_time_local: null,
+      pending_weekly_schedule: null,
       pending_effective_at: null,
     };
     return { promoted: true, activeMember: updated };
@@ -988,6 +1011,61 @@ export function isWeekendNight(dt: DateTime): boolean {
 }
 
 /**
+ * Returns the DailySchedule ({ bedtime, wake_time }) for a given date.
+ * Maps Luxon's weekday (1 = Monday ... 7 = Sunday) to DayKey ('mon' ... 'sun').
+ * Reads member.weekly_schedule?.[dayKey] if valid.
+ * Falls back gracefully to weekend_bedtime / weekend_wake_time (for Friday/Saturday)
+ * and base bedtime / wake_time if weekly_schedule is null or missing.
+ */
+export function getScheduleForDay(
+  member: Member,
+  luxonDateTime: DateTime
+): DailySchedule {
+  const dayKey: DayKey = WEEKDAY_TO_DAY_KEY[luxonDateTime.weekday] || 'mon';
+  const customDay = member.weekly_schedule?.[dayKey];
+
+  if (
+    customDay &&
+    typeof customDay.bedtime === 'string' &&
+    customDay.bedtime.trim() !== '' &&
+    typeof customDay.wake_time === 'string' &&
+    customDay.wake_time.trim() !== ''
+  ) {
+    return {
+      bedtime: customDay.bedtime.trim(),
+      wake_time: customDay.wake_time.trim(),
+    };
+  }
+
+  // Graceful fallback to legacy weekend and weekday columns
+  const isWeekend = isWeekendNight(luxonDateTime);
+  const fallbackWeekendBedtime =
+    member.weekend_bedtime_local || (member as any).weekend_bedtime || null;
+  const fallbackWeekendWakeTime =
+    member.weekend_wake_time_local || (member as any).weekend_wake_time || null;
+
+  const baseBedtime =
+    member.bedtime_local || (member as any).bedtime || '23:00';
+  const baseWakeTime =
+    member.wake_time_local || (member as any).wake_time || '07:00';
+
+  const resolvedBedtime =
+    isWeekend && fallbackWeekendBedtime && fallbackWeekendBedtime.trim() !== ''
+      ? fallbackWeekendBedtime.trim()
+      : baseBedtime.trim();
+
+  const resolvedWakeTime =
+    isWeekend && fallbackWeekendWakeTime && fallbackWeekendWakeTime.trim() !== ''
+      ? fallbackWeekendWakeTime.trim()
+      : baseWakeTime.trim();
+
+  return {
+    bedtime: resolvedBedtime,
+    wake_time: resolvedWakeTime,
+  };
+}
+
+/**
  * Returns the effective bedtime string and whether weekend hours apply for a given night date.
  */
 export function getBedtimeForNight(
@@ -995,10 +1073,17 @@ export function getBedtimeForNight(
   nightDate: DateTime
 ): { bedtimeStr: string; isWeekend: boolean } {
   const isWeekend = isWeekendNight(nightDate);
-  if (isWeekend && member.weekend_bedtime_local && member.weekend_bedtime_local.trim() !== '') {
-    return { bedtimeStr: member.weekend_bedtime_local.trim(), isWeekend: true };
-  }
-  return { bedtimeStr: member.bedtime_local.trim(), isWeekend: false };
+  const sched = getScheduleForDay(member, nightDate);
+
+  const hasWeekendOverride = Boolean(
+    (member.weekend_bedtime_local && member.weekend_bedtime_local.trim() !== '') ||
+    (member.weekly_schedule && isWeekend)
+  );
+
+  return {
+    bedtimeStr: sched.bedtime,
+    isWeekend: isWeekend && hasWeekendOverride,
+  };
 }
 
 /**
@@ -1029,11 +1114,141 @@ export function getNightBedtimeDateTime(
 }
 
 /**
+ * Calculates both bedtime and morning wake-up DateTimes for a given night in sleeper's local zone.
+ */
+export function getNightScheduleDateTime(
+  member: Member,
+  nightDate: DateTime
+): {
+  bedtimeDateTime: DateTime;
+  wakeDateTime: DateTime;
+  isWeekend: boolean;
+  bedtimeStr: string;
+  wakeTimeStr: string;
+  dayKey: DayKey;
+} {
+  const dayKey: DayKey = WEEKDAY_TO_DAY_KEY[nightDate.weekday] || 'mon';
+  const sched = getScheduleForDay(member, nightDate);
+  const isWeekend = isWeekendNight(nightDate);
+  const [bH, bM] = sched.bedtime.split(':').map(Number);
+  const [wH, wM] = sched.wake_time.split(':').map(Number);
+
+  const bedtimeBase = (bH || 0) < 12 ? nightDate.plus({ days: 1 }) : nightDate;
+  const bedtimeDateTime = bedtimeBase.set({
+    hour: bH || 0,
+    minute: bM || 0,
+    second: 0,
+    millisecond: 0,
+  });
+
+  let wakeDateTime = nightDate.plus({ days: 1 }).set({
+    hour: wH !== undefined && !isNaN(wH) ? wH : 7,
+    minute: wM !== undefined && !isNaN(wM) ? wM : 0,
+    second: 0,
+    millisecond: 0,
+  });
+  if (wakeDateTime <= bedtimeDateTime) {
+    wakeDateTime = wakeDateTime.plus({ days: 1 });
+  }
+
+  const hasWeekendOverride = Boolean(
+    (member.weekend_bedtime_local && member.weekend_bedtime_local.trim() !== '') ||
+    (member.weekly_schedule && isWeekend)
+  );
+
+  return {
+    bedtimeDateTime,
+    wakeDateTime,
+    isWeekend: isWeekend && hasWeekendOverride,
+    bedtimeStr: sched.bedtime,
+    wakeTimeStr: sched.wake_time,
+    dayKey,
+  };
+}
+
+/**
+ * Resolves the active sleep cycle schedule and cycle night date for a member at a given moment in their timezone.
+ *
+ * Evaluation Order:
+ * 1. Yesterday's Cycle Check First: Check if now still falls inside the active sleep/wake window
+ *    initiated on the previous calendar day (now.minus({ days: 1 })).
+ *    Evaluates against yesterday's sleep cycle until yesterday's wake_time (plus any active in-bed/overflow window)
+ *    has elapsed.
+ * 2. Today's Cycle Check Second: Once yesterday's wake window has completed, resolves today's
+ *    target bedtime and wake time using getScheduleForDay(member, now).
+ */
+export function resolveActiveSleepCycle(
+  member: Member,
+  sleeperNow: DateTime,
+  isInBed?: boolean
+): {
+  cycleEveningDate: string;
+  targetBedtime: DateTime;
+  targetWakeTime: DateTime;
+  activeBedtimeLocal: string;
+  activeWakeTimeLocal: string;
+  isWeekendSchedule: boolean;
+  isCustomScheduleToday: boolean;
+  dayKey: DayKey;
+  diffMinutes: number;
+} {
+  const effectiveInBed = isInBed !== undefined ? isInBed : Boolean(member.is_in_bed);
+
+  // 1. Yesterday's cycle (initiated on sleeperNow.minus({ days: 1 }))
+  const yesterdayNight = sleeperNow.minus({ days: 1 }).startOf('day');
+  const ySched = getNightScheduleDateTime(member, yesterdayNight);
+
+  // Yesterday's active window starts when wind-down/curfew or early check-in begins (-180m before bedtime)
+  const yStart = ySched.bedtimeDateTime.minus({ minutes: 180 });
+  // Yesterday's window ends when yesterday's wake window has elapsed
+  // If member is actively in bed without waking up, extend window up to 8 hours (480 mins) or wake time
+  const yEnd = effectiveInBed && !member.is_woke_up
+    ? DateTime.max(ySched.wakeDateTime, ySched.bedtimeDateTime.plus({ minutes: 480 }))
+    : ySched.wakeDateTime;
+
+  if (sleeperNow >= yStart && sleeperNow < yEnd && !member.is_woke_up) {
+    const diffMinutes = sleeperNow.diff(ySched.bedtimeDateTime, 'minutes').minutes;
+    const mondaySched = getScheduleForDay(member, yesterdayNight.set({ weekday: 1 }));
+    const isCustomScheduleToday =
+      ySched.bedtimeStr !== mondaySched.bedtime || ySched.wakeTimeStr !== mondaySched.wake_time;
+
+    return {
+      cycleEveningDate: yesterdayNight.toISODate()!,
+      targetBedtime: ySched.bedtimeDateTime,
+      targetWakeTime: ySched.wakeDateTime,
+      activeBedtimeLocal: ySched.bedtimeStr,
+      activeWakeTimeLocal: ySched.wakeTimeStr,
+      isWeekendSchedule: ySched.isWeekend,
+      isCustomScheduleToday,
+      dayKey: ySched.dayKey,
+      diffMinutes,
+    };
+  }
+
+  // 2. Today's cycle check second:
+  const todayNight = sleeperNow.startOf('day');
+  const tSched = getNightScheduleDateTime(member, todayNight);
+  const diffMinutes = sleeperNow.diff(tSched.bedtimeDateTime, 'minutes').minutes;
+  const mondaySched = getScheduleForDay(member, todayNight.set({ weekday: 1 }));
+  const isCustomScheduleToday =
+    tSched.bedtimeStr !== mondaySched.bedtime || tSched.wakeTimeStr !== mondaySched.wake_time;
+
+  return {
+    cycleEveningDate: todayNight.toISODate()!,
+    targetBedtime: tSched.bedtimeDateTime,
+    targetWakeTime: tSched.wakeDateTime,
+    activeBedtimeLocal: tSched.bedtimeStr,
+    activeWakeTimeLocal: tSched.wakeTimeStr,
+    isWeekendSchedule: tSched.isWeekend,
+    isCustomScheduleToday,
+    dayKey: tSched.dayKey,
+    diffMinutes,
+  };
+}
+
+/**
  * Computes the canonical sleep cycle night date ("YYYY-MM-DD") for a member at a given moment.
  * Defined strictly by the local evening the sleep window begins.
- * Applies circular time-delta math across midnight (±12 hours relative to the target bedtime)
- * so early check-ins before midnight and grace-period check-ins after midnight resolve to the
- * exact same sleep cycle.
  */
 export function getSleepCycleDate(member: Member, nowUtc = DateTime.utc()): string {
   const normalizedSleeperZone = toValidLuxonZone(member.timezone);
@@ -1041,36 +1256,8 @@ export function getSleepCycleDate(member: Member, nowUtc = DateTime.utc()): stri
     ? normalizedSleeperZone
     : 'UTC';
   const sleeperNow = nowUtc.setZone(sleeperZone);
-
-  // Candidate evening dates around sleeperNow (-2 to +2 days)
-  const candidateNights = [
-    sleeperNow.minus({ days: 2 }),
-    sleeperNow.minus({ days: 1 }),
-    sleeperNow,
-    sleeperNow.plus({ days: 1 }),
-    sleeperNow.plus({ days: 2 }),
-  ];
-
-  const candidates = candidateNights.map((nightDt) => {
-    const eveningDate = nightDt.startOf('day');
-    const { bedtimeDateTime, isWeekend, bedtimeStr } = getNightBedtimeDateTime(member, eveningDate);
-    const diffMinutes = sleeperNow.diff(bedtimeDateTime, 'minutes').minutes;
-    return {
-      cycleEveningDate: eveningDate.toISODate()!,
-      bedtimeDateTime,
-      diffMinutes,
-      absDiffMinutes: Math.abs(diffMinutes),
-      isWeekend,
-      bedtimeStr,
-    };
-  });
-
-  // Find candidate whose bedtime is closest to sleeperNow using circular time-delta math (±12h / ±720m)
-  const closest = candidates.reduce((best, curr) =>
-    curr.absDiffMinutes < best.absDiffMinutes ? curr : best
-  );
-
-  return closest.cycleEveningDate || sleeperNow.toISODate()!;
+  const cycle = resolveActiveSleepCycle(member, sleeperNow);
+  return cycle.cycleEveningDate;
 }
 
 /**
@@ -1087,7 +1274,7 @@ export function isWeekendCycle(member: Member, nowUtc = DateTime.utc()): boolean
 /**
  * Computes a member's sleep bucket, viewer-adjusted bedtime, and sleep shield state.
  * Fully DST-aware using Luxon's IANA timezone conversion engine.
- * Supports distinct weekend hours for Friday night and Saturday night bedtimes.
+ * Supports distinct 7-day variable sleep schedules and weekend hours.
  */
 export function computeMemberState(
   member: Member,
@@ -1108,40 +1295,16 @@ export function computeMemberState(
 
   const sleeperNow = nowUtc.setZone(sleeperZone);
 
-  // Consider candidate evening dates around now: 2 days ago, yesterday, today, tomorrow, and 2 days ahead
-  const candidateNights = [
-    sleeperNow.minus({ days: 2 }),
-    sleeperNow.minus({ days: 1 }),
-    sleeperNow,
-    sleeperNow.plus({ days: 1 }),
-    sleeperNow.plus({ days: 2 }),
-  ];
+  // Resolve the active sleep cycle (Yesterday's cycle checked first, then today's)
+  const activeCycle = resolveActiveSleepCycle(member, sleeperNow, isInBed);
 
-  const candidates = candidateNights.map((nightDt) => {
-    const eveningDate = nightDt.startOf('day');
-    const { bedtimeDateTime, isWeekend, bedtimeStr } = getNightBedtimeDateTime(member, eveningDate);
-    const diffMinutes = sleeperNow.diff(bedtimeDateTime, 'minutes').minutes;
-    return {
-      eveningDate,
-      cycleEveningDate: eveningDate.toISODate()!,
-      bedtimeDateTime,
-      diffMinutes,
-      absDiffMinutes: Math.abs(diffMinutes),
-      isWeekend,
-      bedtimeStr,
-    };
-  });
-
-  // Find candidate whose bedtimeDateTime is closest to sleeperNow (circular ±12h / ±720m math)
-  const closestCandidate = candidates.reduce((closest, curr) =>
-    curr.absDiffMinutes < closest.absDiffMinutes ? curr : closest
-  );
-
-  const targetBedtime = closestCandidate.bedtimeDateTime;
-  const isWeekendSchedule = closestCandidate.isWeekend && Boolean(member.weekend_bedtime_local);
-  const activeBedtimeLocal = closestCandidate.bedtimeStr;
-
-  const diffMinutes = closestCandidate.diffMinutes;
+  const targetBedtime = activeCycle.targetBedtime;
+  const isWeekendSchedule = activeCycle.isWeekendSchedule;
+  const activeBedtimeLocal = activeCycle.activeBedtimeLocal;
+  const activeWakeTimeLocal = activeCycle.activeWakeTimeLocal;
+  const isCustomScheduleToday = activeCycle.isCustomScheduleToday;
+  const dayKey = activeCycle.dayKey;
+  const diffMinutes = activeCycle.diffMinutes;
 
   let bucket: SleepBucket = 'AWAKE';
   let status: SleepStatus = 'AWAKE';
@@ -1199,8 +1362,11 @@ export function computeMemberState(
     status = 'AWAKE';
     canVoteStrike = false;
     // Find next upcoming bedtime strictly in the future
-    const upcomingCandidates = candidates
-      .map((c) => c.bedtimeDateTime)
+    const upcomingCandidates = [0, 1, 2, 3, 4, 5, 6]
+      .map((offset) => {
+        const nightDt = sleeperNow.plus({ days: offset }).startOf('day');
+        return getNightScheduleDateTime(member, nightDt).bedtimeDateTime;
+      })
       .filter((dt) => dt > sleeperNow)
       .sort((a, b) => a.toMillis() - b.toMillis());
     const nextBedtime = upcomingCandidates[0] || targetBedtime.plus({ days: 1 });
@@ -1216,7 +1382,12 @@ export function computeMemberState(
 
   // Cooldown notice calculation if pending
   let pendingNotice: string | null = null;
-  if (member.pending_effective_at && (member.pending_bedtime_local || member.pending_weekend_bedtime_local)) {
+  if (
+    member.pending_effective_at &&
+    (member.pending_bedtime_local ||
+      member.pending_weekend_bedtime_local ||
+      member.pending_weekly_schedule)
+  ) {
     const effectiveAt = DateTime.fromISO(member.pending_effective_at, { zone: 'utc' });
     const remainingHours = Math.max(0, Math.floor(effectiveAt.diff(nowUtc, 'hours').hours));
     const remainingMins = Math.max(0, Math.floor(effectiveAt.diff(nowUtc, 'minutes').minutes % 60));
@@ -1239,7 +1410,10 @@ export function computeMemberState(
     checkedInEarly,
     streakMilestone,
     isWeekendSchedule,
+    isCustomScheduleToday,
     activeBedtimeLocal,
+    activeWakeTimeLocal,
+    dayKey,
   };
 }
 

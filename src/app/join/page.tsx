@@ -240,6 +240,22 @@ function JoinPageContent() {
 
     setSubmitting(true);
     try {
+      const constructedSchedule = {
+        mon: { bedtime: regBedtime.trim(), wake_time: regWakeTime.trim() },
+        tue: { bedtime: regBedtime.trim(), wake_time: regWakeTime.trim() },
+        wed: { bedtime: regBedtime.trim(), wake_time: regWakeTime.trim() },
+        thu: { bedtime: regBedtime.trim(), wake_time: regWakeTime.trim() },
+        fri: {
+          bedtime: enableWeekend ? weekendBedtime.trim() : regBedtime.trim(),
+          wake_time: enableWeekend ? weekendWakeTime.trim() : regWakeTime.trim(),
+        },
+        sat: {
+          bedtime: enableWeekend ? weekendBedtime.trim() : regBedtime.trim(),
+          wake_time: enableWeekend ? weekendWakeTime.trim() : regWakeTime.trim(),
+        },
+        sun: { bedtime: regBedtime.trim(), wake_time: regWakeTime.trim() },
+      };
+
       const res = await fetch('/api/auth/claim-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -253,6 +269,7 @@ function JoinPageContent() {
           timezone: regTimezone.trim(),
           weekend_bedtime_local: enableWeekend ? weekendBedtime.trim() : null,
           weekend_wake_time_local: enableWeekend ? weekendWakeTime.trim() : null,
+          weekly_schedule: constructedSchedule,
         }),
       });
 

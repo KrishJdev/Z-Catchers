@@ -22,6 +22,15 @@ const DEMO_MEMBERS = [
     weekend_bedtime_local: '00:30',
     weekend_wake_time_local: '09:00',
     role: 'member',
+    weekly_schedule: {
+      mon: { bedtime: '23:30', wake_time: '07:30' },
+      tue: { bedtime: '23:30', wake_time: '07:30' },
+      wed: { bedtime: '23:30', wake_time: '07:30' },
+      thu: { bedtime: '23:30', wake_time: '07:30' },
+      fri: { bedtime: '00:30', wake_time: '09:00' },
+      sat: { bedtime: '00:30', wake_time: '09:00' },
+      sun: { bedtime: '23:30', wake_time: '07:30' },
+    },
   },
   {
     discord_username: 'SarahK',
@@ -34,6 +43,16 @@ const DEMO_MEMBERS = [
     weekend_bedtime_local: '23:45',
     weekend_wake_time_local: '08:30',
     role: 'member',
+    // SarahK has varied mid-week schedule shifts: Tuesday & Thursday late evening routine
+    weekly_schedule: {
+      mon: { bedtime: '22:45', wake_time: '06:45' },
+      tue: { bedtime: '23:15', wake_time: '07:15' },
+      wed: { bedtime: '22:45', wake_time: '06:45' },
+      thu: { bedtime: '23:30', wake_time: '07:30' },
+      fri: { bedtime: '23:45', wake_time: '08:30' },
+      sat: { bedtime: '23:45', wake_time: '08:30' },
+      sun: { bedtime: '22:45', wake_time: '06:45' },
+    },
   },
   {
     discord_username: 'Marcus',
@@ -46,6 +65,15 @@ const DEMO_MEMBERS = [
     weekend_bedtime_local: null,
     weekend_wake_time_local: null,
     role: 'moderator',
+    weekly_schedule: {
+      mon: { bedtime: '23:00', wake_time: '07:00' },
+      tue: { bedtime: '23:00', wake_time: '07:00' },
+      wed: { bedtime: '23:00', wake_time: '07:00' },
+      thu: { bedtime: '23:00', wake_time: '07:00' },
+      fri: { bedtime: '23:00', wake_time: '07:00' },
+      sat: { bedtime: '23:00', wake_time: '07:00' },
+      sun: { bedtime: '23:00', wake_time: '07:00' },
+    },
   },
   {
     discord_username: 'Arjun',
@@ -58,6 +86,15 @@ const DEMO_MEMBERS = [
     weekend_bedtime_local: '01:30',
     weekend_wake_time_local: '09:30',
     role: 'member',
+    weekly_schedule: {
+      mon: { bedtime: '00:15', wake_time: '08:00' },
+      tue: { bedtime: '00:15', wake_time: '08:00' },
+      wed: { bedtime: '00:15', wake_time: '08:00' },
+      thu: { bedtime: '00:15', wake_time: '08:00' },
+      fri: { bedtime: '01:30', wake_time: '09:30' },
+      sat: { bedtime: '01:30', wake_time: '09:30' },
+      sun: { bedtime: '00:15', wake_time: '08:00' },
+    },
   },
 ];
 

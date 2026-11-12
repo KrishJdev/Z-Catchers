@@ -23,12 +23,16 @@ CREATE TABLE IF NOT EXISTS members (
   weekend_bedtime_local VARCHAR(5),         -- Format: "HH:mm" (e.g., "00:30")
   weekend_wake_time_local VARCHAR(5),       -- Format: "HH:mm" (e.g., "09:00")
   
+  -- 7-Day Variable Sleep Schedule (JSONB: { mon: { bedtime, wake_time }, ... })
+  weekly_schedule JSONB,
+  
   -- 48-Hour Cooldown Pending Queue
   pending_bedtime_local VARCHAR(5),
   pending_wake_time_local VARCHAR(5),
   pending_timezone TEXT,
   pending_weekend_bedtime_local VARCHAR(5),
   pending_weekend_wake_time_local VARCHAR(5),
+  pending_weekly_schedule JSONB,
   pending_effective_at TIMESTAMPTZ,         -- UTC timestamp when pending promotion unlocks (NOW() + 48h)
   
   -- Role & Security
@@ -78,6 +82,21 @@ ALTER TABLE members ADD COLUMN IF NOT EXISTS metastrikes_count INT NOT NULL DEFA
 ALTER TABLE members ADD COLUMN IF NOT EXISTS strike_cycle_month TEXT NOT NULL DEFAULT '2026-11';
 ALTER TABLE members ADD COLUMN IF NOT EXISTS last_notified_stage TEXT;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS last_notified_cycle_date TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS weekly_schedule JSONB;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS pending_weekly_schedule JSONB;
+
+-- Backfill existing members from their current weekday and weekend columns
+UPDATE public.members
+SET weekly_schedule = jsonb_build_object(
+  'mon', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+  'tue', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+  'wed', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+  'thu', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+  'fri', jsonb_build_object('bedtime', COALESCE(weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(weekend_wake_time_local, wake_time_local)),
+  'sat', jsonb_build_object('bedtime', COALESCE(weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(weekend_wake_time_local, wake_time_local)),
+  'sun', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local)
+)
+WHERE weekly_schedule IS NULL;
 
 DO $$
 BEGIN

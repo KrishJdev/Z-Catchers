@@ -101,11 +101,13 @@ export async function GET(request: Request) {
           timezone: activeMember.timezone,
           weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
           weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
+          weekly_schedule: activeMember.weekly_schedule || null,
           pending_bedtime_local: null,
           pending_wake_time_local: null,
           pending_timezone: null,
           pending_weekend_bedtime_local: null,
           pending_weekend_wake_time_local: null,
+          pending_weekly_schedule: null,
           pending_effective_at: null,
           updated_at: nowUtc.toISO(),
         });

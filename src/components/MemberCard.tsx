@@ -18,11 +18,22 @@ import {
   RefreshCw,
   Check,
   Bell,
+  Calendar,
 } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import type { MemberState } from '@/lib/sleepEngine';
-import { formatGmtOffset } from '@/lib/timezone';
+import { formatGmtOffset, DayKey, DAY_KEYS } from '@/lib/timezone';
 import { FoxMascot } from './FoxMascot';
+
+const DAY_LABELS: Record<DayKey, { short: string; full: string }> = {
+  mon: { short: 'Mon', full: 'Monday' },
+  tue: { short: 'Tue', full: 'Tuesday' },
+  wed: { short: 'Wed', full: 'Wednesday' },
+  thu: { short: 'Thu', full: 'Thursday' },
+  fri: { short: 'Fri', full: 'Friday' },
+  sat: { short: 'Sat', full: 'Saturday' },
+  sun: { short: 'Sun', full: 'Sunday' },
+};
 
 interface MemberCardProps {
   member: Member;
@@ -75,6 +86,9 @@ export function MemberCard({
   // Local Nag Assist State with optimistic increment & rollback
   const [localNagCount, setLocalNagCount] = useState<number>(member.nag_assists_count || 0);
   const [hasNagged, setHasNagged] = useState(false);
+
+  // Expandable 7-day routine view
+  const [showRoutine, setShowRoutine] = useState(false);
 
   // Subtle alert message for rollbacks and action feedback
   const [cardError, setCardError] = useState<string | null>(null);
@@ -435,9 +449,9 @@ export function MemberCard({
 
               <div className="flex items-center gap-1.5 flex-wrap text-xs text-cream-secondary mt-0.5">
                 <span>
-                  {formattedSleeperTime} local ({formatGmtOffset(member.timezone)})
+                  {formattedSleeperTime} → {state.activeWakeTimeLocal || member.wake_time_local || '07:00'} ({formatGmtOffset(member.timezone)})
                 </span>
-                {state.isWeekendSchedule && (
+                {state.isWeekendSchedule ? (
                   <span
                     className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30"
                     title="Weekend bedtime schedule active (Friday/Saturday nights)"
@@ -445,7 +459,27 @@ export function MemberCard({
                     <Moon className="h-2.5 w-2.5 text-status-amber" />
                     <span>Weekend</span>
                   </span>
-                )}
+                ) : state.isCustomScheduleToday ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30"
+                    title={`Custom daily schedule active for ${state.dayKey ? state.dayKey.toUpperCase() : 'today'}`}
+                  >
+                    <Sparkles className="h-2.5 w-2.5 text-status-amber" />
+                    <span>Custom today</span>
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(10);
+                    setShowRoutine((prev) => !prev);
+                  }}
+                  className="inline-flex items-center gap-0.5 text-[10px] text-cream-muted hover:text-status-amber transition-colors min-h-[30px] px-1 rounded hover:bg-night-surface"
+                  title="View full 7-day sleep routine"
+                >
+                  <Clock className="h-2.5 w-2.5 text-status-amber" />
+                  <span>{showRoutine ? 'Hide routine' : '7-day routine'}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -511,6 +545,44 @@ export function MemberCard({
             </div>
           </div>
         </div>
+
+        {/* Expandable 7-Day Variable Sleep Routine Tray */}
+        {showRoutine && (
+          <div className="rounded-xl border border-night-border/80 bg-night-surface/95 p-2.5 space-y-2 text-xs">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-cream-muted">
+              <span className="flex items-center gap-1.5 text-status-amber">
+                <Calendar className="h-3.5 w-3.5" />
+                <span>7-Day Sleep Routine</span>
+              </span>
+              <span className="text-[10px] text-cream-muted">
+                Cycle: <strong className="text-status-amber uppercase">{state.dayKey || 'today'}</strong>
+              </span>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {DAY_KEYS.map((k) => {
+                const isCurrentDay = state.dayKey === k;
+                const daySched = member.weekly_schedule?.[k] || {
+                  bedtime: (k === 'fri' || k === 'sat') && member.weekend_bedtime_local ? member.weekend_bedtime_local : member.bedtime_local,
+                  wake_time: (k === 'fri' || k === 'sat') && member.weekend_wake_time_local ? member.weekend_wake_time_local : (member.wake_time_local || '07:00'),
+                };
+                return (
+                  <div
+                    key={`routine-${member.id}-${k}`}
+                    className={`rounded-lg p-1 flex flex-col items-center justify-center tabular-nums transition-colors ${
+                      isCurrentDay
+                        ? 'bg-status-amber text-night-bg font-bold shadow'
+                        : 'bg-night-elevated text-cream-secondary border border-night-border/40'
+                    }`}
+                  >
+                    <span className="text-[9px] uppercase font-bold">{DAY_LABELS[k].short}</span>
+                    <span className="text-[9px] mt-0.5">{daySched.bedtime}</span>
+                    <span className="text-[8px] opacity-80">{daySched.wake_time}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Out of Strikes Sleepy Fox Alert Badge */}
         {strikesUsed >= 3 && (

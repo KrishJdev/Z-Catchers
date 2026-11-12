@@ -21,11 +21,13 @@ CREATE TABLE members (
   bedtime_local VARCHAR(5) NOT NULL,        -- Format: "HH:mm" (e.g., "23:30")
   wake_time_local VARCHAR(5) NOT NULL DEFAULT '07:00',
   timezone TEXT NOT NULL,                   -- IANA string (e.g., "America/New_York", "Asia/Kolkata")
+  weekly_schedule JSONB,                    -- 7-Day Variable Schedule: { mon: {bedtime, wake_time}, ..., sun: {bedtime, wake_time} }
   
   -- 48-Hour Cooldown Pending Queue
   pending_bedtime_local VARCHAR(5),
   pending_wake_time_local VARCHAR(5),
   pending_timezone TEXT,
+  pending_weekly_schedule JSONB,            -- Pending 7-day variable schedule awaiting cooldown expiration
   pending_effective_at TIMESTAMPTZ,         -- UTC timestamp when pending promotion unlocks (NOW() + 48h)
   
   -- Role & Security
@@ -231,6 +233,45 @@ The accountability system ensures members adhere to their bedtimes with communit
 * `GET /api/members/strikes`: Retrieves strike counts and tonight's active log for a member.
 * `POST /api/members/strikes/metastrike`: Activates a proactive pass or performs a 24-hour retroactive swap.
 * `POST /api/mod`: Handles `adjust_strikes` and `clear_strike_log` moderator actions.
+
+---
+
+## 2.5 7-Day Variable Sleep Schedule Engine & Cross-Midnight Resolution
+
+### 1. Canonical TypeScript Schedule Types
+Defined in `src/lib/sleepEngine.ts` and re-exported in `src/lib/timezone.ts`:
+```typescript
+export type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+export interface DailySchedule {
+  bedtime: string;   // 24-hour "HH:mm" format (e.g. "23:30" or "01:00")
+  wake_time: string; // 24-hour "HH:mm" format (e.g. "07:30")
+}
+
+export type WeeklySchedule = Record<DayKey, DailySchedule>;
+```
+
+### 2. Daily Schedule Resolution (`getScheduleForDay`)
+Resolves the active target bedtime and wake time for any given day in the member's local timezone:
+1. Maps Luxon's `weekday` index (1 = Monday ... 7 = Sunday) to the corresponding `DayKey`.
+2. Reads `member.weekly_schedule[dayKey]` if populated.
+3. Fallback: If `dayKey` is `'fri'` or `'sat'` and `member.weekend_bedtime_local` is set, resolves weekend hours; otherwise falls back to base `bedtime_local` and `wake_time_local`.
+
+### 3. Cross-Midnight Cycle Resolution (`resolveActiveSleepCycle`)
+Evaluates the member's current sleep cycle cleanly across midnight boundaries:
+1. **Yesterday's Cycle First:** Checks `sleeperNow.minus({ days: 1 })`. If `sleeperNow` is within the active sleep window initiated on the previous calendar day (from yesterday's `bedtime - 180m` until yesterday's `wake_time` or the 8-hour sleep shield window has elapsed), anchors evaluation to yesterday's cycle date and schedule.
+2. **Today's Cycle Second:** Once yesterday's wake window has elapsed, resolves today's cycle date and target schedule via `getScheduleForDay(member, sleeperNow)`.
+
+### 4. Backward Compatibility & Flat Column Synchronization
+When saving a 7-day variable schedule via `/api/members/update-schedule` or `/api/mod`:
+* `weekly_schedule.mon.bedtime` / `wake_time` are written to `bedtime_local` / `wake_time_local`.
+* `weekly_schedule.sat.bedtime` / `wake_time` are written to `weekend_bedtime_local` / `weekend_wake_time_local`.
+* Legacy payloads with only flat columns automatically synthesize an equivalent 7-day `weekly_schedule` object.
+
+### 5. 3-Mode Schedule Editor (`MyScheduleModal.tsx`)
+* **Every Day:** Single bedtime and wake time applied synchronously across all 7 days.
+* **Weekdays / Weekends:** Mon–Thu + Sun regular hours vs. Fri–Sat weekend hours.
+* **Custom Per Day:** Full 7-day editor with interactive day pills (min 44px touch targets), quick copy actions ("Copy to Weekdays", "Copy to Weekend", "Apply All 7 Days"), and a compact 7-day summary preview.
 
 ---
 

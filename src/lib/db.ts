@@ -40,6 +40,15 @@ export const supabaseAdmin = supabaseServiceKey
     })
   : supabase;
 
+export type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+export interface DailySchedule {
+  bedtime: string;   // "HH:mm" 24-hour format (e.g., "23:30" or "01:00")
+  wake_time: string; // "HH:mm" 24-hour format (e.g., "07:30")
+}
+
+export type WeeklySchedule = Record<DayKey, DailySchedule>;
+
 export interface Member {
   id: string;
   discord_id?: string | null;
@@ -52,11 +61,13 @@ export interface Member {
   timezone: string; // IANA timezone, e.g. "America/New_York"
   weekend_bedtime_local?: string | null; // "HH:mm" for Friday & Saturday nights (optional)
   weekend_wake_time_local?: string | null; // "HH:mm" for weekend mornings (optional)
+  weekly_schedule?: WeeklySchedule | null;
   pending_bedtime_local: string | null;
   pending_wake_time_local: string | null;
   pending_timezone: string | null;
   pending_weekend_bedtime_local?: string | null;
   pending_weekend_wake_time_local?: string | null;
+  pending_weekly_schedule?: WeeklySchedule | null;
   pending_effective_at: string | null; // ISO timestamp
   role: 'member' | 'moderator';
   is_moderator?: boolean;
@@ -180,43 +191,45 @@ export async function fetchAllNotificationLogs<T = any>(
 }
 
 /**
- * In-memory fallback cache for weekend hours when columns are not yet migrated in Supabase
+ * In-memory fallback cache for weekend hours & 7-day weekly schedules when columns are not yet migrated in Supabase
  */
-interface InMemoryWeekendHours {
+interface InMemoryScheduleData {
   weekend_bedtime_local?: string | null;
   weekend_wake_time_local?: string | null;
+  weekly_schedule?: WeeklySchedule | null;
+  pending_weekly_schedule?: WeeklySchedule | null;
 }
-const memoryWeekendHours = new Map<string, InMemoryWeekendHours>();
+const memoryScheduleData = new Map<string, InMemoryScheduleData>();
 
 /**
- * Retrieves in-memory weekend schedule hours for a member (used in testing or pre-migration fallbacks).
+ * Retrieves in-memory schedule data for a member (used in testing or pre-migration fallbacks).
  *
  * @param memberId - Target member UUID
- * @returns Cached weekend schedule hours or undefined
+ * @returns Cached schedule data or undefined
  */
-export function getInMemoryWeekendHours(memberId: string): InMemoryWeekendHours | undefined {
-  return memoryWeekendHours.get(memberId);
+export function getInMemoryWeekendHours(memberId: string): InMemoryScheduleData | undefined {
+  return memoryScheduleData.get(memberId);
 }
 
 /**
- * Stores in-memory weekend schedule hours for a member.
+ * Stores in-memory schedule data for a member.
  *
  * @param memberId - Target member UUID
- * @param hours - Weekend bedtime and wake time definitions
+ * @param hours - Schedule definitions
  */
-export function setInMemoryWeekendHours(memberId: string, hours: InMemoryWeekendHours): void {
-  const current = memoryWeekendHours.get(memberId) || {};
-  memoryWeekendHours.set(memberId, { ...current, ...hours });
+export function setInMemoryWeekendHours(memberId: string, hours: InMemoryScheduleData): void {
+  const current = memoryScheduleData.get(memberId) || {};
+  memoryScheduleData.set(memberId, { ...current, ...hours });
 }
 
 /**
- * Hydrates a Member object with in-memory weekend schedule hours if absent from database columns.
+ * Hydrates a Member object with in-memory schedule hours & weekly_schedule if absent from database columns.
  *
  * @param member - Target member entity
  * @returns Hydrated member entity
  */
 export function hydrateMemberWeekendHours(member: Member): Member {
-  const fallback = memoryWeekendHours.get(member.id);
+  const fallback = memoryScheduleData.get(member.id);
   if (!fallback) return member;
   return {
     ...member,
@@ -228,6 +241,14 @@ export function hydrateMemberWeekendHours(member: Member): Member {
       member.weekend_wake_time_local !== undefined && member.weekend_wake_time_local !== null
         ? member.weekend_wake_time_local
         : fallback.weekend_wake_time_local ?? null,
+    weekly_schedule:
+      member.weekly_schedule !== undefined && member.weekly_schedule !== null
+        ? member.weekly_schedule
+        : fallback.weekly_schedule ?? null,
+    pending_weekly_schedule:
+      member.pending_weekly_schedule !== undefined && member.pending_weekly_schedule !== null
+        ? member.pending_weekly_schedule
+        : fallback.pending_weekly_schedule ?? null,
   };
 }
 
@@ -265,9 +286,15 @@ export async function getExistingMemberColumns(): Promise<Set<string>> {
     'bedtime_local',
     'wake_time_local',
     'timezone',
+    'weekend_bedtime_local',
+    'weekend_wake_time_local',
+    'weekly_schedule',
     'pending_bedtime_local',
     'pending_wake_time_local',
     'pending_timezone',
+    'pending_weekend_bedtime_local',
+    'pending_weekend_wake_time_local',
+    'pending_weekly_schedule',
     'pending_effective_at',
     'role',
     'is_moderator',
@@ -328,11 +355,13 @@ export async function updateMemberSafe(
     updates.metastrikes_used = updates.metastrikes_count;
   }
 
-  // Store weekend hours in memory cache in case columns do not exist in PostgreSQL
-  if ('weekend_bedtime_local' in updates || 'weekend_wake_time_local' in updates) {
+  // Store weekend hours and weekly schedule in memory cache in case columns do not exist in PostgreSQL
+  if ('weekend_bedtime_local' in updates || 'weekend_wake_time_local' in updates || 'weekly_schedule' in updates || 'pending_weekly_schedule' in updates) {
     setInMemoryWeekendHours(memberId, {
       weekend_bedtime_local: updates.weekend_bedtime_local,
       weekend_wake_time_local: updates.weekend_wake_time_local,
+      weekly_schedule: updates.weekly_schedule,
+      pending_weekly_schedule: updates.pending_weekly_schedule,
     });
   }
 
@@ -406,10 +435,18 @@ export async function insertMemberSafe(
     }
   }
 
-  if (data && ('weekend_bedtime_local' in payload || 'weekend_wake_time_local' in payload)) {
+  if (
+    data &&
+    ('weekend_bedtime_local' in payload ||
+      'weekend_wake_time_local' in payload ||
+      'weekly_schedule' in payload ||
+      'pending_weekly_schedule' in payload)
+  ) {
     setInMemoryWeekendHours((data as unknown as Member).id, {
       weekend_bedtime_local: payload.weekend_bedtime_local,
       weekend_wake_time_local: payload.weekend_wake_time_local,
+      weekly_schedule: payload.weekly_schedule,
+      pending_weekly_schedule: payload.pending_weekly_schedule,
     });
   }
 
