@@ -852,6 +852,8 @@ export interface MemberState {
   activeWakeTimeLocal?: string;
   dayKey?: DayKey;
   needsWakeUpLog?: boolean;
+  isPastWakeTime?: boolean;
+  hasLoggedWakeUp?: boolean;
 }
 
 /**
@@ -1207,10 +1209,16 @@ export function resolveActiveSleepCycle(
   // Yesterday's active window starts when wind-down/curfew or early check-in begins (-180m before bedtime)
   const yStart = ySched.bedtimeDateTime.minus({ minutes: 180 });
   // Yesterday's window ends when yesterday's wake window has elapsed
-  // If member is actively in bed without waking up, extend window up to 8 hours (480 mins) or wake time
-  const yEnd = effectiveInBed && !hasWokeUpForYesterday
-    ? DateTime.max(ySched.wakeDateTime, ySched.bedtimeDateTime.plus({ minutes: 480 }))
+  // If member is actively in bed without waking up, extend window up to 6 hours past wake time or 14 hours past bedtime
+  // If member has not logged wake-up, keep yesterday's cycle active past wake time (up to 4 hours post-wake or until today's wind-down)
+  const todayNightForWindDown = sleeperNow.startOf('day');
+  const tSchedForWindDown = getNightScheduleDateTime(member, todayNightForWindDown);
+  const todayWindDownStart = tSchedForWindDown.bedtimeDateTime.minus({ minutes: 180 });
+
+  const maxYesterdayEnd = effectiveInBed && !hasWokeUpForYesterday
+    ? DateTime.max(ySched.wakeDateTime.plus({ hours: 6 }), ySched.bedtimeDateTime.plus({ hours: 14 }))
     : ySched.wakeDateTime;
+  const yEnd = DateTime.min(maxYesterdayEnd, todayWindDownStart);
 
   if (sleeperNow >= yStart && sleeperNow < yEnd) {
     const diffMinutes = sleeperNow.diff(ySched.bedtimeDateTime, 'minutes').minutes;
@@ -1328,6 +1336,8 @@ export function computeMemberState(
     (member.last_wake_cycle_date && member.last_wake_cycle_date === activeCycle.cycleEveningDate)
   );
 
+  const isPastWakeTime = sleeperNow >= activeCycle.targetWakeTime;
+
   // If member has explicitly marked themselves awake / logged wake-up for current cycle
   if (hasLoggedWakeUp) {
     bucket = 'AWAKE';
@@ -1337,11 +1347,16 @@ export function computeMemberState(
     checkedInEarly = false;
     canVoteStrike = false;
     needsWakeUpLog = false;
-  } else if (effectiveInBed && diffMinutes >= -180 && diffMinutes <= 480) {
+  } else if (effectiveInBed && diffMinutes >= -180) {
     bucket = 'SLEEPING';
     status = 'SLEEPING';
-    statusText = 'In Bed (Checked In) • Resting';
-    isSleepShieldActive = true;
+    if (isPastWakeTime) {
+      statusText = `In Bed • Past Wake Time (${activeWakeTimeLocal})`;
+      isSleepShieldActive = false;
+    } else {
+      statusText = 'In Bed (Checked In) • Resting';
+      isSleepShieldActive = true;
+    }
     checkedInEarly = true;
     canVoteStrike = false;
     needsWakeUpLog = true;
@@ -1365,11 +1380,12 @@ export function computeMemberState(
     canVoteStrike = false;
   } else if (diffMinutes > 60 && diffMinutes <= 480) {
     // Active sleep window (60m to 480m) without safe check-in:
-    // Status is OVERDUE_NAG_NOW (overdue past 5m through active sleep window), strike voting remains active
     bucket = 'SLEEPING';
     status = 'OVERDUE_NAG_NOW';
-    statusText = `Catching Z's (Asleep)`;
-    isSleepShieldActive = true;
+    statusText = isPastWakeTime
+      ? `Catching Z's • Past Wake Time (${activeWakeTimeLocal})`
+      : `Catching Z's (Asleep)`;
+    isSleepShieldActive = !isPastWakeTime;
     canVoteStrike = true;
     needsWakeUpLog = true;
   } else {
@@ -1433,6 +1449,8 @@ export function computeMemberState(
     activeWakeTimeLocal,
     dayKey,
     needsWakeUpLog,
+    isPastWakeTime,
+    hasLoggedWakeUp,
   };
 }
 

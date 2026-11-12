@@ -239,6 +239,117 @@ export function MemberCard({
   // Nag Notif dispatch states
   const [isSendingNagNotif, setIsSendingNagNotif] = useState(false);
   const [nagNotifSent, setNagNotifSent] = useState(false);
+  const [isSendingWakeNag, setIsSendingWakeNag] = useState(false);
+  const [wakeNagSent, setWakeNagSent] = useState(false);
+  const [nagCooldownSeconds, setNagCooldownSeconds] = useState<number>(0);
+
+  // Sync and tick down 15-minute nag cooldown from localStorage
+  useEffect(() => {
+    const storageKey = `nag_cooldown_${member.id}`;
+    const checkCooldown = () => {
+      try {
+        const storedExpiry = localStorage.getItem(storageKey);
+        if (storedExpiry) {
+          const expiryTime = Number(storedExpiry);
+          const diffMs = expiryTime - Date.now();
+          if (diffMs > 0) {
+            setNagCooldownSeconds(Math.ceil(diffMs / 1000));
+            return;
+          } else {
+            localStorage.removeItem(storageKey);
+            setNagCooldownSeconds(0);
+          }
+        } else {
+          setNagCooldownSeconds(0);
+        }
+      } catch {
+        // Fallback for environments where localStorage is restricted
+      }
+    };
+
+    checkCooldown();
+    const interval = setInterval(checkCooldown, 1000);
+    return () => clearInterval(interval);
+  }, [member.id]);
+
+  const startNagCooldown = (seconds = 15 * 60) => {
+    try {
+      const expiry = Date.now() + seconds * 1000;
+      localStorage.setItem(`nag_cooldown_${member.id}`, String(expiry));
+      setNagCooldownSeconds(seconds);
+    } catch {
+      setNagCooldownSeconds(seconds);
+    }
+  };
+
+  const formatNagCooldown = (totalSecs: number) => {
+    const mm = Math.floor(totalSecs / 60);
+    const ss = totalSecs % 60;
+    return `${mm}:${ss < 10 ? '0' : ''}${ss}`;
+  };
+
+  // Handle Wake-Up Nag Notification Click
+  const handleSendWakeUpNagNotif = async () => {
+    triggerHaptic(15);
+    setIsSendingWakeNag(true);
+    setCardFeedback(null);
+
+    try {
+      const res = await fetch('/api/members/nag-notif', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_member_id: member.id,
+          type: 'wake_up',
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (data.shieldActive) {
+        setCardFeedback({
+          type: 'shield',
+          text: data.message || `🛡️ Sleep Shield is active for ${member.discord_username}.`,
+        });
+        setTimeout(() => setCardFeedback(null), 4000);
+      } else if (res.ok && data.success) {
+        setWakeNagSent(true);
+        startNagCooldown(data.cooldownSeconds || 15 * 60);
+        if (typeof data.totalAssists === 'number') {
+          setLocalNagCount(data.totalAssists);
+        } else {
+          setLocalNagCount((prev) => prev + 1);
+        }
+        setCardFeedback({
+          type: 'success',
+          text: data.message || `☀️ Wake-up reminder sent to ${member.discord_username}!`,
+        });
+        setTimeout(() => setCardFeedback(null), 4000);
+      } else if (data.rateLimited) {
+        setWakeNagSent(true);
+        startNagCooldown(data.cooldownSeconds || 15 * 60);
+        setCardFeedback({
+          type: 'success',
+          text: data.message || `You can send another reminder to ${member.discord_username} in ${Math.ceil((data.cooldownSeconds || 900) / 60)}m.`,
+        });
+        setTimeout(() => setCardFeedback(null), 4000);
+      } else {
+        setCardFeedback({
+          type: 'error',
+          text: data.error || data.message || 'Could not send wake-up reminder.',
+        });
+        setTimeout(() => setCardFeedback(null), 4000);
+      }
+    } catch {
+      setCardFeedback({
+        type: 'error',
+        text: 'Network error sending wake-up reminder.',
+      });
+      setTimeout(() => setCardFeedback(null), 4000);
+    } finally {
+      setIsSendingWakeNag(false);
+    }
+  };
 
   // Handle Nag Notification Click
   const handleSendNagNotif = async () => {
@@ -272,6 +383,7 @@ export function MemberCard({
         setTimeout(() => setCardFeedback(null), 4000);
       } else if (res.ok && data.success) {
         setNagNotifSent(true);
+        startNagCooldown(data.cooldownSeconds || 15 * 60);
         if (typeof data.totalAssists === 'number') {
           setLocalNagCount(data.totalAssists);
         } else {
@@ -283,9 +395,10 @@ export function MemberCard({
         });
         setTimeout(() => setCardFeedback(null), 4000);
       } else if (data.rateLimited) {
+        startNagCooldown(data.cooldownSeconds || 15 * 60);
         setCardFeedback({
           type: 'error',
-          text: data.message || `You already reminded ${member.discord_username} tonight.`,
+          text: data.message || `You can send another reminder to ${member.discord_username} in ${Math.ceil((data.cooldownSeconds || 900) / 60)}m.`,
         });
         setTimeout(() => setCardFeedback(null), 4000);
       } else {
@@ -629,7 +742,7 @@ export function MemberCard({
         )}
 
         {/* Checked-in Confirmation Banner for Sleeping State */}
-        {(isViewer || isModerator) && isInBed && bucket === 'SLEEPING' && (
+        {isViewer && isInBed && bucket === 'SLEEPING' && (
           <div className="flex h-11 min-h-[44px] items-center justify-between rounded-xl border border-status-amber/30 bg-status-amber/10 px-3 text-xs font-medium text-status-amber">
             <span className="flex items-center gap-1.5 truncate">
               <Shield className="h-4 w-4 shrink-0" />
@@ -740,19 +853,19 @@ export function MemberCard({
                 <button
                   type="button"
                   onClick={handleSendNagNotif}
-                  disabled={isSendingNagNotif || (nagNotifSent && !isTargetShieldOn)}
+                  disabled={isSendingNagNotif || nagCooldownSeconds > 0 || isTargetShieldOn}
                   className={`flex-1 h-9 min-h-[36px] min-w-[44px] flex items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all whitespace-nowrap ${
                     isTargetShieldOn
                       ? 'border border-status-slumber/40 bg-status-slumber/15 text-status-slumber hover:bg-status-slumber/25 active:scale-95'
-                      : nagNotifSent
-                      ? 'border border-status-sage/40 bg-status-sage/15 text-status-sage cursor-default'
+                      : nagCooldownSeconds > 0
+                      ? 'border border-night-border/70 bg-night-elevated/70 text-cream-muted cursor-not-allowed'
                       : 'border border-status-coral/50 bg-status-coral/15 text-status-coral hover:bg-status-coral/25 active:scale-95'
                   }`}
                   title={
                     isTargetShieldOn
                       ? `Sleep Shield is ON for ${member.discord_username}. Tap to see shield status.`
-                      : nagNotifSent
-                      ? 'Bedtime reminder notification sent'
+                      : nagCooldownSeconds > 0
+                      ? `Nag reminder sent! You can send another reminder in ${formatNagCooldown(nagCooldownSeconds)}.`
                       : `Send bedtime reminder notification to ${member.discord_username}`
                   }
                 >
@@ -766,10 +879,10 @@ export function MemberCard({
                       <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
                       <span>Sending...</span>
                     </>
-                  ) : nagNotifSent ? (
+                  ) : nagCooldownSeconds > 0 ? (
                     <>
-                      <Check className="h-3.5 w-3.5 text-status-sage shrink-0" />
-                      <span>Nag Sent</span>
+                      <Clock className="h-3.5 w-3.5 text-cream-muted shrink-0" />
+                      <span>Nag in {formatNagCooldown(nagCooldownSeconds)}</span>
                     </>
                   ) : (
                     <>
@@ -857,19 +970,19 @@ export function MemberCard({
               <button
                 type="button"
                 onClick={handleSendNagNotif}
-                disabled={isSendingNagNotif || (nagNotifSent && !isTargetShieldOn)}
+                disabled={isSendingNagNotif || nagCooldownSeconds > 0 || isTargetShieldOn}
                 className={`w-full h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-semibold transition-all whitespace-nowrap ${
                   isTargetShieldOn
                     ? 'border border-status-slumber/40 bg-status-slumber/15 text-status-slumber hover:bg-status-slumber/25 active:scale-95'
-                    : nagNotifSent
-                    ? 'border border-status-sage/40 bg-status-sage/15 text-status-sage cursor-default'
+                    : nagCooldownSeconds > 0
+                    ? 'border border-night-border/70 bg-night-elevated/70 text-cream-muted cursor-not-allowed'
                     : 'border border-status-amber/50 bg-status-amber/15 text-status-amber hover:bg-status-amber/25 active:scale-95'
                 }`}
                 title={
                   isTargetShieldOn
                     ? `Sleep Shield is ON for ${member.discord_username}. Nags muted.`
-                    : nagNotifSent
-                    ? 'Bedtime reminder sent'
+                    : nagCooldownSeconds > 0
+                    ? `Nag reminder sent! You can send another reminder in ${formatNagCooldown(nagCooldownSeconds)}.`
                     : `Send bedtime reminder notification to ${member.discord_username}`
                 }
               >
@@ -883,10 +996,10 @@ export function MemberCard({
                     <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
                     <span>Sending...</span>
                   </>
-                ) : nagNotifSent ? (
+                ) : nagCooldownSeconds > 0 ? (
                   <>
-                    <Check className="h-3.5 w-3.5 text-status-sage shrink-0" />
-                    <span>Nag Sent</span>
+                    <Clock className="h-3.5 w-3.5 text-cream-muted shrink-0" />
+                    <span>Nag in {formatNagCooldown(nagCooldownSeconds)}</span>
                   </>
                 ) : (
                   <>
@@ -994,16 +1107,38 @@ export function MemberCard({
               </div>
             ) : (
               <div className="flex items-center gap-2 w-full">
-                {(member.is_in_bed || isModerator) && onCancelInBed ? (
+                {state.isPastWakeTime ? (
                   <button
                     type="button"
-                    onClick={handleCancelInBedClick}
-                    disabled={isCheckingIn}
-                    className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-2.5 text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm"
-                    title="Wake up and undo sleep status (returns from sleeping state to awake)"
+                    onClick={handleSendWakeUpNagNotif}
+                    disabled={isSendingWakeNag || nagCooldownSeconds > 0}
+                    className={`flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all shadow-sm ${
+                      nagCooldownSeconds > 0
+                        ? 'border border-night-border/70 bg-night-elevated/70 text-cream-muted cursor-not-allowed'
+                        : 'border border-status-amber/40 bg-status-amber/15 text-status-amber hover:bg-status-amber/25 active:scale-95'
+                    }`}
+                    title={
+                      nagCooldownSeconds > 0
+                        ? `Wake-up reminder sent! You can send another reminder in ${formatNagCooldown(nagCooldownSeconds)}.`
+                        : `Send wake-up reminder notification to ${member.discord_username}`
+                    }
                   >
-                    <Sun className="h-3.5 w-3.5 text-status-amber shrink-0" />
-                    <span className="truncate">Wake Up (Undo)</span>
+                    {isSendingWakeNag ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+                        <span className="truncate">Sending...</span>
+                      </>
+                    ) : nagCooldownSeconds > 0 ? (
+                      <>
+                        <Clock className="h-3.5 w-3.5 text-cream-muted shrink-0" />
+                        <span className="truncate">Nag in {formatNagCooldown(nagCooldownSeconds)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sun className="h-3.5 w-3.5 text-status-amber shrink-0" />
+                        <span className="truncate">Wake Up Nag</span>
+                      </>
+                    )}
                   </button>
                 ) : !isInBed && !isMetastrikeActive && !isViewer && onVoteStrike ? (
                   <div className="flex-1 min-w-0">
@@ -1036,7 +1171,7 @@ export function MemberCard({
                     type="button"
                     onClick={handleSendNagNotif}
                     className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-slumber/40 bg-status-slumber/15 px-2.5 text-xs font-semibold text-status-slumber hover:bg-status-slumber/25 transition-all shadow-sm"
-                    title={`Sleep Shield is ON for ${member.discord_username}. Tap to view shield status.`}
+                    title={`Sleep Shield is ON for ${member.discord_username} until their wake time (${state.activeWakeTimeLocal || '07:00'}). Tap to view shield status.`}
                   >
                     <Shield className="h-3.5 w-3.5 fill-status-slumber/20 shrink-0" />
                     <span className="truncate">Shield On</span>

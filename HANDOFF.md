@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T00:23:00+05:30  
+> **Last Updated:** 2026-11-13T01:05:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `ef9a303`  
+> **Latest Commit:** `6c703a6`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44)  
 > **Active Integration Pull Request:** [#49 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
 > **Active Production Release Pull Request:** None (all merged)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 22/22 suites passed | Dev server running on `http://localhost:3000`)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 23/23 suites passed | Dev server running on `http://localhost:3000`)
 
 ---
 
@@ -69,6 +69,54 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 69: Authoritative Discord OAuth Handle Sync & Stale Handle Inversion Fix
+* **Diagnosis of Discrepancy:**
+  - Discovered that in Phase 46, an automated database update script mistakenly hardcoded `discord_handle = '@krish'` for `discord_id = 617551062102048779` because the git branch and developer name was `krish`.
+  - In `src/app/api/auth/discord/callback/route.ts`, returning members were updated using `discord_handle: member.discord_handle || discordHandle`. Because the database row already had `'@krish'`, the true verified Discord handle (`@nrgslayer`) was blocked from updating on Discord login.
+* **Authoritative OAuth Handle Synchronization (`src/app/api/auth/discord/callback/route.ts`):**
+  - Updated OAuth callback update payload to `discord_handle: discordHandle || member.discord_handle`. Verified Discord OAuth data is now authoritative for Discord handles, ensuring returning users always receive their real, current Discord handle (`@nrgslayer`).
+  - Corrected database row in Supabase (`discord_id = '617551062102048779'`) to `discord_handle = '@nrgslayer'`.
+* **Automated Regression Verification:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` executed: all 23/23 unit test suites passing cleanly.
+
+### Phase 68: 15-Minute Nag Notification Cooldown & In-Button Live Countdown
+* **15-Minute Cooldown Endpoint Logic (`src/app/api/members/nag-notif/route.ts`):**
+  - Replaced once-per-night hard rate limiting with a 15-minute (900s) cooldown window for both bedtime reminders and wake-up nags.
+  - Queries `notification_logs` for `dispatched_at` timestamp of recent nags from the sender (`helperKey`) to the target member.
+  - If fewer than 15 minutes have elapsed, returns HTTP 429 with remaining `cooldownSeconds` and `cooldownMinutes` (`"You can send another reminder to {name} in {x}m."`).
+  - If 15 minutes have elapsed, allows the nag to dispatch and updates `dispatched_at: nowUtc.toISO()` via upsert on conflict `(member_id, notification_type, local_date)`.
+  - Returns `cooldownSeconds: 900` on successful dispatch.
+* **In-Button Live Countdown UI (`src/components/MemberCard.tsx`):**
+  - Added `nagCooldownSeconds` state and `useEffect` timer ticking down each second.
+  - Persists cooldown expiry timestamp in `localStorage` under `nag_cooldown_${member.id}` so the countdown persists across tab switches and page refreshes.
+  - Formats remaining time into digital MM:SS (`formatNagCooldown`), rendering `<Clock /> Nag in {MM:SS}` directly inside the nag button across all 3 nag contexts (`WINDING_DOWN`, `BEDTIME_NOW`/`OVERDUE_NAG_NOW`, and `SLEEPING` past wake time).
+  - Automatically re-enables the button when the countdown reaches 0:00.
+* **Automated Unit Testing (`scripts/test-wake-up-nag.mjs`):**
+  - Verified server-side 15-minute cooldown enforcement, payload properties (`cooldownSeconds`, `cooldownMinutes`, 429 status), and client-side countdown rendering in `MemberCard`.
+  - All 23 unit test suites passed cleanly (`npm run test:unit`).
+
+### Phase 67: Wake-Up Status Authorization Protection & "Wake Up Nag" Feature
+* **Awake Status Authorization Protection (`src/components/MemberCard.tsx`):**
+  - Resolved security/UX violation where viewers looking at another member's sleeping/in-bed card were rendered a `"Wake Up (Undo)"` button due to `(member.is_in_bed || isModerator) && onCancelInBed`.
+  - Restricted all wake-up and sleep status undo actions (`☀️ I Woke Up`, `Enter Time`, `Wake Up (Undo)`) exclusively to the profile owner (`isViewer === true`).
+  - Restricted in-bed sleeping status banner undo strictly to the card owner (`isViewer && isInBed && bucket === 'SLEEPING'`).
+* **Sleep Engine Wake Time Evaluation (`src/lib/sleepEngine.ts`):**
+  - Added `isPastWakeTime` calculation comparing `sleeperNow >= activeCycle.targetWakeTime`.
+  - Maintained `isSleepShieldActive = true` while sleeping before wake time; deactivates nighttime Sleep Shield once the target wake time has elapsed to allow morning wake-up accountability.
+  - Extended yesterday's cycle end window for in-bed sleepers who haven't logged wake-up so their morning overdue state remains accurately tracked.
+* **"Wake Up Nag" Notification Support (`src/components/MemberCard.tsx`, `src/app/api/members/nag-notif/route.ts`):**
+  - Added `☀️ Wake Up Nag` button on sleeping cards when viewed by friends after the member's target awake time has arrived.
+  - Enhanced `POST /api/members/nag-notif` to support `type: 'wake_up'`:
+    - Checks that target member has not already marked themselves awake.
+    - Validates that target member's target wake time has elapsed; if not, responds that Sleep Shield is active until their wake time.
+    - Implements anti-spam deduplication per sender per morning using `MANUAL_NAG:WAKE_UP:${helperKey}`.
+    - Dispatches rich push notifications: `"☀️ Rise and Shine! [Sender] is nudging you to wake up! Time to start the day 🦊"`.
+    - Increments community assist counters.
+* **Automated Unit Testing (`scripts/test-wake-up-nag.mjs`, `scripts/run-tests.mjs`):**
+  - Created standalone unit test suite validating `isPastWakeTime` transitions, authorization barriers in `MemberCard`, and wake-up nag endpoint rules.
+  - Verified with all 23 unit test suites passing cleanly (`npm run test:unit`).
 
 ### Phase 66: Member Profile Section, Weekly Timetable, Streak Calendar, and Banner Overflow Fix
 * **Text Overflow Resolution (`src/components/MemberCard.tsx`):**
