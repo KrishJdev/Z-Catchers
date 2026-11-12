@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T13:25:00+05:30  
+> **Last Updated:** 2026-11-12T14:00:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 792ae6f  
+> **Latest Commit:** f30111c  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
 > **Active Integration Pull Request:** [#27 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
 > **Active Production Release Pull Request:** [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `node scripts/test-gmt-timezones.mjs` passed (11/11 test suites) | `node scripts/test-weekend-hours.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-wake-up-and-overflow.mjs` passed | `node scripts/test-strikes-system.mjs` passed)
+> **Build Status:** Passing (`npm run typecheck` clean, 0 errors | `npm run build` clean, 26/26 routes | `npm run test:unit` clean, 19/19 suites passed | `npm run test:all` clean, 20/20 suites passed)
 
 ---
 
@@ -69,6 +69,27 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 55: Automated CI Pipeline & Unified Test Runner
+* **Helper Scripts Configuration (`package.json`):**
+  - Added `"typecheck": "tsc --noEmit"` for TypeScript static validation.
+  - Added `"test:unit": "node scripts/run-tests.mjs --unit"` executing all 19 offline unit/static test suites.
+  - Added `"test:all": "node scripts/run-tests.mjs --all"` executing all 20 verification suites including live DB integration tests.
+  - Added `"test": "node scripts/run-tests.mjs --unit"`.
+* **Cross-Platform Unified Test Runner (`scripts/run-tests.mjs`):**
+  - Built a fast, cross-platform runner that cleanly executes `.mjs` test suites via `child_process.spawnSync`.
+  - Categorized suites into offline standalone unit tests (19 suites) and live E2E database suites (`test-e2e-api-endpoints.mjs`).
+  - Summarizes execution timing, total suites, passes, and detailed failure outputs.
+* **Offline Fallback Hardening (`scripts/test-phase1-security.mjs`):**
+  - Added automatic `.env.local` parser and graceful offline handling: runs pure unit tests (`sanitizeMember`) and skips remote database checks when Supabase credentials are not configured.
+* **Automated GitHub Actions CI Workflow (`.github/workflows/ci.yml`):**
+  - Configured CI pipeline triggered on `push` (to `main`, `dev`, `krish`) and `pull_request` (to `main`, `dev`).
+  - Pipeline executes: checkout, Node.js 20 setup with npm cache, `npm ci`, `npm run typecheck`, `npm run build` (with safe dummy env vars), and `npm run test:unit`.
+* **Verification Check:**
+  - `npm run typecheck`: clean, 0 errors.
+  - `npm run build`: compiled all 26/26 routes cleanly.
+  - `npm run test:unit`: all 19/19 suites passed in under 10 seconds.
+  - `npm run test:all`: all 20/20 suites passed cleanly.
 
 ### Phase 54: Task 4 - Global IANA & GMT Timezones Expansion & Reusable Selector
 * **Comprehensive Global Timezone Catalog (`src/lib/sleepEngine.ts`, `src/lib/timezone.ts`):**
