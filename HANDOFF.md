@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T14:38:00+05:30  
+> **Last Updated:** 2026-11-12T14:47:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 223c42e  
+> **Latest Commit:** 2456617  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
 > **Active Integration Pull Request:** [#27 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
@@ -70,15 +70,21 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 ## 4. Comprehensive Task Changelog
 
-### Phase 57: CI Pipeline Test Runner TypeScript Loader Fix (`tsx`)
+### Phase 57: CI Pipeline Test Runner TypeScript Loader, Node 22 & Offline CI Isolation Fixes
 * **TypeScript ESM Module Resolution in CI (`package.json`, `package-lock.json`):**
-  - Added `tsx` (`^4.23.15`) to `devDependencies` so Node.js 20 on Ubuntu CI runner (`.github/workflows/ci.yml`) can cleanly resolve and transpile TypeScript modules (`.ts` files like `src/lib/sleepEngine.ts`, `src/lib/auth.ts`, `src/lib/rateLimit.ts`) imported by `.mjs` test suites.
+  - Added `tsx` (`^4.23.15`) to `devDependencies` so Node.js environments can cleanly resolve and transpile TypeScript modules (`.ts` files like `src/lib/sleepEngine.ts`, `src/lib/auth.ts`, `src/lib/rateLimit.ts`) imported by `.mjs` test suites.
   - Updated npm test scripts (`"test"`, `"test:unit"`, `"test:all"`) to invoke `node --import tsx scripts/run-tests.mjs ...`.
 * **Universal Test Subprocess Loader Propagation (`scripts/run-tests.mjs`):**
   - Enhanced child process argument construction in `scripts/run-tests.mjs` to detect active TypeScript loaders (`tsx` or `strip-types`) in `process.execArgv` and forward them, or prepend `--import tsx` when spawning child test suites via `child_process.spawnSync`.
   - Guarantees all 19 offline unit test suites run cleanly across local workstations and GitHub Actions CI without `ERR_UNKNOWN_FILE_EXTENSION` errors.
+* **Node.js 22 LTS CI Upgrade & WebSocket Polyfill (`.github/workflows/ci.yml`, `src/lib/db.ts`):**
+  - Upgraded GitHub Actions CI workflow to Node.js 22 LTS (`node-version: 22`), matching `@types/node: ^22.13.1` and satisfying `@supabase/supabase-js`'s requirement for native global `WebSocket`.
+  - Added a defensive `DummyWebSocket` polyfill in `src/lib/db.ts` for headless or Node < 22 environments where native WebSocket might be undefined, preventing client initialization crashes.
+* **Offline CI Test Isolation (`scripts/test-*.mjs`):**
+  - Audited all unit test suites (`test-login-and-auth.mjs`, `test-nag-notifications.mjs`, `test-strikes-system.mjs`, `test-signup-and-profiles.mjs`, `test-discord-webhook-and-assists.mjs`, `test-in-bed-and-streaks.mjs`, `test-phase1-pwa-push.mjs`).
+  - Added explicit check `Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'))` so placeholder CI credentials safely skip external network database calls without assertion failures.
 * **Specification Sync (`BACKEND_TZ_PWA_SPEC.md`):**
-  - Updated Section 5 test execution commands to reflect `node --import tsx` runner syntax.
+  - Updated Section 5 to reflect Node.js 22 runner environment and `node --import tsx` syntax.
 
 ### Phase 56: Code Review & Security Hardening
 * **Timezone Selector Accessibility & Touch Target UX (`src/components/TimezoneSelect.tsx`):**
