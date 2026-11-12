@@ -8,12 +8,15 @@ const mode = args.includes('--all') ? 'all' : 'unit';
 
 // Unit tests: offline/standalone verification suites that do not require live external services
 const UNIT_TESTS = [
+  'test-audit-issue-sync.mjs',
   'test-demo-seed-fingerprint.mjs',
   'test-discord-webhook-and-assists.mjs',
   'test-gmt-timezones.mjs',
   'test-in-bed-and-streaks.mjs',
   'test-login-and-auth.mjs',
   'test-logout-flow.mjs',
+  'test-member-profile-and-overflow-fix.mjs',
+  'test-metastrike-overflow-fix.mjs',
   'test-nag-notifications.mjs',
   'test-phase1-pwa-push.mjs',
   'test-phase1-security.mjs',
@@ -24,9 +27,12 @@ const UNIT_TESTS = [
   'test-push-and-cron.mjs',
   'test-schedule-cooldown.mjs',
   'test-signup-and-profiles.mjs',
+  'test-sleep-history-and-wakeup.mjs',
   'test-strikes-system.mjs',
   'test-wake-up-and-overflow.mjs',
+  'test-wake-up-nag.mjs',
   'test-weekend-hours.mjs',
+  'test-wind-down-awake-fix.mjs',
 ];
 
 // E2E tests: require live Supabase database or running network services

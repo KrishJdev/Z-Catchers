@@ -15,7 +15,7 @@ import {
 } from '@/lib/rateLimit';
 import { DEMO_SEED_FINGERPRINTS, isDemoSeedMember } from '@/lib/demoSeed';
 import { checkCooldownPromotion, getSleepCycleDate } from '@/lib/sleepEngine';
-import { isValidTimezone, formatGmtOffset } from '@/lib/timezone';
+import { isValidTimezone, formatGmtOffset, DAY_KEYS, type DayKey, type WeeklySchedule, type DailySchedule } from '@/lib/timezone';
 import { resolveMemberStrikeCounts, modAdjustStrikes, modClearStrikeLog } from '@/lib/strikes';
 import { DateTime } from 'luxon';
 
@@ -79,11 +79,13 @@ export async function GET(request: Request) {
           timezone: activeMember.timezone,
           weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
           weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
+          weekly_schedule: activeMember.weekly_schedule || member.weekly_schedule || null,
           pending_bedtime_local: null,
           pending_wake_time_local: null,
           pending_timezone: null,
           pending_weekend_bedtime_local: null,
           pending_weekend_wake_time_local: null,
+          pending_weekly_schedule: null,
           pending_effective_at: null,
           updated_at: DateTime.utc().toISO() as string,
         });
@@ -186,7 +188,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Member not found' }, { status: 404 });
       }
 
-      if (!member.pending_effective_at || (!member.pending_bedtime_local && !member.pending_weekend_bedtime_local)) {
+      if (!member.pending_effective_at || (!member.pending_bedtime_local && !member.pending_weekend_bedtime_local && !member.pending_weekly_schedule)) {
         return NextResponse.json(
           { error: 'Member does not have an active pending schedule change.' },
           { status: 400 }
@@ -201,6 +203,8 @@ export async function POST(request: Request) {
         member.pending_weekend_wake_time_local !== undefined
           ? member.pending_weekend_wake_time_local
           : member.weekend_wake_time_local;
+      const nextWeeklySchedule =
+        member.pending_weekly_schedule || member.weekly_schedule || null;
 
       const { data: updated, error: updateErr } = await updateMemberSafe(member_id, {
         bedtime_local: member.pending_bedtime_local || member.bedtime_local,
@@ -208,11 +212,13 @@ export async function POST(request: Request) {
         timezone: member.pending_timezone || member.timezone,
         weekend_bedtime_local: nextWeekendBedtime,
         weekend_wake_time_local: nextWeekendWakeTime,
+        weekly_schedule: nextWeeklySchedule,
         pending_bedtime_local: null,
         pending_wake_time_local: null,
         pending_timezone: null,
         pending_weekend_bedtime_local: null,
         pending_weekend_wake_time_local: null,
+        pending_weekly_schedule: null,
         pending_effective_at: null,
         updated_at: DateTime.utc().toISO() as string,
       });
@@ -241,6 +247,7 @@ export async function POST(request: Request) {
         pending_timezone: null,
         pending_weekend_bedtime_local: null,
         pending_weekend_wake_time_local: null,
+        pending_weekly_schedule: null,
         pending_effective_at: null,
         updated_at: DateTime.utc().toISO() as string,
       });
@@ -268,6 +275,7 @@ export async function POST(request: Request) {
         timezone,
         weekend_bedtime_local,
         weekend_wake_time_local,
+        weekly_schedule,
         role,
       } = body;
 
@@ -292,48 +300,155 @@ export async function POST(request: Request) {
         );
       }
 
-      if (bedtime_local && !TIME_FORMAT_REGEX.test(bedtime_local.trim())) {
-        return NextResponse.json(
-          { error: 'Bedtime must be in "HH:mm" format (e.g. "23:30").' },
-          { status: 400 }
-        );
-      }
+      let targetWeeklySchedule: WeeklySchedule;
 
-      if (wake_time_local && !TIME_FORMAT_REGEX.test(wake_time_local.trim())) {
-        return NextResponse.json(
-          { error: 'Wake time must be in "HH:mm" format (e.g. "07:00").' },
-          { status: 400 }
-        );
-      }
+      if (weekly_schedule !== undefined && weekly_schedule !== null) {
+        if (typeof weekly_schedule !== 'object' || Array.isArray(weekly_schedule)) {
+          return NextResponse.json(
+            { error: 'weekly_schedule must be a valid 7-day schedule object.' },
+            { status: 400 }
+          );
+        }
 
-      if (
-        weekend_bedtime_local &&
-        weekend_bedtime_local.trim() !== '' &&
-        !TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim())
-      ) {
-        return NextResponse.json(
-          { error: 'Weekend bedtime must be in "HH:mm" format (e.g. "00:30").' },
-          { status: 400 }
-        );
-      }
+        for (const day of DAY_KEYS) {
+          const daySched = weekly_schedule[day];
+          if (!daySched || typeof daySched !== 'object') {
+            return NextResponse.json(
+              { error: `Missing daily schedule for day "${day}". All 7 days must be provided.` },
+              { status: 400 }
+            );
+          }
+          if (!daySched.bedtime || typeof daySched.bedtime !== 'string' || !TIME_FORMAT_REGEX.test(daySched.bedtime.trim())) {
+            return NextResponse.json(
+              { error: `Invalid bedtime format for "${day}". Must be 24-hour "HH:mm" format (e.g. "23:30").` },
+              { status: 400 }
+            );
+          }
+          if (!daySched.wake_time || typeof daySched.wake_time !== 'string' || !TIME_FORMAT_REGEX.test(daySched.wake_time.trim())) {
+            return NextResponse.json(
+              { error: `Invalid wake_time format for "${day}". Must be 24-hour "HH:mm" format (e.g. "07:00").` },
+              { status: 400 }
+            );
+          }
+          if (daySched.bedtime.trim() === daySched.wake_time.trim()) {
+            return NextResponse.json(
+              { error: `Invalid schedule for "${day}": Bedtime and wake time cannot be identical.` },
+              { status: 400 }
+            );
+          }
+        }
 
-      if (
-        weekend_wake_time_local &&
-        weekend_wake_time_local.trim() !== '' &&
-        !TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim())
-      ) {
-        return NextResponse.json(
-          { error: 'Weekend wake time must be in "HH:mm" format (e.g. "09:00").' },
-          { status: 400 }
-        );
+        targetWeeklySchedule = {
+          mon: { bedtime: weekly_schedule.mon.bedtime.trim(), wake_time: weekly_schedule.mon.wake_time.trim() },
+          tue: { bedtime: weekly_schedule.tue.bedtime.trim(), wake_time: weekly_schedule.tue.wake_time.trim() },
+          wed: { bedtime: weekly_schedule.wed.bedtime.trim(), wake_time: weekly_schedule.wed.wake_time.trim() },
+          thu: { bedtime: weekly_schedule.thu.bedtime.trim(), wake_time: weekly_schedule.thu.wake_time.trim() },
+          fri: { bedtime: weekly_schedule.fri.bedtime.trim(), wake_time: weekly_schedule.fri.wake_time.trim() },
+          sat: { bedtime: weekly_schedule.sat.bedtime.trim(), wake_time: weekly_schedule.sat.wake_time.trim() },
+          sun: { bedtime: weekly_schedule.sun.bedtime.trim(), wake_time: weekly_schedule.sun.wake_time.trim() },
+        };
+      } else {
+        if (bedtime_local && !TIME_FORMAT_REGEX.test(bedtime_local.trim())) {
+          return NextResponse.json(
+            { error: 'Bedtime must be in "HH:mm" format (e.g. "23:30").' },
+            { status: 400 }
+          );
+        }
+        if (wake_time_local && !TIME_FORMAT_REGEX.test(wake_time_local.trim())) {
+          return NextResponse.json(
+            { error: 'Wake time must be in "HH:mm" format (e.g. "07:00").' },
+            { status: 400 }
+          );
+        }
+        if (
+          weekend_bedtime_local &&
+          weekend_bedtime_local.trim() !== '' &&
+          !TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim())
+        ) {
+          return NextResponse.json(
+            { error: 'Weekend bedtime must be in "HH:mm" format (e.g. "00:30").' },
+            { status: 400 }
+          );
+        }
+        if (
+          weekend_wake_time_local &&
+          weekend_wake_time_local.trim() !== '' &&
+          !TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim())
+        ) {
+          return NextResponse.json(
+            { error: 'Weekend wake time must be in "HH:mm" format (e.g. "09:00").' },
+            { status: 400 }
+          );
+        }
+
+        const baseBedtime = (bedtime_local ? bedtime_local.trim() : existing.bedtime_local) || '23:00';
+        const baseWakeTime = (wake_time_local ? wake_time_local.trim() : existing.wake_time_local) || '07:00';
+        const weekendBedtimeVal =
+          weekend_bedtime_local !== undefined
+            ? weekend_bedtime_local && weekend_bedtime_local.trim() !== ''
+              ? weekend_bedtime_local.trim()
+              : null
+            : (existing.weekend_bedtime_local || null);
+        const weekendWakeTimeVal =
+          weekend_wake_time_local !== undefined
+            ? weekend_wake_time_local && weekend_wake_time_local.trim() !== ''
+              ? weekend_wake_time_local.trim()
+              : null
+            : (existing.weekend_wake_time_local || null);
+
+        if (existing.weekly_schedule && !bedtime_local && !wake_time_local && weekend_bedtime_local === undefined && weekend_wake_time_local === undefined) {
+          targetWeeklySchedule = existing.weekly_schedule;
+        } else if (existing.weekly_schedule) {
+          targetWeeklySchedule = JSON.parse(JSON.stringify(existing.weekly_schedule));
+          const weekdays: DayKey[] = ['mon', 'tue', 'wed', 'thu', 'sun'];
+          const weekends: DayKey[] = ['fri', 'sat'];
+          if (bedtime_local) {
+            for (const d of weekdays) targetWeeklySchedule[d].bedtime = bedtime_local.trim();
+          }
+          if (wake_time_local) {
+            for (const d of weekdays) targetWeeklySchedule[d].wake_time = wake_time_local.trim();
+          }
+          if (weekend_bedtime_local !== undefined) {
+            for (const d of weekends) {
+              targetWeeklySchedule[d].bedtime = weekend_bedtime_local?.trim() || targetWeeklySchedule.mon.bedtime;
+            }
+          }
+          if (weekend_wake_time_local !== undefined) {
+            for (const d of weekends) {
+              targetWeeklySchedule[d].wake_time = weekend_wake_time_local?.trim() || targetWeeklySchedule.mon.wake_time;
+            }
+          }
+        } else {
+          targetWeeklySchedule = {
+            mon: { bedtime: baseBedtime, wake_time: baseWakeTime },
+            tue: { bedtime: baseBedtime, wake_time: baseWakeTime },
+            wed: { bedtime: baseBedtime, wake_time: baseWakeTime },
+            thu: { bedtime: baseBedtime, wake_time: baseWakeTime },
+            fri: { bedtime: weekendBedtimeVal || baseBedtime, wake_time: weekendWakeTimeVal || baseWakeTime },
+            sat: { bedtime: weekendBedtimeVal || baseBedtime, wake_time: weekendWakeTimeVal || baseWakeTime },
+            sun: { bedtime: baseBedtime, wake_time: baseWakeTime },
+          };
+        }
       }
 
       if (timezone && !isValidTimezone(timezone.trim())) {
         return NextResponse.json(
-          { error: `Invalid timezone "${timezone}". Please select a valid GMT offset (e.g. "GMT+05:30").` },
+          { error: `Invalid timezone "${timezone}". Please select a valid GMT offset or IANA zone.` },
           { status: 400 }
         );
       }
+
+      const hasScheduleUpdate =
+        (weekly_schedule !== undefined && weekly_schedule !== null) ||
+        bedtime_local !== undefined ||
+        wake_time_local !== undefined ||
+        weekend_bedtime_local !== undefined ||
+        weekend_wake_time_local !== undefined;
+
+      const syncBedtime = targetWeeklySchedule.mon.bedtime;
+      const syncWakeTime = targetWeeklySchedule.mon.wake_time;
+      const syncWeekendBedtime = targetWeeklySchedule.sat.bedtime;
+      const syncWeekendWakeTime = targetWeeklySchedule.sat.wake_time;
 
       const isTargetMod = role === 'moderator';
       const updates: Partial<Member> = {
@@ -343,38 +458,30 @@ export async function POST(request: Request) {
             ? discord_handle?.trim() || null
             : existing.discord_handle,
         journal_url: journal_url?.trim() || existing.journal_url,
+        timezone: timezone ? timezone.trim() : existing.timezone,
         role: isTargetMod ? 'moderator' : 'member',
         is_moderator: isTargetMod,
         updated_at: DateTime.utc().toISO() as string,
       };
 
-      // Direct schedule update: bypasses 48h cooldown and wipes any pending change
-      if (bedtime_local) {
-        updates.bedtime_local = bedtime_local.trim();
+      if (hasScheduleUpdate) {
+        updates.bedtime_local = syncBedtime;
+        updates.wake_time_local = syncWakeTime;
+        updates.weekend_bedtime_local = syncWeekendBedtime;
+        updates.weekend_wake_time_local = syncWeekendWakeTime;
+        updates.weekly_schedule = targetWeeklySchedule;
         updates.pending_bedtime_local = null;
+        updates.pending_wake_time_local = null;
+        updates.pending_timezone = null;
+        updates.pending_weekend_bedtime_local = null;
+        updates.pending_weekend_wake_time_local = null;
+        updates.pending_weekly_schedule = null;
         updates.pending_effective_at = null;
       }
-      if (wake_time_local) {
-        updates.wake_time_local = wake_time_local.trim();
-        updates.pending_wake_time_local = null;
-      }
+
       if (timezone) {
         updates.timezone = timezone.trim();
         updates.pending_timezone = null;
-      }
-      if (weekend_bedtime_local !== undefined) {
-        updates.weekend_bedtime_local =
-          weekend_bedtime_local && weekend_bedtime_local.trim() !== ''
-            ? weekend_bedtime_local.trim()
-            : null;
-        updates.pending_weekend_bedtime_local = null;
-      }
-      if (weekend_wake_time_local !== undefined) {
-        updates.weekend_wake_time_local =
-          weekend_wake_time_local && weekend_wake_time_local.trim() !== ''
-            ? weekend_wake_time_local.trim()
-            : null;
-        updates.pending_weekend_wake_time_local = null;
       }
 
       const { data: updated, error: updateErr } = await updateMemberSafe(member_id, updates);

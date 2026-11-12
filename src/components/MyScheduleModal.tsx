@@ -24,8 +24,21 @@ import {
 } from 'lucide-react';
 
 import { setStoredMemberId, setStoredAuthToken, setStoredAuthMember } from '@/lib/pushClient';
-import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
+import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone, DayKey, DailySchedule, WeeklySchedule, DAY_KEYS } from '@/lib/timezone';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
+
+const DAY_LABELS: Record<DayKey, { short: string; full: string }> = {
+  mon: { short: 'Mon', full: 'Monday' },
+  tue: { short: 'Tue', full: 'Tuesday' },
+  wed: { short: 'Wed', full: 'Wednesday' },
+  thu: { short: 'Thu', full: 'Thursday' },
+  fri: { short: 'Fri', full: 'Friday' },
+  sat: { short: 'Sat', full: 'Saturday' },
+  sun: { short: 'Sun', full: 'Sunday' },
+};
+
+type SchedulePresetMode = 'everyday' | 'weekdays_weekends' | 'custom';
+const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 
@@ -37,6 +50,7 @@ interface MyScheduleModalProps {
   onRefreshRoster: () => Promise<void>;
   currentUser?: Member | null;
   onLogout?: () => void;
+  onOpenSleepCalendar?: (memberId: string) => void;
 }
 
 /**
@@ -54,6 +68,7 @@ export function MyScheduleModal({
   onRefreshRoster,
   currentUser,
   onLogout,
+  onOpenSleepCalendar,
 }: MyScheduleModalProps) {
   const [tab, setTab] = useState<'claim' | 'new'>('claim');
 
@@ -74,6 +89,19 @@ export function MyScheduleModal({
   const [enableWeekendHours, setEnableWeekendHours] = useState<boolean>(false);
   const [weekendBedtime, setWeekendBedtime] = useState<string>('00:30');
   const [weekendWakeTime, setWeekendWakeTime] = useState<string>('09:00');
+
+  // 7-Day Variable Sleep Schedule state
+  const [schedulePreset, setSchedulePreset] = useState<SchedulePresetMode>('weekdays_weekends');
+  const [selectedScheduleDay, setSelectedScheduleDay] = useState<DayKey>('mon');
+  const [weeklySchedule, setWeeklySchedule] = useState<WeeklySchedule>({
+    mon: { bedtime: '23:00', wake_time: '07:00' },
+    tue: { bedtime: '23:00', wake_time: '07:00' },
+    wed: { bedtime: '23:00', wake_time: '07:00' },
+    thu: { bedtime: '23:00', wake_time: '07:00' },
+    fri: { bedtime: '00:30', wake_time: '09:00' },
+    sat: { bedtime: '00:30', wake_time: '09:00' },
+    sun: { bedtime: '23:00', wake_time: '07:00' },
+  });
 
   // New member specific fields
   const [newMemberPin, setNewMemberPin] = useState<string>('');
@@ -115,6 +143,42 @@ export function MyScheduleModal({
         setEnableWeekendHours(false);
         setWeekendBedtime('00:30');
         setWeekendWakeTime('09:00');
+      }
+
+      if (activeMember.weekly_schedule) {
+        const ws: WeeklySchedule = JSON.parse(JSON.stringify(activeMember.weekly_schedule));
+        setWeeklySchedule(ws);
+        const allSame = DAY_KEYS.every(
+          (k) => ws[k]?.bedtime === ws.mon?.bedtime && ws[k]?.wake_time === ws.mon?.wake_time
+        );
+        const weekdayMatch = ['tue', 'wed', 'thu', 'sun'].every(
+          (k) => ws[k as DayKey]?.bedtime === ws.mon?.bedtime && ws[k as DayKey]?.wake_time === ws.mon?.wake_time
+        );
+        const weekendMatch = ws.fri?.bedtime === ws.sat?.bedtime && ws.fri?.wake_time === ws.sat?.wake_time;
+
+        if (allSame) {
+          setSchedulePreset('everyday');
+        } else if (weekdayMatch && weekendMatch) {
+          setSchedulePreset('weekdays_weekends');
+        } else {
+          setSchedulePreset('custom');
+        }
+      } else {
+        const bBed = activeMember.bedtime_local || '23:00';
+        const bWake = activeMember.wake_time_local || '07:00';
+        const wBed = activeMember.weekend_bedtime_local || bBed;
+        const wWake = activeMember.weekend_wake_time_local || bWake;
+        const hasWeekend = Boolean(activeMember.weekend_bedtime_local || activeMember.weekend_wake_time_local);
+        setWeeklySchedule({
+          mon: { bedtime: bBed, wake_time: bWake },
+          tue: { bedtime: bBed, wake_time: bWake },
+          wed: { bedtime: bBed, wake_time: bWake },
+          thu: { bedtime: bBed, wake_time: bWake },
+          fri: { bedtime: wBed, wake_time: wWake },
+          sat: { bedtime: wBed, wake_time: wWake },
+          sun: { bedtime: bBed, wake_time: bWake },
+        });
+        setSchedulePreset(hasWeekend ? 'weekdays_weekends' : 'everyday');
       }
       setErrorMessage(null);
       setSuccessMessage(null);
@@ -169,8 +233,12 @@ export function MyScheduleModal({
 
   // Preview bedtime converted to viewer timezone
   const previewTime = useMemo(() => {
+    const activeBedtime =
+      schedulePreset === 'custom'
+        ? weeklySchedule[selectedScheduleDay]?.bedtime || bedtime
+        : bedtime;
     try {
-      const [h, m] = bedtime.split(':').map(Number);
+      const [h, m] = activeBedtime.split(':').map(Number);
       const nowInTz = DateTime.now().setZone(toValidLuxonZone(timezone));
       const dt = nowInTz.set({ hour: h || 0, minute: m || 0, second: 0 });
       return {
@@ -178,25 +246,38 @@ export function MyScheduleModal({
         viewer: dt.setZone(toValidLuxonZone(viewerTimezone)).toFormat('h:mm a'),
       };
     } catch {
-      return { sleeper: bedtime, viewer: bedtime };
+      return { sleeper: activeBedtime, viewer: activeBedtime };
     }
-  }, [bedtime, timezone, viewerTimezone]);
+  }, [bedtime, timezone, viewerTimezone, schedulePreset, selectedScheduleDay, weeklySchedule]);
+
+  // Check if schedule (bedtime, wake time, timezone, weekend hours, 7-day schedule) has changed from active values
+  const hasScheduleChanged = useMemo(() => {
+    if (!activeMember) return false;
+    if (timezone !== activeMember.timezone) return true;
+    if (activeMember.weekly_schedule) {
+      return DAY_KEYS.some((day) => {
+        const cur = weeklySchedule[day];
+        const prev = activeMember.weekly_schedule?.[day];
+        return !cur || !prev || cur.bedtime !== prev.bedtime || cur.wake_time !== prev.wake_time;
+      });
+    }
+    const bBed = activeMember.bedtime_local;
+    const bWake = activeMember.wake_time_local;
+    const wBed = activeMember.weekend_bedtime_local || bBed;
+    const wWake = activeMember.weekend_wake_time_local || bWake;
+    for (const d of ['mon', 'tue', 'wed', 'thu', 'sun'] as DayKey[]) {
+      if (weeklySchedule[d]?.bedtime !== bBed || weeklySchedule[d]?.wake_time !== bWake) return true;
+    }
+    for (const d of ['fri', 'sat'] as DayKey[]) {
+      if (weeklySchedule[d]?.bedtime !== wBed || weeklySchedule[d]?.wake_time !== wWake) return true;
+    }
+    return false;
+  }, [activeMember, timezone, weeklySchedule]);
 
   if (!isOpen) return null;
 
   // Validate journal URL
   const isJournalValid = journalUrl.trim() === '' || DISCORD_JOURNAL_REGEX.test(journalUrl.trim());
-
-  // Check if schedule (bedtime, wake time, timezone, weekend hours) has changed from active values
-  const hasScheduleChanged = activeMember
-    ? bedtime !== activeMember.bedtime_local ||
-      timezone !== activeMember.timezone ||
-      wakeTime !== activeMember.wake_time_local ||
-      (enableWeekendHours
-        ? weekendBedtime !== (activeMember.weekend_bedtime_local || '') ||
-          weekendWakeTime !== (activeMember.weekend_wake_time_local || '')
-        : Boolean(activeMember.weekend_bedtime_local))
-    : false;
 
   // Handle PIN Unlock
   const handleUnlockProfile = (e: React.FormEvent) => {
@@ -233,6 +314,19 @@ export function MyScheduleModal({
       return;
     }
 
+    // Validate 7-day schedule
+    for (const day of DAY_KEYS) {
+      const item = weeklySchedule[day];
+      if (!item || !TIME_FORMAT_REGEX.test(item.bedtime) || !TIME_FORMAT_REGEX.test(item.wake_time)) {
+        setErrorMessage(`Please enter a valid 24h HH:mm bedtime and wake time for ${DAY_LABELS[day].full}.`);
+        return;
+      }
+      if (item.bedtime === item.wake_time) {
+        setErrorMessage(`Bedtime and wake time cannot be identical on ${DAY_LABELS[day].full}.`);
+        return;
+      }
+    }
+
     const isOwner = Boolean(currentUser && activeMember && currentUser.id === activeMember.id);
     const isClaimed = Boolean(activeMember?.has_pin ?? activeMember?.passcode_hash);
     if (!isOwner && !isClaimed && (!pin || pin.length < 4)) {
@@ -256,11 +350,18 @@ export function MyScheduleModal({
           discord_username: username.trim(),
           discord_handle: handle.trim() || null,
           journal_url: journalUrl.trim(),
-          bedtime_local: bedtime.trim(),
-          wake_time_local: wakeTime.trim(),
+          weekly_schedule: weeklySchedule,
+          bedtime_local: weeklySchedule.mon.bedtime,
+          wake_time_local: weeklySchedule.mon.wake_time,
           timezone: timezone.trim(),
-          weekend_bedtime_local: enableWeekendHours ? weekendBedtime.trim() : null,
-          weekend_wake_time_local: enableWeekendHours ? weekendWakeTime.trim() : null,
+          weekend_bedtime_local:
+            weeklySchedule.sat.bedtime !== weeklySchedule.mon.bedtime
+              ? weeklySchedule.sat.bedtime
+              : (weeklySchedule.fri.bedtime !== weeklySchedule.mon.bedtime ? weeklySchedule.fri.bedtime : null),
+          weekend_wake_time_local:
+            weeklySchedule.sat.wake_time !== weeklySchedule.mon.wake_time
+              ? weeklySchedule.sat.wake_time
+              : (weeklySchedule.fri.wake_time !== weeklySchedule.mon.wake_time ? weeklySchedule.fri.wake_time : null),
         }),
       });
 
@@ -710,31 +811,416 @@ export function MyScheduleModal({
                   </p>
                 </div>
 
-                {/* Bedtime & Wake Time Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-cream-secondary mb-1">
-                      Local Bedtime (24h)
-                    </label>
-                    <input
-                      type="time"
-                      required
-                      value={bedtime}
-                      onChange={(e) => setBedtime(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
-                    />
+                {/* 7-Day Sleep Schedule Section */}
+                <div className="rounded-2xl border border-night-border bg-night-elevated/70 p-4 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Moon className="h-4 w-4 text-status-amber" />
+                      <div>
+                        <span className="text-xs font-bold text-cream-primary block">
+                          Sleep Schedule &amp; Routine
+                        </span>
+                        <span className="text-[11px] text-cream-muted">
+                          Choose a preset or customize hours for each day of the week
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-cream-secondary mb-1">
-                      Wake Time (24h)
-                    </label>
-                    <input
-                      type="time"
-                      required
-                      value={wakeTime}
-                      onChange={(e) => setWakeTime(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
-                    />
+
+                  {/* Preset Mode Switcher Segmented Control */}
+                  <div className="grid grid-cols-3 gap-1 rounded-xl bg-night-surface p-1 border border-night-border">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSchedulePreset('everyday');
+                        const b = weeklySchedule.mon?.bedtime || bedtime;
+                        const w = weeklySchedule.mon?.wake_time || wakeTime;
+                        setBedtime(b);
+                        setWakeTime(w);
+                        setWeeklySchedule({
+                          mon: { bedtime: b, wake_time: w },
+                          tue: { bedtime: b, wake_time: w },
+                          wed: { bedtime: b, wake_time: w },
+                          thu: { bedtime: b, wake_time: w },
+                          fri: { bedtime: b, wake_time: w },
+                          sat: { bedtime: b, wake_time: w },
+                          sun: { bedtime: b, wake_time: w },
+                        });
+                        setEnableWeekendHours(false);
+                      }}
+                      className={`rounded-lg py-2 px-1 text-center text-xs font-semibold transition-all min-h-[44px] flex flex-col items-center justify-center ${
+                        schedulePreset === 'everyday'
+                          ? 'bg-status-amber text-night-bg font-bold shadow'
+                          : 'text-cream-muted hover:text-cream-secondary'
+                      }`}
+                    >
+                      <span>Every Day</span>
+                      <span className="text-[10px] opacity-75 font-normal">Single time</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSchedulePreset('weekdays_weekends');
+                        setEnableWeekendHours(true);
+                        const b = weeklySchedule.mon?.bedtime || bedtime;
+                        const w = weeklySchedule.mon?.wake_time || wakeTime;
+                        const wB = weekendBedtime || '00:30';
+                        const wW = weekendWakeTime || '09:00';
+                        setBedtime(b);
+                        setWakeTime(w);
+                        setWeekendBedtime(wB);
+                        setWeekendWakeTime(wW);
+                        setWeeklySchedule({
+                          mon: { bedtime: b, wake_time: w },
+                          tue: { bedtime: b, wake_time: w },
+                          wed: { bedtime: b, wake_time: w },
+                          thu: { bedtime: b, wake_time: w },
+                          fri: { bedtime: wB, wake_time: wW },
+                          sat: { bedtime: wB, wake_time: wW },
+                          sun: { bedtime: b, wake_time: w },
+                        });
+                      }}
+                      className={`rounded-lg py-2 px-1 text-center text-xs font-semibold transition-all min-h-[44px] flex flex-col items-center justify-center ${
+                        schedulePreset === 'weekdays_weekends'
+                          ? 'bg-status-amber text-night-bg font-bold shadow'
+                          : 'text-cream-muted hover:text-cream-secondary'
+                      }`}
+                    >
+                      <span>Weekdays / Weekends</span>
+                      <span className="text-[10px] opacity-75 font-normal">Fri &amp; Sat custom</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSchedulePreset('custom');
+                      }}
+                      className={`rounded-lg py-2 px-1 text-center text-xs font-semibold transition-all min-h-[44px] flex flex-col items-center justify-center ${
+                        schedulePreset === 'custom'
+                          ? 'bg-status-amber text-night-bg font-bold shadow'
+                          : 'text-cream-muted hover:text-cream-secondary'
+                      }`}
+                    >
+                      <span>Custom Per Day</span>
+                      <span className="text-[10px] opacity-75 font-normal">All 7 days</span>
+                    </button>
+                  </div>
+
+                  {/* Mode 1: Every Day */}
+                  {schedulePreset === 'everyday' && (
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-cream-secondary mb-1">
+                            Local Bedtime (24h)
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={bedtime}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setBedtime(val);
+                              setWeeklySchedule((prev) => {
+                                const next = { ...prev };
+                                for (const k of DAY_KEYS) {
+                                  next[k] = { ...next[k], bedtime: val };
+                                }
+                                return next;
+                              });
+                            }}
+                            className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-cream-secondary mb-1">
+                            Wake Time (24h)
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={wakeTime}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setWakeTime(val);
+                              setWeeklySchedule((prev) => {
+                                const next = { ...prev };
+                                for (const k of DAY_KEYS) {
+                                  next[k] = { ...next[k], wake_time: val };
+                                }
+                                return next;
+                              });
+                            }}
+                            className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-cream-muted flex items-center gap-1.5">
+                        <span>🦊</span>
+                        <span>Applies the same bedtime and wake time across all 7 days of the week.</span>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Mode 2: Weekdays / Weekends */}
+                  {schedulePreset === 'weekdays_weekends' && (
+                    <div className="space-y-3 pt-1">
+                      <div>
+                        <span className="text-[11px] font-bold text-cream-primary block mb-2">
+                          Weekday Routine (Sunday – Thursday Nights)
+                        </span>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-medium text-cream-muted mb-1">
+                              Weekday Bedtime (24h)
+                            </label>
+                            <input
+                              type="time"
+                              required
+                              value={bedtime}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setBedtime(val);
+                                setWeeklySchedule((prev) => ({
+                                  ...prev,
+                                  mon: { ...prev.mon, bedtime: val },
+                                  tue: { ...prev.tue, bedtime: val },
+                                  wed: { ...prev.wed, bedtime: val },
+                                  thu: { ...prev.thu, bedtime: val },
+                                  sun: { ...prev.sun, bedtime: val },
+                                }));
+                              }}
+                              className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-medium text-cream-muted mb-1">
+                              Weekday Wake Time (24h)
+                            </label>
+                            <input
+                              type="time"
+                              required
+                              value={wakeTime}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setWakeTime(val);
+                                setWeeklySchedule((prev) => ({
+                                  ...prev,
+                                  mon: { ...prev.mon, wake_time: val },
+                                  tue: { ...prev.tue, wake_time: val },
+                                  wed: { ...prev.wed, wake_time: val },
+                                  thu: { ...prev.thu, wake_time: val },
+                                  sun: { ...prev.sun, wake_time: val },
+                                }));
+                              }}
+                              className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-night-border/50">
+                        <span className="text-[11px] font-bold text-status-amber block mb-2">
+                          🌙 Weekend Hours (Friday &amp; Saturday Nights)
+                        </span>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-medium text-cream-muted mb-1">
+                              Weekend Bedtime (24h)
+                            </label>
+                            <input
+                              type="time"
+                              required
+                              value={weekendBedtime}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setWeekendBedtime(val);
+                                setWeeklySchedule((prev) => ({
+                                  ...prev,
+                                  fri: { ...prev.fri, bedtime: val },
+                                  sat: { ...prev.sat, bedtime: val },
+                                }));
+                              }}
+                              className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-medium text-cream-muted mb-1">
+                              Weekend Wake Time (24h)
+                            </label>
+                            <input
+                              type="time"
+                              required
+                              value={weekendWakeTime}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setWeekendWakeTime(val);
+                                setWeeklySchedule((prev) => ({
+                                  ...prev,
+                                  fri: { ...prev.fri, wake_time: val },
+                                  sat: { ...prev.sat, wake_time: val },
+                                }));
+                              }}
+                              className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mode 3: Custom Per Day */}
+                  {schedulePreset === 'custom' && (
+                    <div className="space-y-3 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-medium text-cream-secondary mb-1.5">
+                          Select Day to Customize
+                        </label>
+                        <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                          {DAY_KEYS.map((day) => {
+                            const isSelected = selectedScheduleDay === day;
+                            const daySched = weeklySchedule[day];
+                            return (
+                              <button
+                                key={`custom-pill-${day}`}
+                                type="button"
+                                onClick={() => setSelectedScheduleDay(day)}
+                                className={`flex flex-col items-center justify-center rounded-xl p-1 text-center transition-all min-h-[44px] ${
+                                  isSelected
+                                    ? 'bg-status-amber text-night-bg font-bold shadow'
+                                    : 'bg-night-surface border border-night-border text-cream-secondary hover:border-status-amber/40'
+                                }`}
+                              >
+                                <span className="text-[10px] uppercase font-semibold">
+                                  {DAY_LABELS[day].short}
+                                </span>
+                                <span className="text-[9px] tabular-nums mt-0.5 opacity-90">
+                                  {daySched?.bedtime || '--:--'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Selected Day Inputs */}
+                      <div className="rounded-xl border border-night-border bg-night-surface p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-cream-primary flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5 text-status-amber" />
+                            <span>{DAY_LABELS[selectedScheduleDay].full} Night Schedule</span>
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const src = weeklySchedule[selectedScheduleDay];
+                                setWeeklySchedule((prev) => ({
+                                  ...prev,
+                                  mon: { ...src },
+                                  tue: { ...src },
+                                  wed: { ...src },
+                                  thu: { ...src },
+                                  sun: { ...src },
+                                }));
+                              }}
+                              className="rounded-lg px-2 py-1 text-[10px] font-medium text-cream-muted bg-night-elevated hover:text-status-amber border border-night-border min-h-[44px]"
+                            >
+                              Copy to Weekdays
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const src = weeklySchedule[selectedScheduleDay];
+                                setWeeklySchedule((prev) => ({
+                                  ...prev,
+                                  mon: { ...src },
+                                  tue: { ...src },
+                                  wed: { ...src },
+                                  thu: { ...src },
+                                  fri: { ...src },
+                                  sat: { ...src },
+                                  sun: { ...src },
+                                }));
+                              }}
+                              className="rounded-lg px-2 py-1 text-[10px] font-medium text-cream-muted bg-night-elevated hover:text-status-amber border border-night-border min-h-[44px]"
+                            >
+                              Apply to All 7 Days
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-medium text-cream-muted mb-1">
+                              Bedtime (24h)
+                            </label>
+                            <input
+                              type="time"
+                              required
+                              value={weeklySchedule[selectedScheduleDay]?.bedtime || '23:00'}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setWeeklySchedule((prev) => ({
+                                  ...prev,
+                                  [selectedScheduleDay]: {
+                                    ...prev[selectedScheduleDay],
+                                    bedtime: val,
+                                  },
+                                }));
+                                if (selectedScheduleDay === 'mon') {
+                                  setBedtime(val);
+                                }
+                              }}
+                              className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-medium text-cream-muted mb-1">
+                              Wake Time (24h)
+                            </label>
+                            <input
+                              type="time"
+                              required
+                              value={weeklySchedule[selectedScheduleDay]?.wake_time || '07:00'}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setWeeklySchedule((prev) => ({
+                                  ...prev,
+                                  [selectedScheduleDay]: {
+                                    ...prev[selectedScheduleDay],
+                                    wake_time: val,
+                                  },
+                                }));
+                                if (selectedScheduleDay === 'mon') {
+                                  setWakeTime(val);
+                                }
+                              }}
+                              className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Compact 7-Day Summary Preview */}
+                  <div className="rounded-xl border border-night-border bg-night-surface/60 p-2.5 text-[11px] text-cream-muted">
+                    <span className="font-semibold text-cream-secondary block mb-1.5 flex items-center justify-between">
+                      <span>7-Day Routine Summary:</span>
+                      <span className="text-[10px] font-normal text-cream-muted">
+                        {schedulePreset === 'everyday' ? 'Single Daily Schedule' : schedulePreset === 'weekdays_weekends' ? 'Weekday / Weekend Preset' : 'Custom Daily Schedule'}
+                      </span>
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 tabular-nums text-[10px]">
+                      {DAY_KEYS.map((k) => (
+                        <span key={`summary-${k}`} className="rounded bg-night-elevated/80 px-1.5 py-1 border border-night-border/40 truncate">
+                          <strong className="text-cream-primary">{DAY_LABELS[k].short}:</strong>{' '}
+                          {weeklySchedule[k]?.bedtime || '--'} → {weeklySchedule[k]?.wake_time || '--'}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -748,72 +1234,6 @@ export function MyScheduleModal({
                     onChange={setTimezone}
                     selectClassName="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
                   />
-                </div>
-
-                {/* Weekend Hours Toggle & Controls (Friday & Saturday Nights) */}
-                <div className="rounded-2xl border border-night-border bg-night-elevated/70 p-3.5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Moon className="h-4 w-4 text-status-amber" />
-                      <div>
-                        <span className="text-xs font-bold text-cream-primary block">
-                          Weekend Hours (Friday &amp; Saturday Nights)
-                        </span>
-                        <span className="text-[11px] text-cream-muted">
-                          Sleep later on weekend nights? Set custom hours for Fri &amp; Sat.
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setEnableWeekendHours((prev) => !prev)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        enableWeekendHours ? 'bg-status-amber' : 'bg-night-border'
-                      }`}
-                      aria-label="Toggle weekend hours"
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-night-bg shadow ring-0 transition duration-200 ease-in-out ${
-                          enableWeekendHours ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-
-                  {enableWeekendHours && (
-                    <div className="pt-2 border-t border-night-border/50 space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-medium text-cream-secondary mb-1">
-                            Weekend Bedtime (24h)
-                          </label>
-                          <input
-                            type="time"
-                            required={enableWeekendHours}
-                            value={weekendBedtime}
-                            onChange={(e) => setWeekendBedtime(e.target.value)}
-                            className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-cream-secondary mb-1">
-                            Weekend Wake Time (24h)
-                          </label>
-                          <input
-                            type="time"
-                            required={enableWeekendHours}
-                            value={weekendWakeTime}
-                            onChange={(e) => setWeekendWakeTime(e.target.value)}
-                            className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-xs font-semibold text-cream-primary outline-none focus:border-status-amber"
-                          />
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-cream-muted flex items-center gap-1.5">
-                        <span>🦊</span>
-                        <span>Applies on Friday night and Saturday night bedtimes. Sunday through Thursday use your regular hours.</span>
-                      </p>
-                    </div>
-                  )}
                 </div>
 
                 {/* Live Dual-Time Preview Pill */}
@@ -904,35 +1324,51 @@ export function MyScheduleModal({
               </div>
             )}
 
-            {/* Account & Session Management (Log Out) */}
-            {currentUser && onLogout && (
-              <div className="pt-4 border-t border-night-border">
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-2xl border border-night-border bg-night-elevated/40 p-3.5">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-night-surface border border-night-border text-status-amber">
-                      <FoxMascot state="logo" size={20} />
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-cream-primary">
-                        Signed in as @{currentUser.discord_username}
-                      </p>
-                      <p className="text-[11px] text-cream-muted">
-                        Need to switch accounts or take a break?
-                      </p>
-                    </div>
-                  </div>
+            {/* Account & Session Management (Sleep Calendar & Log Out) */}
+            {currentUser && (
+              <div className="pt-4 border-t border-night-border flex flex-col gap-3">
+                {onOpenSleepCalendar && (
                   <button
                     type="button"
                     onClick={() => {
                       onClose();
-                      onLogout();
+                      onOpenSleepCalendar(currentUser.id);
                     }}
-                    className="flex items-center justify-center gap-2 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 text-xs font-semibold text-status-coral hover:bg-status-coral/20 hover:border-status-coral/60 transition-all h-11 min-h-[44px] whitespace-nowrap"
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-status-amber/40 bg-status-amber/15 px-4 text-xs font-bold text-status-amber hover:bg-status-amber/25 transition-all h-12 min-h-[44px] w-full shadow-sm"
                   >
-                    <LogOut className="h-4 w-4" />
-                    <span>Log Out of Fox Den</span>
+                    <Calendar className="h-4 w-4 text-status-amber" />
+                    <span>📅 View My Sleep & Wake Calendar</span>
                   </button>
-                </div>
+                )}
+
+                {onLogout && (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-2xl border border-night-border bg-night-elevated/40 p-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-night-surface border border-night-border text-status-amber">
+                        <FoxMascot state="logo" size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-cream-primary">
+                          Signed in as @{currentUser.discord_username}
+                        </p>
+                        <p className="text-[11px] text-cream-muted">
+                          Need to switch accounts or take a break?
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onLogout();
+                      }}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 text-xs font-semibold text-status-coral hover:bg-status-coral/20 hover:border-status-coral/60 transition-all h-11 min-h-[44px] whitespace-nowrap"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span>Log Out of Fox Den</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

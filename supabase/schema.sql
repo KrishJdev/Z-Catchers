@@ -23,12 +23,16 @@ CREATE TABLE IF NOT EXISTS members (
   weekend_bedtime_local VARCHAR(5),         -- Format: "HH:mm" (e.g., "00:30")
   weekend_wake_time_local VARCHAR(5),       -- Format: "HH:mm" (e.g., "09:00")
   
+  -- 7-Day Variable Sleep Schedule (JSONB: { mon: { bedtime, wake_time }, ... })
+  weekly_schedule JSONB,
+  
   -- 48-Hour Cooldown Pending Queue
   pending_bedtime_local VARCHAR(5),
   pending_wake_time_local VARCHAR(5),
   pending_timezone TEXT,
   pending_weekend_bedtime_local VARCHAR(5),
   pending_weekend_wake_time_local VARCHAR(5),
+  pending_weekly_schedule JSONB,
   pending_effective_at TIMESTAMPTZ,         -- UTC timestamp when pending promotion unlocks (NOW() + 48h)
   
   -- Role & Security
@@ -48,6 +52,8 @@ CREATE TABLE IF NOT EXISTS members (
   -- Idempotent Notification Dispatcher Tracking (Rolling lookback & jitter protection)
   last_notified_stage TEXT,                 -- 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY' | NULL
   last_notified_cycle_date TEXT,            -- Canonical sleep cycle date 'YYYY-MM-DD'
+  last_woke_up_at TIMESTAMPTZ,              -- Exact UTC timestamp when member woke up for fast sleepEngine state resolution
+  last_wake_cycle_date TEXT,                -- 'YYYY-MM-DD' representing the latest logged wake cycle date
 
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -78,6 +84,36 @@ ALTER TABLE members ADD COLUMN IF NOT EXISTS metastrikes_count INT NOT NULL DEFA
 ALTER TABLE members ADD COLUMN IF NOT EXISTS strike_cycle_month TEXT NOT NULL DEFAULT '2026-11';
 ALTER TABLE members ADD COLUMN IF NOT EXISTS last_notified_stage TEXT;
 ALTER TABLE members ADD COLUMN IF NOT EXISTS last_notified_cycle_date TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS weekly_schedule JSONB;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS pending_weekly_schedule JSONB;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS last_woke_up_at TIMESTAMPTZ;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS last_wake_cycle_date TEXT;
+
+-- Backfill existing members from their current weekday and weekend columns
+UPDATE public.members
+SET weekly_schedule = jsonb_build_object(
+  'mon', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+  'tue', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+  'wed', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+  'thu', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+  'fri', jsonb_build_object('bedtime', COALESCE(weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(weekend_wake_time_local, wake_time_local)),
+  'sat', jsonb_build_object('bedtime', COALESCE(weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(weekend_wake_time_local, wake_time_local)),
+  'sun', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local)
+)
+WHERE weekly_schedule IS NULL;
+
+-- Backfill pending schedules for members with active cooldown
+UPDATE public.members
+SET pending_weekly_schedule = jsonb_build_object(
+  'mon', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'tue', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'wed', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'thu', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'fri', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
+  'sat', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
+  'sun', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local))
+)
+WHERE pending_effective_at IS NOT NULL AND pending_weekly_schedule IS NULL;
 
 DO $$
 BEGIN
@@ -167,6 +203,55 @@ CREATE TABLE IF NOT EXISTS public.cron_locks (
   metadata JSONB DEFAULT '{}'::jsonb
 );
 
+-- 8. Sleep & Wake History Logs per Member and Sleep Cycle Date
+CREATE TABLE IF NOT EXISTS public.sleep_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_id UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+  cycle_date TEXT NOT NULL, -- "YYYY-MM-DD" in member's local IANA timezone representing the night's cycle
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  target_bedtime TEXT,      -- "HH:mm" scheduled bedtime for this cycle
+  target_wake_time TEXT,    -- "HH:mm" scheduled wake time for this cycle
+  in_bed_at TIMESTAMPTZ,    -- Exact UTC timestamp when member checked in to bed
+  in_bed_local_time TEXT,   -- "HH:mm" in member's local timezone
+  woke_up_at TIMESTAMPTZ,   -- Exact UTC timestamp when member woke up
+  woke_up_local_time TEXT,  -- "HH:mm" in member's local timezone
+  wake_source TEXT CHECK (wake_source IN ('button', 'manual')),
+  duration_minutes INTEGER, -- Calculated total sleep duration in minutes
+  status TEXT NOT NULL DEFAULT 'on_time' CHECK (status IN ('on_time', 'late', 'missed', 'metastrike')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (member_id, cycle_date)
+);
+
+-- Guarded migration: Convert sleep_logs.member_id from TEXT to UUID and link foreign key if upgrading existing table
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'sleep_logs'
+      AND column_name = 'member_id' AND data_type = 'text'
+  ) THEN
+    -- Delete orphan or non-UUID records before conversion to avoid migration failures
+    DELETE FROM public.sleep_logs
+    WHERE member_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       OR member_id::uuid NOT IN (SELECT id FROM public.members);
+
+    ALTER TABLE public.sleep_logs
+      ALTER COLUMN member_id TYPE UUID USING member_id::uuid;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.table_constraints
+      WHERE constraint_schema = 'public'
+        AND table_name = 'sleep_logs'
+        AND constraint_name = 'sleep_logs_member_id_fkey'
+    ) THEN
+      ALTER TABLE public.sleep_logs
+        ADD CONSTRAINT sleep_logs_member_id_fkey
+        FOREIGN KEY (member_id) REFERENCES public.members(id) ON DELETE CASCADE;
+    END IF;
+  END IF;
+END $$;
+
 -- Indexes for high-performance cron lookups & timezone queries
 CREATE INDEX IF NOT EXISTS idx_members_active ON members(is_active);
 CREATE INDEX IF NOT EXISTS idx_members_pending ON members(pending_effective_at) WHERE pending_effective_at IS NOT NULL;
@@ -179,6 +264,17 @@ CREATE INDEX IF NOT EXISTS idx_rate_limit_entries_key_reset ON rate_limit_entrie
 CREATE INDEX IF NOT EXISTS idx_rate_limit_target_ip ON rate_limit_entries(target_member_id, ip_address);
 CREATE INDEX IF NOT EXISTS idx_rate_limits_expires_at ON public.rate_limits (expires_at);
 CREATE INDEX IF NOT EXISTS idx_cron_locks_expires_at ON public.cron_locks (expires_at);
+CREATE INDEX IF NOT EXISTS idx_sleep_logs_member_cycle ON public.sleep_logs (member_id, cycle_date DESC);
+
+-- Enable Realtime if supabase_realtime publication is used
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.sleep_logs;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
 
 -- ==============================================================================
 -- Row Level Security (RLS) Policies
@@ -190,6 +286,7 @@ ALTER TABLE nightly_strike_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_limit_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cron_locks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sleep_logs ENABLE ROW LEVEL SECURITY;
 
 -- Members: Public read for active members (for community roster view)
 DROP POLICY IF EXISTS "Public can view active members" ON members;
@@ -238,6 +335,13 @@ CREATE POLICY "Service role full access on rate_limits" ON public.rate_limits
 -- Cron Locks: Service role full access (internal backend dispatcher)
 DROP POLICY IF EXISTS "Service role full access on cron_locks" ON public.cron_locks;
 CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
+  FOR ALL USING (auth.role() = 'service_role');
+
+-- Sleep Logs: Service role full access (strictly internal backend service role; community access via authenticated API routes)
+DROP POLICY IF EXISTS "Public can view sleep logs" ON public.sleep_logs;
+DROP POLICY IF EXISTS "Public read sleep_logs" ON public.sleep_logs;
+DROP POLICY IF EXISTS "Service role full access on sleep_logs" ON public.sleep_logs;
+CREATE POLICY "Service role full access on sleep_logs" ON public.sleep_logs
   FOR ALL USING (auth.role() = 'service_role');
 
 -- ==============================================================================

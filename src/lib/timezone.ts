@@ -15,6 +15,14 @@ import {
   matchesTimezoneQuery,
   type TimezoneOption,
   type TimezoneGroup,
+  type DayKey,
+  type DailySchedule,
+  type WeeklySchedule,
+  DAY_KEYS,
+  WEEKDAY_TO_DAY_KEY,
+  getScheduleForDay,
+  getNightScheduleDateTime,
+  resolveActiveSleepCycle,
 } from './sleepEngine';
 
 export {
@@ -34,4 +42,12 @@ export {
   matchesTimezoneQuery,
   type TimezoneOption,
   type TimezoneGroup,
+  type DayKey,
+  type DailySchedule,
+  type WeeklySchedule,
+  DAY_KEYS,
+  WEEKDAY_TO_DAY_KEY,
+  getScheduleForDay,
+  getNightScheduleDateTime,
+  resolveActiveSleepCycle,
 };

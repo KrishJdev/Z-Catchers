@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
+import { supabaseAdmin, Member, updateMemberSafe, upsertSleepLog, getMemberByIdSafe } from '@/lib/db';
 import { DateTime } from 'luxon';
 import { verifyPin, getRequestSessionMemberId, verifyModeratorAuthorization } from '@/lib/auth';
-import { calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
+import { calculateSleepStreak, getSleepCycleDate, resolveActiveSleepCycle } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
 import {
   getClientIp,
@@ -60,7 +60,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       member_id: member.id,
-      is_in_bed: isInBed,
+      is_in_bed: isInBed && !isWokeUp,
       is_woke_up: isWokeUp,
       streak_days: streakDays,
       local_date: cycleDate,
@@ -87,17 +87,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required field: memberId' }, { status: 400 });
     }
 
-    const { data: rawMember, error: memberErr } = await supabaseAdmin
-      .from('members')
-      .select('*')
-      .eq('id', memberId)
-      .single();
+    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(memberId);
 
     if (memberErr || !rawMember) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    const member = rawMember as Member;
+    const member = rawMember;
 
     // Security Gate:
     // 1. Session must match target memberId, OR
@@ -190,6 +186,13 @@ export async function POST(request: Request) {
       if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date === localDate) {
         await updateMemberSafe(member.id, {
           last_notified_stage: null,
+          last_woke_up_at: nowUtc.toISO(),
+          last_wake_cycle_date: localDate,
+        });
+      } else {
+        await updateMemberSafe(member.id, {
+          last_woke_up_at: nowUtc.toISO(),
+          last_wake_cycle_date: localDate,
         });
       }
 
@@ -205,6 +208,18 @@ export async function POST(request: Request) {
           },
           { onConflict: 'member_id,notification_type,local_date' }
         );
+
+      // If action is explicit wake_up, record in sleep_logs
+      if (action === 'wake_up') {
+        await upsertSleepLog({
+          member_id: member.id,
+          cycle_date: localDate,
+          timezone: member.timezone,
+          woke_up_at: nowUtc.toISO(),
+          woke_up_local_time: sleeperNow.toFormat('HH:mm'),
+          wake_source: 'button',
+        });
+      }
 
       // Recompute streak after cancellation
       const { data: logs } = await supabaseAdmin
@@ -256,6 +271,25 @@ export async function POST(request: Request) {
     await updateMemberSafe(member.id, {
       last_notified_stage: 'IN_BED_EARLY',
       last_notified_cycle_date: localDate,
+      last_woke_up_at: null,
+      last_wake_cycle_date: null,
+    });
+
+    // Resolve active schedule for this sleep cycle to record targets & status in sleep_logs
+    const activeCycle = resolveActiveSleepCycle(member, sleeperNow, true);
+    await upsertSleepLog({
+      member_id: member.id,
+      cycle_date: localDate,
+      timezone: member.timezone,
+      target_bedtime: activeCycle.activeBedtimeLocal,
+      target_wake_time: activeCycle.activeWakeTimeLocal,
+      in_bed_at: nowUtc.toISO(),
+      in_bed_local_time: sleeperNow.toFormat('HH:mm'),
+      woke_up_at: null,
+      woke_up_local_time: null,
+      wake_source: null,
+      duration_minutes: null,
+      status: activeCycle.diffMinutes > 5 ? 'late' : 'on_time',
     });
 
     // Compute updated streak

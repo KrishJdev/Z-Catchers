@@ -21,11 +21,13 @@ CREATE TABLE members (
   bedtime_local VARCHAR(5) NOT NULL,        -- Format: "HH:mm" (e.g., "23:30")
   wake_time_local VARCHAR(5) NOT NULL DEFAULT '07:00',
   timezone TEXT NOT NULL,                   -- IANA string (e.g., "America/New_York", "Asia/Kolkata")
+  weekly_schedule JSONB,                    -- 7-Day Variable Schedule: { mon: {bedtime, wake_time}, ..., sun: {bedtime, wake_time} }
   
   -- 48-Hour Cooldown Pending Queue
   pending_bedtime_local VARCHAR(5),
   pending_wake_time_local VARCHAR(5),
   pending_timezone TEXT,
+  pending_weekly_schedule JSONB,            -- Pending 7-day variable schedule awaiting cooldown expiration
   pending_effective_at TIMESTAMPTZ,         -- UTC timestamp when pending promotion unlocks (NOW() + 48h)
   
   -- Role & Security
@@ -37,6 +39,10 @@ CREATE TABLE members (
   strikes_used INT NOT NULL DEFAULT 0 CHECK (strikes_used >= 0 AND strikes_used <= 3),
   metastrikes_used INT NOT NULL DEFAULT 0 CHECK (metastrikes_used >= 0 AND metastrikes_used <= 3),
   strike_cycle_month TEXT NOT NULL DEFAULT '2026-11', -- 'YYYY-MM' for lazy monthly reset
+
+  -- Fast Wake-Up State Resolution
+  last_woke_up_at TIMESTAMPTZ,              -- Exact UTC timestamp of most recent wake-up
+  last_wake_cycle_date TEXT,                -- 'YYYY-MM-DD' in member's local timezone of latest logged wake cycle
 
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -105,6 +111,31 @@ REVOKE ALL ON public.cron_locks FROM anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.cron_locks TO service_role;
 CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
   FOR ALL USING (auth.role() = 'service_role');
+
+-- 7. Sleep Logs Table (Historical Sleep & Wake Duration Records)
+CREATE TABLE IF NOT EXISTS public.sleep_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_id UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+  cycle_date TEXT NOT NULL, -- "YYYY-MM-DD" in member's local IANA timezone representing the night's cycle
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  target_bedtime TEXT,      -- "HH:mm" scheduled bedtime for this cycle
+  target_wake_time TEXT,    -- "HH:mm" scheduled wake time for this cycle
+  in_bed_at TIMESTAMPTZ,    -- Exact UTC timestamp when member checked in to bed
+  in_bed_local_time TEXT,   -- "HH:mm" in member's local timezone
+  woke_up_at TIMESTAMPTZ,   -- Exact UTC timestamp when member woke up
+  woke_up_local_time TEXT,  -- "HH:mm" in member's local timezone
+  wake_source TEXT CHECK (wake_source IN ('button', 'manual')),
+  duration_minutes INTEGER, -- Calculated total sleep duration in minutes
+  status TEXT NOT NULL DEFAULT 'on_time' CHECK (status IN ('on_time', 'late', 'missed', 'metastrike')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (member_id, cycle_date)
+);
+CREATE INDEX IF NOT EXISTS idx_sleep_logs_member_cycle ON public.sleep_logs (member_id, cycle_date DESC);
+ALTER TABLE public.sleep_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public read sleep_logs" ON public.sleep_logs;
+DROP POLICY IF EXISTS "Public can view sleep logs" ON public.sleep_logs;
+CREATE POLICY "Service role full access on sleep_logs" ON public.sleep_logs FOR ALL USING (auth.role() = 'service_role');
 ```
 
 ---
@@ -234,6 +265,45 @@ The accountability system ensures members adhere to their bedtimes with communit
 
 ---
 
+## 2.5 7-Day Variable Sleep Schedule Engine & Cross-Midnight Resolution
+
+### 1. Canonical TypeScript Schedule Types
+Defined in `src/lib/sleepEngine.ts` and re-exported in `src/lib/timezone.ts`:
+```typescript
+export type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+export interface DailySchedule {
+  bedtime: string;   // 24-hour "HH:mm" format (e.g. "23:30" or "01:00")
+  wake_time: string; // 24-hour "HH:mm" format (e.g. "07:30")
+}
+
+export type WeeklySchedule = Record<DayKey, DailySchedule>;
+```
+
+### 2. Daily Schedule Resolution (`getScheduleForDay`)
+Resolves the active target bedtime and wake time for any given day in the member's local timezone:
+1. Maps Luxon's `weekday` index (1 = Monday ... 7 = Sunday) to the corresponding `DayKey`.
+2. Reads `member.weekly_schedule[dayKey]` if populated.
+3. Fallback: If `dayKey` is `'fri'` or `'sat'` and `member.weekend_bedtime_local` is set, resolves weekend hours; otherwise falls back to base `bedtime_local` and `wake_time_local`.
+
+### 3. Cross-Midnight Cycle Resolution (`resolveActiveSleepCycle`)
+Evaluates the member's current sleep cycle cleanly across midnight boundaries:
+1. **Yesterday's Cycle First:** Checks `sleeperNow.minus({ days: 1 })`. If `sleeperNow` is within the active sleep window initiated on the previous calendar day (from yesterday's `bedtime - 180m` until yesterday's `wake_time` or the 8-hour sleep shield window has elapsed), anchors evaluation to yesterday's cycle date and schedule.
+2. **Today's Cycle Second:** Once yesterday's wake window has elapsed, resolves today's cycle date and target schedule via `getScheduleForDay(member, sleeperNow)`.
+
+### 4. Backward Compatibility & Flat Column Synchronization
+When saving a 7-day variable schedule via `/api/members/update-schedule` or `/api/mod`:
+* `weekly_schedule.mon.bedtime` / `wake_time` are written to `bedtime_local` / `wake_time_local`.
+* `weekly_schedule.sat.bedtime` / `wake_time` are written to `weekend_bedtime_local` / `weekend_wake_time_local`.
+* Legacy payloads with only flat columns automatically synthesize an equivalent 7-day `weekly_schedule` object.
+
+### 5. 3-Mode Schedule Editor (`MyScheduleModal.tsx`)
+* **Every Day:** Single bedtime and wake time applied synchronously across all 7 days.
+* **Weekdays / Weekends:** Mon–Thu + Sun regular hours vs. Fri–Sat weekend hours.
+* **Custom Per Day:** Full 7-day editor with interactive day pills (min 44px touch targets), quick copy actions ("Copy to Weekdays", "Copy to Weekend", "Apply All 7 Days"), and a compact 7-day summary preview.
+
+---
+
 ## 3. PWA & Web Push Notification Engine
 
 ### 3.1 Service Worker (`public/sw.js`)
@@ -309,5 +379,76 @@ All user-submitted journal links must be validated against this strict regex bef
   * Steps: `npm ci` -> `npm run typecheck` -> `npm run build` -> `npm run test:unit`.
 * **NPM Helper Scripts:**
   * `npm run typecheck`: Runs `tsc --noEmit` across all project files.
-  * `npm run test:unit`: Runs all 19 offline unit/static test suites via `node --import tsx scripts/run-tests.mjs --unit`.
-  * `npm run test:all`: Runs all 20 verification suites including live Supabase integration tests via `node --import tsx scripts/run-tests.mjs --all`.
+  * `npm run test:unit`: Runs all 21 offline unit/static test suites via `node --import tsx scripts/run-tests.mjs --unit`.
+  * `npm run test:all`: Runs all 22 verification suites including live Supabase integration tests via `node --import tsx scripts/run-tests.mjs --all`.
+
+---
+
+## 6. "I Woke Up" & Sleep History API Endpoints
+
+### 6.1 `POST /api/members/wake-up`
+Allows authenticated members to log when they woke up for their active or recent sleep cycle.
+
+* **Authentication:** Member session cookie/bearer token, 4-digit PIN matching `passcode_hash`, or server moderator passcode.
+* **Modes:**
+  * **Instant Button:** `{ mode: 'button' }` (or empty body). Uses current UTC instant in member's timezone, sets `wake_source: 'button'`.
+  * **Manual Time Entry:** `{ mode: 'manual', wokeUpTime: 'HH:mm', cycleDate?: 'YYYY-MM-DD' }`.
+* **Validation & Business Logic:**
+  * `wokeUpTime` matches strict 24-hour `/^([01]\d|2[0-3]):[0-5]\d$/`.
+  * Wake-up time cannot be in the future relative to current time.
+  * Cycle dates restricted to past 7 days.
+  * Wake-up time must be chronologically after bedtime check-in for that cycle.
+* **Duration Calculation:**
+  * Cross-midnight difference: `DiffInMinutes(woke_up_at, in_bed_at)` clamped between 1 and 1440 minutes.
+* **Updates:**
+  * Upserts `sleep_logs` record with `woke_up_at`, `woke_up_local_time`, `wake_source`, and `duration_minutes`.
+  * Updates member's `last_woke_up_at` and `last_wake_cycle_date`.
+  * Inserts `WOKE_UP` in `notification_logs` for backwards compatibility.
+* **State Transition:**
+  * `computeMemberState` immediately moves member to `AWAKE`, deactivates Sleep Shield, and clears `needsWakeUpLog`.
+
+### 6.2 `GET /api/members/sleep-history`
+Retrieves monthly sleep & wake logs and summary statistics for self or any community member.
+
+* **Query Parameters:**
+  * `memberId` (string, required): Target member ID.
+  * `month` (string, optional): Target month formatted as `YYYY-MM` (defaults to current month in target member's timezone).
+* **Response Payload:**
+  ```json
+  {
+    "member": {
+      "id": "uuid",
+      "name": "Username",
+      "avatar": "https://...",
+      "timezone": "America/New_York",
+      "bedtime": "23:30",
+      "wake_time": "07:30",
+      "current_streak": 7
+    },
+    "month": "2026-11",
+    "logs": [
+      {
+        "cycle_date": "2026-11-10",
+        "in_bed_local_time": "23:30",
+        "woke_up_local_time": "07:15",
+        "target_bedtime": "23:30",
+        "target_wake_time": "07:30",
+        "duration_minutes": 465,
+        "wake_source": "manual",
+        "status": "on_time"
+      }
+    ],
+    "summary": {
+      "totalLoggedNights": 22,
+      "avgDurationMinutes": 458,
+      "avgBedtime": "23:25",
+      "avgWakeTime": "07:10",
+      "onTimePercentage": 91
+    }
+  }
+  ```
+* **Summary Math:**
+  * `avgBedtime`: Circular mean across midnight relative to noon offset.
+  * `avgWakeTime`: Linear mean in minutes.
+  * `onTimePercentage`: Percentage of logged nights with `status === 'on_time'`.
+  * Demo member auto-population: If querying a demo profile with empty records, generates 30 days of realistic history on-the-fly.

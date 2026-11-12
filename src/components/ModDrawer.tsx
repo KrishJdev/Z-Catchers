@@ -45,8 +45,18 @@ const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channel
 const DISCORD_WEBHOOK_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
+import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone, DayKey, DailySchedule, WeeklySchedule, DAY_KEYS } from '@/lib/timezone';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
+
+const DAY_LABELS: Record<DayKey, { short: string; full: string }> = {
+  mon: { short: 'Mon', full: 'Monday' },
+  tue: { short: 'Tue', full: 'Tuesday' },
+  wed: { short: 'Wed', full: 'Wednesday' },
+  thu: { short: 'Thu', full: 'Thursday' },
+  fri: { short: 'Fri', full: 'Friday' },
+  sat: { short: 'Sat', full: 'Saturday' },
+  sun: { short: 'Sun', full: 'Sunday' },
+};
 
 interface ModDrawerProps {
   isOpen: boolean;
@@ -105,6 +115,9 @@ export function ModDrawer({
   const [editJournalUrl, setEditJournalUrl] = useState('');
   const [editHandle, setEditHandle] = useState('');
   const [editRole, setEditRole] = useState<'member' | 'moderator'>('member');
+  const [editWeeklySchedule, setEditWeeklySchedule] = useState<WeeklySchedule | null>(null);
+  const [editScheduleMode, setEditScheduleMode] = useState<'quick' | '7day'>('quick');
+  const [editSelectedDay, setEditSelectedDay] = useState<DayKey>('mon');
 
   // Reset PIN modal state
   const [pinResetMember, setPinResetMember] = useState<Member | null>(null);
@@ -432,6 +445,42 @@ export function ModDrawer({
     setEditJournalUrl(member.journal_url);
     setEditHandle(member.discord_handle || '');
     setEditRole(member.role);
+    setEditSelectedDay('mon');
+
+    if (member.weekly_schedule) {
+      setEditWeeklySchedule(JSON.parse(JSON.stringify(member.weekly_schedule)));
+      // Check if it's identical across weekdays and weekends
+      const s = member.weekly_schedule;
+      const isSimpleWeekday =
+        s.mon?.bedtime === s.tue?.bedtime &&
+        s.mon?.wake_time === s.tue?.wake_time &&
+        s.tue?.bedtime === s.wed?.bedtime &&
+        s.tue?.wake_time === s.wed?.wake_time &&
+        s.wed?.bedtime === s.thu?.bedtime &&
+        s.wed?.wake_time === s.thu?.wake_time &&
+        s.thu?.bedtime === s.sun?.bedtime &&
+        s.thu?.wake_time === s.sun?.wake_time;
+      const isSimpleWeekend =
+        s.fri?.bedtime === s.sat?.bedtime &&
+        s.fri?.wake_time === s.sat?.wake_time;
+      setEditScheduleMode(isSimpleWeekday && isSimpleWeekend ? 'quick' : '7day');
+    } else {
+      const bBed = member.bedtime_local || '23:00';
+      const bWake = member.wake_time_local || '07:00';
+      const wBed = member.weekend_bedtime_local || bBed;
+      const wWake = member.weekend_wake_time_local || bWake;
+      setEditWeeklySchedule({
+        mon: { bedtime: bBed, wake_time: bWake },
+        tue: { bedtime: bBed, wake_time: bWake },
+        wed: { bedtime: bBed, wake_time: bWake },
+        thu: { bedtime: bBed, wake_time: bWake },
+        fri: { bedtime: wBed, wake_time: wWake },
+        sat: { bedtime: wBed, wake_time: wWake },
+        sun: { bedtime: bBed, wake_time: bWake },
+      });
+      setEditScheduleMode('quick');
+    }
+
     setErrorMessage(null);
     setSuccessMessage(null);
   };
@@ -441,24 +490,55 @@ export function ModDrawer({
     e.preventDefault();
     if (!editingMember) return;
 
-    if (!TIME_FORMAT_REGEX.test(editBedtime.trim())) {
-      setErrorMessage('Bedtime must be in 24h "HH:mm" format (e.g. "23:30").');
-      return;
-    }
-
-    if (editWeekendBedtime.trim() && !TIME_FORMAT_REGEX.test(editWeekendBedtime.trim())) {
-      setErrorMessage('Weekend bedtime must be in 24h "HH:mm" format (e.g. "00:30").');
-      return;
-    }
-
-    if (editWeekendWakeTime.trim() && !TIME_FORMAT_REGEX.test(editWeekendWakeTime.trim())) {
-      setErrorMessage('Weekend wake time must be in 24h "HH:mm" format (e.g. "09:00").');
-      return;
-    }
-
     if (!DISCORD_JOURNAL_REGEX.test(editJournalUrl.trim())) {
       setErrorMessage('Invalid Discord Journal URL. Format: https://discord.com/channels/{guild}/{thread}');
       return;
+    }
+
+    // Determine final weekly schedule
+    let finalWeeklySchedule: WeeklySchedule;
+    if (editScheduleMode === '7day' && editWeeklySchedule) {
+      finalWeeklySchedule = editWeeklySchedule;
+    } else {
+      if (!TIME_FORMAT_REGEX.test(editBedtime.trim())) {
+        setErrorMessage('Bedtime must be in 24h "HH:mm" format (e.g. "23:30").');
+        return;
+      }
+      if (editWeekendBedtime.trim() && !TIME_FORMAT_REGEX.test(editWeekendBedtime.trim())) {
+        setErrorMessage('Weekend bedtime must be in 24h "HH:mm" format (e.g. "00:30").');
+        return;
+      }
+      if (editWeekendWakeTime.trim() && !TIME_FORMAT_REGEX.test(editWeekendWakeTime.trim())) {
+        setErrorMessage('Weekend wake time must be in 24h "HH:mm" format (e.g. "09:00").');
+        return;
+      }
+
+      const baseBed = editBedtime.trim();
+      const baseWake = editWakeTime.trim() || '07:00';
+      const wBed = editWeekendBedtime.trim() || baseBed;
+      const wWake = editWeekendWakeTime.trim() || baseWake;
+      finalWeeklySchedule = {
+        mon: { bedtime: baseBed, wake_time: baseWake },
+        tue: { bedtime: baseBed, wake_time: baseWake },
+        wed: { bedtime: baseBed, wake_time: baseWake },
+        thu: { bedtime: baseBed, wake_time: baseWake },
+        fri: { bedtime: wBed, wake_time: wWake },
+        sat: { bedtime: wBed, wake_time: wWake },
+        sun: { bedtime: baseBed, wake_time: baseWake },
+      };
+    }
+
+    // Validate every day in finalWeeklySchedule
+    for (const day of DAY_KEYS) {
+      const item = finalWeeklySchedule[day];
+      if (!item || !TIME_FORMAT_REGEX.test(item.bedtime) || !TIME_FORMAT_REGEX.test(item.wake_time)) {
+        setErrorMessage(`Schedule for ${day.toUpperCase()} must have valid 24h "HH:mm" times.`);
+        return;
+      }
+      if (item.bedtime === item.wake_time) {
+        setErrorMessage(`Bedtime and wake time cannot be identical on ${day.toUpperCase()}.`);
+        return;
+      }
     }
 
     setActionLoadingId('save-edit');
@@ -473,11 +553,12 @@ export function ModDrawer({
           action: 'edit_member',
           mod_passcode: passcode,
           member_id: editingMember.id,
-          bedtime_local: editBedtime.trim(),
-          wake_time_local: editWakeTime.trim() || '07:00',
+          bedtime_local: finalWeeklySchedule.mon.bedtime,
+          wake_time_local: finalWeeklySchedule.mon.wake_time,
           timezone: editTimezone.trim(),
-          weekend_bedtime_local: editWeekendBedtime.trim() || null,
-          weekend_wake_time_local: editWeekendWakeTime.trim() || null,
+          weekend_bedtime_local: finalWeeklySchedule.sat.bedtime !== finalWeeklySchedule.mon.bedtime ? finalWeeklySchedule.sat.bedtime : null,
+          weekend_wake_time_local: finalWeeklySchedule.sat.wake_time !== finalWeeklySchedule.mon.wake_time ? finalWeeklySchedule.sat.wake_time : null,
+          weekly_schedule: finalWeeklySchedule,
           journal_url: editJournalUrl.trim(),
           discord_handle: editHandle.trim() || null,
           role: editRole,
@@ -1013,63 +1094,259 @@ export function ModDrawer({
                 </p>
 
                 <form onSubmit={handleSaveEdit} className="mt-4 space-y-3">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="text-[11px] font-semibold text-cream-muted">
-                        Bedtime (24h HH:mm)
-                      </label>
-                      <input
-                        type="time"
-                        value={editBedtime}
-                        onChange={(e) => setEditBedtime(e.target.value)}
-                        className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-semibold text-cream-muted">
-                        Wake Time (24h HH:mm)
-                      </label>
-                      <input
-                        type="time"
-                        value={editWakeTime}
-                        onChange={(e) => setEditWakeTime(e.target.value)}
-                        className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
-                      />
-                    </div>
+                  {/* Mode Switcher: Quick Weekday/Weekend vs 7-Day Variable */}
+                  <div className="flex rounded-xl bg-night-surface p-1 border border-night-border">
+                    <button
+                      type="button"
+                      onClick={() => setEditScheduleMode('quick')}
+                      className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-all min-h-[44px] ${
+                        editScheduleMode === 'quick'
+                          ? 'bg-status-amber text-night-bg shadow'
+                          : 'text-cream-muted hover:text-cream-secondary'
+                      }`}
+                    >
+                      Quick Hours
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditScheduleMode('7day')}
+                      className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-all min-h-[44px] ${
+                        editScheduleMode === '7day'
+                          ? 'bg-status-amber text-night-bg shadow'
+                          : 'text-cream-muted hover:text-cream-secondary'
+                      }`}
+                    >
+                      7-Day Variable Routine
+                    </button>
                   </div>
 
-                  {/* Weekend Hours Grid */}
-                  <div className="rounded-xl border border-night-border/70 bg-night-surface/50 p-2.5 space-y-2">
-                    <span className="text-[11px] font-bold text-cream-secondary flex items-center gap-1.5">
-                      <span>🌙</span>
-                      <span>Weekend Hours (Friday &amp; Saturday Nights - Optional)</span>
-                    </span>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="text-[10px] font-medium text-cream-muted">
-                          Weekend Bedtime (24h)
-                        </label>
-                        <input
-                          type="time"
-                          value={editWeekendBedtime}
-                          onChange={(e) => setEditWeekendBedtime(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                        />
+                  {editScheduleMode === 'quick' ? (
+                    <>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="text-[11px] font-semibold text-cream-muted">
+                            Bedtime (24h HH:mm)
+                          </label>
+                          <input
+                            type="time"
+                            value={editBedtime}
+                            onChange={(e) => setEditBedtime(e.target.value)}
+                            className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-cream-muted">
+                            Wake Time (24h HH:mm)
+                          </label>
+                          <input
+                            type="time"
+                            value={editWakeTime}
+                            onChange={(e) => setEditWakeTime(e.target.value)}
+                            className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="text-[10px] font-medium text-cream-muted">
-                          Weekend Wake Time (24h)
-                        </label>
-                        <input
-                          type="time"
-                          value={editWeekendWakeTime}
-                          onChange={(e) => setEditWeekendWakeTime(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                        />
+
+                      {/* Weekend Hours Grid */}
+                      <div className="rounded-xl border border-night-border/70 bg-night-surface/50 p-2.5 space-y-2">
+                        <span className="text-[11px] font-bold text-cream-secondary flex items-center gap-1.5">
+                          <span>🌙</span>
+                          <span>Weekend Hours (Friday &amp; Saturday Nights - Optional)</span>
+                        </span>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="text-[10px] font-medium text-cream-muted">
+                              Weekend Bedtime (24h)
+                            </label>
+                            <input
+                              type="time"
+                              value={editWeekendBedtime}
+                              onChange={(e) => setEditWeekendBedtime(e.target.value)}
+                              className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-medium text-cream-muted">
+                              Weekend Wake Time (24h)
+                            </label>
+                            <input
+                              type="time"
+                              value={editWeekendWakeTime}
+                              onChange={(e) => setEditWeekendWakeTime(e.target.value)}
+                              className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    /* 7-Day Variable Schedule Editor */
+                    <div className="rounded-xl border border-night-border/70 bg-night-surface/50 p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-cream-secondary flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5 text-status-amber" />
+                          <span>7-Day Custom Sleep Routine</span>
+                        </span>
+                        <span className="text-[10px] text-cream-muted">
+                          Tap any day to customize
+                        </span>
+                      </div>
+
+                      {/* 7-day selector pills */}
+                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                        {DAY_KEYS.map((day) => {
+                          const isSelected = editSelectedDay === day;
+                          const schedule = editWeeklySchedule?.[day];
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              onClick={() => setEditSelectedDay(day)}
+                              className={`flex flex-col items-center justify-center rounded-xl p-1 text-center transition-all min-h-[44px] ${
+                                isSelected
+                                  ? 'bg-status-amber text-night-bg font-bold shadow'
+                                  : 'bg-night-bg border border-night-border text-cream-secondary hover:border-status-amber/40'
+                              }`}
+                            >
+                              <span className="text-[10px] uppercase font-semibold">
+                                {DAY_LABELS[day].short}
+                              </span>
+                              <span className="text-[9px] tabular-nums mt-0.5 opacity-90">
+                                {schedule?.bedtime || '--:--'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Active Day Inputs */}
+                      {editWeeklySchedule && (
+                        <div className="rounded-lg border border-night-border bg-night-bg p-2.5 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-cream-primary">
+                              {DAY_LABELS[editSelectedDay].full} Night
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!editWeeklySchedule) return;
+                                  const src = editWeeklySchedule[editSelectedDay];
+                                  setEditWeeklySchedule((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          mon: { ...src },
+                                          tue: { ...src },
+                                          wed: { ...src },
+                                          thu: { ...src },
+                                          sun: { ...src },
+                                        }
+                                      : prev
+                                  );
+                                }}
+                                className="rounded px-1.5 py-0.5 text-[9px] font-medium text-cream-muted bg-night-surface hover:text-status-amber border border-night-border min-h-[44px]"
+                              >
+                                Copy to Weekdays
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!editWeeklySchedule) return;
+                                  const src = editWeeklySchedule[editSelectedDay];
+                                  setEditWeeklySchedule((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          mon: { ...src },
+                                          tue: { ...src },
+                                          wed: { ...src },
+                                          thu: { ...src },
+                                          fri: { ...src },
+                                          sat: { ...src },
+                                          sun: { ...src },
+                                        }
+                                      : prev
+                                  );
+                                }}
+                                className="rounded px-1.5 py-0.5 text-[9px] font-medium text-cream-muted bg-night-surface hover:text-status-amber border border-night-border min-h-[44px]"
+                              >
+                                Apply All 7 Days
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] font-medium text-cream-muted">
+                                Bedtime (24h)
+                              </label>
+                              <input
+                                type="time"
+                                value={editWeeklySchedule[editSelectedDay]?.bedtime || '23:00'}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setEditWeeklySchedule((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          [editSelectedDay]: {
+                                            ...prev[editSelectedDay],
+                                            bedtime: val,
+                                          },
+                                        }
+                                      : prev
+                                  );
+                                }}
+                                className="mt-1 w-full rounded-lg border border-night-border bg-night-surface px-2.5 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-medium text-cream-muted">
+                                Wake Time (24h)
+                              </label>
+                              <input
+                                type="time"
+                                value={editWeeklySchedule[editSelectedDay]?.wake_time || '07:00'}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setEditWeeklySchedule((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          [editSelectedDay]: {
+                                            ...prev[editSelectedDay],
+                                            wake_time: val,
+                                          },
+                                        }
+                                      : prev
+                                  );
+                                }}
+                                className="mt-1 w-full rounded-lg border border-night-border bg-night-surface px-2.5 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 7-Day Compact Summary Preview */}
+                      <div className="rounded-lg border border-night-border/50 bg-night-bg/60 p-2 text-[10px] text-cream-muted">
+                        <span className="font-semibold text-cream-secondary block mb-1">
+                          7-Day Routine Summary:
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 tabular-nums">
+                          {DAY_KEYS.map((k) => (
+                            <span key={`preview-${k}`} className="truncate">
+                              <strong className="text-cream-primary">{DAY_LABELS[k].short}:</strong>{' '}
+                              {editWeeklySchedule?.[k]?.bedtime || '--'} -{' '}
+                              {editWeeklySchedule?.[k]?.wake_time || '--'}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   <div>
                     <label className="text-[11px] font-semibold text-cream-muted">
@@ -1295,6 +1572,41 @@ export function ModDrawer({
                                   Requested: <strong>{member.pending_bedtime_local || member.bedtime_local}</strong> ({formatGmtOffset(member.pending_timezone || member.timezone)})
                                   {member.pending_weekend_bedtime_local && <span> | Weekend: <strong className="text-status-amber">{member.pending_weekend_bedtime_local}</strong></span>}
                                 </span>
+                                {member.pending_weekly_schedule && (() => {
+                                  const changedDays = DAY_KEYS.filter((d) => {
+                                    const p = member.pending_weekly_schedule?.[d];
+                                    if (!p) return false;
+                                    const isWeekend = d === 'fri' || d === 'sat';
+                                    const curBed = member.weekly_schedule?.[d]?.bedtime || (isWeekend && member.weekend_bedtime_local) || member.bedtime_local;
+                                    const curWake = member.weekly_schedule?.[d]?.wake_time || (isWeekend && member.weekend_wake_time_local) || member.wake_time_local;
+                                    return p.bedtime !== curBed || p.wake_time !== curWake;
+                                  });
+                                  return (
+                                    <>
+                                      <span className="inline-flex items-center gap-1 rounded bg-status-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30" title="Includes custom 7-day routine">
+                                        <Calendar className="h-2.5 w-2.5" />
+                                        <span>7-Day Routine</span>
+                                      </span>
+                                      {changedDays.length > 0 && (
+                                        <div className="w-full mt-1.5 pt-1.5 border-t border-night-border/40 grid grid-cols-2 sm:grid-cols-3 gap-1 text-[11px]">
+                                          {changedDays.map((d) => {
+                                            const p = member.pending_weekly_schedule![d];
+                                            const isWeekend = d === 'fri' || d === 'sat';
+                                            const curBed = member.weekly_schedule?.[d]?.bedtime || (isWeekend && member.weekend_bedtime_local) || member.bedtime_local;
+                                            const curWake = member.weekly_schedule?.[d]?.wake_time || (isWeekend && member.weekend_wake_time_local) || member.wake_time_local;
+                                            return (
+                                              <div key={`p-chg-${d}`} className="rounded bg-night-surface/60 px-1.5 py-0.5 border border-night-border/60">
+                                                <span className="font-semibold text-cream-primary">{DAY_LABELS[d].short}: </span>
+                                                <span className="text-cream-muted line-through">{curBed}–{curWake}</span>{' '}
+                                                <span className="text-status-amber font-medium">→ {p.bedtime}–{p.wake_time}</span>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
 
                               <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cream-muted">

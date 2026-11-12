@@ -101,11 +101,13 @@ export async function GET(request: Request) {
           timezone: activeMember.timezone,
           weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
           weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
+          weekly_schedule: activeMember.weekly_schedule || member.weekly_schedule || null,
           pending_bedtime_local: null,
           pending_wake_time_local: null,
           pending_timezone: null,
           pending_weekend_bedtime_local: null,
           pending_weekend_wake_time_local: null,
+          pending_weekly_schedule: null,
           pending_effective_at: null,
           updated_at: nowUtc.toISO(),
         });
@@ -117,8 +119,8 @@ export async function GET(request: Request) {
       const sleeperNow = nowUtc.setZone(toValidLuxonZone(hydratedMember.timezone));
       const localDateStr = getSleepCycleDate(hydratedMember, nowUtc);
       const memberCheckins = checkinsByMember.get(hydratedMember.id) || [];
-      const is_in_bed = memberCheckins.includes(localDateStr);
       const is_woke_up = wokeUpSet.has(`${hydratedMember.id}_${localDateStr}`);
+      const is_in_bed = memberCheckins.includes(localDateStr) && !is_woke_up;
       const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);
       const nag_assists_count = nagAssistsByMemberAndDate.get(`${hydratedMember.id}_${localDateStr}`) || 0;
 
