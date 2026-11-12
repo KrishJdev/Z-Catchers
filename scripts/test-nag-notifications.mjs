@@ -83,9 +83,10 @@ console.log('\n--- 3. Database & Notification Logs Integration Tests ---');
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const isSupabaseLive = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
 
-if (!supabaseUrl || !supabaseKey) {
-  console.log('⚠️ Skipping live Supabase tests (credentials missing in environment).');
+if (!isSupabaseLive) {
+  console.log('⚠️ Skipping live Supabase tests (credentials missing or placeholder in environment).');
 } else {
   const sb = createClient(supabaseUrl, supabaseKey);
 

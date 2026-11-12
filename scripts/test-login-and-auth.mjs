@@ -37,7 +37,7 @@ const {
   getPinSalt,
 } = await import('../src/lib/auth.ts');
 
-const { updateMemberSafe, insertMemberSafe, supabaseAdmin } = await import('../src/lib/db.ts');
+const { updateMemberSafe, insertMemberSafe, supabaseAdmin, isSupabaseConfigured } = await import('../src/lib/db.ts');
 
 console.log('🧪 Starting Discord OAuth2 & Rolling Session Auth Verification...\n');
 
@@ -205,72 +205,78 @@ async function run() {
 
     // 4. Database Integration & Discord Profile Claim Lifecycle
     console.log('\n--- 4. Database Integration & Discord Profile Claim Lifecycle ---');
-    const testDiscordId = 'disc_' + Date.now();
-    const testUsername = `FoxOAuth_${Date.now()}`;
+    if (!isSupabaseConfigured) {
+      console.log('ℹ️ Live Supabase is not configured; skipping live DB profile claim and push subscription binding tests.');
+    } else {
+      const testDiscordId = 'disc_' + Date.now();
+      const testUsername = `FoxOAuth_${Date.now()}`;
 
-    // Create unclaimed legacy profile using insertMemberSafe
-    const { data: createdMember, error: createErr } = await insertMemberSafe({
-      discord_username: testUsername,
-      discord_handle: `${testUsername}#0001`,
-      journal_url: 'https://discord.com/channels/123456789/987654321',
-      bedtime_local: '23:30',
-      wake_time_local: '07:30',
-      timezone: 'Asia/Kolkata',
-      role: 'member',
-      passcode_hash: null, // Legacy unclaimed
-      is_active: true,
-    });
-    newMember = createdMember;
+      // Create unclaimed legacy profile using insertMemberSafe
+      const { data: createdMember, error: createErr } = await insertMemberSafe({
+        discord_username: testUsername,
+        discord_handle: `${testUsername}#0001`,
+        journal_url: 'https://discord.com/channels/123456789/987654321',
+        bedtime_local: '23:30',
+        wake_time_local: '07:30',
+        timezone: 'Asia/Kolkata',
+        role: 'member',
+        passcode_hash: null, // Legacy unclaimed
+        is_active: true,
+      });
+      newMember = createdMember;
 
-    assert(!createErr && newMember, `Created unclaimed test member ${testUsername}`);
+      assert(!createErr && newMember, `Created unclaimed test member ${testUsername}`);
 
-    // Claim profile with Discord ID using updateMemberSafe (auto schema adaptation)
-    console.log('   Testing Discord profile claim binding...');
-    const avatarUrl = `https://cdn.discordapp.com/avatars/${testDiscordId}/mock_avatar.png`;
+      if (newMember) {
+        // Claim profile with Discord ID using updateMemberSafe (auto schema adaptation)
+        console.log('   Testing Discord profile claim binding...');
+        const avatarUrl = `https://cdn.discordapp.com/avatars/${testDiscordId}/mock_avatar.png`;
 
-    const { data: claimedMember, error: claimErr } = await updateMemberSafe(
-      newMember.id,
-      {
-        discord_id: testDiscordId,
-        avatar_url: avatarUrl,
-        onboarding_completed: true,
-        updated_at: new Date().toISOString(),
-      },
-      { requireUnlinkedDiscord: true }
-    );
+        const { data: claimedMember, error: claimErr } = await updateMemberSafe(
+          newMember.id,
+          {
+            discord_id: testDiscordId,
+            avatar_url: avatarUrl,
+            onboarding_completed: true,
+            updated_at: new Date().toISOString(),
+          },
+          { requireUnlinkedDiscord: true }
+        );
 
-    assert(!claimErr && claimedMember, 'updateMemberSafe successfully claimed profile without schema crashes');
+        assert(!claimErr && claimedMember, 'updateMemberSafe successfully claimed profile without schema crashes');
 
-    // Attempt concurrent/duplicate claim on already linked member with requireUnlinkedDiscord: true
-    const { data: rivalClaimData, error: rivalClaimErr } = await updateMemberSafe(
-      newMember.id,
-      {
-        discord_id: 'rival_discord_id_123',
-        avatar_url: 'https://cdn.discordapp.com/avatars/rival/avatar.png',
-        onboarding_completed: true,
-        updated_at: new Date().toISOString(),
-      },
-      { requireUnlinkedDiscord: true }
-    );
+        // Attempt concurrent/duplicate claim on already linked member with requireUnlinkedDiscord: true
+        const { data: rivalClaimData, error: rivalClaimErr } = await updateMemberSafe(
+          newMember.id,
+          {
+            discord_id: 'rival_discord_id_123',
+            avatar_url: 'https://cdn.discordapp.com/avatars/rival/avatar.png',
+            onboarding_completed: true,
+            updated_at: new Date().toISOString(),
+          },
+          { requireUnlinkedDiscord: true }
+        );
 
-    assert(
-      !rivalClaimErr && rivalClaimData === null,
-      'requireUnlinkedDiscord returns null data without error on lost race/already linked profile (HTTP 409 trigger)'
-    );
+        assert(
+          !rivalClaimErr && rivalClaimData === null,
+          'requireUnlinkedDiscord returns null data without error on lost race/already linked profile (HTTP 409 trigger)'
+        );
 
-    // Generate authenticated 90-day session token
-    const memberSessionToken = createSessionToken(
-      {
-        memberId: newMember.id,
-        discordId: testDiscordId,
-        isModerator: false,
-      },
-      90
-    );
+        // Generate authenticated 90-day session token
+        const memberSessionToken = createSessionToken(
+          {
+            memberId: newMember.id,
+            discordId: testDiscordId,
+            isModerator: false,
+          },
+          90
+        );
 
-    const sessionVerification = verifySessionToken(memberSessionToken);
-    assert(sessionVerification?.memberId === newMember.id, 'Session token authenticates as claimed member');
-    assert(sessionVerification?.discordId === testDiscordId, 'Session token contains discord_id');
+        const sessionVerification = verifySessionToken(memberSessionToken);
+        assert(sessionVerification?.memberId === newMember.id, 'Session token authenticates as claimed member');
+        assert(sessionVerification?.discordId === testDiscordId, 'Session token contains discord_id');
+      }
+    }
 
     // 4B. Regression Test: Revocation After Token Issuance
     console.log('\n--- 4B. Revocation After Token Issuance Regression Test ---');
@@ -292,36 +298,38 @@ async function run() {
     assert(decodedClaim?.isModerator === true, 'Claim token carries cached isModerator: true');
     assert(isModDiscordId(decodedClaim.discordId) === false, 'Live allowlist correctly marks revoked ID as non-moderator');
 
-    // Verify session with stale token claims rejected by verifyModeratorAuthorization when member is not mod
-    const staleSessionToken = createSessionToken(
-      {
-        memberId: newMember.id,
-        discordId: nonModDiscordId,
-        isModerator: true, // Stale token claims isModerator: true
-      },
-      90
-    );
+    if (isSupabaseConfigured && newMember?.id) {
+      // Verify session with stale token claims rejected by verifyModeratorAuthorization when member is not mod
+      const staleSessionToken = createSessionToken(
+        {
+          memberId: newMember.id,
+          discordId: nonModDiscordId,
+          isModerator: true, // Stale token claims isModerator: true
+        },
+        90
+      );
 
-    const testReq = new Request('http://localhost:3000/api/mod', {
-      headers: {
-        cookie: `zcatchers_session=${staleSessionToken}`,
-      },
-    });
+      const testReq = new Request('http://localhost:3000/api/mod', {
+        headers: {
+          cookie: `zcatchers_session=${staleSessionToken}`,
+        },
+      });
 
-    const modAuthResult = await verifyModeratorAuthorization(testReq);
-    assert(
-      modAuthResult.authorized === false,
-      'verifyModeratorAuthorization ignores stale isModerator session claim and checks live DB/allowlist'
-    );
+      const modAuthResult = await verifyModeratorAuthorization(testReq);
+      assert(
+        modAuthResult.authorized === false,
+        'verifyModeratorAuthorization ignores stale isModerator session claim and checks live DB/allowlist'
+      );
+    }
 
     // 5. Rolling Renewal Simulation on /api/auth/me
     console.log('\n--- 5. Rolling Session Renewal Verification ---');
     // Simulate /api/auth/me renewal
     const renewedSessionToken = createSessionToken(
       {
-        memberId: sessionVerification.memberId,
-        discordId: sessionVerification.discordId,
-        isModerator: sessionVerification.isModerator,
+        memberId: newMember?.id || 'mock-renewal-member-id',
+        discordId: 'mock-discord-id',
+        isModerator: false,
       },
       90
     );
@@ -335,22 +343,26 @@ async function run() {
 
     // 6. Push Subscription Binding to Authenticated Member
     console.log('\n--- 6. Push Subscription Profile Binding Test ---');
-    testEndpoint = `https://updates.push.mock/oauth-test-${Date.now()}`;
-    const { data: subData, error: subErr } = await supabaseAdmin
-      .from('push_subscriptions')
-      .upsert({
-        member_id: newMember.id,
-        endpoint: testEndpoint,
-        p256dh_key: 'mock_p256_oauth_test_key',
-        auth_key: 'mock_auth_key_oauth_123',
-        notify_personal: true,
-        notify_community: true,
-      })
-      .select()
-      .single();
+    if (isSupabaseConfigured && newMember?.id) {
+      testEndpoint = `https://updates.push.mock/oauth-test-${Date.now()}`;
+      const { data: subData, error: subErr } = await supabaseAdmin
+        .from('push_subscriptions')
+        .upsert({
+          member_id: newMember.id,
+          endpoint: testEndpoint,
+          p256dh_key: 'mock_p256_oauth_test_key',
+          auth_key: 'mock_auth_key_oauth_123',
+          notify_personal: true,
+          notify_community: true,
+        })
+        .select()
+        .single();
 
-    assert(!subErr && subData, 'Push subscription successfully bound to Discord-authenticated member');
-    assert(subData?.member_id === newMember.id, 'Subscription member_id matches claimed Discord member');
+      assert(!subErr && subData, 'Push subscription successfully bound to Discord-authenticated member');
+      assert(subData?.member_id === newMember.id, 'Subscription member_id matches claimed Discord member');
+    } else {
+      console.log('ℹ️ Live Supabase is not configured; skipping push subscription live DB binding test.');
+    }
 
     // 7. Deprecated PIN Routes Verification
     console.log('\n--- 7. Deprecated PIN Authentication Endpoints ---');
@@ -379,7 +391,7 @@ async function run() {
     process.exitCode = 1;
   } finally {
     // 8. Cleanup
-    if (testEndpoint || newMember?.id || testModMember?.id) {
+    if (isSupabaseConfigured && (testEndpoint || newMember?.id || testModMember?.id)) {
       console.log('\n--- 8. Cleanup ---');
       if (testEndpoint) {
         await supabaseAdmin.from('push_subscriptions').delete().eq('endpoint', testEndpoint);

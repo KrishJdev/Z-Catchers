@@ -203,8 +203,9 @@ async function run() {
     // -------------------------------------------------------------
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const isSupabaseLive = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
 
-    if (supabaseUrl && supabaseKey) {
+    if (isSupabaseLive) {
       console.log('\n--- 6. Live Multi-Device Subscriptions & Stale Pruning Verification ---');
       const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 

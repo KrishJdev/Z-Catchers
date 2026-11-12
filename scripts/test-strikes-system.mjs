@@ -459,8 +459,9 @@ async function run() {
   // 7D: Batched Recent Eligible Strikes Database-Backed Integration Test
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const isSupabaseLive = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
 
-  if (supabaseUrl && supabaseKey) {
+  if (isSupabaseLive) {
     console.log('\n--- 7D: Database-Backed Batched Recent Eligible Strikes Integration Test ---');
     const { createClient } = await import('@supabase/supabase-js');
     const dbAdmin = createClient(supabaseUrl, supabaseKey);
