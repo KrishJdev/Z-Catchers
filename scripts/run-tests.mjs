@@ -16,6 +16,7 @@ const UNIT_TESTS = [
   'test-login-and-auth.mjs',
   'test-logout-flow.mjs',
   'test-member-profile-and-overflow-fix.mjs',
+  'test-metastrike-overflow-fix.mjs',
   'test-nag-notifications.mjs',
   'test-phase1-pwa-push.mjs',
   'test-phase1-security.mjs',

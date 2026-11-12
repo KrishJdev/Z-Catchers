@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T01:28:00+05:30  
+> **Last Updated:** 2026-11-13T01:30:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `1b43c99`  
+> **Latest Commit:** `52bd99f`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44)  
 > **Active Integration Pull Request:** [#49 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
 > **Active Production Release Pull Request:** None (all merged)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 23/23 suites passed | Dev server running on `http://localhost:3000`)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 24/24 suites passed | Dev server running on `http://localhost:3000`)
 
 ---
 
@@ -69,6 +69,31 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 71: MemberCard Metastrike Pill & Secondary Action Row Overflow Fix
+* **Issue Diagnosis & Root Cause:**
+  - When a community member missed bedtime and activated an excused Metastrike pass with a long reason (e.g. `"Work / Study Deadline"`), the card displayed both `[Shield On]` (due to Sleep Shield being active from the Metastrike) and `[🛡️ Metastrike: Work / Study Deadline]` side-by-side in the secondary action row.
+  - Because the secondary action row (`<div className="flex items-center gap-2 w-full">`), the Nag Notif button (`className="flex-1 ... whitespace-nowrap"`), and the Metastrike pill (`className="flex-1 ... whitespace-nowrap"`) lacked `min-w-0`, the flex items defaulted to `min-width: auto` per CSS Flexbox specification.
+  - As a result, the inner `<span className="truncate">` never triggered ellipsis truncation because its parent flex container expanded to the full content width (~280px + ~95px button + 8px gap = ~383px), blowing out past the card's right boundary.
+* **Flexbox Shrink & Truncation Hardening (`src/components/MemberCard.tsx`):**
+  - Added `hasSecondaryNagAction` helper in `MemberCard` to dynamically determine if any secondary pill (`isMetastrikeActive`, `isStrikeIssuedTonight`, `BEDTIME_GRACE`, or `onVoteStrike`) is rendered alongside the Nag Notif button.
+  - Configured Nag Notif button width dynamically: sizes to `w-full` if no secondary pill exists, or `flex-1 min-w-0` when paired.
+  - Added `min-w-0` to the secondary action row container (`flex items-center gap-2 w-full min-w-0`) and all flex children (`min-w-0 h-9 min-h-[36px]`).
+  - Wrapped text in `<span className="truncate">` across all secondary action pill variants: `isMetastrikeActive` (`Metastrike: [Reason]`), `isStrikeIssuedTonight` (`Strike Issued`), `state.status === 'BEDTIME_GRACE'` (`Grace: [X]m left`), and `onVoteStrike` (`Vote Strike (X/2)`).
+  - Hardened non-nag body Metastrike notice (`isMetastrikeActive && !isNagNow`) with `min-w-0` and `<span className="truncate">`.
+  - Added `min-w-0` and `<span className="truncate">` to Early Bedtime Check-In and Metastrike self-service buttons.
+  - Allowed clicking "Shield On" button in `isNagNow` and `WINDING_DOWN` (`disabled={isSendingNagNotif || nagCooldownSeconds > 0}`) so users can tap to view the informative Sleep Shield feedback notice toast.
+* **Automated Unit Testing (`scripts/test-metastrike-overflow-fix.mjs`, `scripts/run-tests.mjs`):**
+  - Created standalone offline test suite `scripts/test-metastrike-overflow-fix.mjs` verifying:
+    1. Root container enforces `max-w-full overflow-hidden`.
+    2. Dynamic row sizing with `hasSecondaryNagAction`.
+    3. `min-w-0` enforcement on secondary row and all action pills.
+    4. Text truncation on `Metastrike: [Reason]`, `Shield On`, `Strike Issued`, `Grace`, and `Vote Strike`.
+    5. Card body Metastrike notice `min-w-0` and text truncation.
+  - Added test suite to `scripts/run-tests.mjs` (all 24/24 unit test suites passing cleanly).
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` executed with all 24 test suites passing cleanly (12.99s).
 
 ### Phase 70: PR #49 Comprehensive Code Review Resolution & Hardening
 * **Untrusted Review Data Handling & Verification:**
