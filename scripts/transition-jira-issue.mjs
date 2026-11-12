@@ -66,6 +66,13 @@ async function debugJira() {
 }
 
 async function transitionIssue(issueKey, targetState = 'in progress') {
+  if (issueKey === 'SYNC_AUDIT_TO_JIRA') {
+    console.log('Detected SYNC_AUDIT_TO_JIRA trigger! Executing sync-audit-issues-to-jira.mjs...');
+    const { execSync } = await import('child_process');
+    execSync('node scripts/sync-audit-issues-to-jira.mjs', { stdio: 'inherit' });
+    return;
+  }
+
   if (issueKey === 'DEBUG_PROJECTS' || process.env.JIRA_DEBUG === '1') {
     await debugJira();
     if (issueKey === 'DEBUG_PROJECTS') return;
