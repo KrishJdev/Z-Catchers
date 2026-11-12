@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T01:16:00+05:30  
+> **Last Updated:** 2026-11-13T01:28:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `ff3ff3a`  
+> **Latest Commit:** `1b43c99`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44)  
 > **Active Integration Pull Request:** [#49 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
@@ -69,6 +69,30 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 70: PR #49 Comprehensive Code Review Resolution & Hardening
+* **Untrusted Review Data Handling & Verification:**
+  - Audited all PR #49 code review comments across scripts, API endpoints, UI modals, and database persistence layers.
+  - Verified each finding against live code, fixing verified edge cases while skipping obsolete or already-resolved items with clear technical rationale:
+    - *Skipped `MemberCard.tsx:477`*: Inline routine toggle button was already replaced in Phase 66 by clicking the member profile to open `SleepCalendarModal`.
+    - *Verified `MyScheduleModal.tsx:253`*: Verified `hasScheduleChanged` useMemo is already positioned above early return.
+    - *Verified `sleepEngine.ts:1209`*: Verified `is_woke_up` does not prematurely truncate sleep cycles before scheduled wake end time.
+* **Scripts Checkpoint & Issue Linking Hardening:**
+  - `scripts/create-all-audit-issues.mjs`: Atomically persists `mapFile` after each successful issue creation to guarantee resume safety; prioritized issue definition fields (`issueTypeId`, etc.) over existing cached fields while preserving remote IDs (`ghUrl`, `jiraKey`, etc.).
+  - `scripts/sync-audit-issues-to-jira.mjs`: Relaxed ADF markdown fenced code-block splitting to match code fences anywhere in text; added stable `globalId: ghUrl` to Jira remote-link payloads for idempotent link retries; verified both Jira key and GitHub URL match before reusing `remoteLinked` status; persisted atomic checkpoints to `finalMapFile` immediately after each Jira issue creation.
+* **Schedule & Profile Validation & Cooldown Integrity:**
+  - `src/app/api/auth/claim-profile/route.ts`: Immediately returns HTTP 400 when an invalid `weekly_schedule` format is supplied instead of silently falling back to legacy flat times.
+  - `src/lib/sleepEngine.ts`, `src/app/api/members/route.ts`, `src/lib/cronDispatcher.ts`, `src/app/api/mod/route.ts`: Hardened `checkCooldownPromotion` and promotion persistence paths to preserve active `weekly_schedule` when `pending_weekly_schedule` is null, preventing accidental wiping of custom routines upon promotion.
+  - `src/app/api/mod/route.ts`: In moderator member edits, preserved `existing.weekly_schedule` and existing `pending_*` fields on profile-only edits (e.g., `journal_url`), updating only explicitly edited days/fields.
+  - `src/app/api/members/update-schedule/route.ts`: Avoided defaulting wake time to 07:00 when omitted; iterated across `DAY_KEYS` to compare routine changes day-by-day; compared against legacy bedtime/wake fields when `weekly_schedule` is null so journal-only edits do not stage unwanted cooldowns.
+* **Component UI & Responsive Touch Targets:**
+  - `src/components/ModDrawer.tsx`: Updated quick-mode detection to verify bedtime and wake-time matches across all weekdays and weekends; updated day selector pill container to responsive `grid grid-cols-4 sm:grid-cols-7 gap-1.5` for 44px+ touch targets; displayed per-day pending changes from `member.pending_weekly_schedule` in cooldown approval cards.
+  - `src/components/MyScheduleModal.tsx`: Resolved weekend bedtime and wake time independently with fallbacks; derived dual-time preview in custom mode from `weeklySchedule[selectedScheduleDay]?.bedtime`; updated custom day-selector grid to responsive `grid grid-cols-4 sm:grid-cols-7 gap-1.5`; normalized weekend overrides in API submission payload.
+* **Database Persistence Layer Hardening (`src/lib/db.ts`):**
+  - Updated `setInMemoryWeekendHours` to only set fields explicitly provided in updates, preventing undefined overwrites.
+  - Enforced durable DB storage requirement for `weekly_schedule` and `pending_weekly_schedule`: rejected writes when Supabase is configured but columns are unmigrated, rather than masking failures with ephemeral in-memory fallbacks.
+* **Documentation & Migration Clarity (`HANDOFF.md`):**
+  - Updated Step 5 to explicitly direct operators to run the complete, updated migration from `supabase/schema.sql` before deployment, including `weekly_schedule` and `pending_weekly_schedule` columns and backfill.
 
 ### Phase 69: Authoritative Discord OAuth Handle Sync & Stale Handle Inversion Fix
 * **Diagnosis of Discrepancy:**
@@ -1358,7 +1382,7 @@ d:\Projects\Z Catchers\
    * Note: Production release PR [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28) was successfully merged into `main`.
 
 5. **Database Migration Execution in Supabase SQL Editor:**
-   * Run the idempotent migration block from `supabase/schema.sql` on the remote Supabase database:
+   * Run the complete, updated idempotent migration from `supabase/schema.sql` on the remote Supabase database before deployment, ensuring it includes the `weekly_schedule` and `pending_weekly_schedule` column changes and backfill:
      ```sql
      -- Members table columns
      ALTER TABLE members ADD COLUMN IF NOT EXISTS discord_id TEXT;
@@ -1371,6 +1395,23 @@ d:\Projects\Z Catchers\
        END IF;
      END $$;
      CREATE INDEX IF NOT EXISTS idx_members_discord_id ON members(discord_id);
+
+     -- 7-Day Variable Sleep Schedule Migration & Backfill (Phase 63)
+     ALTER TABLE public.members ADD COLUMN IF NOT EXISTS weekly_schedule JSONB;
+     ALTER TABLE public.members ADD COLUMN IF NOT EXISTS pending_weekly_schedule JSONB;
+
+     -- Backfill existing members from their current weekday and weekend columns
+     UPDATE public.members
+     SET weekly_schedule = jsonb_build_object(
+       'mon', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+       'tue', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+       'wed', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+       'thu', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+       'fri', jsonb_build_object('bedtime', COALESCE(weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(weekend_wake_time_local, wake_time_local)),
+       'sat', jsonb_build_object('bedtime', COALESCE(weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(weekend_wake_time_local, wake_time_local)),
+       'sun', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local)
+     )
+     WHERE weekly_schedule IS NULL;
 
      -- Persistent Rate Limiting Table
      CREATE TABLE IF NOT EXISTS public.rate_limits (

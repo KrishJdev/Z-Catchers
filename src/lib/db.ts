@@ -241,7 +241,12 @@ export function getInMemoryWeekendHours(memberId: string): InMemoryScheduleData 
  */
 export function setInMemoryWeekendHours(memberId: string, hours: InMemoryScheduleData): void {
   const current = memoryScheduleData.get(memberId) || {};
-  memoryScheduleData.set(memberId, { ...current, ...hours });
+  const merged: InMemoryScheduleData = { ...current };
+  if ('weekend_bedtime_local' in hours) merged.weekend_bedtime_local = hours.weekend_bedtime_local;
+  if ('weekend_wake_time_local' in hours) merged.weekend_wake_time_local = hours.weekend_wake_time_local;
+  if ('weekly_schedule' in hours) merged.weekly_schedule = hours.weekly_schedule;
+  if ('pending_weekly_schedule' in hours) merged.pending_weekly_schedule = hours.pending_weekly_schedule;
+  memoryScheduleData.set(memberId, merged);
 }
 
 /**
@@ -379,14 +384,29 @@ export async function updateMemberSafe(
     updates.metastrikes_used = updates.metastrikes_count;
   }
 
-  // Store weekend hours and weekly schedule in memory cache in case columns do not exist in PostgreSQL
-  if ('weekend_bedtime_local' in updates || 'weekend_wake_time_local' in updates || 'weekly_schedule' in updates || 'pending_weekly_schedule' in updates) {
-    setInMemoryWeekendHours(memberId, {
-      weekend_bedtime_local: updates.weekend_bedtime_local,
-      weekend_wake_time_local: updates.weekend_wake_time_local,
-      weekly_schedule: updates.weekly_schedule,
-      pending_weekly_schedule: updates.pending_weekly_schedule,
-    });
+  // Store weekend hours in memory cache in case columns do not exist in PostgreSQL.
+  // Weekly schedule fields require durable DB storage and must not fallback to memoryScheduleData.
+  const weekendUpdates: InMemoryScheduleData = {};
+  if ('weekend_bedtime_local' in updates) weekendUpdates.weekend_bedtime_local = updates.weekend_bedtime_local;
+  if ('weekend_wake_time_local' in updates) weekendUpdates.weekend_wake_time_local = updates.weekend_wake_time_local;
+  if (Object.keys(weekendUpdates).length > 0) {
+    setInMemoryWeekendHours(memberId, weekendUpdates);
+  }
+
+  // Require durable DB storage for weekly schedules when Supabase is configured
+  if (isSupabaseConfigured) {
+    const existingCols = await getExistingMemberColumns();
+    if (
+      ('weekly_schedule' in updates && !existingCols.has('weekly_schedule')) ||
+      ('pending_weekly_schedule' in updates && !existingCols.has('pending_weekly_schedule'))
+    ) {
+      return {
+        data: null,
+        error: new Error(
+          "Database is missing durable 'weekly_schedule' or 'pending_weekly_schedule' columns. Please run the schema migration from supabase/schema.sql."
+        ),
+      };
+    }
   }
 
   let cleanUpdates = await sanitizeMemberPayload(updates);
@@ -409,6 +429,14 @@ export async function updateMemberSafe(
     const match = error.message.match(/Could not find the '([^']+)' column/);
     if (match && match[1] && match[1] in cleanUpdates) {
       const missingCol = match[1];
+      if (missingCol === 'weekly_schedule' || missingCol === 'pending_weekly_schedule') {
+        return {
+          data: null,
+          error: new Error(
+            `Database column '${missingCol}' not found in Supabase schema cache. Durable storage is required for weekly schedules; please run migrations from supabase/schema.sql.`
+          ),
+        };
+      }
       console.warn(`[Supabase Safe Update] Column '${missingCol}' not found in Supabase schema cache; stripping and retrying.`);
       if (knownMemberColumns) {
         knownMemberColumns.delete(missingCol);
@@ -476,12 +504,12 @@ export async function insertMemberSafe(
       'weekly_schedule' in payload ||
       'pending_weekly_schedule' in payload)
   ) {
-    setInMemoryWeekendHours((data as unknown as Member).id, {
-      weekend_bedtime_local: payload.weekend_bedtime_local,
-      weekend_wake_time_local: payload.weekend_wake_time_local,
-      weekly_schedule: payload.weekly_schedule,
-      pending_weekly_schedule: payload.pending_weekly_schedule,
-    });
+    const memData: InMemoryScheduleData = {};
+    if ('weekend_bedtime_local' in payload) memData.weekend_bedtime_local = payload.weekend_bedtime_local;
+    if ('weekend_wake_time_local' in payload) memData.weekend_wake_time_local = payload.weekend_wake_time_local;
+    if ('weekly_schedule' in payload) memData.weekly_schedule = payload.weekly_schedule;
+    if ('pending_weekly_schedule' in payload) memData.pending_weekly_schedule = payload.pending_weekly_schedule;
+    setInMemoryWeekendHours((data as unknown as Member).id, memData);
   }
 
   const hydrated = data ? hydrateMemberWeekendHours(data as unknown as Member) : null;

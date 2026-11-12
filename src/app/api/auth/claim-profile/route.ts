@@ -378,33 +378,21 @@ export async function POST(request: Request) {
             break;
           }
         }
-        if (valid) {
-          targetWeeklySchedule = {
-            mon: { bedtime: weekly_schedule.mon.bedtime.trim(), wake_time: weekly_schedule.mon.wake_time.trim() },
-            tue: { bedtime: weekly_schedule.tue.bedtime.trim(), wake_time: weekly_schedule.tue.wake_time.trim() },
-            wed: { bedtime: weekly_schedule.wed.bedtime.trim(), wake_time: weekly_schedule.wed.wake_time.trim() },
-            thu: { bedtime: weekly_schedule.thu.bedtime.trim(), wake_time: weekly_schedule.thu.wake_time.trim() },
-            fri: { bedtime: weekly_schedule.fri.bedtime.trim(), wake_time: weekly_schedule.fri.wake_time.trim() },
-            sat: { bedtime: weekly_schedule.sat.bedtime.trim(), wake_time: weekly_schedule.sat.wake_time.trim() },
-            sun: { bedtime: weekly_schedule.sun.bedtime.trim(), wake_time: weekly_schedule.sun.wake_time.trim() },
-          };
-        } else {
-          targetWeeklySchedule = {
-            mon: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
-            tue: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
-            wed: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
-            thu: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
-            fri: {
-              bedtime: weekend_bedtime_local?.trim() && TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim()) ? weekend_bedtime_local.trim() : cleanBedtime,
-              wake_time: weekend_wake_time_local?.trim() && TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim()) ? weekend_wake_time_local.trim() : cleanWakeTime,
-            },
-            sat: {
-              bedtime: weekend_bedtime_local?.trim() && TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim()) ? weekend_bedtime_local.trim() : cleanBedtime,
-              wake_time: weekend_wake_time_local?.trim() && TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim()) ? weekend_wake_time_local.trim() : cleanWakeTime,
-            },
-            sun: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
-          };
+        if (!valid) {
+          return NextResponse.json(
+            { error: 'Invalid weekly_schedule format. Each day (mon through sun) must specify valid 24h HH:mm bedtime and wake_time.' },
+            { status: 400 }
+          );
         }
+        targetWeeklySchedule = {
+          mon: { bedtime: weekly_schedule.mon.bedtime.trim(), wake_time: weekly_schedule.mon.wake_time.trim() },
+          tue: { bedtime: weekly_schedule.tue.bedtime.trim(), wake_time: weekly_schedule.tue.wake_time.trim() },
+          wed: { bedtime: weekly_schedule.wed.bedtime.trim(), wake_time: weekly_schedule.wed.wake_time.trim() },
+          thu: { bedtime: weekly_schedule.thu.bedtime.trim(), wake_time: weekly_schedule.thu.wake_time.trim() },
+          fri: { bedtime: weekly_schedule.fri.bedtime.trim(), wake_time: weekly_schedule.fri.wake_time.trim() },
+          sat: { bedtime: weekly_schedule.sat.bedtime.trim(), wake_time: weekly_schedule.sat.wake_time.trim() },
+          sun: { bedtime: weekly_schedule.sun.bedtime.trim(), wake_time: weekly_schedule.sun.wake_time.trim() },
+        };
       } else {
         targetWeeklySchedule = {
           mon: { bedtime: cleanBedtime, wake_time: cleanWakeTime },

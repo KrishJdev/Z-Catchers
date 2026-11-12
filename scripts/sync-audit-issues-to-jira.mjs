@@ -91,7 +91,7 @@ export function markdownToAdf(markdown) {
 
   function processContentBlock(text) {
     if (!text.trim()) return;
-    if (text.includes('```') && !text.trim().startsWith('```')) {
+    if (text.includes('```')) {
       const parts = text.split(/(```[\s\S]*?```)/g);
       for (const part of parts) {
         processUnit(part);
@@ -175,6 +175,7 @@ async function linkGitHubToJira(jiraKey, ghUrl, ghNumber, title) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      globalId: ghUrl,
       object: {
         url: ghUrl,
         title: `GitHub Issue #${ghNumber}: ${title}`,
@@ -220,12 +221,15 @@ export async function syncAllToJira() {
           const item = issuesList[i];
           const synced = syncedMap.get(item.id);
           if (synced) {
+            const matchesJira = (item.jiraKey || synced.jiraKey) === synced.jiraKey;
+            const matchesGh = item.ghUrl && synced.ghUrl && item.ghUrl === synced.ghUrl;
+            const isMatch = matchesJira && matchesGh;
             issuesList[i] = {
               ...item,
               jiraKey: item.jiraKey || synced.jiraKey,
               jiraUrl: item.jiraUrl || synced.jiraUrl,
-              remoteLinked: item.remoteLinked ?? synced.remoteLinked,
-              ...(synced.remoteLinkError && !item.remoteLinked ? { remoteLinkError: synced.remoteLinkError } : {}),
+              remoteLinked: isMatch ? (item.remoteLinked ?? synced.remoteLinked) : (item.remoteLinked ?? false),
+              ...(isMatch && synced.remoteLinkError && !item.remoteLinked ? { remoteLinkError: synced.remoteLinkError } : {}),
             };
           }
         }
@@ -253,6 +257,10 @@ export async function syncAllToJira() {
         currentItem.jiraUrl = `https://${JIRA_DOMAIN}/browse/${jiraResult.key}`;
         delete currentItem.error;
         console.log(`  -> Created Jira issue: ${currentItem.jiraKey} (${currentItem.jiraUrl})`);
+
+        // Atomically persist newly created Jira key checkpoint to file
+        const checkpointList = issuesList.map((iss) => (iss.id === currentItem.id ? currentItem : iss));
+        fs.writeFileSync(finalMapFile, JSON.stringify(checkpointList, null, 2), 'utf8');
       } catch (err) {
         console.error(`  -> Failed for "${currentItem.title}":`, err.message);
         currentItem.error = err.message;

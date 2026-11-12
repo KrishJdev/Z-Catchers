@@ -184,7 +184,7 @@ export async function POST(request: Request) {
 
     // 5. Validate Schedule (7-Day Variable Schedule or Legacy Bedtime/Wake formats)
     const effectiveBedtime = bedtime_local || legacyBedtime;
-    const effectiveWakeTime = wake_time_local || legacyWakeTime || '07:00';
+    const effectiveWakeTime = wake_time_local || legacyWakeTime;
     const effectiveWeekendBedtime = weekend_bedtime_local !== undefined ? weekend_bedtime_local : legacyWeekendBedtime;
     const effectiveWeekendWakeTime = weekend_wake_time_local !== undefined ? weekend_wake_time_local : legacyWeekendWakeTime;
 
@@ -285,15 +285,47 @@ export async function POST(request: Request) {
             : null
           : (currentMember.weekend_wake_time_local || null);
 
-      targetWeeklySchedule = {
-        mon: { bedtime: baseBedtime, wake_time: baseWakeTime },
-        tue: { bedtime: baseBedtime, wake_time: baseWakeTime },
-        wed: { bedtime: baseBedtime, wake_time: baseWakeTime },
-        thu: { bedtime: baseBedtime, wake_time: baseWakeTime },
-        fri: { bedtime: weekendBedtimeVal || baseBedtime, wake_time: weekendWakeTimeVal || baseWakeTime },
-        sat: { bedtime: weekendBedtimeVal || baseBedtime, wake_time: weekendWakeTimeVal || baseWakeTime },
-        sun: { bedtime: baseBedtime, wake_time: baseWakeTime },
-      };
+      const hasFlatScheduleEdit =
+        Boolean(effectiveBedtime) ||
+        Boolean(effectiveWakeTime) ||
+        effectiveWeekendBedtime !== undefined ||
+        effectiveWeekendWakeTime !== undefined;
+
+      if (currentMember.weekly_schedule && !hasFlatScheduleEdit) {
+        // Profile-only update: preserve existing weekly schedule completely
+        targetWeeklySchedule = currentMember.weekly_schedule;
+      } else if (currentMember.weekly_schedule) {
+        // Partial legacy edit: modify only represented days and keep distinct routine on other days
+        targetWeeklySchedule = JSON.parse(JSON.stringify(currentMember.weekly_schedule));
+        const weekdays: DayKey[] = ['mon', 'tue', 'wed', 'thu', 'sun'];
+        const weekends: DayKey[] = ['fri', 'sat'];
+        if (effectiveBedtime) {
+          for (const d of weekdays) targetWeeklySchedule[d].bedtime = effectiveBedtime.trim();
+        }
+        if (effectiveWakeTime) {
+          for (const d of weekdays) targetWeeklySchedule[d].wake_time = effectiveWakeTime.trim();
+        }
+        if (effectiveWeekendBedtime !== undefined) {
+          for (const d of weekends) {
+            targetWeeklySchedule[d].bedtime = weekendBedtimeVal || targetWeeklySchedule.mon.bedtime;
+          }
+        }
+        if (effectiveWeekendWakeTime !== undefined) {
+          for (const d of weekends) {
+            targetWeeklySchedule[d].wake_time = weekendWakeTimeVal || targetWeeklySchedule.mon.wake_time;
+          }
+        }
+      } else {
+        targetWeeklySchedule = {
+          mon: { bedtime: baseBedtime, wake_time: baseWakeTime },
+          tue: { bedtime: baseBedtime, wake_time: baseWakeTime },
+          wed: { bedtime: baseBedtime, wake_time: baseWakeTime },
+          thu: { bedtime: baseBedtime, wake_time: baseWakeTime },
+          fri: { bedtime: weekendBedtimeVal || baseBedtime, wake_time: weekendWakeTimeVal || baseWakeTime },
+          sat: { bedtime: weekendBedtimeVal || baseBedtime, wake_time: weekendWakeTimeVal || baseWakeTime },
+          sun: { bedtime: baseBedtime, wake_time: baseWakeTime },
+        };
+      }
     }
 
     // Sync legacy flat columns from weekly schedule
@@ -306,16 +338,30 @@ export async function POST(request: Request) {
     // 6. Check for Schedule Changes vs Immediate Profile Changes
     const targetTimezone = timezone ? timezone.trim() : currentMember.timezone;
 
-    const currentScheduleJson = JSON.stringify(currentMember.weekly_schedule || {});
-    const targetScheduleJson = JSON.stringify(targetWeeklySchedule);
+    const isWeeklyScheduleChanged = DAY_KEYS.some((day) => {
+      const nxt = targetWeeklySchedule[day];
+      if (currentMember.weekly_schedule) {
+        const cur = currentMember.weekly_schedule[day];
+        return !cur || cur.bedtime !== nxt.bedtime || cur.wake_time !== nxt.wake_time;
+      }
+      const isWeekend = day === 'fri' || day === 'sat';
+      const curBed = (isWeekend && currentMember.weekend_bedtime_local) || currentMember.bedtime_local;
+      const curWake = (isWeekend && currentMember.weekend_wake_time_local) || currentMember.wake_time_local;
+      return nxt.bedtime !== curBed || nxt.wake_time !== curWake;
+    });
+
+    const storedWeekendBedtime = currentMember.weekend_bedtime_local || currentMember.bedtime_local;
+    const storedWeekendWakeTime = currentMember.weekend_wake_time_local || currentMember.wake_time_local;
+    const isWeekendBedtimeChanged = syncWeekendBedtime !== storedWeekendBedtime && Boolean(currentMember.weekend_bedtime_local || syncWeekendBedtime !== syncBedtime);
+    const isWeekendWakeChanged = syncWeekendWakeTime !== storedWeekendWakeTime && Boolean(currentMember.weekend_wake_time_local || syncWeekendWakeTime !== syncWakeTime);
 
     const scheduleHasChanged =
-      currentScheduleJson !== targetScheduleJson ||
+      isWeeklyScheduleChanged ||
       syncBedtime !== currentMember.bedtime_local ||
       targetTimezone !== currentMember.timezone ||
       syncWakeTime !== currentMember.wake_time_local ||
-      syncWeekendBedtime !== (currentMember.weekend_bedtime_local || null) ||
-      syncWeekendWakeTime !== (currentMember.weekend_wake_time_local || null);
+      isWeekendBedtimeChanged ||
+      isWeekendWakeChanged;
 
     const updates: Partial<Member> = {
       discord_username: discord_username?.trim() || currentMember.discord_username,

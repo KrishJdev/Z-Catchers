@@ -470,6 +470,13 @@ export async function createGitHubIssues() {
         ghUrl: output,
         ghNumber: issueNum,
       });
+
+      // Atomically persist map after each successful issue creation
+      const checkpointResults = issues.map((i) => {
+        const ex = existingMap.get(i.id);
+        return ex ? { ...i, ...ex, ghUrl: ex.ghUrl, ghNumber: ex.ghNumber, jiraKey: ex.jiraKey, jiraUrl: ex.jiraUrl, remoteLinked: ex.remoteLinked } : i;
+      });
+      fs.writeFileSync(mapFile, JSON.stringify(checkpointResults, null, 2), 'utf8');
     } catch (err) {
       hasError = true;
       console.error(`  -> Failed to create issue #${item.id}:`, err.message);
@@ -481,7 +488,17 @@ export async function createGitHubIssues() {
 
   const finalResults = issues.map((item) => {
     const existing = existingMap.get(item.id);
-    return existing ? { ...item, ...existing } : item;
+    return existing
+      ? {
+          ...existing,
+          ...item,
+          ghUrl: existing.ghUrl,
+          ghNumber: existing.ghNumber,
+          jiraKey: existing.jiraKey,
+          jiraUrl: existing.jiraUrl,
+          remoteLinked: existing.remoteLinked,
+        }
+      : item;
   });
 
   fs.writeFileSync(mapFile, JSON.stringify(finalResults, null, 2), 'utf8');

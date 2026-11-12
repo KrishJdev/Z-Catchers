@@ -453,10 +453,16 @@ export function ModDrawer({
       const s = member.weekly_schedule;
       const isSimpleWeekday =
         s.mon?.bedtime === s.tue?.bedtime &&
+        s.mon?.wake_time === s.tue?.wake_time &&
         s.tue?.bedtime === s.wed?.bedtime &&
+        s.tue?.wake_time === s.wed?.wake_time &&
         s.wed?.bedtime === s.thu?.bedtime &&
-        s.thu?.bedtime === s.sun?.bedtime;
-      const isSimpleWeekend = s.fri?.bedtime === s.sat?.bedtime;
+        s.wed?.wake_time === s.thu?.wake_time &&
+        s.thu?.bedtime === s.sun?.bedtime &&
+        s.thu?.wake_time === s.sun?.wake_time;
+      const isSimpleWeekend =
+        s.fri?.bedtime === s.sat?.bedtime &&
+        s.fri?.wake_time === s.sat?.wake_time;
       setEditScheduleMode(isSimpleWeekday && isSimpleWeekend ? 'quick' : '7day');
     } else {
       const bBed = member.bedtime_local || '23:00';
@@ -1188,7 +1194,7 @@ export function ModDrawer({
                       </div>
 
                       {/* 7-day selector pills */}
-                      <div className="grid grid-cols-7 gap-1">
+                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
                         {DAY_KEYS.map((day) => {
                           const isSelected = editSelectedDay === day;
                           const schedule = editWeeklySchedule?.[day];
@@ -1566,12 +1572,41 @@ export function ModDrawer({
                                   Requested: <strong>{member.pending_bedtime_local || member.bedtime_local}</strong> ({formatGmtOffset(member.pending_timezone || member.timezone)})
                                   {member.pending_weekend_bedtime_local && <span> | Weekend: <strong className="text-status-amber">{member.pending_weekend_bedtime_local}</strong></span>}
                                 </span>
-                                {member.pending_weekly_schedule && (
-                                  <span className="inline-flex items-center gap-1 rounded bg-status-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30" title="Includes custom 7-day routine">
-                                    <Calendar className="h-2.5 w-2.5" />
-                                    <span>7-Day Routine</span>
-                                  </span>
-                                )}
+                                {member.pending_weekly_schedule && (() => {
+                                  const changedDays = DAY_KEYS.filter((d) => {
+                                    const p = member.pending_weekly_schedule?.[d];
+                                    if (!p) return false;
+                                    const isWeekend = d === 'fri' || d === 'sat';
+                                    const curBed = member.weekly_schedule?.[d]?.bedtime || (isWeekend && member.weekend_bedtime_local) || member.bedtime_local;
+                                    const curWake = member.weekly_schedule?.[d]?.wake_time || (isWeekend && member.weekend_wake_time_local) || member.wake_time_local;
+                                    return p.bedtime !== curBed || p.wake_time !== curWake;
+                                  });
+                                  return (
+                                    <>
+                                      <span className="inline-flex items-center gap-1 rounded bg-status-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30" title="Includes custom 7-day routine">
+                                        <Calendar className="h-2.5 w-2.5" />
+                                        <span>7-Day Routine</span>
+                                      </span>
+                                      {changedDays.length > 0 && (
+                                        <div className="w-full mt-1.5 pt-1.5 border-t border-night-border/40 grid grid-cols-2 sm:grid-cols-3 gap-1 text-[11px]">
+                                          {changedDays.map((d) => {
+                                            const p = member.pending_weekly_schedule![d];
+                                            const isWeekend = d === 'fri' || d === 'sat';
+                                            const curBed = member.weekly_schedule?.[d]?.bedtime || (isWeekend && member.weekend_bedtime_local) || member.bedtime_local;
+                                            const curWake = member.weekly_schedule?.[d]?.wake_time || (isWeekend && member.weekend_wake_time_local) || member.wake_time_local;
+                                            return (
+                                              <div key={`p-chg-${d}`} className="rounded bg-night-surface/60 px-1.5 py-0.5 border border-night-border/60">
+                                                <span className="font-semibold text-cream-primary">{DAY_LABELS[d].short}: </span>
+                                                <span className="text-cream-muted line-through">{curBed}–{curWake}</span>{' '}
+                                                <span className="text-status-amber font-medium">→ {p.bedtime}–{p.wake_time}</span>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
 
                               <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cream-muted">

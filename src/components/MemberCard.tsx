@@ -227,6 +227,14 @@ export function MemberCard({
   // 2. Target member is within 30m before bedtime (-30 <= diffMinutes < 0) OR past bedtime (0 <= diffMinutes <= 480)
   const isEligibleForNagNotif = !isViewer && state.diffMinutes >= -30 && state.diffMinutes <= 480;
 
+  // Secondary contextual status/action exists alongside the Nag Notif button
+  const hasSecondaryNagAction = Boolean(
+    isMetastrikeActive ||
+    isStrikeIssuedTonight ||
+    state.status === 'BEDTIME_GRACE' ||
+    (onVoteStrike && !isViewer)
+  );
+
   // Sleep Shield protection state:
   // True if member is checked in early (Safe Button), in the 8-hour sleep window, or has an active Metastrike excuse pass.
   const isTargetShieldOn = Boolean(
@@ -685,9 +693,14 @@ export function MemberCard({
 
         {/* Metastrike Active Notice (Body) */}
         {isMetastrikeActive && !isNagNow && (
-          <div className="flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber min-h-[44px]">
+          <div
+            className="flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber min-h-[44px] min-w-0"
+            title={`Protected tonight: ${
+              member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'
+            }`}
+          >
             <Shield className="h-4 w-4 fill-status-amber/20 shrink-0" />
-            <span>
+            <span className="truncate">
               Metastrike Active: {member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'}
             </span>
           </div>
@@ -715,10 +728,10 @@ export function MemberCard({
             <button
               onClick={handleCheckInClick}
               disabled={isCheckingIn}
-              className="flex h-11 min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/15 text-xs font-semibold text-status-amber transition-colors hover:bg-status-amber/25 whitespace-nowrap"
+              className="flex h-11 min-h-[44px] min-w-0 w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/15 text-xs font-semibold text-status-amber transition-colors hover:bg-status-amber/25"
             >
               <BedDouble className="h-4 w-4 shrink-0" />
-              <span>Early Bedtime Check-In</span>
+              <span className="truncate">Early Bedtime Check-In</span>
             </button>
           )}
 
@@ -771,7 +784,7 @@ export function MemberCard({
               triggerHaptic(10);
               onOpenMetastrike(member, 'proactive');
             }}
-            className="flex h-11 min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/10 px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all whitespace-nowrap"
+            className="flex h-11 min-h-[44px] min-w-0 w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/10 px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all"
           >
             <Shield className="h-4 w-4 fill-status-amber/20 shrink-0" />
             <span className="truncate">Use Metastrike Tonight (Excused Pass)</span>
@@ -786,7 +799,7 @@ export function MemberCard({
               triggerHaptic(10);
               onOpenMetastrike(member, 'convert_retroactive');
             }}
-            className="flex h-11 min-h-[44px] min-w-[44px] w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber px-3 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 transition-all whitespace-nowrap"
+            className="flex h-11 min-h-[44px] min-w-0 w-full items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber px-3 text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 transition-all"
           >
             <RefreshCw className="h-4 w-4 shrink-0" />
             <span className="truncate">Convert Strike to Metastrike (24h Swap)</span>
@@ -847,14 +860,16 @@ export function MemberCard({
             </a>
 
             {/* Contextual Secondary Status / Action Row: Grace / Vote Strike / Strike Issued / Metastrike */}
-            <div className="flex items-center gap-2 w-full">
+            <div className="flex items-center gap-2 w-full min-w-0">
               {/* Nag Notif Button */}
               {isEligibleForNagNotif && (
                 <button
                   type="button"
                   onClick={handleSendNagNotif}
-                  disabled={isSendingNagNotif || nagCooldownSeconds > 0 || isTargetShieldOn}
-                  className={`flex-1 h-9 min-h-[36px] min-w-[44px] flex items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all whitespace-nowrap ${
+                  disabled={isSendingNagNotif || nagCooldownSeconds > 0}
+                  className={`${
+                    hasSecondaryNagAction ? 'flex-1' : 'w-full'
+                  } min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all shadow-sm ${
                     isTargetShieldOn
                       ? 'border border-status-slumber/40 bg-status-slumber/15 text-status-slumber hover:bg-status-slumber/25 active:scale-95'
                       : nagCooldownSeconds > 0
@@ -872,22 +887,22 @@ export function MemberCard({
                   {isTargetShieldOn ? (
                     <>
                       <Shield className="h-3.5 w-3.5 fill-status-slumber/20 shrink-0" />
-                      <span>Shield On</span>
+                      <span className="truncate">Shield On</span>
                     </>
                   ) : isSendingNagNotif ? (
                     <>
                       <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
-                      <span>Sending...</span>
+                      <span className="truncate">Sending...</span>
                     </>
                   ) : nagCooldownSeconds > 0 ? (
                     <>
                       <Clock className="h-3.5 w-3.5 text-cream-muted shrink-0" />
-                      <span>Nag in {formatNagCooldown(nagCooldownSeconds)}</span>
+                      <span className="truncate">Nag in {formatNagCooldown(nagCooldownSeconds)}</span>
                     </>
                   ) : (
                     <>
                       <Bell className="h-3.5 w-3.5 shrink-0" />
-                      <span>Nag Notif</span>
+                      <span className="truncate">Nag Notif</span>
                     </>
                   )}
                 </button>
@@ -896,7 +911,7 @@ export function MemberCard({
               {/* Contextual Secondary Status / Action Pill: Grace / Vote Strike / Strike Issued / Metastrike */}
               {isMetastrikeActive ? (
                 <div
-                  className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-2.5 text-xs font-semibold text-status-amber whitespace-nowrap`}
+                  className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-2.5 text-xs font-semibold text-status-amber shadow-sm`}
                   title={`Protected tonight: ${
                     member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'
                   }`}
@@ -908,19 +923,19 @@ export function MemberCard({
                 </div>
               ) : isStrikeIssuedTonight ? (
                 <div
-                  className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/15 px-2.5 text-xs font-semibold text-status-coral whitespace-nowrap`}
+                  className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/15 px-2.5 text-xs font-semibold text-status-coral shadow-sm`}
                   title="2/2 community verification votes reached. Strike issued for tonight."
                 >
                   <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                  <span>Strike Issued</span>
+                  <span className="truncate">Strike Issued</span>
                 </div>
               ) : state.status === 'BEDTIME_GRACE' ? (
                 <div
-                  className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-2.5 text-xs text-cream-secondary whitespace-nowrap`}
+                  className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-2.5 text-xs text-cream-secondary shadow-sm`}
                   title="5-minute grace period active. Strike voting is locked."
                 >
                   <Clock className="h-3.5 w-3.5 shrink-0" />
-                  <span>Grace: {state.graceMinutesLeft || 5}m left</span>
+                  <span className="truncate">Grace: {state.graceMinutesLeft || 5}m left</span>
                 </div>
               ) : onVoteStrike && !isViewer ? (
                 <button
@@ -930,7 +945,7 @@ export function MemberCard({
                     onVoteStrike(member.id);
                   }}
                   disabled={isVotingStrike || member.has_voted_strike}
-                  className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all whitespace-nowrap ${
+                  className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all shadow-sm ${
                     member.has_voted_strike
                       ? 'border border-status-coral/30 bg-night-elevated text-status-coral/60 cursor-not-allowed'
                       : 'border border-status-coral/50 bg-status-coral/15 text-status-coral hover:bg-status-coral/25 active:scale-95'
@@ -942,7 +957,7 @@ export function MemberCard({
                   }
                 >
                   <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                  <span>
+                  <span className="truncate">
                     {member.has_voted_strike
                       ? `Voted (${strikeVotesCount}/2)`
                       : `Vote Strike (${strikeVotesCount}/2)`}
@@ -970,8 +985,8 @@ export function MemberCard({
               <button
                 type="button"
                 onClick={handleSendNagNotif}
-                disabled={isSendingNagNotif || nagCooldownSeconds > 0 || isTargetShieldOn}
-                className={`w-full h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-semibold transition-all whitespace-nowrap ${
+                disabled={isSendingNagNotif || nagCooldownSeconds > 0}
+                className={`w-full min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-semibold transition-all shadow-sm ${
                   isTargetShieldOn
                     ? 'border border-status-slumber/40 bg-status-slumber/15 text-status-slumber hover:bg-status-slumber/25 active:scale-95'
                     : nagCooldownSeconds > 0
@@ -989,22 +1004,22 @@ export function MemberCard({
                 {isTargetShieldOn ? (
                   <>
                     <Shield className="h-3.5 w-3.5 fill-status-slumber/20 shrink-0" />
-                    <span>Shield On (Muted)</span>
+                    <span className="truncate">Shield On (Muted)</span>
                   </>
                 ) : isSendingNagNotif ? (
                   <>
                     <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
-                    <span>Sending...</span>
+                    <span className="truncate">Sending...</span>
                   </>
                 ) : nagCooldownSeconds > 0 ? (
                   <>
                     <Clock className="h-3.5 w-3.5 text-cream-muted shrink-0" />
-                    <span>Nag in {formatNagCooldown(nagCooldownSeconds)}</span>
+                    <span className="truncate">Nag in {formatNagCooldown(nagCooldownSeconds)}</span>
                   </>
                 ) : (
                   <>
                     <Bell className="h-3.5 w-3.5 shrink-0" />
-                    <span>Nag Notif</span>
+                    <span className="truncate">Nag Notif</span>
                   </>
                 )}
               </button>

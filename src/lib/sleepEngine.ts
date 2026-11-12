@@ -882,9 +882,7 @@ export function checkCooldownPromotion(
         ? (member.pending_weekend_wake_time_local || null)
         : (member.weekend_wake_time_local || null);
     const nextWeeklySchedule =
-      member.pending_weekly_schedule !== undefined
-        ? (member.pending_weekly_schedule || null)
-        : (member.weekly_schedule || null);
+      member.pending_weekly_schedule || member.weekly_schedule || null;
 
     const updated: Member = {
       ...member,

@@ -388,7 +388,7 @@ export async function executeNotificationDispatcher(options: {
         timezone: activeMember.timezone,
         weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
         weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
-        weekly_schedule: activeMember.weekly_schedule || null,
+        weekly_schedule: activeMember.weekly_schedule || m.weekly_schedule || null,
         pending_bedtime_local: null,
         pending_wake_time_local: null,
         pending_timezone: null,

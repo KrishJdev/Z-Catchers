@@ -79,11 +79,13 @@ export async function GET(request: Request) {
           timezone: activeMember.timezone,
           weekend_bedtime_local: activeMember.weekend_bedtime_local || null,
           weekend_wake_time_local: activeMember.weekend_wake_time_local || null,
+          weekly_schedule: activeMember.weekly_schedule || member.weekly_schedule || null,
           pending_bedtime_local: null,
           pending_wake_time_local: null,
           pending_timezone: null,
           pending_weekend_bedtime_local: null,
           pending_weekend_wake_time_local: null,
+          pending_weekly_schedule: null,
           pending_effective_at: null,
           updated_at: DateTime.utc().toISO() as string,
         });
@@ -202,9 +204,7 @@ export async function POST(request: Request) {
           ? member.pending_weekend_wake_time_local
           : member.weekend_wake_time_local;
       const nextWeeklySchedule =
-        member.pending_weekly_schedule !== undefined
-          ? member.pending_weekly_schedule
-          : member.weekly_schedule;
+        member.pending_weekly_schedule || member.weekly_schedule || null;
 
       const { data: updated, error: updateErr } = await updateMemberSafe(member_id, {
         bedtime_local: member.pending_bedtime_local || member.bedtime_local,
@@ -396,15 +396,39 @@ export async function POST(request: Request) {
               : null
             : (existing.weekend_wake_time_local || null);
 
-        targetWeeklySchedule = {
-          mon: { bedtime: baseBedtime, wake_time: baseWakeTime },
-          tue: { bedtime: baseBedtime, wake_time: baseWakeTime },
-          wed: { bedtime: baseBedtime, wake_time: baseWakeTime },
-          thu: { bedtime: baseBedtime, wake_time: baseWakeTime },
-          fri: { bedtime: weekendBedtimeVal || baseBedtime, wake_time: weekendWakeTimeVal || baseWakeTime },
-          sat: { bedtime: weekendBedtimeVal || baseBedtime, wake_time: weekendWakeTimeVal || baseWakeTime },
-          sun: { bedtime: baseBedtime, wake_time: baseWakeTime },
-        };
+        if (existing.weekly_schedule && !bedtime_local && !wake_time_local && weekend_bedtime_local === undefined && weekend_wake_time_local === undefined) {
+          targetWeeklySchedule = existing.weekly_schedule;
+        } else if (existing.weekly_schedule) {
+          targetWeeklySchedule = JSON.parse(JSON.stringify(existing.weekly_schedule));
+          const weekdays: DayKey[] = ['mon', 'tue', 'wed', 'thu', 'sun'];
+          const weekends: DayKey[] = ['fri', 'sat'];
+          if (bedtime_local) {
+            for (const d of weekdays) targetWeeklySchedule[d].bedtime = bedtime_local.trim();
+          }
+          if (wake_time_local) {
+            for (const d of weekdays) targetWeeklySchedule[d].wake_time = wake_time_local.trim();
+          }
+          if (weekend_bedtime_local !== undefined) {
+            for (const d of weekends) {
+              targetWeeklySchedule[d].bedtime = weekend_bedtime_local?.trim() || targetWeeklySchedule.mon.bedtime;
+            }
+          }
+          if (weekend_wake_time_local !== undefined) {
+            for (const d of weekends) {
+              targetWeeklySchedule[d].wake_time = weekend_wake_time_local?.trim() || targetWeeklySchedule.mon.wake_time;
+            }
+          }
+        } else {
+          targetWeeklySchedule = {
+            mon: { bedtime: baseBedtime, wake_time: baseWakeTime },
+            tue: { bedtime: baseBedtime, wake_time: baseWakeTime },
+            wed: { bedtime: baseBedtime, wake_time: baseWakeTime },
+            thu: { bedtime: baseBedtime, wake_time: baseWakeTime },
+            fri: { bedtime: weekendBedtimeVal || baseBedtime, wake_time: weekendWakeTimeVal || baseWakeTime },
+            sat: { bedtime: weekendBedtimeVal || baseBedtime, wake_time: weekendWakeTimeVal || baseWakeTime },
+            sun: { bedtime: baseBedtime, wake_time: baseWakeTime },
+          };
+        }
       }
 
       if (timezone && !isValidTimezone(timezone.trim())) {
@@ -413,6 +437,13 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+
+      const hasScheduleUpdate =
+        (weekly_schedule !== undefined && weekly_schedule !== null) ||
+        bedtime_local !== undefined ||
+        wake_time_local !== undefined ||
+        weekend_bedtime_local !== undefined ||
+        weekend_wake_time_local !== undefined;
 
       const syncBedtime = targetWeeklySchedule.mon.bedtime;
       const syncWakeTime = targetWeeklySchedule.mon.wake_time;
@@ -427,22 +458,26 @@ export async function POST(request: Request) {
             ? discord_handle?.trim() || null
             : existing.discord_handle,
         journal_url: journal_url?.trim() || existing.journal_url,
-        bedtime_local: syncBedtime,
-        wake_time_local: syncWakeTime,
-        weekend_bedtime_local: syncWeekendBedtime,
-        weekend_wake_time_local: syncWeekendWakeTime,
-        weekly_schedule: targetWeeklySchedule,
-        pending_bedtime_local: null,
-        pending_wake_time_local: null,
-        pending_timezone: null,
-        pending_weekend_bedtime_local: null,
-        pending_weekend_wake_time_local: null,
-        pending_weekly_schedule: null,
-        pending_effective_at: null,
+        timezone: timezone ? timezone.trim() : existing.timezone,
         role: isTargetMod ? 'moderator' : 'member',
         is_moderator: isTargetMod,
         updated_at: DateTime.utc().toISO() as string,
       };
+
+      if (hasScheduleUpdate) {
+        updates.bedtime_local = syncBedtime;
+        updates.wake_time_local = syncWakeTime;
+        updates.weekend_bedtime_local = syncWeekendBedtime;
+        updates.weekend_wake_time_local = syncWeekendWakeTime;
+        updates.weekly_schedule = targetWeeklySchedule;
+        updates.pending_bedtime_local = null;
+        updates.pending_wake_time_local = null;
+        updates.pending_timezone = null;
+        updates.pending_weekend_bedtime_local = null;
+        updates.pending_weekend_wake_time_local = null;
+        updates.pending_weekly_schedule = null;
+        updates.pending_effective_at = null;
+      }
 
       if (timezone) {
         updates.timezone = timezone.trim();

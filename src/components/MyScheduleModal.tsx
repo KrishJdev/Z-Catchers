@@ -166,16 +166,16 @@ export function MyScheduleModal({
       } else {
         const bBed = activeMember.bedtime_local || '23:00';
         const bWake = activeMember.wake_time_local || '07:00';
-        const wBed = activeMember.weekend_bedtime_local || '00:30';
-        const wWake = activeMember.weekend_wake_time_local || '09:00';
-        const hasWeekend = Boolean(activeMember.weekend_bedtime_local);
+        const wBed = activeMember.weekend_bedtime_local || bBed;
+        const wWake = activeMember.weekend_wake_time_local || bWake;
+        const hasWeekend = Boolean(activeMember.weekend_bedtime_local || activeMember.weekend_wake_time_local);
         setWeeklySchedule({
           mon: { bedtime: bBed, wake_time: bWake },
           tue: { bedtime: bBed, wake_time: bWake },
           wed: { bedtime: bBed, wake_time: bWake },
           thu: { bedtime: bBed, wake_time: bWake },
-          fri: { bedtime: hasWeekend ? wBed : bBed, wake_time: hasWeekend ? wWake : bWake },
-          sat: { bedtime: hasWeekend ? wBed : bBed, wake_time: hasWeekend ? wWake : bWake },
+          fri: { bedtime: wBed, wake_time: wWake },
+          sat: { bedtime: wBed, wake_time: wWake },
           sun: { bedtime: bBed, wake_time: bWake },
         });
         setSchedulePreset(hasWeekend ? 'weekdays_weekends' : 'everyday');
@@ -233,8 +233,12 @@ export function MyScheduleModal({
 
   // Preview bedtime converted to viewer timezone
   const previewTime = useMemo(() => {
+    const activeBedtime =
+      schedulePreset === 'custom'
+        ? weeklySchedule[selectedScheduleDay]?.bedtime || bedtime
+        : bedtime;
     try {
-      const [h, m] = bedtime.split(':').map(Number);
+      const [h, m] = activeBedtime.split(':').map(Number);
       const nowInTz = DateTime.now().setZone(toValidLuxonZone(timezone));
       const dt = nowInTz.set({ hour: h || 0, minute: m || 0, second: 0 });
       return {
@@ -242,9 +246,9 @@ export function MyScheduleModal({
         viewer: dt.setZone(toValidLuxonZone(viewerTimezone)).toFormat('h:mm a'),
       };
     } catch {
-      return { sleeper: bedtime, viewer: bedtime };
+      return { sleeper: activeBedtime, viewer: activeBedtime };
     }
-  }, [bedtime, timezone, viewerTimezone]);
+  }, [bedtime, timezone, viewerTimezone, schedulePreset, selectedScheduleDay, weeklySchedule]);
 
   // Check if schedule (bedtime, wake time, timezone, weekend hours, 7-day schedule) has changed from active values
   const hasScheduleChanged = useMemo(() => {
@@ -350,8 +354,14 @@ export function MyScheduleModal({
           bedtime_local: weeklySchedule.mon.bedtime,
           wake_time_local: weeklySchedule.mon.wake_time,
           timezone: timezone.trim(),
-          weekend_bedtime_local: weeklySchedule.fri.bedtime !== weeklySchedule.mon.bedtime ? weeklySchedule.fri.bedtime : (weeklySchedule.sat.bedtime !== weeklySchedule.mon.bedtime ? weeklySchedule.sat.bedtime : null),
-          weekend_wake_time_local: weeklySchedule.fri.wake_time !== weeklySchedule.mon.wake_time ? weeklySchedule.fri.wake_time : (weeklySchedule.sat.wake_time !== weeklySchedule.mon.wake_time ? weeklySchedule.sat.wake_time : null),
+          weekend_bedtime_local:
+            weeklySchedule.sat.bedtime !== weeklySchedule.mon.bedtime
+              ? weeklySchedule.sat.bedtime
+              : (weeklySchedule.fri.bedtime !== weeklySchedule.mon.bedtime ? weeklySchedule.fri.bedtime : null),
+          weekend_wake_time_local:
+            weeklySchedule.sat.wake_time !== weeklySchedule.mon.wake_time
+              ? weeklySchedule.sat.wake_time
+              : (weeklySchedule.fri.wake_time !== weeklySchedule.mon.wake_time ? weeklySchedule.fri.wake_time : null),
         }),
       });
 
@@ -1067,7 +1077,7 @@ export function MyScheduleModal({
                         <label className="block text-[11px] font-medium text-cream-secondary mb-1.5">
                           Select Day to Customize
                         </label>
-                        <div className="grid grid-cols-7 gap-1">
+                        <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
                           {DAY_KEYS.map((day) => {
                             const isSelected = selectedScheduleDay === day;
                             const daySched = weeklySchedule[day];
