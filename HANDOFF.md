@@ -109,10 +109,25 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
     - `[ZC-9] Phase 2.1: Passcode-Protected Moderator Drawer (ModDrawer.tsx)`: Closed issue #9 with audit notes referencing drawer UI, pending queue, and `<TimezoneSelect />`.
     - `[ZC-10] Phase 2.2: Instant Cooldown Override & Roster Admin API`: Closed issue #10 with audit notes referencing `/api/mod` CRUD, rate limiting, and live allowlist authorization.
   - Verified `gh issue list --state open` is now 100% clean (0 open issues).
-* **Jira Sync & Transition Automation Diagnostic:**
-  - Updated `.jira-transition` with `ZC-1`, `ZC-5`, `ZC-6`, `ZC-7`, `ZC-8`, `ZC-9`, and `ZC-10` set to `Done`.
-  - Added debug logging in `scripts/transition-jira-issue.mjs` and `.github/workflows/jira-transition.yml`.
-  - Triggered and inspected GitHub Actions transition workflow run: identified that repository secret `JIRA_TOKEN` is currently unauthorized (`HTTP 401: Client must be authenticated to access this resource`), preventing remote transition execution until credentials are refreshed.
+* **Jira Board & Cloud API Synchronization:**
+  - Updated GitHub Repository secret `JIRA_TOKEN` via `gh secret set JIRA_TOKEN` with the refreshed Atlassian API key.
+  - Authenticated against `krishjaiswal2182003.atlassian.net` as `krish.jaiswal2182003@gmail.com`.
+  - Discovered all 13 issues in project `ZC` and transitioned all active tasks to `Done` (IDs verified on Jira):
+    - `ZC-1`: Phase 1 MVP: Core Cross-Timezone Accountability -> `Done`
+    - `ZC-2`: Phase 1.1: Database Schema & Supabase Configuration -> `Done`
+    - `ZC-3`: Phase 1.2: Luxon Sleep Engine & Cross-Timezone Calculations -> `Done`
+    - `ZC-4`: Phase 1.3: Warm Dark Mobile Dashboard UI & Status Buckets -> `Done`
+    - `ZC-5`: Phase 1.4: Self-Service Schedule Edit Modal & 48-Hour Cooldown -> `Done`
+    - `ZC-6`: Phase 1.5: Web Push Notification Engine & Service Worker -> `Done`
+    - `ZC-7`: Phase 1.6: 1-Minute Cron Dispatcher & Sleep Shield Guardrail -> `Done`
+    - `ZC-8`: Phase 2: Moderation & Anti-Dodge Controls -> `Done`
+    - `ZC-9`: Phase 2.1: Passcode-Protected Moderator Drawer (ModDrawer.tsx) -> `Done`
+    - `ZC-10`: Phase 2.2: Instant Cooldown Override & Roster Admin API -> `Done`
+    - `ZC-11`: Phase 3: Sleep Streaks, Badges & Discord Webhooks -> `Done`
+    - `ZC-12`: Phase 3.1: Bedtime Compliance Scoring & Streak Tracking -> `Done`
+    - `ZC-13`: Phase 3.2: Automated Discord Channel Webhooks & Polish -> `Done`
+  - Added idempotency check to `scripts/transition-jira-issue.mjs` verifying current status before fetching transitions, preventing errors when issues are already in target status.
+  - Updated JQL search endpoint in `scripts/transition-jira-issue.mjs` to request explicit fields (`id,key,summary,status`).
 * **Architecture & Roadmap Change of Plans Documentation:**
   - Documented deprecation of legacy unauthenticated registration `POST /api/members` (HTTP 410 Gone) in favor of Discord OAuth2 authentication.
   - Documented evolution of "Custom Quiet Hours" into dynamic Sleep Shield early check-in ("I'm In Bed") and excused Metastrike passes.
@@ -1055,18 +1070,6 @@ d:\Projects\Z Catchers\
    * Merge tree confirmed 0 conflicts (`git merge-tree origin/main origin/dev`).
    * Verify CI workflow execution and merge into `main`.
 
-2. **Refresh Atlassian Jira API Token in GitHub Secrets:**
-   * In GitHub Actions, the `Jira Issue Transition` workflow confirmed that the current secret `JIRA_TOKEN` returns HTTP 401 Unauthorized against `krishjaiswal2182003.atlassian.net`.
-   * To automatically complete the remote Jira transition for keys `ZC-1`, `ZC-5`, `ZC-6`, `ZC-7`, `ZC-8`, `ZC-9`, and `ZC-10`:
-     1. Generate an API token at: [Atlassian API Tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
-     2. Update `JIRA_TOKEN` in GitHub repository settings: `Settings > Secrets and variables > Actions > Repository secrets`.
-     3. Verify `JIRA_EMAIL` is set to `krish.jaiswal2182003@gmail.com`.
-     4. Trigger the workflow via GitHub CLI or Actions UI:
-        ```bash
-        gh workflow run jira-transition.yml
-        ```
-     *(Note: `.jira-transition` has already been pre-staged and committed with all 7 keys set to `Done`)*.
-
 2. **Database Migration Execution in Supabase SQL Editor:**
    * Run the idempotent migration block from `supabase/schema.sql` on the remote Supabase database:
      ```sql
@@ -1113,11 +1116,11 @@ d:\Projects\Z Catchers\
        FOR ALL USING (auth.role() = 'service_role');
      ```
 
-4. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
+3. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
-3. **Verify Production Deployment Following PR #22 Merge (`main`):**
-   * Production release PR #22 successfully merged into `main`: [PR #22](https://github.com/KrishJdev/Z-Catchers/pull/22)
+4. **Verify Production Deployment Following Release Merges (`main`):**
+   * Production releases up to PR #26 successfully merged into `main`.
    * Verify deployment logs and Discord login flow in Vercel following merge to production `main`.
    * (Optional Best Practice) Add `SESSION_SECRET` (random 32+ char string) in Vercel Project Settings > Environment Variables for explicit key configuration.

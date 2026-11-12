@@ -35,9 +35,12 @@ async function debugJira() {
   }
 
   console.log('Searching recent issues...');
-  const searchRes = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/search/jql?jql=order+by+created+DESC&maxResults=10`, {
-    headers: { Authorization: authHeader, Accept: 'application/json' },
-  });
+  const searchRes = await fetch(
+    `https://${JIRA_DOMAIN}/rest/api/3/search/jql?jql=order+by+created+DESC&fields=id,key,summary,status&maxResults=10`,
+    {
+      headers: { Authorization: authHeader, Accept: 'application/json' },
+    }
+  );
   if (searchRes.ok) {
     const searchData = await searchRes.json();
     console.log(
@@ -45,23 +48,26 @@ async function debugJira() {
       (searchData.issues || []).map((i) => `${i.key}: ${i.fields?.summary} [Status: ${i.fields?.status?.name}]`)
     );
   } else {
-    // try fallback search endpoint
-    const fallbackRes = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/search?maxResults=10`, {
-      headers: { Authorization: authHeader, Accept: 'application/json' },
-    });
-    if (fallbackRes.ok) {
-      const searchData = await fallbackRes.json();
-      console.log(
-        'Recent issues (fallback):',
-        (searchData.issues || []).map((i) => `${i.key}: ${i.fields?.summary} [Status: ${i.fields?.status?.name}]`)
-      );
-    }
+    console.log('Search error:', await searchRes.text());
   }
 }
 
 async function transitionIssue(issueKey, targetState = 'in progress') {
   if (process.env.JIRA_DEBUG === '1') {
     await debugJira();
+  }
+
+  // Check current status first to prevent redundant or impossible transitions
+  const issueRes = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/issue/${issueKey}?fields=status`, {
+    headers: { Authorization: authHeader, Accept: 'application/json' },
+  });
+  if (issueRes.ok) {
+    const issueData = await issueRes.json();
+    const currentStatus = issueData.fields?.status?.name || '';
+    if (currentStatus.toLowerCase() === targetState.toLowerCase()) {
+      console.log(`✓ Issue ${issueKey} is already in status "${currentStatus}". Nothing to do!`);
+      return;
+    }
   }
 
   console.log(`\nFetching transitions for ${issueKey}...`);
