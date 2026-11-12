@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T04:10:30+05:30  
+> **Last Updated:** 2026-11-13T04:18:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `6c985e4`  
+> **Latest Commit:** `f6fdd83`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
 > **Active Integration Pull Request:** None (all merged)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
 > **Active Production Release Pull Request:** [#50 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/50) (dev -> main)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 25/25 suites passed | Dev server running on `http://localhost:3000`)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 25/25 suites passed | `npm run build` clean, 28/28 routes compiled)
 
 ---
 
@@ -69,6 +69,27 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 76: Security Hardening - Remove Hardcoded Fallback Session Secrets & Dev PIN Salt in Production (GH #30 / #45, ZC-16)
+* **Fail-Closed Cryptographic Secret Enforcement (`src/lib/auth.ts`):**
+  - Hardened `getPinSalt()`: In production environments (`NODE_ENV === 'production'`), strictly throws an explicit error (`[CRITICAL] Production deployment requires PIN_SALT or server credentials...`) when neither `PIN_SALT` nor server credentials (`SUPABASE_SERVICE_ROLE_KEY` / `DISCORD_CLIENT_SECRET`) are configured, preventing reliance on static, crackable dev salts.
+  - Hardened `getSessionSecret()`: In production environments, strictly throws an explicit error (`[CRITICAL] Production deployment requires SESSION_SECRET or server credentials...`) when neither `SESSION_SECRET` nor server credentials are configured, preventing token signing with public fallback keys.
+  - Hardened `getVerificationSessionSecrets()`: Strictly gated candidate fallback verification secrets (`'z_catchers_session_secret_fox_den_fallback_2026'` and `'z_catchers_session_secret_dev_only'`) behind `if (process.env.NODE_ENV !== 'production')`.
+* **Forged Fallback Token Rejection & Token Verification Defense (`src/lib/auth.ts`):**
+  - In production, candidate verification secrets now strictly contain only explicitly configured `SESSION_SECRET` and derived server credentials.
+  - Any attacker attempt to forge session tokens or claim tokens using the public repository fallback secrets is strictly rejected by `verifySessionToken` and `verifyClaimToken` with `null`, preventing authentication and authorization bypass.
+  - Preserved backward-compatible zero-configuration developer flow in non-production environments (`NODE_ENV === 'development'`).
+* **Automated Unit Testing & Security Assertion Suite (`scripts/test-login-and-auth.mjs`):**
+  - Updated Section 1B of `scripts/test-login-and-auth.mjs`:
+    1. Verified that `getSessionSecret()` and `getPinSalt()` fail closed by throwing `[CRITICAL]` errors in production when unconfigured.
+    2. Verified `getVerificationSessionSecrets()` returns an empty array when no secrets are set in production.
+    3. Verified that forged tokens signed with public fallback secrets are strictly rejected in production both before and after configuring explicit `SESSION_SECRET`.
+    4. Verified legitimate session and claim token creation and validation under explicit production secrets.
+    5. Verified seamless fallback secret support when running in local development mode.
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 25/25 test suites passing (12.63s).
+  - `npm run build` verified clean with all 28 routes compiled successfully.
 
 ### Phase 75: PR #49 CodeRabbit Review Suggestions Resolution & Full Hardening
 * **PostgreSQL Schema Migration Guarding (`supabase/schema.sql` & `HANDOFF.md`):**
@@ -1443,7 +1464,7 @@ d:\Projects\Z Catchers\
 
 | Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
 |---|---|---|---|---|---|
-| **ZC-16** | **High (P1)** | Security: Remove hardcoded fallback session secrets & dev PIN salt in production | `src/lib/auth.ts` | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | **TODO** |
+| **ZC-16** | **High (P1)** | Security: Remove hardcoded fallback session secrets & dev PIN salt in production | `src/lib/auth.ts` | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | **DONE** |
 | **ZC-17** | **High (P1)** | Security: Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` | `src/app/api/push/unsubscribe/route.ts` | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) | **TODO** |
 | **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | **TODO** |
 | **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) | **TODO** |
@@ -1481,8 +1502,8 @@ d:\Projects\Z Catchers\
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
 1. **Sprint 1 — P1 (High Priority) Security & Auth Hardening:**
-   * **ZC-16 / GH #30 (`src/lib/auth.ts`):** Fail closed in production for `SESSION_SECRET` and `PIN_SALT`. Strip fallback secrets when `NODE_ENV === 'production'`.
-   * **ZC-17 / GH #31 (`src/app/api/push/unsubscribe/route.ts`):** Require active authenticated session for unsubscriptions; scope deletion to `sessionMemberId`.
+   * **ZC-16 / GH #30 (`src/lib/auth.ts`):** **[DONE in Phase 76]** Failed closed in production for `SESSION_SECRET` and `PIN_SALT`. Strictly stripped fallback secrets when `NODE_ENV === 'production'`.
+   * **ZC-17 / GH #31 (`src/app/api/push/unsubscribe/route.ts`):** **[NEXT UP]** Require active authenticated session for unsubscriptions; scope deletion to `sessionMemberId`.
    * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** Replace in-memory rate limiting with `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
    * **ZC-19 / GH #33 (`src/lib/auth.ts`):** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
    * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles.
@@ -1657,4 +1678,4 @@ d:\Projects\Z Catchers\
    * **Mandatory Environment Configuration & Security Precondition:**
      * `SESSION_SECRET` (random 32+ char string) and `PIN_SALT` must be explicitly configured in Vercel Project Settings > Environment Variables. Do not treat `SESSION_SECRET` as optional.
      * Note that configuring `SESSION_SECRET` alone does **not** secure authentication: production deployments must **not** be considered secure while fallback-secret verification remains active in `src/lib/auth.ts`.
-     * **ZC-16 / GH #30** must be resolved (removing hardcoded fallback session secrets and enforcing fail-closed secret validation in production) before claiming the production deployment is protected.
+     * **ZC-16 / GH #30** is resolved in Phase 76: hardcoded fallback session secrets and dev PIN salts are stripped in production with fail-closed validation enforced.
