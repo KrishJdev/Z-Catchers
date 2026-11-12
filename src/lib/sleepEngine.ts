@@ -851,6 +851,7 @@ export interface MemberState {
   activeBedtimeLocal?: string;
   activeWakeTimeLocal?: string;
   dayKey?: DayKey;
+  needsWakeUpLog?: boolean;
 }
 
 /**
@@ -1196,17 +1197,22 @@ export function resolveActiveSleepCycle(
 
   // 1. Yesterday's cycle (initiated on sleeperNow.minus({ days: 1 }))
   const yesterdayNight = sleeperNow.minus({ days: 1 }).startOf('day');
+  const yesterdayCycleDate = yesterdayNight.toISODate()!;
+  const hasWokeUpForYesterday = Boolean(
+    member.is_woke_up ||
+    (member.last_wake_cycle_date && member.last_wake_cycle_date === yesterdayCycleDate)
+  );
   const ySched = getNightScheduleDateTime(member, yesterdayNight);
 
   // Yesterday's active window starts when wind-down/curfew or early check-in begins (-180m before bedtime)
   const yStart = ySched.bedtimeDateTime.minus({ minutes: 180 });
   // Yesterday's window ends when yesterday's wake window has elapsed
   // If member is actively in bed without waking up, extend window up to 8 hours (480 mins) or wake time
-  const yEnd = effectiveInBed && !member.is_woke_up
+  const yEnd = effectiveInBed && !hasWokeUpForYesterday
     ? DateTime.max(ySched.wakeDateTime, ySched.bedtimeDateTime.plus({ minutes: 480 }))
     : ySched.wakeDateTime;
 
-  if (sleeperNow >= yStart && sleeperNow < yEnd && !member.is_woke_up) {
+  if (sleeperNow >= yStart && sleeperNow < yEnd) {
     const diffMinutes = sleeperNow.diff(ySched.bedtimeDateTime, 'minutes').minutes;
     const mondaySched = getScheduleForDay(member, yesterdayNight.set({ weekday: 1 }));
     const isCustomScheduleToday =
@@ -1313,17 +1319,24 @@ export function computeMemberState(
   let checkedInEarly = false;
   let graceMinutesLeft = 0;
   let canVoteStrike = false;
+  let needsWakeUpLog = false;
 
   const effectiveInBed = isInBed !== undefined ? isInBed : Boolean(member.is_in_bed);
 
-  // If member has explicitly marked themselves awake / undid sleeping state
-  if (member.is_woke_up) {
+  const hasLoggedWakeUp = Boolean(
+    member.is_woke_up ||
+    (member.last_wake_cycle_date && member.last_wake_cycle_date === activeCycle.cycleEveningDate)
+  );
+
+  // If member has explicitly marked themselves awake / logged wake-up for current cycle
+  if (hasLoggedWakeUp) {
     bucket = 'AWAKE';
     status = 'AWAKE';
     statusText = 'Wide Awake • Rested';
     isSleepShieldActive = false;
     checkedInEarly = false;
     canVoteStrike = false;
+    needsWakeUpLog = false;
   } else if (effectiveInBed && diffMinutes >= -180 && diffMinutes <= 480) {
     bucket = 'SLEEPING';
     status = 'SLEEPING';
@@ -1331,6 +1344,7 @@ export function computeMemberState(
     isSleepShieldActive = true;
     checkedInEarly = true;
     canVoteStrike = false;
+    needsWakeUpLog = true;
   } else if (diffMinutes >= 0 && diffMinutes <= 5) {
     // 5-minute grace window: Strike voting is strictly locked
     bucket = 'BEDTIME_NOW';
@@ -1357,10 +1371,14 @@ export function computeMemberState(
     statusText = `Catching Z's (Asleep)`;
     isSleepShieldActive = true;
     canVoteStrike = true;
+    needsWakeUpLog = true;
   } else {
     bucket = 'AWAKE';
     status = 'AWAKE';
     canVoteStrike = false;
+    if (effectiveInBed || (sleeperNow >= activeCycle.targetBedtime && sleeperNow < activeCycle.targetWakeTime.plus({ hours: 4 }))) {
+      needsWakeUpLog = true;
+    }
     // Find next upcoming bedtime strictly in the future
     const upcomingCandidates = [0, 1, 2, 3, 4, 5, 6]
       .map((offset) => {
@@ -1414,6 +1432,7 @@ export function computeMemberState(
     activeBedtimeLocal,
     activeWakeTimeLocal,
     dayKey,
+    needsWakeUpLog,
   };
 }
 

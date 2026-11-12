@@ -50,6 +50,7 @@ interface MyScheduleModalProps {
   onRefreshRoster: () => Promise<void>;
   currentUser?: Member | null;
   onLogout?: () => void;
+  onOpenSleepCalendar?: (memberId: string) => void;
 }
 
 /**
@@ -67,6 +68,7 @@ export function MyScheduleModal({
   onRefreshRoster,
   currentUser,
   onLogout,
+  onOpenSleepCalendar,
 }: MyScheduleModalProps) {
   const [tab, setTab] = useState<'claim' | 'new'>('claim');
 
@@ -244,11 +246,6 @@ export function MyScheduleModal({
     }
   }, [bedtime, timezone, viewerTimezone]);
 
-  if (!isOpen) return null;
-
-  // Validate journal URL
-  const isJournalValid = journalUrl.trim() === '' || DISCORD_JOURNAL_REGEX.test(journalUrl.trim());
-
   // Check if schedule (bedtime, wake time, timezone, weekend hours, 7-day schedule) has changed from active values
   const hasScheduleChanged = useMemo(() => {
     if (!activeMember) return false;
@@ -272,6 +269,11 @@ export function MyScheduleModal({
     }
     return false;
   }, [activeMember, timezone, weeklySchedule]);
+
+  if (!isOpen) return null;
+
+  // Validate journal URL
+  const isJournalValid = journalUrl.trim() === '' || DISCORD_JOURNAL_REGEX.test(journalUrl.trim());
 
   // Handle PIN Unlock
   const handleUnlockProfile = (e: React.FormEvent) => {
@@ -1312,35 +1314,51 @@ export function MyScheduleModal({
               </div>
             )}
 
-            {/* Account & Session Management (Log Out) */}
-            {currentUser && onLogout && (
-              <div className="pt-4 border-t border-night-border">
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-2xl border border-night-border bg-night-elevated/40 p-3.5">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-night-surface border border-night-border text-status-amber">
-                      <FoxMascot state="logo" size={20} />
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-cream-primary">
-                        Signed in as @{currentUser.discord_username}
-                      </p>
-                      <p className="text-[11px] text-cream-muted">
-                        Need to switch accounts or take a break?
-                      </p>
-                    </div>
-                  </div>
+            {/* Account & Session Management (Sleep Calendar & Log Out) */}
+            {currentUser && (
+              <div className="pt-4 border-t border-night-border flex flex-col gap-3">
+                {onOpenSleepCalendar && (
                   <button
                     type="button"
                     onClick={() => {
                       onClose();
-                      onLogout();
+                      onOpenSleepCalendar(currentUser.id);
                     }}
-                    className="flex items-center justify-center gap-2 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 text-xs font-semibold text-status-coral hover:bg-status-coral/20 hover:border-status-coral/60 transition-all h-11 min-h-[44px] whitespace-nowrap"
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-status-amber/40 bg-status-amber/15 px-4 text-xs font-bold text-status-amber hover:bg-status-amber/25 transition-all h-12 min-h-[44px] w-full shadow-sm"
                   >
-                    <LogOut className="h-4 w-4" />
-                    <span>Log Out of Fox Den</span>
+                    <Calendar className="h-4 w-4 text-status-amber" />
+                    <span>📅 View My Sleep & Wake Calendar</span>
                   </button>
-                </div>
+                )}
+
+                {onLogout && (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-2xl border border-night-border bg-night-elevated/40 p-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-night-surface border border-night-border text-status-amber">
+                        <FoxMascot state="logo" size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-cream-primary">
+                          Signed in as @{currentUser.discord_username}
+                        </p>
+                        <p className="text-[11px] text-cream-muted">
+                          Need to switch accounts or take a break?
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onLogout();
+                      }}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 text-xs font-semibold text-status-coral hover:bg-status-coral/20 hover:border-status-coral/60 transition-all h-11 min-h-[44px] whitespace-nowrap"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span>Log Out of Fox Den</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

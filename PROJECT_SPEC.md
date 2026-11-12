@@ -201,6 +201,34 @@ CREATE TABLE nightly_strike_logs (
 );
 ```
 
+### 4.5 `sleep_logs` Table (Historical Sleep & Wake Duration Records)
+
+Stores daily sleep check-ins (`in_bed_at`), wake logs (`woke_up_at`), scheduled targets, wake source, duration, and status per member and sleep cycle date (`YYYY-MM-DD` in member's local timezone).
+
+```sql
+CREATE TABLE IF NOT EXISTS public.sleep_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_id TEXT NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+  cycle_date TEXT NOT NULL, -- "YYYY-MM-DD" in member's local IANA timezone representing the night's cycle
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  target_bedtime TEXT,      -- "HH:mm" scheduled bedtime for this cycle
+  target_wake_time TEXT,    -- "HH:mm" scheduled wake time for this cycle
+  in_bed_at TIMESTAMPTZ,    -- Exact UTC timestamp when member checked in to bed
+  in_bed_local_time TEXT,   -- "HH:mm" in member's local timezone
+  woke_up_at TIMESTAMPTZ,   -- Exact UTC timestamp when member woke up
+  woke_up_local_time TEXT,  -- "HH:mm" in member's local timezone
+  wake_source TEXT CHECK (wake_source IN ('button', 'manual')),
+  duration_minutes INTEGER, -- Calculated total sleep duration in minutes
+  status TEXT NOT NULL DEFAULT 'on_time' CHECK (status IN ('on_time', 'late', 'missed', 'metastrike')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (member_id, cycle_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sleep_logs_member_cycle
+  ON public.sleep_logs (member_id, cycle_date DESC);
+```
+
 ## 5. Critical Business Logic & Algorithms (DO NOT IMPROVISE)
 
 Antigravity must implement these five core helper functions cleanly in a shared utility module (`src/lib/sleepEngine.ts`).
@@ -369,6 +397,33 @@ To ship ASAP without waiting on complex OAuth app verification:
    * **Retroactive Metastrike (24-Hour Swap):** If a member receives a 2-vote Strike within the last 24 hours while away, they can tap `"Convert to Metastrike"` (if `metastrikes_used < 3`). This decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` to `'metastrike'`.
    * **Moderator Override:** Inside the Moderator Panel, mods can manually adjust any member's Strikes or Metastrikes (0 to 3) and clear accidental votes or strike records.
 
+### 5.7 "I Woke Up" Mechanic & State Transition Engine
+
+1. **User Interaction Modes:**
+   * **Instant Wake-Up Button (`☀️ I Woke Up`):** One-tap button rendered prominently in the Page Hero Banner and Member Card when a member is currently in bed / sleeping or requires a wake-up log. Instantly captures the current UTC timestamp, sets `woke_up_local_time`, records `wake_source: 'button'`, calculates total sleep duration, and shows a celebratory toast (e.g., *"Good morning! Logged 7h 45m of sleep."*).
+   * **Manual Time Entry (`Enter Time Manually`):** For members who forgot to tap the button upon waking. Validates strict 24-hour `HH:mm` format, checks against the current time (preventing future entries), ensures wake-up is chronologically after bedtime check-in, and computes cross-midnight duration (e.g., 23:30 bedtime to 07:15 wake-up = 465 minutes).
+   * **Past Cycle Logging:** Members can edit or log wake-up times for any sleep cycle within the past 7 days directly from their profile card or calendar inspector.
+
+2. **Sleep Engine State Machine Integration:**
+   * Once a member logs a wake-up for their active sleep cycle (`last_wake_cycle_date === activeCycleDate`), `computeMemberState` immediately resolves their bucket to `AWAKE` with `needsWakeUpLog: false` and `isSleepShieldActive: false`.
+   * If a member checked in or is inside their sleep window without having logged wake-up yet, `computeMemberState` sets `needsWakeUpLog: true` to trigger the wake-up call to action.
+
+### 5.8 Interactive Sleep & Wake History Calendar
+
+1. **Full-Featured Monthly Calendar View:**
+   * Accessible for both the logged-in user and any community member via a prominent `"📅 History"` button on their member card, as well as from the Profile / My Schedule modal.
+   * **7-Column Mon–Sun Grid:** Displays each day (1–31) with touch-friendly cells ($\ge 48$px).
+   * **Status Color Indicators:**
+     * **Emerald/Green:** Checked into bed on time & logged wake-up.
+     * **Indigo/Blue:** Checked into bed on time (currently sleeping or wake time pending).
+     * **Amber/Purple:** Excused pass or Metastrike used.
+     * **Rose/Red:** Late check-in or confirmed Strike.
+   * **3-Pill Monthly Summary Bar:**
+     * Average Sleep Duration (e.g., `7h 32m`)
+     * Average Bed & Wake Times (e.g., `23:18 → 07:05`, calculated circular across midnight)
+     * On-Time Percentage (e.g., `92%`)
+   * **Selected Day Inspector Card:** Shows target vs. actual bedtime and wake-up timestamps, wake source badge (`☀️ Instant Button` vs. `✏️ Manual Entry`), duration, and an inline manual time editor for self-adjustments.
+
 ## 6. Phased Feature Roadmap
 
 ### Phase 1: The Lean MVP (BUILD THIS NOW)
@@ -394,6 +449,10 @@ To ship ASAP without waiting on complex OAuth app verification:
 * [x] **Member PIN Login & Profile Authentication (ZC-13):** Built a simple, secure 4-digit PIN authentication system. Devices bind Web Push notifications and Sleep Shield quiet hours strictly to verified accounts, completely eliminating unauthenticated profile selection and notification misdirection.
 
 * [x] **"I'm In Bed" Safe Button:** During the 30-minute wind-down window, the sleeper can tap `"I'm heading to bed now"` in the app, which marks them as `SLEEPING` early and suppresses the outgoing community nag notification for that night.
+
+* [x] **"I Woke Up" Mechanic (Instant Button + Manual Wake Entry):** Allows members to log their wake-up instant or manually with automatic sleep duration calculation, transitioning live state from `SLEEPING` to `AWAKE`.
+
+* [x] **Sleep & Wake History Calendar (Self & Member Profiles):** Interactive monthly calendar modal with 7-column Mon-Sun grid, status color coding, 3-pill monthly statistics summary, and day inspector.
 
 * [x] **Selective Watchlists (Buddy System):** Allow users to star specific friends so they only get community nag pings for their chosen watchlist rather than the entire server.
 

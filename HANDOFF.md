@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T22:45:00+05:30  
+> **Last Updated:** 2026-11-13T00:12:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `44f4769`  
+> **Latest Commit:** `a8be144`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44)  
 > **Active Integration Pull Request:** [#49 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
 > **Active Production Release Pull Request:** None (all merged)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 20/20 suites passed | `npm run build` clean, 26/26 routes)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 22/22 suites passed | Dev server running on `http://localhost:3000`)
 
 ---
 
@@ -69,6 +69,94 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 66: Member Profile Section, Weekly Timetable, Streak Calendar, and Banner Overflow Fix
+* **Text Overflow Resolution (`src/components/MemberCard.tsx`):**
+  - Identified that feedback and error toast messages (`cardFeedback`, `cardError`) utilized `whitespace-nowrap`, which prevented long strings (such as `"You already sent a bedtime reminder to Afnan for tonight's bedtime."` or rate-limit warnings) from wrapping, causing them to project out past the card's right boundary.
+  - Removed `whitespace-nowrap` and applied `break-words text-balance px-3 py-2 leading-snug`.
+  - Added `max-w-full overflow-hidden` to the root `MemberCard` container and `min-w-0` to flex child containers, preventing any horizontal text spillover.
+* **Banner Cleanliness & Decluttering (`src/components/MemberCard.tsx`):**
+  - Removed the inline `"7-day routine"` toggle button and `"History"` calendar button from the member card header.
+  - Removed the inline expandable 7-day routine tray (`showRoutine`) from the card, streamlining the card into a clean accountability view.
+* **Interactive Profile Trigger (`src/components/MemberCard.tsx`, `src/app/page.tsx`):**
+  - Converted the member's display name and avatar into accessible, interactive buttons with subtle hover effects (`hover:text-status-amber hover:underline cursor-pointer`) and descriptive title/aria tags.
+  - Tapping either the name or avatar opens the full Member Profile Modal (`SleepCalendarModal`), which now acts as the comprehensive profile view.
+* **Member Profile, Streak Calendar & Weekly Timetable Modal (`src/components/SleepCalendarModal.tsx`):**
+  - Upgraded `SleepCalendarModal` with a dedicated member profile header:
+    - Member avatar (with in-bed check badge), username, handle, `YOU` / `MOD` role badges.
+    - Timezone pill (e.g. `GMT+05:30`) and live current local time in that timezone.
+    - Accountability star toggle button (`⭐`) and direct Discord journal thread link (`🔗 Journal`).
+    - Current streak badge (`🔥 Xd streak`), strikes counter (`⚡ Strikes: X/3`), and excused metastrikes counter (`🛡️ Meta: Y/3`).
+  - Added two top tabs with smooth switching:
+    - **Tab 1: Calendar & Streak:** Monthly navigation (`< Month Year >`), 3-pill monthly summary strip (Avg Sleep duration, Avg Bed → Wake, On-Time percentage), 7-column Monday–Sunday calendar grid with color-coded status badges, selected day inspector, and self-edit wake time form.
+    - **Tab 2: Weekly Timetable:** 7-day schedule breakdown (Monday through Sunday) with active day highlighted with a `"TODAY"` badge, target bedtimes, target wake times, calculated planned sleep durations (e.g. `8 hrs 00 mins`), weekend/custom schedule tags, and a direct `"Edit Schedule"` shortcut for the profile owner.
+* **API Enhancement (`src/app/api/members/sleep-history/route.ts`):**
+  - Updated endpoint to return `weekly_schedule`, `weekend_bedtime_local`, `weekend_wake_time_local`, `journal_url`, `role`, and strike counters on the `member` object.
+* **Automated Unit Testing (`scripts/test-member-profile-and-overflow-fix.mjs`, `scripts/run-tests.mjs`):**
+  - Created a comprehensive test suite validating:
+    1. MemberCard banner does not show "7-day routine" or "History" buttons.
+    2. MemberCard name and avatar click triggers `onOpenProfile`.
+    3. `cardFeedback` and `cardError` wrap cleanly without `whitespace-nowrap`.
+    4. SleepCalendarModal renders profile header, Weekly Timetable tab with TODAY badge and calculated durations, and Streak Calendar.
+    5. `page.tsx` passes `onOpenProfile` and coordinating tab states.
+  - Registered in `scripts/run-tests.mjs` (22/22 unit test suites passing cleanly).
+
+### Phase 65: Bugfix - React Hook Order Violation in MyScheduleModal
+* **Root Cause Analysis:**
+  - An early return statement `if (!isOpen) return null;` in `src/components/MyScheduleModal.tsx` was placed directly before `const hasScheduleChanged = useMemo(...)` (hook #27).
+  - When the modal was closed (`isOpen === false`), React executed 26 hooks and returned early. When the user clicked on "My Profile" (`isOpen === true`), render proceeded past the guard and called `hasScheduleChanged` as hook #27.
+  - This violated the Rules of Hooks by creating a hook count discrepancy between renders (`undefined` vs `useMemo`), crashing the app when opening the profile modal.
+* **Resolution:**
+  - Relocated `hasScheduleChanged` above `if (!isOpen) return null;`, ensuring all 27 hooks execute unconditionally in identical order on every render.
+* **Verification:**
+  - TypeScript type check (`npx tsc --noEmit`) clean with 0 errors.
+  - Full automated unit test suite passed cleanly (`npm run test:unit`, 21/21 suites passed).
+
+### Phase 64: "I Woke Up" Mechanic & Interactive Sleep & Wake History Calendar Implementation
+* **Database Schema & Storage Layer (`supabase/schema.sql`, `src/lib/db.ts`):**
+  - Added fast wake-up tracking columns `last_woke_up_at TIMESTAMPTZ` and `last_wake_cycle_date TEXT` to `members` table definition and migration statements.
+  - Created `public.sleep_logs` table keyed by `(member_id, cycle_date)` with columns for `timezone`, `target_bedtime`, `target_wake_time`, `in_bed_at`, `in_bed_local_time`, `woke_up_at`, `woke_up_local_time`, `wake_source` (`button` | `manual`), `duration_minutes`, and `status` (`on_time` | `late` | `missed` | `metastrike`).
+  - Added index `idx_sleep_logs_member_cycle` and enabled Supabase realtime publication on `sleep_logs`.
+  - Added helper methods in `src/lib/db.ts`: `upsertSleepLog`, `getMemberSleepLogs`, in-memory fallback cache `memorySleepLogs`, and robust member fallback `getMemberByIdSafe`.
+  - Updated `src/lib/demoSeed.ts` (`generateDemoSleepLogs`, `seedDemoSleepLogsInMemory`) and `scripts/seed-demo-members.mjs` to seed 30 days of realistic variance sleep logs for demo members.
+* **"I Woke Up" Endpoint & Sleep Engine Integration (`src/app/api/members/wake-up/route.ts`, `src/app/api/members/in-bed/route.ts`, `src/lib/sleepEngine.ts`):**
+  - Updated `POST /api/members/in-bed` to record bedtime check-in into `sleep_logs` with active schedule targets.
+  - Created `POST /api/members/wake-up` supporting two modes:
+    - **Instant Button Mode (`mode: 'button'`):** Uses current UTC instant in member's timezone, sets `wake_source: 'button'`, calculates sleep duration, and updates `last_woke_up_at` and `last_wake_cycle_date`.
+    - **Manual Mode (`mode: 'manual'`):** Validates 24-hour `HH:mm` format, checks past-7-days window, rejects future times, and computes cross-midnight duration (e.g., 23:30 to 07:15 = 465 minutes).
+  - Updated `src/lib/sleepEngine.ts`:
+    - Added `needsWakeUpLog?: boolean` to `MemberState`.
+    - When a member is in bed or inside the sleep window without a logged wake-up, exposes `needsWakeUpLog: true`.
+    - Once wake-up is logged for the cycle date (`last_wake_cycle_date === activeCycleDate`), status immediately transitions to `AWAKE` with `needsWakeUpLog: false` and `isSleepShieldActive: false`.
+* **Sleep & Wake History API (`src/app/api/members/sleep-history/route.ts`):**
+  - Created GET route taking `memberId` and `month` (YYYY-MM).
+  - Fetches monthly logs, merges strikes from `nightly_strike_logs`, and calculates summary statistics:
+    - `totalLoggedNights`: Count of nights with recorded sleep/wake.
+    - `avgDurationMinutes`: Average sleep duration in minutes.
+    - `avgBedtime`: Circular mean across midnight.
+    - `avgWakeTime`: Linear mean.
+    - `onTimePercentage`: Percentage of logged nights with `status === 'on_time'`.
+  - Auto-populates 30-day realistic history for demo seed profiles if records are empty.
+* **Frontend UI Components (`SleepCalendarModal.tsx`, `MemberCard.tsx`, `MyScheduleModal.tsx`, `page.tsx`):**
+  - Built mobile-first `src/components/SleepCalendarModal.tsx`:
+    - Month navigation (Prev / Next / Current Month).
+    - 3-Pill Monthly Summary Bar: Avg Sleep Duration, Avg Bed/Wake, and On-Time percentage.
+    - 7-Column Mon–Sun Calendar Grid: Day numbers with color-coded status badges (emerald for on-time, indigo for sleeping/pending, purple for metastrike, rose for missed/late). Enforces $\ge 48$px touch targets.
+    - Selected Day Inspector Card: Displays target vs. actual times, wake source, duration, and self-service manual wake time editor.
+  - Updated `src/components/MemberCard.tsx`:
+    - Added prominent "☀️ I Woke Up" button and "Enter Time" manual wake picker in `SLEEPING` state.
+    - Added "📅 History" button to open the sleep calendar modal for any community member.
+  - Updated `src/components/MyScheduleModal.tsx`:
+    - Added "📅 View My Sleep & Wake Calendar" action trigger for the authenticated user.
+  - Updated `src/app/page.tsx`:
+    - Integrated prominent hero banner "☀️ I Woke Up" button and manual wake time picker.
+    - Mounted `SleepCalendarModal` with responsive state management.
+* **Automated Verification & Unit Tests:**
+  - Created `scripts/test-sleep-history-and-wakeup.mjs` verifying storage layer, instant and manual wake-up routes, sleep history calculations, sleep engine transitions, and UI touch targets.
+  - Updated `scripts/test-in-bed-and-streaks.mjs` and `scripts/test-wake-up-and-overflow.mjs`.
+  - Added suite to `scripts/run-tests.mjs`: all 21/21 unit test suites passed cleanly.
+  - Production build clean: `npm run build` (28/28 routes compiled).
+  - TypeScript clean: `npx tsc --noEmit` (0 errors).
 
 ### Phase 63: 7-Day Variable Sleep Schedule Engine & 3-Mode Schedule Editor Implementation
 * **Database Schema & Backfill Migration (`supabase/schema.sql`):**
@@ -1265,6 +1353,40 @@ d:\Projects\Z Catchers\
      DROP POLICY IF EXISTS "Service role full access on cron_locks" ON public.cron_locks;
      CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
        FOR ALL USING (auth.role() = 'service_role');
+
+     -- Fast Wake-Up State Resolution & Sleep Logs Migration
+     ALTER TABLE public.members
+       ADD COLUMN IF NOT EXISTS last_woke_up_at TIMESTAMPTZ,
+       ADD COLUMN IF NOT EXISTS last_wake_cycle_date TEXT;
+
+     CREATE TABLE IF NOT EXISTS public.sleep_logs (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       member_id TEXT NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+       cycle_date TEXT NOT NULL,
+       timezone TEXT NOT NULL DEFAULT 'UTC',
+       target_bedtime TEXT,
+       target_wake_time TEXT,
+       in_bed_at TIMESTAMPTZ,
+       in_bed_local_time TEXT,
+       woke_up_at TIMESTAMPTZ,
+       woke_up_local_time TEXT,
+       wake_source TEXT CHECK (wake_source IN ('button', 'manual')),
+       duration_minutes INTEGER,
+       status TEXT NOT NULL DEFAULT 'on_time' CHECK (status IN ('on_time', 'late', 'missed', 'metastrike')),
+       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       UNIQUE (member_id, cycle_date)
+     );
+
+     CREATE INDEX IF NOT EXISTS idx_sleep_logs_member_cycle
+       ON public.sleep_logs (member_id, cycle_date DESC);
+
+     ALTER TABLE public.sleep_logs ENABLE ROW LEVEL SECURITY;
+     DROP POLICY IF EXISTS "Public read sleep_logs" ON public.sleep_logs;
+     CREATE POLICY "Public read sleep_logs" ON public.sleep_logs FOR SELECT USING (true);
+     DROP POLICY IF EXISTS "Service role full access sleep_logs" ON public.sleep_logs;
+     CREATE POLICY "Service role full access sleep_logs" ON public.sleep_logs FOR ALL USING (auth.role() = 'service_role');
+     ALTER PUBLICATION supabase_realtime ADD TABLE public.sleep_logs;
      ```
 
 6. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**

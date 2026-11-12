@@ -69,6 +69,27 @@ assert.strictEqual(stateWokeUpInWindow.bucket, 'AWAKE', 'Explicit wake-up overri
 assert.strictEqual(stateWokeUpInWindow.isSleepShieldActive, false, 'Sleep Shield off for woke-up member');
 console.log('✅ PASSED: Member waking up within 8h window transitions cleanly to AWAKE bucket.');
 
+// State D: Logging wake-up via last_wake_cycle_date immediately transitions to AWAKE with needsWakeUpLog = false
+const stateWithWakeCycleDate = computeMemberState(
+  { ...mockMember, is_in_bed: true, is_woke_up: false, last_wake_cycle_date: '2026-11-11' },
+  'GMT+05:30',
+  time120mPastBedtimeUtc
+);
+assert.strictEqual(stateWithWakeCycleDate.bucket, 'AWAKE', 'Member with last_wake_cycle_date matching cycle date transitions to AWAKE');
+assert.strictEqual(stateWithWakeCycleDate.status, 'AWAKE', 'Status resolves to AWAKE');
+assert.strictEqual(stateWithWakeCycleDate.needsWakeUpLog, false, 'needsWakeUpLog is false once wake-up is logged');
+console.log('✅ PASSED: Logging wake-up via last_wake_cycle_date transitions status to AWAKE.');
+
+// State E: Member in bed without wake-up log has needsWakeUpLog = true
+const stateNeedsWakeUp = computeMemberState(
+  { ...mockMember, is_in_bed: true, is_woke_up: false, last_wake_cycle_date: null },
+  'GMT+05:30',
+  time120mPastBedtimeUtc
+);
+assert.strictEqual(stateNeedsWakeUp.bucket, 'SLEEPING', 'Member in bed remains in SLEEPING');
+assert.strictEqual(stateNeedsWakeUp.needsWakeUpLog, true, 'needsWakeUpLog is true when member is in bed and not woke up');
+console.log('✅ PASSED: In-bed member without wake-up logged exposes needsWakeUpLog: true.');
+
 // 2. MemberCard & Layout Overflow Verification
 console.log('\n--- 2. Leave Quiet Note Overflow Layout Verification ---');
 const memberCardContent = fs.readFileSync(path.join(process.cwd(), 'src/components/MemberCard.tsx'), 'utf8');
@@ -115,5 +136,52 @@ assert(
   'ModDrawer must feature Wake Up / Undo Sleep action for checked-in members'
 );
 console.log('✅ PASSED: ModDrawer provides moderators with Wake Up / Undo Sleep administration action.');
+
+// 5. "I Woke Up" Controls & Calendar Triggers
+console.log('\n--- 5. "I Woke Up" Controls & Calendar Triggers ---');
+assert(
+  memberCardContent.includes('☀️ I Woke Up'),
+  'MemberCard includes prominent "☀️ I Woke Up" button for sleeping/wake-up state'
+);
+assert(
+  memberCardContent.includes('Enter Time'),
+  'MemberCard includes manual wake-up time entry trigger'
+);
+assert(
+  memberCardContent.includes('history') || memberCardContent.includes('History') || memberCardContent.includes('onOpenSleepCalendar'),
+  'MemberCard wires up sleep history profile trigger'
+);
+assert(
+  pageContent.includes('☀️ I Woke Up'),
+  'Page hero banner includes "☀️ I Woke Up" button'
+);
+assert(
+  pageContent.includes('Enter Time Manually'),
+  'Page hero banner includes "Enter Time Manually" button'
+);
+assert(
+  pageContent.includes('SleepCalendarModal'),
+  'Page renders SleepCalendarModal component'
+);
+console.log('✅ PASSED: MemberCard and Page hero banner include "☀️ I Woke Up" and calendar triggers.');
+
+// 6. SleepCalendarModal File & Interface Verification
+console.log('\n--- 6. SleepCalendarModal Verification ---');
+const calendarModalPath = path.join(process.cwd(), 'src/components/SleepCalendarModal.tsx');
+assert(fs.existsSync(calendarModalPath), 'SleepCalendarModal.tsx component file exists');
+const calendarModalContent = fs.readFileSync(calendarModalPath, 'utf8');
+assert(
+  calendarModalContent.includes('export function SleepCalendarModal'),
+  'SleepCalendarModal component is exported'
+);
+assert(
+  calendarModalContent.includes('avgDurationMinutes') && calendarModalContent.includes('onTimePercentage'),
+  'SleepCalendarModal includes 3-pill monthly summary statistics'
+);
+assert(
+  calendarModalContent.includes('WEEKDAY_HEADERS'),
+  'SleepCalendarModal includes 7-column Monday-Sunday grid'
+);
+console.log('✅ PASSED: SleepCalendarModal component implements monthly calendar and summary statistics.');
 
 console.log('\n🎉 ALL VERIFICATION TESTS PASSED SUCCESSFULLY!');

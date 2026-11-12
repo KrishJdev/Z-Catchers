@@ -83,6 +83,8 @@ export interface Member {
   strike_cycle_month?: string; // "YYYY-MM"
   last_notified_stage?: string | null;
   last_notified_cycle_date?: string | null;
+  last_woke_up_at?: string | null; // ISO timestamp of most recent wake-up
+  last_wake_cycle_date?: string | null; // "YYYY-MM-DD" representing the latest logged wake cycle
   created_at: string;
   updated_at: string;
   // Dynamic runtime properties (hydrated by /api/members)
@@ -99,6 +101,26 @@ export interface Member {
 }
 
 export type StrikeRecordType = 'pending_vote' | 'strike' | 'metastrike';
+
+export type SleepLogStatus = 'on_time' | 'late' | 'missed' | 'metastrike';
+
+export interface SleepLog {
+  id?: string;
+  member_id: string;
+  cycle_date: string; // "YYYY-MM-DD" in member's local IANA timezone representing the night's cycle
+  timezone: string;
+  target_bedtime?: string | null; // "HH:mm" scheduled bedtime for this cycle
+  target_wake_time?: string | null; // "HH:mm" scheduled wake time for this cycle
+  in_bed_at?: string | null; // Exact UTC timestamp when member checked in to bed
+  in_bed_local_time?: string | null; // "HH:mm" in member's local timezone
+  woke_up_at?: string | null; // Exact UTC timestamp when member woke up
+  woke_up_local_time?: string | null; // "HH:mm" in member's local timezone
+  wake_source?: 'button' | 'manual' | null;
+  duration_minutes?: number | null; // Calculated total sleep duration in minutes
+  status: SleepLogStatus;
+  created_at?: string;
+  updated_at?: string;
+}
 
 export interface NightlyStrikeLog {
   id: string;
@@ -308,6 +330,8 @@ export async function getExistingMemberColumns(): Promise<Set<string>> {
     'strike_cycle_month',
     'last_notified_stage',
     'last_notified_cycle_date',
+    'last_woke_up_at',
+    'last_wake_cycle_date',
     'created_at',
     'updated_at',
   ]);
@@ -399,6 +423,16 @@ export async function updateMemberSafe(
   }
 
   const hydrated = data ? hydrateMemberWeekendHours(data as unknown as Member) : null;
+  if (hydrated) {
+    memoryMembers.set(memberId, hydrated);
+  } else if (!isSupabaseConfigured) {
+    const existing = memoryMembers.get(memberId);
+    if (existing) {
+      const merged = hydrateMemberWeekendHours({ ...existing, ...cleanUpdates, id: memberId });
+      memoryMembers.set(memberId, merged);
+      return { data: merged, error: null };
+    }
+  }
   return { data: hydrated, error };
 }
 
@@ -451,5 +485,209 @@ export async function insertMemberSafe(
   }
 
   const hydrated = data ? hydrateMemberWeekendHours(data as unknown as Member) : null;
+  if (hydrated) {
+    memoryMembers.set(hydrated.id, hydrated);
+  } else if (!isSupabaseConfigured) {
+    const id = cleanPayload.id || `mem_${Date.now()}`;
+    const inMem = hydrateMemberWeekendHours({ ...cleanPayload, id } as Member);
+    memoryMembers.set(id, inMem);
+    return { data: inMem, error: null };
+  }
   return { data: hydrated, error };
+}
+
+/**
+ * In-memory fallback map for members (testing and offline development)
+ */
+const memoryMembers = new Map<string, Member>();
+
+export function getInMemoryMember(memberId: string): Member | undefined {
+  return memoryMembers.get(memberId);
+}
+
+export function setInMemoryMember(member: Member): void {
+  memoryMembers.set(member.id, hydrateMemberWeekendHours(member));
+}
+
+export function clearInMemoryMembers(): void {
+  memoryMembers.clear();
+}
+
+/**
+ * Safely fetches a member by ID, checking live Supabase first and falling back to in-memory store.
+ */
+export async function getMemberByIdSafe(memberId: string): Promise<{ data: Member | null; error: any }> {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('members')
+        .select('*')
+        .eq('id', memberId)
+        .maybeSingle();
+
+      if (!error && data) {
+        const hydrated = hydrateMemberWeekendHours(data as Member);
+        memoryMembers.set(memberId, hydrated);
+        return { data: hydrated, error: null };
+      }
+    } catch (err: any) {
+      console.warn('[db] Supabase getMemberByIdSafe exception:', err.message);
+    }
+  }
+
+  const inMem = memoryMembers.get(memberId);
+  if (inMem) {
+    return { data: inMem, error: null };
+  }
+  return { data: null, error: new Error('Member not found') };
+}
+
+/**
+ * In-memory fallback map for sleep_logs: key = `${member_id}:${cycle_date}`
+ */
+const memorySleepLogs = new Map<string, SleepLog>();
+
+export function getSleepLogMemoryKey(memberId: string, cycleDate: string): string {
+  return `${memberId}:${cycleDate}`;
+}
+
+export function setInMemorySleepLog(entry: SleepLog): void {
+  const key = getSleepLogMemoryKey(entry.member_id, entry.cycle_date);
+  memorySleepLogs.set(key, entry);
+}
+
+export function getInMemorySleepLogs(
+  memberId?: string,
+  startCycleDate?: string,
+  endCycleDate?: string
+): SleepLog[] {
+  let list = Array.from(memorySleepLogs.values());
+  if (memberId) {
+    list = list.filter((l) => l.member_id === memberId);
+  }
+  if (startCycleDate) {
+    list = list.filter((l) => l.cycle_date >= startCycleDate);
+  }
+  if (endCycleDate) {
+    list = list.filter((l) => l.cycle_date <= endCycleDate);
+  }
+  return list.sort((a, b) => a.cycle_date.localeCompare(b.cycle_date));
+}
+
+export function clearInMemorySleepLogs(): void {
+  memorySleepLogs.clear();
+}
+
+/**
+ * Upserts a sleep log entry (keyed on member_id + cycle_date).
+ * Updates both Supabase (if configured) and the in-memory fallback cache.
+ */
+export async function upsertSleepLog(
+  entry: Partial<SleepLog> & { member_id: string; cycle_date: string }
+): Promise<{ data: SleepLog | null; error: any }> {
+  const memKey = getSleepLogMemoryKey(entry.member_id, entry.cycle_date);
+  const existing = memorySleepLogs.get(memKey);
+  const nowIso = new Date().toISOString();
+
+  const merged: SleepLog = {
+    id: entry.id || existing?.id || `log-${entry.member_id}-${entry.cycle_date}`,
+    member_id: entry.member_id,
+    cycle_date: entry.cycle_date,
+    timezone: entry.timezone || existing?.timezone || 'UTC',
+    target_bedtime: entry.target_bedtime !== undefined ? entry.target_bedtime : (existing?.target_bedtime ?? null),
+    target_wake_time: entry.target_wake_time !== undefined ? entry.target_wake_time : (existing?.target_wake_time ?? null),
+    in_bed_at: entry.in_bed_at !== undefined ? entry.in_bed_at : (existing?.in_bed_at ?? null),
+    in_bed_local_time: entry.in_bed_local_time !== undefined ? entry.in_bed_local_time : (existing?.in_bed_local_time ?? null),
+    woke_up_at: entry.woke_up_at !== undefined ? entry.woke_up_at : (existing?.woke_up_at ?? null),
+    woke_up_local_time: entry.woke_up_local_time !== undefined ? entry.woke_up_local_time : (existing?.woke_up_local_time ?? null),
+    wake_source: entry.wake_source !== undefined ? entry.wake_source : (existing?.wake_source ?? null),
+    duration_minutes: entry.duration_minutes !== undefined ? entry.duration_minutes : (existing?.duration_minutes ?? null),
+    status: entry.status || existing?.status || 'on_time',
+    created_at: existing?.created_at || entry.created_at || nowIso,
+    updated_at: nowIso,
+  };
+
+  // Keep in-memory cache synchronized
+  memorySleepLogs.set(memKey, merged);
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('sleep_logs')
+        .upsert(
+          {
+            member_id: merged.member_id,
+            cycle_date: merged.cycle_date,
+            timezone: merged.timezone,
+            target_bedtime: merged.target_bedtime,
+            target_wake_time: merged.target_wake_time,
+            in_bed_at: merged.in_bed_at,
+            in_bed_local_time: merged.in_bed_local_time,
+            woke_up_at: merged.woke_up_at,
+            woke_up_local_time: merged.woke_up_local_time,
+            wake_source: merged.wake_source,
+            duration_minutes: merged.duration_minutes,
+            status: merged.status,
+            updated_at: merged.updated_at,
+          },
+          { onConflict: 'member_id,cycle_date' }
+        )
+        .select('*')
+        .maybeSingle();
+
+      if (!error && data) {
+        memorySleepLogs.set(memKey, data as SleepLog);
+        return { data: data as SleepLog, error: null };
+      }
+      if (error) {
+        console.warn('[db] Supabase upsertSleepLog warning:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[db] Supabase upsertSleepLog exception:', err.message);
+    }
+  }
+
+  return { data: merged, error: null };
+}
+
+/**
+ * Retrieves sleep logs for a member, optionally constrained to a cycle_date range (e.g. YYYY-MM-01 to YYYY-MM-31).
+ * Falls back to the in-memory store if Supabase is offline or unconfigured.
+ */
+export async function getMemberSleepLogs(
+  memberId: string,
+  startCycleDate?: string,
+  endCycleDate?: string
+): Promise<{ data: SleepLog[]; error: any }> {
+  if (isSupabaseConfigured) {
+    try {
+      let query = supabaseAdmin
+        .from('sleep_logs')
+        .select('*')
+        .eq('member_id', memberId);
+
+      if (startCycleDate) {
+        query = query.gte('cycle_date', startCycleDate);
+      }
+      if (endCycleDate) {
+        query = query.lte('cycle_date', endCycleDate);
+      }
+
+      const { data, error } = await query.order('cycle_date', { ascending: true });
+      if (!error && data) {
+        for (const log of data as SleepLog[]) {
+          memorySleepLogs.set(getSleepLogMemoryKey(log.member_id, log.cycle_date), log);
+        }
+        return { data: data as SleepLog[], error: null };
+      }
+      if (error) {
+        console.warn('[db] Supabase getMemberSleepLogs warning:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[db] Supabase getMemberSleepLogs exception:', err.message);
+    }
+  }
+
+  const memoryData = getInMemorySleepLogs(memberId, startCycleDate, endCycleDate);
+  return { data: memoryData, error: null };
 }
