@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T14:48:00+05:30  
+> **Last Updated:** 2026-11-12T14:53:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** c034820  
+> **Latest Commit:** 0c24f2d  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
 > **Active Integration Pull Request:** [#27 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
@@ -69,6 +69,16 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 58: Mandatory Unit Testing Directive in Agent Specifications
+* **Multi-Agent Directive Update (`AGENTS.md`):**
+  - Added Rule 7 to **Golden Operating Rules**: Every feature that is implemented **must** have corresponding automated unit tests. Features are never considered complete or merge-ready without automated test coverage (`npm run test:unit` must pass cleanly).
+  - Updated Section 2 (Mandatory Handoff Protocol) to mandate recording `npm run test:unit` verification results alongside `npx tsc --noEmit`.
+* **Agent Technical Guardrails Update (`AGENT_RULES.md`):**
+  - Updated Section 6 (Execution & Verification Protocol) with Step 2: "Mandatory Unit Tests: Every feature or endpoint that is implemented **must** have corresponding automated unit tests. Run `npm run test:unit` and verify all suites pass cleanly before concluding your task or opening a PR."
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified passing (19/19 suites passed cleanly).
 
 ### Phase 57: CI Pipeline Test Runner TypeScript Loader, Node 22 & Offline CI Isolation Fixes
 * **TypeScript ESM Module Resolution in CI (`package.json`, `package-lock.json`):**
