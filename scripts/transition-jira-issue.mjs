@@ -18,15 +18,20 @@ async function debugJira() {
   if (userRes.ok) {
     const user = await userRes.json();
     console.log(`Logged in as: ${user.displayName} (${user.emailAddress})`);
+  } else {
+    console.log('User error:', await userRes.text());
   }
 
   console.log('Fetching projects...');
   const projRes = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/project`, {
     headers: { Authorization: authHeader, Accept: 'application/json' },
   });
+  console.log('Projects status:', projRes.status);
   if (projRes.ok) {
     const projects = await projRes.json();
     console.log('Available projects:', projects.map((p) => `${p.key} (${p.name})`));
+  } else {
+    console.log('Projects error:', await projRes.text());
   }
 
   console.log('Searching recent issues...');
