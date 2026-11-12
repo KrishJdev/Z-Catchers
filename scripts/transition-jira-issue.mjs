@@ -29,9 +29,21 @@ async function debugJira() {
   console.log('Projects status:', projRes.status);
   if (projRes.ok) {
     const projects = await projRes.json();
-    console.log('Available projects:', projects.map((p) => `${p.key} (${p.name})`));
+    console.log('Available projects:', projects.map((p) => `${p.key} (${p.name}, id: ${p.id})`));
   } else {
     console.log('Projects error:', await projRes.text());
+  }
+
+  console.log('Fetching createmeta...');
+  const metaRes = await fetch(`https://${JIRA_DOMAIN}/rest/api/3/issue/createmeta`, {
+    headers: { Authorization: authHeader, Accept: 'application/json' },
+  });
+  console.log('Createmeta status:', metaRes.status);
+  if (metaRes.ok) {
+    const metaData = await metaRes.json();
+    console.log('Createmeta:', JSON.stringify(metaData, null, 2));
+  } else {
+    console.log('Createmeta error:', await metaRes.text());
   }
 
   console.log('Searching recent issues...');
@@ -53,8 +65,9 @@ async function debugJira() {
 }
 
 async function transitionIssue(issueKey, targetState = 'in progress') {
-  if (process.env.JIRA_DEBUG === '1') {
+  if (issueKey === 'DEBUG_PROJECTS' || process.env.JIRA_DEBUG === '1') {
     await debugJira();
+    if (issueKey === 'DEBUG_PROJECTS') return;
   }
 
   // Check current status first to prevent redundant or impossible transitions
