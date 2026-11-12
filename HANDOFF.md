@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T14:53:00+05:30  
+> **Last Updated:** 2026-11-12T15:10:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 40037df  
+> **Latest Commit:** 629cbae  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
 > **Active Integration Pull Request:** [#27 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
@@ -172,6 +172,30 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   - `node scripts/test-schedule-cooldown.mjs` passed all 14 tests.
   - `node scripts/test-wake-up-and-overflow.mjs` passed cleanly.
   - `node scripts/test-strikes-system.mjs` passed cleanly.
+
+### Phase 54: CodeRabbit Review Findings Resolution Across CI, Rate-Limiting, Cron Leases & Test Isolation
+* **GitHub Actions CI Security Hardening (`.github/workflows/ci.yml`):**
+  - Added top-level `permissions: contents: read` block restricting default workflow token scopes to read-only.
+  - Added `with: persist-credentials: false` under `actions/checkout@v4` preventing token persistence in local runner git config.
+* **Documented Setup & Copyable Migration RLS Enforcement (`BACKEND_TZ_PWA_SPEC.md`, `HANDOFF.md`):**
+  - Added `ALTER TABLE ENABLE ROW LEVEL SECURITY`, `REVOKE ALL FROM anon, authenticated`, `GRANT ALL TO service_role`, and service-role policies for both `public.rate_limits` and `public.cron_locks` in `BACKEND_TZ_PWA_SPEC.md` and `HANDOFF.md`.
+* **Rate Limiter OCC Retry Exhaustion Protection (`src/lib/rateLimit.ts`):**
+  - Defined and exported `RateLimitConflictError` with code `RATE_LIMIT_RETRY_EXHAUSTED` and key context.
+  - Increased compare-and-swap (CAS) retry attempts to 5 with jittered exponential backoff in `atomicIncrementRateLimitKey`.
+  - Threw `RateLimitConflictError` upon retry exhaustion instead of discarding attempts, and propagated the error through `recordPinFailurePersistent` and `recordVoteAttemptPersistent`.
+  - Added comprehensive automated unit tests in `scripts/test-pin-rate-limiting.mjs` verifying OCC conflict simulation and error propagation.
+* **Cron Dispatcher Short Processing Leases & Crash Recovery (`src/lib/cronDispatcher.ts`):**
+  - Reduced initial lock lease during active notification dispatch from 24 hours to 5 minutes (`NOTIFICATION_LEASE_SECONDS = 300`), eliminating 24-hour lockout stalls when serverless runners crash mid-dispatch.
+  - Added incremental delivery tracking (`delivered_sub_ids`) in lock metadata for personal notifications, community nag alerts, and Discord webhooks.
+  - Preserved previously delivered targets across worker crash-recovery renewals so recovered runs never send duplicate push notifications.
+  - Upgraded completed dispatches to durable 24-hour locks with `completed: true` via `markCronLockCompleted`.
+  - Added automated unit test suite in `scripts/test-push-and-cron.mjs` verifying lease acquisition, worker crash recovery, duplicate prevention, and durable completion sealing.
+* **Offline Test Suite Isolation & Explicit Integration Opt-In (`scripts/`):**
+  - Updated `scripts/run-tests.mjs` to inject `RUNNER_MODE: mode` into child test process environments.
+  - Updated `scripts/test-phase1-security.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/test-discord-webhook-and-assists.mjs`, `scripts/test-in-bed-and-streaks.mjs`, `scripts/test-nag-notifications.mjs`, `scripts/test-signup-and-profiles.mjs`, `scripts/test-strikes-system.mjs`, and `scripts/test-phase1-pwa-push.mjs` to require both explicit `RUNNER_MODE === 'all'` opt-in AND real credentials, ensuring `npm run test:unit` is 100% offline and never writes to Supabase even when `.env.local` exists.
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 19/19 test suites passing (11.44s).
 
 ### Phase 53: Task 3 - Database-Backed Rate Limiting & Cron Idempotency Locks
 * **Database Schema Enhancement (`supabase/schema.sql`, `src/lib/db.ts`):**
@@ -1011,6 +1035,18 @@ d:\Projects\Z Catchers\
        metadata JSONB DEFAULT '{}'::jsonb
      );
      CREATE INDEX IF NOT EXISTS idx_cron_locks_expires_at ON public.cron_locks (expires_at);
+
+     -- Row Level Security & Service Role Policies
+     ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
+     ALTER TABLE public.cron_locks ENABLE ROW LEVEL SECURITY;
+
+     DROP POLICY IF EXISTS "Service role full access on rate_limits" ON public.rate_limits;
+     CREATE POLICY "Service role full access on rate_limits" ON public.rate_limits
+       FOR ALL USING (auth.role() = 'service_role');
+
+     DROP POLICY IF EXISTS "Service role full access on cron_locks" ON public.cron_locks;
+     CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
+       FOR ALL USING (auth.role() = 'service_role');
      ```
 
 4. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
