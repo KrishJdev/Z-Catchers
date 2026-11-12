@@ -42,9 +42,17 @@ function assert(condition, message) {
   }
 }
 
+const runnerMode = process.env.RUNNER_MODE || (process.argv.includes('--all') ? 'all' : 'unit');
+const isAllMode = runnerMode === 'all';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const isSupabaseLive = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder'));
+const hasValidCredentials = Boolean(
+  supabaseUrl &&
+  supabaseKey &&
+  !supabaseUrl.includes('placeholder') &&
+  !supabaseKey.includes('placeholder')
+);
+const isSupabaseLive = isAllMode && hasValidCredentials;
 
 const supabaseAdmin = isSupabaseLive ? createClient(supabaseUrl, supabaseKey) : null;
 
@@ -91,7 +99,11 @@ async function run() {
     // 2. Integration Tests: In-Bed Check-In Gate
     // -------------------------------------------------------------
     if (!isSupabaseLive || !supabaseAdmin) {
-      console.log('\nℹ️ Supabase credentials not configured in environment. Skipping live DB check-in integration tests.');
+      if (!isAllMode) {
+        console.log('\nℹ️ Running in unit mode (RUNNER_MODE != "all"). Skipping live DB check-in integration tests.');
+      } else {
+        console.log('\nℹ️ Supabase live credentials not configured. Skipping live DB check-in integration tests.');
+      }
       if (failed) {
         console.error('\n❌ SOME SECURITY TESTS FAILED.');
         process.exit(1);

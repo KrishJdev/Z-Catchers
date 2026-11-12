@@ -114,12 +114,19 @@ assert(atBedtimeWithCheckin.bucket === 'SLEEPING', 'At bedtime hit: member remai
 // -------------------------------------------------------------
 console.log('\n--- 3. Live Database Check-In & Cron Suppression Verification ---');
 
+const runnerMode = process.env.RUNNER_MODE || (process.argv.includes('--all') ? 'all' : 'unit');
+const isAllMode = runnerMode === 'all';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const isSupabaseLive = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
+const hasCredentials = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
+const isSupabaseLive = isAllMode && hasCredentials;
 
 if (!isSupabaseLive) {
-  console.log('⚠️ Skipping live DB test (Supabase credentials not in env or placeholder).');
+  if (!isAllMode) {
+    console.log('ℹ️ Running in unit mode (RUNNER_MODE != "all"). Skipping live DB test.');
+  } else {
+    console.log('⚠️ Skipping live DB test (Supabase credentials not in env or placeholder).');
+  }
 } else {
   const supabase = createClient(supabaseUrl, supabaseKey);
 

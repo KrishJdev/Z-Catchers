@@ -183,28 +183,47 @@ export function checkPinRateLimit(
   return result;
 }
 
+export class RateLimitConflictError extends Error {
+  readonly code = 'RATE_LIMIT_RETRY_EXHAUSTED';
+  readonly key: string;
+
+  constructor(key: string, attempts: number) {
+    super(
+      `Exhausted ${attempts} optimistic concurrency retry attempts recording rate limit for '${key}' due to concurrent writes.`
+    );
+    this.name = 'RateLimitConflictError';
+    this.key = key;
+  }
+}
+
 /**
  * Atomically records an increment or window reset for a persistent rate limit key in Supabase.
  * Uses optimistic concurrency control with CAS (.eq('count', existing.count)) and conditional
  * window resets (.lte('expires_at', nowIso)) to prevent race conditions without overwriting
  * concurrent workers' increments.
+ * If concurrent conflicts exhaust all retry attempts, throws RateLimitConflictError.
  */
-async function atomicIncrementRateLimitKey(
+export async function atomicIncrementRateLimitKey(
   client: NonNullable<ReturnType<typeof getSupabase>>,
   key: string,
   nowMs: number,
-  windowMs: number
+  windowMs: number,
+  maxAttempts = 5
 ): Promise<void> {
   const resetAtMs = nowMs + windowMs;
   const resetAtIso = new Date(resetAtMs).toISOString();
   const nowIso = new Date(nowMs).toISOString();
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { data: existing } = await client
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const { data: existing, error: selectErr } = await client
       .from('rate_limits')
       .select('count, expires_at')
       .eq('key', key)
       .maybeSingle();
+
+    if (selectErr) {
+      throw selectErr;
+    }
 
     if (existing) {
       const isExpired = new Date(existing.expires_at).getTime() <= nowMs;
@@ -258,7 +277,15 @@ async function atomicIncrementRateLimitKey(
       }
       // If concurrent worker inserted first (unique violation), loop and retry to increment
     }
+
+    // Exponential jitter backoff before retrying
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1) + Math.random() * 15));
+    }
   }
+
+  // Retry attempts exhausted due to continuous concurrency conflicts; propagate recognizable failure
+  throw new RateLimitConflictError(key, maxAttempts);
 }
 
 /**
@@ -300,7 +327,10 @@ export async function recordPinFailurePersistent(
     if (Math.random() < 0.05) {
       await client.from('rate_limits').delete().lt('expires_at', nowIso);
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof RateLimitConflictError) {
+      throw err;
+    }
     // Non-blocking in case table is temporarily unavailable
   }
 }
@@ -495,7 +525,10 @@ export async function recordVoteAttemptPersistent(
     if (!client) return;
 
     await atomicIncrementRateLimitKey(client, key, nowMs, windowMs);
-  } catch {
+  } catch (err) {
+    if (err instanceof RateLimitConflictError) {
+      throw err;
+    }
     // Non-blocking in case table is temporarily unavailable
   }
 }

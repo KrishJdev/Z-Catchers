@@ -65,12 +65,19 @@ assert(DISCORD_EMBED_COLORS.SLUMBER_NIGHT === 4014171, 'Slumber Night color matc
 // -------------------------------------------------------------
 console.log('\n--- 3. Database Nag Assist & Deduplication Tests ---');
 
+const runnerMode = process.env.RUNNER_MODE || (process.argv.includes('--all') ? 'all' : 'unit');
+const isAllMode = runnerMode === 'all';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const isSupabaseLive = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
+const hasCredentials = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
+const isSupabaseLive = isAllMode && hasCredentials;
 
 if (!isSupabaseLive) {
-  console.log('⚠️ Skipping database live tests (Supabase credentials missing or placeholder in environment).');
+  if (!isAllMode) {
+    console.log('ℹ️ Running in unit mode (RUNNER_MODE != "all"). Skipping live database tests.');
+  } else {
+    console.log('⚠️ Skipping database live tests (Supabase credentials missing or placeholder in environment).');
+  }
 } else {
   const sb = createClient(supabaseUrl, supabaseKey);
 

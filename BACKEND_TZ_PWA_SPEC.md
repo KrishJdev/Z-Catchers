@@ -86,6 +86,11 @@ CREATE TABLE public.rate_limits (
   expires_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX idx_rate_limits_expires_at ON public.rate_limits (expires_at);
+ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.rate_limits FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.rate_limits TO service_role;
+CREATE POLICY "Service role full access on rate_limits" ON public.rate_limits
+  FOR ALL USING (auth.role() = 'service_role');
 
 -- 6. Cron Locks Table (Cron execution locks & notification event idempotency)
 CREATE TABLE public.cron_locks (
@@ -95,6 +100,11 @@ CREATE TABLE public.cron_locks (
   metadata JSONB DEFAULT '{}'::jsonb
 );
 CREATE INDEX idx_cron_locks_expires_at ON public.cron_locks (expires_at);
+ALTER TABLE public.cron_locks ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.cron_locks FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.cron_locks TO service_role;
+CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
+  FOR ALL USING (auth.role() = 'service_role');
 ```
 
 ---

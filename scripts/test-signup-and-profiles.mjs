@@ -27,12 +27,19 @@ try {
 
 console.log('🧪 Starting Self-Service Profile Signup & Username Login Verification...\n');
 
+const runnerMode = process.env.RUNNER_MODE || (process.argv.includes('--all') ? 'all' : 'unit');
+const isAllMode = runnerMode === 'all';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const isSupabaseLive = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
+const hasCredentials = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
+const isSupabaseLive = isAllMode && hasCredentials;
 
 if (!isSupabaseLive) {
-  console.log('ℹ️ Live Supabase is not configured (or running in offline/CI placeholder mode); skipping live DB signup tests.');
+  if (!isAllMode) {
+    console.log('ℹ️ Running in unit mode (RUNNER_MODE != "all"); skipping live DB signup tests.');
+  } else {
+    console.log('ℹ️ Live Supabase is not configured (or running in offline/CI placeholder mode); skipping live DB signup tests.');
+  }
   process.exit(0);
 }
 

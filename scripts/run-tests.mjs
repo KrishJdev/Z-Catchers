@@ -66,7 +66,7 @@ for (const file of testFiles) {
 
   const result = spawnSync(process.execPath, childArgs, {
     stdio: 'pipe',
-    env: process.env,
+    env: { ...process.env, RUNNER_MODE: mode },
     encoding: 'utf8',
   });
 

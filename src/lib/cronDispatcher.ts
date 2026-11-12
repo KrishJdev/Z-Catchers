@@ -43,15 +43,31 @@ export async function acquireCronLock(
 
   // 1. In-memory check first
   const existingMem = inMemoryCronLocks.get(lockKey);
-  if (existingMem && existingMem.expiresAt > nowMs) {
-    return false; // Active lock held in memory
+  if (existingMem && (existingMem.expiresAt > nowMs || existingMem.metadata?.completed === true)) {
+    return false; // Active lock held in memory or completed
   }
+
+  // If re-acquiring an expired in-memory lock, preserve any delivered_sub_ids from the previous run
+  const prevDeliveredMem = Array.isArray(existingMem?.metadata?.delivered_sub_ids)
+    ? (existingMem!.metadata!.delivered_sub_ids as string[])
+    : [];
+  const mergedMemMetadata = {
+    ...metadata,
+    delivered_sub_ids: Array.from(
+      new Set([
+        ...prevDeliveredMem,
+        ...(Array.isArray(metadata.delivered_sub_ids)
+          ? (metadata.delivered_sub_ids as string[])
+          : []),
+      ])
+    ),
+  };
 
   // Set local in-memory lock
   inMemoryCronLocks.set(lockKey, {
     lockedAt: nowMs,
     expiresAt: expiresAtMs,
-    metadata,
+    metadata: mergedMemMetadata,
   });
 
   // 2. Persistent Supabase check if configured
@@ -59,29 +75,48 @@ export async function acquireCronLock(
     try {
       const { data: existing, error: selectErr } = await supabaseAdmin
         .from('cron_locks')
-        .select('lock_key, expires_at')
+        .select('lock_key, expires_at, metadata')
         .eq('lock_key', lockKey)
         .maybeSingle();
 
       if (!selectErr && existing) {
         const existingExpiresMs = new Date(existing.expires_at).getTime();
-        if (existingExpiresMs > nowMs) {
-          // Lock is actively held in database
+        const existingMeta = (existing.metadata || {}) as Record<string, unknown>;
+        const isCompleted = existingMeta.completed === true;
+
+        if (existingExpiresMs > nowMs || isCompleted) {
+          // Lock is actively held in database or completed
           inMemoryCronLocks.set(lockKey, {
             lockedAt: nowMs,
             expiresAt: existingExpiresMs,
-            metadata,
+            metadata: existingMeta,
           });
           return false;
         }
 
-        // Lock expired; renew lock conditioning on row still being expired
+        // Lock expired; renew lock conditioning on row still being expired.
+        // Merge any previously recorded delivered_sub_ids to prevent duplicates across retries.
+        const prevDelivered = Array.isArray(existingMeta.delivered_sub_ids)
+          ? (existingMeta.delivered_sub_ids as string[])
+          : [];
+        const mergedMetadata = {
+          ...metadata,
+          delivered_sub_ids: Array.from(
+            new Set([
+              ...prevDelivered,
+              ...(Array.isArray(metadata.delivered_sub_ids)
+                ? (metadata.delivered_sub_ids as string[])
+                : []),
+            ])
+          ),
+        };
+
         const { data: updatedRow, error: updateErr } = await supabaseAdmin
           .from('cron_locks')
           .update({
             locked_at: nowIso,
             expires_at: expiresAtIso,
-            metadata,
+            metadata: mergedMetadata,
           })
           .eq('lock_key', lockKey)
           .lte('expires_at', nowIso)
@@ -92,6 +127,13 @@ export async function acquireCronLock(
           inMemoryCronLocks.delete(lockKey);
           return false;
         }
+
+        inMemoryCronLocks.set(lockKey, {
+          lockedAt: nowMs,
+          expiresAt: expiresAtMs,
+          metadata: mergedMetadata,
+        });
+
         return true;
       }
 
@@ -119,6 +161,116 @@ export async function acquireCronLock(
   }
 
   return true;
+}
+
+/**
+ * Retrieves the current lock status and metadata for a given lock key.
+ */
+export async function getCronLock(lockKey: string): Promise<{
+  lockedAt: number;
+  expiresAt: number;
+  metadata?: Record<string, unknown>;
+} | null> {
+  const mem = inMemoryCronLocks.get(lockKey);
+  if (mem) return mem;
+
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('cron_locks')
+        .select('locked_at, expires_at, metadata')
+        .eq('lock_key', lockKey)
+        .maybeSingle();
+
+      if (!error && data) {
+        return {
+          lockedAt: new Date(data.locked_at).getTime(),
+          expiresAt: new Date(data.expires_at).getTime(),
+          metadata: (data.metadata || {}) as Record<string, unknown>,
+        };
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Records a delivered subscription ID or notification target in the lock metadata
+ * so interrupted dispatch recovery will not resend duplicate alerts.
+ */
+export async function recordCronLockDeliveredSub(
+  lockKey: string,
+  subId: string
+): Promise<void> {
+  const mem = inMemoryCronLocks.get(lockKey);
+  const delivered: string[] = Array.isArray(mem?.metadata?.delivered_sub_ids)
+    ? [...(mem.metadata.delivered_sub_ids as string[])]
+    : [];
+  if (!delivered.includes(subId)) {
+    delivered.push(subId);
+  }
+  const updatedMeta = { ...(mem?.metadata || {}), delivered_sub_ids: delivered };
+  if (mem) {
+    mem.metadata = updatedMeta;
+  }
+
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      await supabaseAdmin
+        .from('cron_locks')
+        .update({ metadata: updatedMeta })
+        .eq('lock_key', lockKey);
+    } catch {
+      // Non-blocking fallback
+    }
+  }
+}
+
+/**
+ * Seals a completed notification dispatch with a durable 24-hour lock
+ * and marks completed: true.
+ */
+export async function markCronLockCompleted(
+  lockKey: string,
+  metadata: Record<string, unknown> = {}
+): Promise<void> {
+  const nowMs = Date.now();
+  const ttlSeconds = 86400; // 24 hours durable completion
+  const expiresAtMs = nowMs + ttlSeconds * 1000;
+  const nowIso = new Date(nowMs).toISOString();
+  const expiresAtIso = new Date(expiresAtMs).toISOString();
+
+  const currentMem = inMemoryCronLocks.get(lockKey);
+  const completedMeta = {
+    ...(currentMem?.metadata || {}),
+    ...metadata,
+    completed: true,
+    state: 'completed',
+    completed_at: nowIso,
+  };
+
+  inMemoryCronLocks.set(lockKey, {
+    lockedAt: nowMs,
+    expiresAt: expiresAtMs,
+    metadata: completedMeta,
+  });
+
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      await supabaseAdmin
+        .from('cron_locks')
+        .update({
+          expires_at: expiresAtIso,
+          metadata: completedMeta,
+        })
+        .eq('lock_key', lockKey);
+    } catch {
+      // Non-blocking fallback
+    }
+  }
 }
 
 /**
@@ -357,6 +509,8 @@ export async function executeNotificationDispatcher(options: {
   };
 
   // 4. Evaluate each member
+  const NOTIFICATION_LEASE_SECONDS = 300; // 5-minute processing lease to allow quick recovery if worker crashes
+
   for (const member of activeMembers) {
     // If testing a single member, filter others
     if (options.forcedMemberId && member.id !== options.forcedMemberId) {
@@ -377,18 +531,20 @@ export async function executeNotificationDispatcher(options: {
     // Check 1: T-Minus 30 Minutes Window (WIND_DOWN_30M)
     // Due-and-not-yet-logged: Wind-down is due starting 30 minutes before bedtime until bedtime (-30 <= diff < 0)
     // Works reliably with 1-min, 5-min or jittered schedulers, protected against duplicates by persistent tracking columns & audit log
+    const windDownLockKey = `notif:${member.id}:${localDate}:WIND_DOWN_30M`;
     const isWindDownDue = diff >= -30 && diff < 0;
     const isWindDownAlreadyLogged =
       (member.last_notified_cycle_date === localDate &&
         (member.last_notified_stage === 'WIND_DOWN_30M' || member.last_notified_stage === 'BEDTIME_HIT')) ||
-      hasBeenDispatched(member.id, 'WIND_DOWN_30M', localDate);
+      hasBeenDispatched(member.id, 'WIND_DOWN_30M', localDate) ||
+      inMemoryCronLocks.get(windDownLockKey)?.metadata?.completed === true;
 
     if (isWindDownDue && !isWindDownAlreadyLogged) {
       if (!options.dryRun) {
         const lockAcquired = await acquireCronLock(
-          `notif:${member.id}:${localDate}:WIND_DOWN_30M`,
-          86400,
-          { member_id: member.id, stage: 'WIND_DOWN_30M', local_date: localDate }
+          windDownLockKey,
+          NOTIFICATION_LEASE_SECONDS,
+          { member_id: member.id, stage: 'WIND_DOWN_30M', local_date: localDate, state: 'processing', delivered_sub_ids: [] }
         );
         if (!lockAcquired) {
           continue;
@@ -402,38 +558,62 @@ export async function executeNotificationDispatcher(options: {
           `${member.discord_username} (Wind-down skipped: already checked in as in bed)`
         );
         await recordDispatch(member.id, 'WIND_DOWN_30M', localDate);
+        if (!options.dryRun) {
+          await markCronLockCompleted(windDownLockKey, { member_id: member.id, stage: 'WIND_DOWN_30M', local_date: localDate });
+        }
       } else {
         const memberSubs = subscriptionsByMember.get(member.id) || [];
         const personalSubs = memberSubs.filter((s) => s.notify_personal);
 
+        // Check if prior interrupted run delivered to any subscriptions
+        const existingLock = await getCronLock(windDownLockKey);
+        const deliveredSubs = new Set<string>(
+          Array.isArray(existingLock?.metadata?.delivered_sub_ids)
+            ? (existingLock.metadata.delivered_sub_ids as string[])
+            : []
+        );
+
         for (const sub of personalSubs) {
+          if (deliveredSubs.has(sub.id)) {
+            continue; // Skip already delivered subscription to avoid duplicate push
+          }
           const sent = await deliverPush(sub, {
             title: '🕯️ Z Catchers: Wind-Down Time',
             body: `30 minutes until your bedtime (${state.formattedSleeperTime}). Start wrapping up!`,
             url: member.journal_url,
           });
-          if (sent) results.windDownDispatched++;
+          if (sent) {
+            results.windDownDispatched++;
+            if (!options.dryRun) {
+              await recordCronLockDeliveredSub(windDownLockKey, sub.id);
+            }
+          }
         }
 
         results.details.windDownRecipients.push(member.discord_username);
         await recordDispatch(member.id, 'WIND_DOWN_30M', localDate);
+        if (!options.dryRun) {
+          await markCronLockCompleted(windDownLockKey, { member_id: member.id, stage: 'WIND_DOWN_30M', local_date: localDate });
+        }
       }
     }
 
     // Check 2: T-Minus 0 Minutes Bedtime Hit Window (BEDTIME_HIT)
     // Evaluates a rolling 30-minute lookback window (0 <= diff <= 30) ensuring triggers even with GitHub Actions cron jitter
     // Idempotent persistent checks guarantee each notification stage fires at most once per sleep cycle
+    const bedtimeLockKey = `notif:${member.id}:${localDate}:BEDTIME_HIT`;
     const isBedtimeDue = diff >= 0 && diff <= 30;
     const isBedtimeAlreadyLogged =
       (member.last_notified_cycle_date === localDate && member.last_notified_stage === 'BEDTIME_HIT') ||
-      hasBeenDispatched(member.id, 'BEDTIME_HIT', localDate);
+      hasBeenDispatched(member.id, 'BEDTIME_HIT', localDate) ||
+      inMemoryCronLocks.get(bedtimeLockKey)?.metadata?.completed === true;
 
     if (isBedtimeDue && !isBedtimeAlreadyLogged) {
       if (!options.dryRun) {
         const lockAcquired = await acquireCronLock(
-          `notif:${member.id}:${localDate}:BEDTIME_HIT`,
-          86400,
-          { member_id: member.id, stage: 'BEDTIME_HIT', local_date: localDate }
+          bedtimeLockKey,
+          NOTIFICATION_LEASE_SECONDS,
+          { member_id: member.id, stage: 'BEDTIME_HIT', local_date: localDate, state: 'processing', delivered_sub_ids: [] }
         );
         if (!lockAcquired) {
           continue;
@@ -448,18 +628,37 @@ export async function executeNotificationDispatcher(options: {
           `${member.discord_username} (Checked in early via Safe Button — nag alerts suppressed)`
         );
         await recordDispatch(member.id, 'BEDTIME_HIT', localDate);
+        if (!options.dryRun) {
+          await markCronLockCompleted(bedtimeLockKey, { member_id: member.id, stage: 'BEDTIME_HIT', local_date: localDate });
+        }
       } else {
+        // Check if prior interrupted run delivered to any subscriptions
+        const existingLock = await getCronLock(bedtimeLockKey);
+        const deliveredSubs = new Set<string>(
+          Array.isArray(existingLock?.metadata?.delivered_sub_ids)
+            ? (existingLock.metadata.delivered_sub_ids as string[])
+            : []
+        );
+
         // Dispatch A: To the sleeper member (personal notification)
         const memberSubs = subscriptionsByMember.get(member.id) || [];
         const personalSubs = memberSubs.filter((s) => s.notify_personal);
 
         for (const sub of personalSubs) {
+          if (deliveredSubs.has(sub.id)) {
+            continue; // Skip already delivered subscription to avoid duplicate push
+          }
           const sent = await deliverPush(sub, {
             title: "🌙 Time to Catch Some Z's!",
             body: `It's ${state.formattedSleeperTime}. Head to your Discord journal and check in for the night.`,
             url: member.journal_url,
           });
-          if (sent) results.bedtimeHitDispatched++;
+          if (sent) {
+            results.bedtimeHitDispatched++;
+            if (!options.dryRun) {
+              await recordCronLockDeliveredSub(bedtimeLockKey, sub.id);
+            }
+          }
         }
         results.details.bedtimeRecipients.push(member.discord_username);
 
@@ -501,30 +700,45 @@ export async function executeNotificationDispatcher(options: {
 
           // Peer is awake and safe to receive nag notification!
           for (const sub of communitySubs) {
+            if (deliveredSubs.has(sub.id)) {
+              continue; // Skip already delivered subscription to avoid duplicate push
+            }
             const sent = await deliverPush(sub, {
               title: `🔔 Z Catchers Alert: ${member.discord_username}`,
               body: `It's ${member.discord_username}'s bedtime! Tap to jump into their Discord journal and tell them to sleep.`,
               url: member.journal_url,
             });
-            if (sent) results.communityNagsDispatched++;
+            if (sent) {
+              results.communityNagsDispatched++;
+              if (!options.dryRun) {
+                await recordCronLockDeliveredSub(bedtimeLockKey, sub.id);
+              }
+            }
           }
           results.details.communityNagRecipients.push(peer.discord_username);
         }
 
         // Dispatch C: Discord Community Webhook Broadcast (Phase 3.2)
         if (!options.dryRun) {
-          const webhookRes = await sendBedtimeDiscordWebhook(member, member.streak_days || 0, {
-            effectiveBedtime: state.formattedSleeperTime,
-          });
-          if (webhookRes.success) {
-            results.discordWebhooksCount++;
-            results.details.discordWebhooksDispatched.push(member.discord_username);
-          } else if (webhookRes.error && !webhookRes.error.includes('not configured')) {
-            results.details.errors.push(`Discord Webhook (${member.discord_username}): ${webhookRes.error}`);
+          const webhookAlreadyDelivered = deliveredSubs.has('discord_webhook');
+          if (!webhookAlreadyDelivered) {
+            const webhookRes = await sendBedtimeDiscordWebhook(member, member.streak_days || 0, {
+              effectiveBedtime: state.formattedSleeperTime,
+            });
+            if (webhookRes.success) {
+              results.discordWebhooksCount++;
+              results.details.discordWebhooksDispatched.push(member.discord_username);
+              await recordCronLockDeliveredSub(bedtimeLockKey, 'discord_webhook');
+            } else if (webhookRes.error && !webhookRes.error.includes('not configured')) {
+              results.details.errors.push(`Discord Webhook (${member.discord_username}): ${webhookRes.error}`);
+            }
           }
         }
 
         await recordDispatch(member.id, 'BEDTIME_HIT', localDate);
+        if (!options.dryRun) {
+          await markCronLockCompleted(bedtimeLockKey, { member_id: member.id, stage: 'BEDTIME_HIT', local_date: localDate });
+        }
       }
     }
   }

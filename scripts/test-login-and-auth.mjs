@@ -205,8 +205,16 @@ async function run() {
 
     // 4. Database Integration & Discord Profile Claim Lifecycle
     console.log('\n--- 4. Database Integration & Discord Profile Claim Lifecycle ---');
-    if (!isSupabaseConfigured) {
-      console.log('ℹ️ Live Supabase is not configured; skipping live DB profile claim and push subscription binding tests.');
+    const runnerMode = process.env.RUNNER_MODE || (process.argv.includes('--all') ? 'all' : 'unit');
+    const isAllMode = runnerMode === 'all';
+    const isSupabaseLive = isAllMode && isSupabaseConfigured;
+
+    if (!isSupabaseLive) {
+      if (!isAllMode) {
+        console.log('ℹ️ Running in unit mode (RUNNER_MODE != "all"); skipping live DB profile claim and push subscription binding tests.');
+      } else {
+        console.log('ℹ️ Live Supabase is not configured; skipping live DB profile claim and push subscription binding tests.');
+      }
     } else {
       const testDiscordId = 'disc_' + Date.now();
       const testUsername = `FoxOAuth_${Date.now()}`;
