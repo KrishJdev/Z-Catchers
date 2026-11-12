@@ -37,7 +37,7 @@ assert(
 
 // 4. Nag Notif button in isNagNow enforces min-w-0 and truncate
 assert(
-  memberCardContent.includes('min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all shadow-sm'),
+  memberCardContent.includes('min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all shadow-sm'),
   'Nag Notif button must enforce min-w-0'
 );
 assert(

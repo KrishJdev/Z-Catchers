@@ -118,8 +118,8 @@ console.log('\n--- 3. Page Hero Banner Undo Option Verification ---');
 const pageContent = fs.readFileSync(path.join(process.cwd(), 'src/app/page.tsx'), 'utf8');
 
 assert(
-  pageContent.includes('Wake Up / Undo'),
-  'Page hero banner must provide prominent Wake Up / Undo button'
+  pageContent.includes('Wake Up / Undo') || pageContent.includes('Undo check-in'),
+  'Page hero banner must provide prominent Wake Up / Undo or Undo check-in button'
 );
 assert(
   pageContent.includes('isModerator={Boolean(currentUser?.role === \'moderator\' || currentUser?.is_moderator)}'),

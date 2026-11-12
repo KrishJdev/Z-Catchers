@@ -881,8 +881,57 @@ export function checkCooldownPromotion(
       member.pending_weekend_wake_time_local !== undefined
         ? (member.pending_weekend_wake_time_local || null)
         : (member.weekend_wake_time_local || null);
-    const nextWeeklySchedule =
-      member.pending_weekly_schedule || member.weekly_schedule || null;
+
+    let nextWeeklySchedule: WeeklySchedule | null = member.pending_weekly_schedule || null;
+    if (
+      !nextWeeklySchedule &&
+      (member.pending_bedtime_local ||
+        member.pending_wake_time_local ||
+        member.pending_weekend_bedtime_local !== undefined ||
+        member.pending_weekend_wake_time_local !== undefined)
+    ) {
+      const baseBed = member.pending_bedtime_local || member.bedtime_local;
+      const baseWake = member.pending_wake_time_local || member.wake_time_local;
+      const baseWeekendBed =
+        member.pending_weekend_bedtime_local !== undefined
+          ? member.pending_weekend_bedtime_local || baseBed
+          : member.weekend_bedtime_local || baseBed;
+      const baseWeekendWake =
+        member.pending_weekend_wake_time_local !== undefined
+          ? member.pending_weekend_wake_time_local || baseWake
+          : member.weekend_wake_time_local || baseWake;
+
+      if (member.weekly_schedule) {
+        const cloned = JSON.parse(JSON.stringify(member.weekly_schedule)) as WeeklySchedule;
+        const weekdays: DayKey[] = ['mon', 'tue', 'wed', 'thu', 'sun'];
+        const weekends: DayKey[] = ['fri', 'sat'];
+        if (member.pending_bedtime_local) {
+          for (const d of weekdays) cloned[d].bedtime = member.pending_bedtime_local;
+        }
+        if (member.pending_wake_time_local) {
+          for (const d of weekdays) cloned[d].wake_time = member.pending_wake_time_local;
+        }
+        if (member.pending_weekend_bedtime_local !== undefined) {
+          for (const d of weekends) cloned[d].bedtime = baseWeekendBed;
+        }
+        if (member.pending_weekend_wake_time_local !== undefined) {
+          for (const d of weekends) cloned[d].wake_time = baseWeekendWake;
+        }
+        nextWeeklySchedule = cloned;
+      } else {
+        nextWeeklySchedule = {
+          mon: { bedtime: baseBed, wake_time: baseWake },
+          tue: { bedtime: baseBed, wake_time: baseWake },
+          wed: { bedtime: baseBed, wake_time: baseWake },
+          thu: { bedtime: baseBed, wake_time: baseWake },
+          fri: { bedtime: baseWeekendBed, wake_time: baseWeekendWake },
+          sat: { bedtime: baseWeekendBed, wake_time: baseWeekendWake },
+          sun: { bedtime: baseBed, wake_time: baseWake },
+        };
+      }
+    } else if (!nextWeeklySchedule) {
+      nextWeeklySchedule = member.weekly_schedule || null;
+    }
 
     const updated: Member = {
       ...member,
@@ -1213,9 +1262,11 @@ export function resolveActiveSleepCycle(
   const tSchedForWindDown = getNightScheduleDateTime(member, todayNightForWindDown);
   const todayWindDownStart = tSchedForWindDown.bedtimeDateTime.minus({ minutes: 180 });
 
-  const maxYesterdayEnd = effectiveInBed && !hasWokeUpForYesterday
+  const postWakeWindow = ySched.wakeDateTime.plus({ hours: 4 });
+  const inBedEnd = effectiveInBed && !hasWokeUpForYesterday
     ? DateTime.max(ySched.wakeDateTime.plus({ hours: 6 }), ySched.bedtimeDateTime.plus({ hours: 14 }))
-    : ySched.wakeDateTime;
+    : postWakeWindow;
+  const maxYesterdayEnd = DateTime.max(postWakeWindow, inBedEnd);
   const yEnd = DateTime.min(maxYesterdayEnd, todayWindDownStart);
 
   if (sleeperNow >= yStart && sleeperNow < yEnd) {
@@ -1336,16 +1387,9 @@ export function computeMemberState(
 
   const isPastWakeTime = sleeperNow >= activeCycle.targetWakeTime;
 
-  // If member has explicitly marked themselves awake / logged wake-up for current cycle
-  if (hasLoggedWakeUp) {
-    bucket = 'AWAKE';
-    status = 'AWAKE';
-    statusText = 'Wide Awake • Rested';
-    isSleepShieldActive = false;
-    checkedInEarly = false;
-    canVoteStrike = false;
-    needsWakeUpLog = false;
-  } else if (effectiveInBed && diffMinutes >= -180) {
+  // If member has checked in via "I'm in Bed" Safe Button
+  // (Applies when within 3h before bedtime through 8h sleep window unless explicitly marked awake)
+  if (effectiveInBed && !hasLoggedWakeUp && diffMinutes >= -180) {
     bucket = 'SLEEPING';
     status = 'SLEEPING';
     if (isPastWakeTime) {
@@ -1358,6 +1402,24 @@ export function computeMemberState(
     checkedInEarly = true;
     canVoteStrike = false;
     needsWakeUpLog = true;
+  } else if (diffMinutes < 0 && diffMinutes >= -60) {
+    // 1 to 60 minutes before bedtime: Winding down window
+    bucket = 'WINDING_DOWN';
+    status = 'WINDING_DOWN';
+    statusText = `Bedtime in ${Math.abs(Math.floor(diffMinutes))}m`;
+    canVoteStrike = false;
+    isSleepShieldActive = false;
+    checkedInEarly = false;
+    needsWakeUpLog = false;
+  } else if (hasLoggedWakeUp) {
+    // Explicitly marked awake / woke up from sleep
+    bucket = 'AWAKE';
+    status = 'AWAKE';
+    statusText = 'Wide Awake • Rested';
+    isSleepShieldActive = false;
+    checkedInEarly = false;
+    canVoteStrike = false;
+    needsWakeUpLog = false;
   } else if (diffMinutes >= 0 && diffMinutes <= 5) {
     // 5-minute grace window: Strike voting is strictly locked
     bucket = 'BEDTIME_NOW';

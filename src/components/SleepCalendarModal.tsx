@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X,
   ChevronLeft,
@@ -157,6 +157,8 @@ export function SleepCalendarModal({
     return DateTime.now().toFormat('yyyy-MM');
   });
 
+  const activeRequestRef = useRef({ memberId: '', currentMonth: '' });
+
   // Selected date ("YYYY-MM-DD") in the calendar inspector
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -188,6 +190,7 @@ export function SleepCalendarModal({
   // Fetch sleep history from API
   const fetchHistory = useCallback(
     async (mId: string, monthStr: string) => {
+      activeRequestRef.current = { memberId: mId, currentMonth: monthStr };
       setLoading(true);
       setError(null);
       try {
@@ -195,15 +198,31 @@ export function SleepCalendarModal({
           `/api/members/sleep-history?memberId=${encodeURIComponent(mId)}&month=${encodeURIComponent(monthStr)}`
         );
         const json = await res.json();
+        if (
+          activeRequestRef.current.memberId !== mId ||
+          activeRequestRef.current.currentMonth !== monthStr
+        ) {
+          return;
+        }
         if (!res.ok) {
           throw new Error(json.error || 'Failed to load sleep history');
         }
         setData(json);
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        setError(message);
+        if (
+          activeRequestRef.current.memberId === mId &&
+          activeRequestRef.current.currentMonth === monthStr
+        ) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          setError(message);
+        }
       } finally {
-        setLoading(false);
+        if (
+          activeRequestRef.current.memberId === mId &&
+          activeRequestRef.current.currentMonth === monthStr
+        ) {
+          setLoading(false);
+        }
       }
     },
     []
@@ -698,15 +717,15 @@ export function SleepCalendarModal({
                           cellBadgeClass = 'border-emerald-500/40 bg-emerald-950/25 text-emerald-200';
                           indicatorDotClass = 'bg-emerald-400';
                         } else {
-                          cellBadgeClass = 'border-indigo-500/40 bg-indigo-950/25 text-indigo-200';
-                          indicatorDotClass = 'bg-indigo-400';
+                          cellBadgeClass = 'border-status-slumber/40 bg-status-slumber/15 text-status-slumber';
+                          indicatorDotClass = 'bg-status-slumber';
                         }
                       } else if (log.status === 'metastrike') {
-                        cellBadgeClass = 'border-purple-500/40 bg-purple-950/25 text-purple-200';
-                        indicatorDotClass = 'bg-purple-400';
+                        cellBadgeClass = 'border-status-slumber/40 bg-status-slumber/20 text-status-slumber';
+                        indicatorDotClass = 'bg-status-slumber';
                       } else if (log.status === 'late' || log.status === 'missed') {
-                        cellBadgeClass = 'border-rose-500/40 bg-rose-950/25 text-rose-200';
-                        indicatorDotClass = 'bg-rose-400';
+                        cellBadgeClass = 'border-status-coral/40 bg-status-coral/15 text-status-coral';
+                        indicatorDotClass = 'bg-status-coral';
                       }
                     }
 

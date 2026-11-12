@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member } from '@/lib/db';
 import { getRequestSessionMemberId } from '@/lib/auth';
 import { DateTime } from 'luxon';
-import { computeMemberState, getSleepCycleDate } from '@/lib/sleepEngine';
+import { computeMemberState, getSleepCycleDate, toValidLuxonZone } from '@/lib/sleepEngine';
 import { sendPushNotification } from '@/lib/pushServer';
 import crypto from 'crypto';
 
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     }
 
     let senderName = 'A friend in Z Catchers';
-    let helperKey = sessionMemberId ? `user_${sessionMemberId}` : null;
+    let helperKey: string;
 
     if (sessionMemberId) {
       const { data: senderMember } = await supabaseAdmin
@@ -82,20 +82,40 @@ export async function POST(request: Request) {
       if (senderMember?.discord_username) {
         senderName = senderMember.discord_username;
       }
+      helperKey = `user_${sessionMemberId}`;
     } else {
-      const userAgent = request.headers.get('user-agent') || 'unknown';
-      const ip =
-        request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-        request.headers.get('x-real-ip') ||
-        'anonymous';
-      const seed = `${ip}:${userAgent}`;
-      const anonHash = crypto.createHash('sha256').update(seed).digest('hex').substring(0, 16);
-      helperKey = `anon_${anonHash}`;
+      // Enforce a stable target-wide cooldown for unauthenticated senders, independent of client-controlled headers
+      helperKey = 'anon_target';
     }
 
     // 3. Compute target member's current sleep cycle & status using Luxon
     const nowUtc = DateTime.utc();
-    const cycleDate = getSleepCycleDate(targetMember, nowUtc);
+    let cycleDate = getSleepCycleDate(targetMember, nowUtc);
+
+    // If this is a wake-up nag, resolve whether yesterday's check-in cycle is the applicable one
+    if (isWakeUpNag) {
+      const sleeperNow = nowUtc.setZone(toValidLuxonZone(targetMember.timezone));
+      const yesterdayDate = sleeperNow.minus({ days: 1 }).toISODate()!;
+      const { data: yCheckin } = await supabaseAdmin
+        .from('notification_logs')
+        .select('id')
+        .eq('member_id', targetMember.id)
+        .eq('notification_type', 'IN_BED_EARLY')
+        .eq('local_date', yesterdayDate)
+        .maybeSingle();
+
+      const { data: yWakeLog } = await supabaseAdmin
+        .from('notification_logs')
+        .select('id')
+        .eq('member_id', targetMember.id)
+        .eq('notification_type', 'WOKE_UP')
+        .eq('local_date', yesterdayDate)
+        .maybeSingle();
+
+      if (yCheckin && !yWakeLog) {
+        cycleDate = yesterdayDate;
+      }
+    }
 
     // Query tonight's check-in (Safe Button) status
     const { data: inBedLog } = await supabaseAdmin
@@ -260,7 +280,38 @@ export async function POST(request: Request) {
       pushTag = `nag-remind-${targetMember.id}`;
     }
 
-    // 7. Retrieve active push subscriptions for target member
+    // 7. Atomically claim cooldown before dispatching push notification
+    const { error: claimErr } = await supabaseAdmin.from('notification_logs').upsert(
+      {
+        member_id: targetMember.id,
+        notification_type: nagLogType,
+        local_date: cycleDate,
+        dispatched_at: nowUtc.toISO(),
+      },
+      { onConflict: 'member_id,notification_type,local_date' }
+    );
+
+    if (claimErr) {
+      console.error('[NagNotif] Failed to claim cooldown log:', claimErr.message);
+      return NextResponse.json(
+        { success: false, error: 'Could not claim cooldown lock. Please try again.' },
+        { status: 500 }
+      );
+    }
+
+    // 8. Record Nag Assist counter increment
+    const assistType = `NAG_ASSIST:${helperKey}`;
+    await supabaseAdmin.from('notification_logs').upsert(
+      {
+        member_id: targetMember.id,
+        notification_type: assistType,
+        local_date: cycleDate,
+        dispatched_at: nowUtc.toISO(),
+      },
+      { onConflict: 'member_id,notification_type,local_date' }
+    );
+
+    // 9. Retrieve active push subscriptions for target member
     const { data: subscriptions, error: subsErr } = await supabaseAdmin
       .from('push_subscriptions')
       .select('*')
@@ -275,7 +326,7 @@ export async function POST(request: Request) {
     let failed = 0;
     const deadEndpoints: string[] = [];
 
-    // 8. Dispatch Web Push notification to registered devices
+    // 10. Dispatch Web Push notification to registered devices
     for (const sub of activeSubs) {
       const pushResult = await sendPushNotification(
         {
@@ -307,29 +358,6 @@ export async function POST(request: Request) {
     if (deadEndpoints.length > 0) {
       await supabaseAdmin.from('push_subscriptions').delete().in('endpoint', deadEndpoints);
     }
-
-    // 9. Record nag log for deduplication & 15-minute cooldown tracking
-    await supabaseAdmin.from('notification_logs').upsert(
-      {
-        member_id: targetMember.id,
-        notification_type: nagLogType,
-        local_date: cycleDate,
-        dispatched_at: nowUtc.toISO(),
-      },
-      { onConflict: 'member_id,notification_type,local_date' }
-    );
-
-    // 10. Record Nag Assist counter increment
-    const assistType = `NAG_ASSIST:${helperKey}`;
-    await supabaseAdmin.from('notification_logs').upsert(
-      {
-        member_id: targetMember.id,
-        notification_type: assistType,
-        local_date: cycleDate,
-        dispatched_at: nowUtc.toISO(),
-      },
-      { onConflict: 'member_id,notification_type,local_date' }
-    );
 
     // Query refreshed total assists count
     const { count: totalAssists } = await supabaseAdmin
