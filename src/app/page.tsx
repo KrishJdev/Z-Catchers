@@ -381,13 +381,16 @@ export default function HomePage() {
             type: 'success',
           });
           await fetchRoster();
+          return true;
         } else if (res.status === 401) {
           router.push('/join');
+          return false;
         } else {
           setToastMessage({
             text: data.error || 'Failed to log wake-up.',
             type: 'error',
           });
+          return false;
         }
       } catch (err) {
         console.error('Failed to log wake-up:', err);
@@ -395,6 +398,7 @@ export default function HomePage() {
           text: err instanceof Error ? err.message : 'Network error logging wake-up.',
           type: 'error',
         });
+        return false;
       } finally {
         setIsCheckingIn(false);
       }
@@ -898,17 +902,19 @@ export default function HomePage() {
                           <span>Enter Time Manually</span>
                         </button>
 
-                        {/* Wake Up / Undo Option */}
-                        <button
-                          type="button"
-                          onClick={() => handleCancelInBed(claimedMember.id)}
-                          disabled={isCheckingIn}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 h-11 min-h-[44px] text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all whitespace-nowrap shadow-sm"
-                          title="Wake up and undo sleep status (returns from sleeping state to awake)"
-                        >
-                          <Sun className="h-4 w-4" />
-                          <span>Wake Up / Undo</span>
-                        </button>
+                        {/* Undo check-in Option (only when actively in bed) */}
+                        {claimedMember.is_in_bed && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelInBed(claimedMember.id)}
+                            disabled={isCheckingIn}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 h-11 min-h-[44px] text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all whitespace-nowrap shadow-sm"
+                            title="Undo check-in (returns from sleeping state to awake)"
+                          >
+                            <Sun className="h-4 w-4" />
+                            <span>Undo check-in</span>
+                          </button>
+                        )}
 
                         {/* View My Calendar */}
                         <button

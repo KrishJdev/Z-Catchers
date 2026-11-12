@@ -474,7 +474,7 @@ export async function createGitHubIssues() {
       // Atomically persist map after each successful issue creation
       const checkpointResults = issues.map((i) => {
         const ex = existingMap.get(i.id);
-        return ex ? { ...i, ...ex, ghUrl: ex.ghUrl, ghNumber: ex.ghNumber, jiraKey: ex.jiraKey, jiraUrl: ex.jiraUrl, remoteLinked: ex.remoteLinked } : i;
+        return ex ? { ...ex, ...i, ghUrl: ex.ghUrl, ghNumber: ex.ghNumber, jiraKey: ex.jiraKey, jiraUrl: ex.jiraUrl, remoteLinked: ex.remoteLinked } : i;
       });
       fs.writeFileSync(mapFile, JSON.stringify(checkpointResults, null, 2), 'utf8');
     } catch (err) {

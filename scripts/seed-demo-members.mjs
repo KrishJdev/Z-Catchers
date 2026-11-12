@@ -11,6 +11,20 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
+function toValidLuxonZone(zoneStr) {
+  if (!zoneStr) return 'UTC';
+  const clean = zoneStr.trim();
+  if (/^GMT$/i.test(clean) || /^UTC$/i.test(clean)) return 'UTC';
+  const gmtMatch = clean.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/i);
+  if (gmtMatch) {
+    const sign = gmtMatch[1];
+    const hours = parseInt(gmtMatch[2], 10);
+    const mins = gmtMatch[3] ? parseInt(gmtMatch[3], 10) : 0;
+    return `UTC${sign}${hours}${mins ? `:${String(mins).padStart(2, '0')}` : ''}`;
+  }
+  return clean;
+}
+
 const DEMO_MEMBERS = [
   {
     discord_username: 'Aoi',
@@ -126,7 +140,7 @@ async function run() {
     if (memberId) {
       // Seed 30 days of realistic sleep logs
       const daysCount = 30;
-      const tz = m.timezone || 'UTC';
+      const tz = toValidLuxonZone(m.timezone || 'UTC');
       const now = DateTime.utc().setZone(tz);
 
       for (let i = daysCount; i >= 1; i--) {
@@ -157,7 +171,7 @@ async function run() {
         }
 
         if (status === 'missed') {
-          await supabaseAdmin.from('sleep_logs').upsert(
+          const { error: upsertErr } = await supabaseAdmin.from('sleep_logs').upsert(
             {
               member_id: memberId,
               cycle_date: cycleDate,
@@ -173,8 +187,11 @@ async function run() {
               status: 'missed',
               updated_at: cycleDt.toUTC().toISO(),
             },
-            { onConflict: 'member_id,cycle_date' }
+            { onConflict: 'member_id,cycle_date', ignoreDuplicates: true }
           );
+          if (upsertErr) {
+            console.warn(`   ⚠️ Failed to seed missed sleep log for ${m.discord_username} on ${cycleDate}:`, upsertErr.message);
+          }
           continue;
         }
 
@@ -191,7 +208,7 @@ async function run() {
 
         const durationMinutes = Math.max(1, Math.round(wokeUpDt.diff(inBedDt, 'minutes').minutes));
 
-        await supabaseAdmin.from('sleep_logs').upsert(
+        const { error: upsertErr } = await supabaseAdmin.from('sleep_logs').upsert(
           {
             member_id: memberId,
             cycle_date: cycleDate,
@@ -207,8 +224,11 @@ async function run() {
             status,
             updated_at: wokeUpDt.toUTC().toISO(),
           },
-          { onConflict: 'member_id,cycle_date' }
+          { onConflict: 'member_id,cycle_date', ignoreDuplicates: true }
         );
+        if (upsertErr) {
+          console.warn(`   ⚠️ Failed to seed sleep log for ${m.discord_username} on ${cycleDate}:`, upsertErr.message);
+        }
       }
       console.log(`   + Seeded 30 days of sleep logs for ${m.discord_username}`);
     }

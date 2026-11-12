@@ -164,9 +164,12 @@ export async function GET(request: Request) {
     const avgBedtime = calculateAverageTime(bedtimes, true) || member.bedtime_local;
     const avgWakeTime = calculateAverageTime(wakeTimes, false) || member.wake_time_local;
 
-    const onTimeCount = loggedNights.filter((l) => l.status === 'on_time').length;
+    const accountableNights = sleepLogs.filter(
+      (l) => l.status === 'on_time' || l.status === 'late' || l.status === 'missed'
+    );
+    const onTimeCount = accountableNights.filter((l) => l.status === 'on_time').length;
     const onTimePercentage =
-      totalLoggedNights > 0 ? Math.round((onTimeCount / totalLoggedNights) * 100) : 100;
+      accountableNights.length > 0 ? Math.round((onTimeCount / accountableNights.length) * 100) : 100;
 
     // Fetch streak days
     const { data: checkinRows } = await supabaseAdmin

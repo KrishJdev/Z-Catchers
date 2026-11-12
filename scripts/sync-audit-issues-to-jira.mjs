@@ -244,8 +244,8 @@ export async function syncAllToJira() {
   let hasFailure = false;
   const synchedResults = [];
 
-  for (const item of issuesList) {
-    let currentItem = { ...item };
+  for (let i = 0; i < issuesList.length; i++) {
+    let currentItem = { ...issuesList[i] };
 
     // 1. Create Jira issue if not already created
     if (!currentItem.jiraKey) {
@@ -256,14 +256,15 @@ export async function syncAllToJira() {
         currentItem.jiraKey = jiraResult.key;
         currentItem.jiraUrl = `https://${JIRA_DOMAIN}/browse/${jiraResult.key}`;
         delete currentItem.error;
+        issuesList[i] = currentItem;
         console.log(`  -> Created Jira issue: ${currentItem.jiraKey} (${currentItem.jiraUrl})`);
 
         // Atomically persist newly created Jira key checkpoint to file
-        const checkpointList = issuesList.map((iss) => (iss.id === currentItem.id ? currentItem : iss));
-        fs.writeFileSync(finalMapFile, JSON.stringify(checkpointList, null, 2), 'utf8');
+        fs.writeFileSync(finalMapFile, JSON.stringify(issuesList, null, 2), 'utf8');
       } catch (err) {
         console.error(`  -> Failed for "${currentItem.title}":`, err.message);
         currentItem.error = err.message;
+        issuesList[i] = currentItem;
         hasFailure = true;
         synchedResults.push(currentItem);
         continue;
@@ -296,6 +297,7 @@ export async function syncAllToJira() {
           currentItem.remoteLinkError = linkErr.message;
           hasFailure = true;
         }
+        issuesList[i] = currentItem;
       }
     }
 

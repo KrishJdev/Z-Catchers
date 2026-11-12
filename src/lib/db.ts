@@ -472,6 +472,22 @@ export async function insertMemberSafe(
   payload: Record<string, any>,
   select = '*'
 ): Promise<{ data: Member | null; error: any }> {
+  // Require durable DB storage for weekly schedules when Supabase is configured
+  if (isSupabaseConfigured) {
+    const existingCols = await getExistingMemberColumns();
+    if (
+      ('weekly_schedule' in payload && !existingCols.has('weekly_schedule')) ||
+      ('pending_weekly_schedule' in payload && !existingCols.has('pending_weekly_schedule'))
+    ) {
+      return {
+        data: null,
+        error: new Error(
+          "Database is missing durable 'weekly_schedule' or 'pending_weekly_schedule' columns. Please run the schema migration from supabase/schema.sql."
+        ),
+      };
+    }
+  }
+
   let cleanPayload = await sanitizeMemberPayload(payload);
 
   const performInsert = async (fields: Record<string, any>) => {
@@ -484,6 +500,14 @@ export async function insertMemberSafe(
     const match = error.message.match(/Could not find the '([^']+)' column/);
     if (match && match[1] && match[1] in cleanPayload) {
       const missingCol = match[1];
+      if (missingCol === 'weekly_schedule' || missingCol === 'pending_weekly_schedule') {
+        return {
+          data: null,
+          error: new Error(
+            `Database column '${missingCol}' not found in Supabase schema cache. Durable storage is required for weekly schedules; please run migrations from supabase/schema.sql.`
+          ),
+        };
+      }
       console.warn(`[Supabase Safe Insert] Column '${missingCol}' not found in Supabase schema cache; stripping and retrying.`);
       if (knownMemberColumns) {
         knownMemberColumns.delete(missingCol);
@@ -499,16 +523,11 @@ export async function insertMemberSafe(
 
   if (
     data &&
-    ('weekend_bedtime_local' in payload ||
-      'weekend_wake_time_local' in payload ||
-      'weekly_schedule' in payload ||
-      'pending_weekly_schedule' in payload)
+    ('weekend_bedtime_local' in payload || 'weekend_wake_time_local' in payload)
   ) {
     const memData: InMemoryScheduleData = {};
     if ('weekend_bedtime_local' in payload) memData.weekend_bedtime_local = payload.weekend_bedtime_local;
     if ('weekend_wake_time_local' in payload) memData.weekend_wake_time_local = payload.weekend_wake_time_local;
-    if ('weekly_schedule' in payload) memData.weekly_schedule = payload.weekly_schedule;
-    if ('pending_weekly_schedule' in payload) memData.pending_weekly_schedule = payload.pending_weekly_schedule;
     setInMemoryWeekendHours((data as unknown as Member).id, memData);
   }
 
@@ -612,9 +631,26 @@ export function clearInMemorySleepLogs(): void {
  */
 export async function upsertSleepLog(
   entry: Partial<SleepLog> & { member_id: string; cycle_date: string }
-): Promise<{ data: SleepLog | null; error: any }> {
+): Promise<{ data: SleepLog | null; error: any; isDurable: boolean }> {
   const memKey = getSleepLogMemoryKey(entry.member_id, entry.cycle_date);
-  const existing = memorySleepLogs.get(memKey);
+  let existing = memorySleepLogs.get(memKey);
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data: dbRow } = await supabaseAdmin
+        .from('sleep_logs')
+        .select('*')
+        .eq('member_id', entry.member_id)
+        .eq('cycle_date', entry.cycle_date)
+        .maybeSingle();
+      if (dbRow) {
+        existing = { ...(existing || {}), ...(dbRow as SleepLog) };
+      }
+    } catch {
+      // Continue with in-memory existing
+    }
+  }
+
   const nowIso = new Date().toISOString();
 
   const merged: SleepLog = {
@@ -665,17 +701,19 @@ export async function upsertSleepLog(
 
       if (!error && data) {
         memorySleepLogs.set(memKey, data as SleepLog);
-        return { data: data as SleepLog, error: null };
+        return { data: data as SleepLog, error: null, isDurable: true };
       }
       if (error) {
         console.warn('[db] Supabase upsertSleepLog warning:', error.message);
+        return { data: merged, error: null, isDurable: false };
       }
     } catch (err: any) {
       console.warn('[db] Supabase upsertSleepLog exception:', err.message);
+      return { data: merged, error: null, isDurable: false };
     }
   }
 
-  return { data: merged, error: null };
+  return { data: merged, error: null, isDurable: false };
 }
 
 /**

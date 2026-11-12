@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member, updateMemberSafe, upsertSleepLog, getMemberSleepLogs, getMemberByIdSafe } from '@/lib/db';
+import {
+  supabaseAdmin,
+  Member,
+  updateMemberSafe,
+  upsertSleepLog,
+  getMemberSleepLogs,
+  getMemberByIdSafe,
+  isSupabaseConfigured,
+} from '@/lib/db';
 import { DateTime } from 'luxon';
 import { verifyPin, getRequestSessionMemberId, verifyModeratorAuthorization, sanitizeMember } from '@/lib/auth';
 import { getNightScheduleDateTime } from '@/lib/sleepEngine';
@@ -118,6 +126,21 @@ export async function POST(request: Request) {
     // Resolve target cycle date
     let targetCycleDate: string;
 
+    // Determine the active or most recent sleep cycle for the sleeper
+    let currentCycleDate: string;
+    if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date) {
+      currentCycleDate = member.last_notified_cycle_date;
+    } else {
+      const todayNight = sleeperNow.startOf('day');
+      const todaySched = getNightScheduleDateTime(member, todayNight);
+      // If current time is before today's wind-down window (-180m), this wake-up belongs to yesterday's night cycle
+      if (sleeperNow < todaySched.bedtimeDateTime.minus({ minutes: 180 })) {
+        currentCycleDate = sleeperNow.minus({ days: 1 }).toISODate()!;
+      } else {
+        currentCycleDate = sleeperNow.toISODate()!;
+      }
+    }
+
     if (cycleDate) {
       if (!DATE_FORMAT_REGEX.test(cycleDate)) {
         return NextResponse.json({ error: 'Invalid cycleDate format. Expected YYYY-MM-DD.' }, { status: 400 });
@@ -137,19 +160,7 @@ export async function POST(request: Request) {
       }
       targetCycleDate = cycleDate;
     } else {
-      // Determine the active or most recent sleep cycle
-      if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date) {
-        targetCycleDate = member.last_notified_cycle_date;
-      } else {
-        const todayNight = sleeperNow.startOf('day');
-        const todaySched = getNightScheduleDateTime(member, todayNight);
-        // If current time is before today's wind-down window (-180m), this wake-up belongs to yesterday's night cycle
-        if (sleeperNow < todaySched.bedtimeDateTime.minus({ minutes: 180 })) {
-          targetCycleDate = sleeperNow.minus({ days: 1 }).toISODate()!;
-        } else {
-          targetCycleDate = sleeperNow.toISODate()!;
-        }
-      }
+      targetCycleDate = currentCycleDate;
     }
 
     // Retrieve any existing sleep log for this member + cycleDate
@@ -160,6 +171,13 @@ export async function POST(request: Request) {
     let wokeUpLocalStr: string;
     let wakeSource: 'button' | 'manual';
     let wokeUpDateTime: DateTime;
+
+    if (mode === 'button' && cycleDate && cycleDate !== currentCycleDate) {
+      return NextResponse.json(
+        { error: 'Historical wake-up entries require manual mode with a specified wake time.' },
+        { status: 400 }
+      );
+    }
 
     if (mode === 'manual') {
       if (!wokeUpTime || typeof wokeUpTime !== 'string' || !TIME_FORMAT_REGEX.test(wokeUpTime.trim())) {
@@ -207,16 +225,18 @@ export async function POST(request: Request) {
       wakeSource = 'button';
     }
 
+    // Resolve target bedtime & wake time for the cycle using getNightScheduleDateTime
+    const cycleDt = DateTime.fromISO(targetCycleDate, { zone: sleeperZone }).startOf('day');
+    const nightSchedule = getNightScheduleDateTime(member, cycleDt);
+
     // Calculate sleep duration in minutes if in_bed_at (or in_bed_local_time/target_bedtime) is available
     let durationMinutes: number | null = null;
     let inBedReferenceDt: DateTime | null = null;
 
     if (existingLog?.in_bed_at) {
       inBedReferenceDt = DateTime.fromISO(existingLog.in_bed_at, { zone: sleeperZone });
-    } else if (existingLog?.in_bed_local_time || existingLog?.target_bedtime || member.bedtime_local) {
-      const bedTimeStr = existingLog?.in_bed_local_time || existingLog?.target_bedtime || member.bedtime_local;
-      const [bH, bM] = bedTimeStr.split(':').map(Number);
-      const cycleDt = DateTime.fromISO(targetCycleDate, { zone: sleeperZone }).startOf('day');
+    } else if (existingLog?.in_bed_local_time) {
+      const [bH, bM] = existingLog.in_bed_local_time.split(':').map(Number);
       const isPastMidnight = bH >= 0 && bH < 6;
       inBedReferenceDt = (isPastMidnight ? cycleDt.plus({ days: 1 }) : cycleDt).set({
         hour: bH,
@@ -224,6 +244,8 @@ export async function POST(request: Request) {
         second: 0,
         millisecond: 0,
       });
+    } else {
+      inBedReferenceDt = nightSchedule.bedtimeDateTime;
     }
 
     if (inBedReferenceDt && wokeUpDateTime > inBedReferenceDt) {
@@ -232,12 +254,12 @@ export async function POST(request: Request) {
     }
 
     // Upsert the sleep log entry
-    const { data: updatedSleepLog, error: upsertErr } = await upsertSleepLog({
+    const { data: updatedSleepLog, error: upsertErr, isDurable } = await upsertSleepLog({
       member_id: member.id,
       cycle_date: targetCycleDate,
       timezone: member.timezone,
-      target_bedtime: existingLog?.target_bedtime || member.bedtime_local,
-      target_wake_time: existingLog?.target_wake_time || member.wake_time_local,
+      target_bedtime: existingLog?.target_bedtime || nightSchedule.bedtimeStr,
+      target_wake_time: existingLog?.target_wake_time || nightSchedule.wakeTimeStr,
       woke_up_at: wokeUpUtcIso,
       woke_up_local_time: wokeUpLocalStr,
       wake_source: wakeSource,
@@ -245,16 +267,27 @@ export async function POST(request: Request) {
       status: existingLog?.status || 'on_time',
     });
 
-    if (upsertErr) {
-      console.warn('[wake-up] Warning during sleep_logs upsert:', upsertErr);
+    if (!updatedSleepLog) {
+      console.error('[wake-up] Error during sleep_logs upsert:', upsertErr);
+      return NextResponse.json(
+        { error: 'Failed to durably persist sleep log.' },
+        { status: 500 }
+      );
     }
 
-    // Update member record: last_woke_up_at & last_wake_cycle_date
+    // Update member record: update last_woke_up_at & last_wake_cycle_date only if newer
+    const isNewerWake =
+      !member.last_woke_up_at ||
+      wokeUpDateTime >= DateTime.fromISO(member.last_woke_up_at, { zone: 'utc' });
+
     const memberUpdates: Record<string, any> = {
-      last_woke_up_at: wokeUpUtcIso,
-      last_wake_cycle_date: targetCycleDate,
       updated_at: nowUtc.toISO(),
     };
+
+    if (isNewerWake) {
+      memberUpdates.last_woke_up_at = wokeUpUtcIso;
+      memberUpdates.last_wake_cycle_date = targetCycleDate;
+    }
 
     if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date === targetCycleDate) {
       memberUpdates.last_notified_stage = null;
@@ -286,6 +319,7 @@ export async function POST(request: Request) {
         : 'Good morning! Wake-up logged.',
       member: updatedMember ? sanitizeMember(updatedMember) : sanitizeMember(member),
       sleep_log: updatedSleepLog,
+      isDurable: Boolean(isDurable),
       duration_minutes: durationMinutes,
       formatted_duration: formattedDuration,
     });

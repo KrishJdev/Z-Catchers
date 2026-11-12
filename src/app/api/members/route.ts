@@ -119,8 +119,8 @@ export async function GET(request: Request) {
       const sleeperNow = nowUtc.setZone(toValidLuxonZone(hydratedMember.timezone));
       const localDateStr = getSleepCycleDate(hydratedMember, nowUtc);
       const memberCheckins = checkinsByMember.get(hydratedMember.id) || [];
-      const is_in_bed = memberCheckins.includes(localDateStr);
       const is_woke_up = wokeUpSet.has(`${hydratedMember.id}_${localDateStr}`);
+      const is_in_bed = memberCheckins.includes(localDateStr) && !is_woke_up;
       const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);
       const nag_assists_count = nagAssistsByMemberAndDate.get(`${hydratedMember.id}_${localDateStr}`) || 0;
 

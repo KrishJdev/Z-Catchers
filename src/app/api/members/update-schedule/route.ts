@@ -328,6 +328,17 @@ export async function POST(request: Request) {
       }
     }
 
+    // Validate that every day in targetWeeklySchedule has non-identical bedtime and wake time
+    for (const day of DAY_KEYS) {
+      const daySched = targetWeeklySchedule[day];
+      if (daySched.bedtime.trim() === daySched.wake_time.trim()) {
+        return NextResponse.json(
+          { error: `Invalid schedule for "${day}": Bedtime and wake time cannot be identical.` },
+          { status: 400 }
+        );
+      }
+    }
+
     // Sync legacy flat columns from weekly schedule
     // Monday represents the weekday baseline, Saturday represents weekend
     const syncBedtime = targetWeeklySchedule.mon.bedtime;

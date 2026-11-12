@@ -107,6 +107,24 @@ assert(
   memberCardContent.includes("isViewer && isInBed && bucket === 'SLEEPING'"),
   'Sleeping check-in banner with Undo must be strictly restricted to the viewer (isViewer)'
 );
+
+// Structural check: Ensure all "☀️ I Woke Up" controls are guarded by isViewer
+const wakeUpMatches = [...memberCardContent.matchAll(/☀️ I Woke Up/g)];
+assert(wakeUpMatches.length > 0, 'MemberCard must contain at least one "☀️ I Woke Up" button');
+
+const sleepingBlock = memberCardContent.slice(
+  memberCardContent.indexOf("bucket === 'SLEEPING'"),
+  memberCardContent.indexOf("{bucket === 'AWAKE'")
+);
+assert(
+  sleepingBlock.includes('{isViewer ?') && sleepingBlock.indexOf('☀️ I Woke Up') > sleepingBlock.indexOf('{isViewer ?'),
+  'SLEEPING bucket "☀️ I Woke Up" control must be nested within the isViewer branch'
+);
+
+assert(
+  memberCardContent.includes('isViewer && state.needsWakeUpLog'),
+  'AWAKE row "☀️ I Woke Up" action must be guarded by isViewer && state.needsWakeUpLog'
+);
 console.log('✅ PASSED: MemberCard strictly protects awake status and displays Wake Up Nag for past wake times.');
 
 // -------------------------------------------------------------

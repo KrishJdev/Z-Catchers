@@ -60,7 +60,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       member_id: member.id,
-      is_in_bed: isInBed,
+      is_in_bed: isInBed && !isWokeUp,
       is_woke_up: isWokeUp,
       streak_days: streakDays,
       local_date: cycleDate,
@@ -271,6 +271,8 @@ export async function POST(request: Request) {
     await updateMemberSafe(member.id, {
       last_notified_stage: 'IN_BED_EARLY',
       last_notified_cycle_date: localDate,
+      last_woke_up_at: null,
+      last_wake_cycle_date: null,
     });
 
     // Resolve active schedule for this sleep cycle to record targets & status in sleep_logs

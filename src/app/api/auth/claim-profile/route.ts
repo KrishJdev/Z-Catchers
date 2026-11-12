@@ -369,20 +369,27 @@ export async function POST(request: Request) {
       }
 
       let targetWeeklySchedule: WeeklySchedule;
-      if (weekly_schedule && typeof weekly_schedule === 'object' && !Array.isArray(weekly_schedule)) {
-        let valid = true;
-        for (const day of DAY_KEYS) {
-          const ds = weekly_schedule[day];
-          if (!ds || !ds.bedtime || !ds.wake_time || !TIME_FORMAT_REGEX.test(ds.bedtime.trim()) || !TIME_FORMAT_REGEX.test(ds.wake_time.trim())) {
-            valid = false;
-            break;
-          }
-        }
-        if (!valid) {
+      if (weekly_schedule !== undefined && weekly_schedule !== null) {
+        if (typeof weekly_schedule !== 'object' || Array.isArray(weekly_schedule)) {
           return NextResponse.json(
-            { error: 'Invalid weekly_schedule format. Each day (mon through sun) must specify valid 24h HH:mm bedtime and wake_time.' },
+            { error: 'weekly_schedule must be a valid 7-day schedule object.' },
             { status: 400 }
           );
+        }
+        for (const day of DAY_KEYS) {
+          const ds = weekly_schedule[day];
+          if (!ds || typeof ds !== 'object' || !ds.bedtime || !ds.wake_time || !TIME_FORMAT_REGEX.test(ds.bedtime.trim()) || !TIME_FORMAT_REGEX.test(ds.wake_time.trim())) {
+            return NextResponse.json(
+              { error: 'Invalid weekly_schedule format. Each day (mon through sun) must specify valid 24h HH:mm bedtime and wake_time.' },
+              { status: 400 }
+            );
+          }
+          if (ds.bedtime.trim() === ds.wake_time.trim()) {
+            return NextResponse.json(
+              { error: `Invalid schedule for "${day}": Bedtime and wake time cannot be identical.` },
+              { status: 400 }
+            );
+          }
         }
         targetWeeklySchedule = {
           mon: { bedtime: weekly_schedule.mon.bedtime.trim(), wake_time: weekly_schedule.mon.wake_time.trim() },

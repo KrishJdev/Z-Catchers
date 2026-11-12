@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T01:30:00+05:30  
+> **Last Updated:** 2026-11-13T02:13:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `0609298`  
+> **Latest Commit:** `0093e4b`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44)  
 > **Active Integration Pull Request:** [#49 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
 > **Active Production Release Pull Request:** None (all merged)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 24/24 suites passed | Dev server running on `http://localhost:3000`)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 25/25 suites passed | Dev server running on `http://localhost:3000`)
 
 ---
 
@@ -69,6 +69,64 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 73: Prioritize Winding Down State Over Awake Status & Fix Status Pill
+* **Diagnosis of Discrepancy & Root Cause:**
+  - When a user approached their bedtime (e.g. 1:52 AM with a 2:00 AM bedtime, within the 60-minute wind-down window `-60 <= diffMinutes < 0`), their card was placed in the **AWAKE** bucket instead of **WINDING DOWN**, and their card status pill rendered `☀️ Awake` instead of `✨ in 8m`.
+  - In `src/lib/sleepEngine.ts`, `if (hasLoggedWakeUp)` was checked unconditionally at the top of the evaluation ladder prior to checking `diffMinutes`. Any member with an active `is_woke_up` flag (or historical wake record matching the active cycle date) was immediately assigned `bucket = 'AWAKE'`, completely bypassing `WINDING_DOWN` and `BEDTIME_NOW`.
+  - In `src/components/MemberCard.tsx`, `getStatusPillConfig()` checked `if (isWokeUp)` before checking `bucket === 'WINDING_DOWN'`, causing the pill to render `☀️ Awake` even when in the wind-down window.
+* **Sleep Engine State Machine Hardening (`src/lib/sleepEngine.ts`):**
+  - Reordered the state evaluation ladder in `computeMemberState`:
+    1. Evaluated `effectiveInBed && !hasLoggedWakeUp && diffMinutes >= -180` first (`SLEEPING`).
+    2. Prioritized `diffMinutes < 0 && diffMinutes >= -60` (`WINDING_DOWN`), ensuring pre-bedtime members not actively in bed enter the cozy wind-down bucket regardless of whether they logged wake-up earlier in the day.
+    3. Evaluated `hasLoggedWakeUp` only for post-bedtime / daytime states (`diffMinutes >= 0`), preserving morning wake-up and undo behaviors without interfering with subsequent nighttime wind-downs.
+* **UI Component & Status Pill Hierarchy (`src/components/MemberCard.tsx`):**
+  - Reordered `getStatusPillConfig()`:
+    1. Evaluated `isNagNow` first.
+    2. Evaluated `bucket === 'WINDING_DOWN'` (rendering `✨ in {X}m` or `✨ in {X}h {Y}m`) before `isWokeUp`.
+    3. Evaluated `bucket === 'SLEEPING'` (rendering `💤 Asleep` or `✨ In bed early`).
+    4. Evaluated `isWokeUp` as daytime / awake fallback pill.
+  - Added missing `useRef` imports and cleaned up duplicate statement artifacts in `src/components/MemberCard.tsx`, `src/components/SleepCalendarModal.tsx`, and `src/app/api/members/nag-notif/route.ts`.
+* **Automated Unit Testing & Verification (`scripts/test-wind-down-awake-fix.mjs`, `scripts/run-tests.mjs`):**
+  - Created standalone test suite `scripts/test-wind-down-awake-fix.mjs` covering 6 comprehensive test scenarios:
+    1. User with `is_woke_up: true` at T-8m (`1:52:29 AM` with `2:00 AM` bedtime) categorizes into `WINDING_DOWN`.
+    2. Formatted status label displays `Bedtime in 8m`.
+    3. Daytime user with `is_woke_up: true` (e.g. `12:00 PM`) correctly categorizes into `AWAKE`.
+    4. In-bed user at T-8m categorizes into `SLEEPING`.
+    5. `MemberCard.tsx` checks `bucket === 'WINDING_DOWN'` before `isWokeUp`.
+    6. `sleepEngine.ts` does not unconditionally short-circuit `hasLoggedWakeUp` before wind-down.
+  - Registered test in `scripts/run-tests.mjs` (25/25 unit test suites passing cleanly in 13.61s).
+  - Verified `npx tsc --noEmit` clean with 0 errors.
+
+### Phase 72: PR #49 Remaining CodeRabbit Review Suggestions & Edge-Case Hardening
+* **Scripts & Migration Hardening:**
+  - `scripts/create-all-audit-issues.mjs`: Updated checkpoint mapper to `{ ...ex, ...i, ... }` to ensure definition fields take precedence over existing entries during atomic checkpoints.
+  - `scripts/sync-audit-issues-to-jira.mjs`: Updated in-place `issuesList[i] = currentItem` before checkpoints to ensure accumulated Jira keys are never lost across iterations.
+  - `scripts/seed-demo-members.mjs`: Sanitized timezone fallbacks with `toValidLuxonZone`; added `{ onConflict: 'member_id,cycle_date', ignoreDuplicates: true }` and failure warning logs to sleep log upserts.
+  - `scripts/test-wake-up-nag.mjs`: Added structural tests verifying all `☀️ I Woke Up` buttons are strictly guarded by `isViewer` conditional checks.
+* **API Endpoints & Validation Guardrails:**
+  - `src/app/api/auth/claim-profile/route.ts`: Explicitly rejected invalid weekly schedules with HTTP 400 (including non-objects, invalid formats, or identical bedtime/wake times) instead of silently falling back to flat fields.
+  - `src/app/api/members/update-schedule/route.ts`: Validated all 7 days of `targetWeeklySchedule` so legacy merged edits reject identical bedtime and wake times with HTTP 400.
+  - `src/app/api/mod/route.ts`: Added `updates.pending_timezone = null;` when moderator updates timezone directly.
+  - `src/app/api/members/nag-notif/route.ts`: Bound anonymous senders with stable `helperKey = 'anon_target'` to prevent header spoofing bypass; resolved yesterday's check-in cycle for wake-up nags when appropriate; claimed cooldown record in `notification_logs` before dispatching web pushes.
+  - `src/app/api/members/in-bed/route.ts`: In GET: derived `is_in_bed: isInBed && !isWokeUp`; in POST check-in: cleared `last_woke_up_at: null` and `last_wake_cycle_date: null`.
+  - `src/app/api/members/wake-up/route.ts`: Disallowed button mode on historical `cycleDate`; resolved bedtime and wake targets via `getNightScheduleDateTime` when `existingLog` is absent; safely persisted across durable and test environments with `isDurable` indicator in response; updated `last_woke_up_at` and `last_wake_cycle_date` only when wake event is newer than stored.
+  - `src/app/api/members/route.ts`: Derived `is_in_bed = memberCheckins.includes(localDateStr) && !is_woke_up` to prevent showing Sleep Shield after wake-up.
+  - `src/app/api/members/sleep-history/route.ts`: Included accountable missed nights (`status IN ('on_time', 'late', 'missed')`) in `onTimePercentage` calculation.
+* **UI Components & UX:**
+  - `src/components/MemberCard.tsx`: Enforced 44px minimum mobile touch targets on member name and secondary action buttons; scoped `storageKey` by sender and separated bedtime from wake cooldowns with in-memory expiry fallback; restored optimistic rollback on `onWakeUp` rejection across all wake modes; rendered Wake Up Nag alongside Vote Strike when voting is eligible.
+  - `src/app/page.tsx`: Returned boolean from `handleWakeUp`; restricted "Undo check-in" button to `claimedMember.is_in_bed`.
+  - `src/components/SleepCalendarModal.tsx`: Added `activeRequestRef` to discard out-of-order fetch responses when `memberId` or `currentMonth` changes; replaced blue/indigo classes with Warm Dark design tokens.
+* **Sleep Engine & DB Storage:**
+  - `src/lib/sleepEngine.ts`: In `checkCooldownPromotion`, built `nextWeeklySchedule` from pending flat fields when `pending_weekly_schedule` is null before falling back to active weekly schedule; in `resolveTargetSchedule`, computed `maxYesterdayEnd` using `postWakeWindow` (4 hours post wake) so yesterday's morning cycle is retained without requiring prior `is_in_bed` check-in hydration.
+  - `src/lib/db.ts`: Added durable columns check (`weekly_schedule`, `pending_weekly_schedule`) to `insertMemberSafe`, rejecting with migration error if missing rather than stripping and storing in memory; enhanced `upsertSleepLog` to query existing row in Supabase prior to merging, preventing null overwrites of `in_bed_at` / `in_bed_local_time` during partial wake updates.
+* **PostgreSQL Schema & Security Policies (`supabase/schema.sql`):**
+  - Changed `sleep_logs.member_id` from `TEXT` to `UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE`.
+  - Removed public read policies on `sleep_logs` (`DROP POLICY IF EXISTS "Public can view sleep logs"` and `"Public read sleep_logs"`), maintaining strictly internal service-role access.
+  - Added backfill query for `pending_weekly_schedule` for members with active cooldown (`pending_effective_at IS NOT NULL AND pending_weekly_schedule IS NULL`).
+* **Automated Verification:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 25 test suites passing (12.86s).
 
 ### Phase 71: MemberCard Metastrike Pill & Secondary Action Row Overflow Fix
 * **Issue Diagnosis & Root Cause:**
@@ -1438,6 +1496,19 @@ d:\Projects\Z Catchers\
      )
      WHERE weekly_schedule IS NULL;
 
+     -- Backfill pending schedules for members with active cooldown
+     UPDATE public.members
+     SET pending_weekly_schedule = jsonb_build_object(
+       'mon', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+       'tue', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+       'wed', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+       'thu', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+       'fri', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
+       'sat', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
+       'sun', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local))
+     )
+     WHERE pending_effective_at IS NOT NULL AND pending_weekly_schedule IS NULL;
+
      -- Persistent Rate Limiting Table
      CREATE TABLE IF NOT EXISTS public.rate_limits (
        key TEXT PRIMARY KEY,
@@ -1475,7 +1546,7 @@ d:\Projects\Z Catchers\
 
      CREATE TABLE IF NOT EXISTS public.sleep_logs (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-       member_id TEXT NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+       member_id UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
        cycle_date TEXT NOT NULL,
        timezone TEXT NOT NULL DEFAULT 'UTC',
        target_bedtime TEXT,
@@ -1497,9 +1568,10 @@ d:\Projects\Z Catchers\
 
      ALTER TABLE public.sleep_logs ENABLE ROW LEVEL SECURITY;
      DROP POLICY IF EXISTS "Public read sleep_logs" ON public.sleep_logs;
-     CREATE POLICY "Public read sleep_logs" ON public.sleep_logs FOR SELECT USING (true);
+     DROP POLICY IF EXISTS "Public can view sleep logs" ON public.sleep_logs;
      DROP POLICY IF EXISTS "Service role full access sleep_logs" ON public.sleep_logs;
-     CREATE POLICY "Service role full access sleep_logs" ON public.sleep_logs FOR ALL USING (auth.role() = 'service_role');
+     DROP POLICY IF EXISTS "Service role full access on sleep_logs" ON public.sleep_logs;
+     CREATE POLICY "Service role full access on sleep_logs" ON public.sleep_logs FOR ALL USING (auth.role() = 'service_role');
      ALTER PUBLICATION supabase_realtime ADD TABLE public.sleep_logs;
      ```
 

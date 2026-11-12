@@ -481,6 +481,7 @@ export async function POST(request: Request) {
 
       if (timezone) {
         updates.timezone = timezone.trim();
+        updates.pending_timezone = null;
       }
 
       const { data: updated, error: updateErr } = await updateMemberSafe(member_id, updates);

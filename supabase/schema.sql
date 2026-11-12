@@ -102,6 +102,19 @@ SET weekly_schedule = jsonb_build_object(
 )
 WHERE weekly_schedule IS NULL;
 
+-- Backfill pending schedules for members with active cooldown
+UPDATE public.members
+SET pending_weekly_schedule = jsonb_build_object(
+  'mon', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'tue', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'wed', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'thu', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'fri', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
+  'sat', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
+  'sun', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local))
+)
+WHERE pending_effective_at IS NOT NULL AND pending_weekly_schedule IS NULL;
+
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'check_strikes_used_range') THEN
@@ -193,7 +206,7 @@ CREATE TABLE IF NOT EXISTS public.cron_locks (
 -- 8. Sleep & Wake History Logs per Member and Sleep Cycle Date
 CREATE TABLE IF NOT EXISTS public.sleep_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  member_id TEXT NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+  member_id UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
   cycle_date TEXT NOT NULL, -- "YYYY-MM-DD" in member's local IANA timezone representing the night's cycle
   timezone TEXT NOT NULL DEFAULT 'UTC',
   target_bedtime TEXT,      -- "HH:mm" scheduled bedtime for this cycle
@@ -295,12 +308,9 @@ DROP POLICY IF EXISTS "Service role full access on cron_locks" ON public.cron_lo
 CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
   FOR ALL USING (auth.role() = 'service_role');
 
--- Sleep Logs: Public read for community transparency & personal calendar inspection
+-- Sleep Logs: Service role full access (strictly internal backend service role; community access via authenticated API routes)
 DROP POLICY IF EXISTS "Public can view sleep logs" ON public.sleep_logs;
-CREATE POLICY "Public can view sleep logs" ON public.sleep_logs
-  FOR SELECT USING (true);
-
--- Sleep Logs: Service role full access for check-ins, wake-ups, and calendar history
+DROP POLICY IF EXISTS "Public read sleep_logs" ON public.sleep_logs;
 DROP POLICY IF EXISTS "Service role full access on sleep_logs" ON public.sleep_logs;
 CREATE POLICY "Service role full access on sleep_logs" ON public.sleep_logs
   FOR ALL USING (auth.role() = 'service_role');
