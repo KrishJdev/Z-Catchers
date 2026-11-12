@@ -1,29 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
-
-let cachedSupabase: any = null;
+import { supabaseAdmin, isSupabaseConfigured } from './db.ts';
 
 /**
- * Lazy initialization of Supabase client for rate limit persistence.
- * Returns null if Supabase environment variables are missing.
- *
- * @returns SupabaseClient instance or null
- */
-function getSupabase() {
-  if (cachedSupabase) return cachedSupabase;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (url && key) {
-    cachedSupabase = createClient(url, key, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    return cachedSupabase;
-  }
-  return null;
-}
-
-/**
- * Serverless-persistent sliding window rate limiter for PIN verification and sensitive auth gates.
- * Protects against brute-force attacks across IP addresses and member targets across ephemeral serverless instances.
+ * Serverless-persistent sliding window rate limiter for PIN verification, sensitive auth gates,
+ * and community voting actions.
+ * Backed by Supabase 'rate_limits' table with synchronized dual-layer in-memory cache and offline fallback.
  */
 
 interface RateLimitEntry {
@@ -51,6 +31,16 @@ if (typeof setInterval !== 'undefined') {
     }
   }, CLEANUP_INTERVAL_MS);
   if (timer.unref) timer.unref();
+}
+
+/**
+ * Helper to get the active Supabase client if configured.
+ */
+function getSupabase() {
+  if (isSupabaseConfigured && supabaseAdmin) {
+    return supabaseAdmin;
+  }
+  return null;
 }
 
 /**
@@ -117,7 +107,7 @@ export function checkPinRateLimitSync(
 }
 
 /**
- * Serverless-persistent rate limit check against Supabase 'rate_limit_entries' table
+ * Serverless-persistent rate limit check against Supabase 'rate_limits' table
  * with graceful in-memory fallback.
  */
 export async function checkPinRateLimitPersistent(
@@ -143,19 +133,19 @@ export async function checkPinRateLimitPersistent(
 
     const nowIso = new Date().toISOString();
     const { data, error } = await client
-      .from('rate_limit_entries')
-      .select('key, attempts, reset_at')
+      .from('rate_limits')
+      .select('key, count, expires_at')
       .in('key', keys)
-      .gt('reset_at', nowIso);
+      .gt('expires_at', nowIso);
 
     if (!error && Array.isArray(data)) {
       const nowMs = Date.now();
       for (const row of data) {
-        if (row.attempts >= maxAttempts) {
-          const resetMs = new Date(row.reset_at).getTime();
+        if (row.count >= maxAttempts) {
+          const resetMs = new Date(row.expires_at).getTime();
           const retryAfterSeconds = Math.max(1, Math.ceil((resetMs - nowMs) / 1000));
           // Mirror to in-memory cache
-          pinRateLimits.set(row.key, { attempts: row.attempts, resetAt: resetMs });
+          pinRateLimits.set(row.key, { attempts: row.count, resetAt: resetMs });
           return { allowed: false, retryAfterSeconds };
         }
       }
@@ -193,8 +183,113 @@ export function checkPinRateLimit(
   return result;
 }
 
+export class RateLimitConflictError extends Error {
+  readonly code = 'RATE_LIMIT_RETRY_EXHAUSTED';
+  readonly key: string;
+
+  constructor(key: string, attempts: number) {
+    super(
+      `Exhausted ${attempts} optimistic concurrency retry attempts recording rate limit for '${key}' due to concurrent writes.`
+    );
+    this.name = 'RateLimitConflictError';
+    this.key = key;
+  }
+}
+
 /**
- * Serverless-persistent failure recording. Updates local memory map and Supabase table.
+ * Atomically records an increment or window reset for a persistent rate limit key in Supabase.
+ * Uses optimistic concurrency control with CAS (.eq('count', existing.count)) and conditional
+ * window resets (.lte('expires_at', nowIso)) to prevent race conditions without overwriting
+ * concurrent workers' increments.
+ * If concurrent conflicts exhaust all retry attempts, throws RateLimitConflictError.
+ */
+export async function atomicIncrementRateLimitKey(
+  client: NonNullable<ReturnType<typeof getSupabase>>,
+  key: string,
+  nowMs: number,
+  windowMs: number,
+  maxAttempts = 5
+): Promise<void> {
+  const resetAtMs = nowMs + windowMs;
+  const resetAtIso = new Date(resetAtMs).toISOString();
+  const nowIso = new Date(nowMs).toISOString();
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const { data: existing, error: selectErr } = await client
+      .from('rate_limits')
+      .select('count, expires_at')
+      .eq('key', key)
+      .maybeSingle();
+
+    if (selectErr) {
+      throw selectErr;
+    }
+
+    if (existing) {
+      const isExpired = new Date(existing.expires_at).getTime() <= nowMs;
+      if (isExpired) {
+        // Window expired; reset counter to 1 conditioning on row still being expired
+        const { data: resetRow, error: resetErr } = await client
+          .from('rate_limits')
+          .update({
+            count: 1,
+            window_start: nowIso,
+            expires_at: resetAtIso,
+          })
+          .eq('key', key)
+          .lte('expires_at', nowIso)
+          .select('key')
+          .maybeSingle();
+
+        if (!resetErr && resetRow) {
+          return;
+        }
+      } else {
+        // Window active; atomically increment conditioning on un-mutated count and active window
+        const { data: updatedRow, error: updateErr } = await client
+          .from('rate_limits')
+          .update({
+            count: existing.count + 1,
+          })
+          .eq('key', key)
+          .eq('count', existing.count)
+          .gt('expires_at', nowIso)
+          .select('key')
+          .maybeSingle();
+
+        if (!updateErr && updatedRow) {
+          return;
+        }
+      }
+    } else {
+      // First attempt; insert with count 1
+      const { error: insertErr } = await client
+        .from('rate_limits')
+        .insert({
+          key,
+          count: 1,
+          window_start: nowIso,
+          expires_at: resetAtIso,
+        });
+
+      if (!insertErr) {
+        return;
+      }
+      // If concurrent worker inserted first (unique violation), loop and retry to increment
+    }
+
+    // Exponential jitter backoff before retrying
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1) + Math.random() * 15));
+    }
+  }
+
+  // Retry attempts exhausted due to continuous concurrency conflicts; propagate recognizable failure
+  throw new RateLimitConflictError(key, maxAttempts);
+}
+
+/**
+ * Serverless-persistent failure recording. Updates local memory map and Supabase rate_limits table.
  */
 export async function recordPinFailurePersistent(
   ip: string,
@@ -204,8 +299,7 @@ export async function recordPinFailurePersistent(
   const nowMs = Date.now();
   const resetAtMs = nowMs + windowMs;
   const resetAtIso = new Date(resetAtMs).toISOString();
-  const cleanIp = ip ? ip.trim() : null;
-  const cleanTarget = targetId ? targetId.trim() : null;
+  const nowIso = new Date(nowMs).toISOString();
 
   const keys = getRateLimitKeys(ip, targetId);
   if (keys.length === 0) return;
@@ -214,48 +308,30 @@ export async function recordPinFailurePersistent(
   for (const key of keys) {
     const entry = pinRateLimits.get(key);
     if (!entry || nowMs > entry.resetAt) {
-      pinRateLimits.set(key, { attempts: 1, resetAt: nowMs + windowMs });
+      pinRateLimits.set(key, { attempts: 1, resetAt: resetAtMs });
     } else {
       entry.attempts += 1;
     }
   }
 
-  // Persist to Supabase rate_limit_entries table
+  // Persist to Supabase rate_limits table
   try {
     const client = getSupabase();
     if (!client) return;
 
     for (const key of keys) {
-      const { data: existing } = await client
-        .from('rate_limit_entries')
-        .select('attempts, reset_at')
-        .eq('key', key)
-        .maybeSingle();
-
-      if (existing && new Date(existing.reset_at).getTime() > nowMs) {
-        await client
-          .from('rate_limit_entries')
-          .update({
-            attempts: existing.attempts + 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('key', key);
-      } else {
-        await client.from('rate_limit_entries').upsert(
-          {
-            key,
-            ip_address: cleanIp,
-            target_member_id: cleanTarget,
-            attempts: 1,
-            reset_at: resetAtIso,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'key' }
-        );
-      }
+      await atomicIncrementRateLimitKey(client, key, nowMs, windowMs);
     }
-  } catch {
-    // Non-blocking in case table is unavailable
+
+    // Opportunistically prune expired records (5% probability)
+    if (Math.random() < 0.05) {
+      await client.from('rate_limits').delete().lt('expires_at', nowIso);
+    }
+  } catch (err) {
+    if (err instanceof RateLimitConflictError) {
+      throw err;
+    }
+    // Non-blocking in case table is temporarily unavailable
   }
 }
 
@@ -312,7 +388,7 @@ export async function resetPinFailurePersistent(ip: string, targetId: string): P
       }
       if (keysToDelete.length > 0) {
         await client
-          .from('rate_limit_entries')
+          .from('rate_limits')
           .delete()
           .in('key', keysToDelete);
       }
@@ -345,7 +421,7 @@ export async function clearAllPinRateLimitsPersistent(): Promise<void> {
   try {
     const client = getSupabase();
     if (client) {
-      await client.from('rate_limit_entries').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await client.from('rate_limits').delete().neq('key', '__placeholder__');
     }
   } catch {
     // Non-blocking
@@ -354,7 +430,7 @@ export async function clearAllPinRateLimitsPersistent(): Promise<void> {
 
 /**
  * Synchronously clears in-memory rate limit caches and asynchronously purges
- * the persistent rate limit entries table. Primarily used in automated testing suites.
+ * the persistent rate limit table. Primarily used in automated testing suites.
  */
 export function clearAllPinRateLimits(): void {
   pinRateLimits.clear();
@@ -394,17 +470,17 @@ export async function checkVoteRateLimitPersistent(
 
     const nowIso = new Date().toISOString();
     const { data, error } = await client
-      .from('rate_limit_entries')
-      .select('attempts, reset_at')
+      .from('rate_limits')
+      .select('count, expires_at')
       .eq('key', key)
-      .gt('reset_at', nowIso)
+      .gt('expires_at', nowIso)
       .maybeSingle();
 
     if (!error && data) {
-      if (data.attempts >= maxAttempts) {
-        const resetMs = new Date(data.reset_at).getTime();
+      if (data.count >= maxAttempts) {
+        const resetMs = new Date(data.expires_at).getTime();
         const retryAfterSeconds = Math.max(1, Math.ceil((resetMs - now) / 1000));
-        pinRateLimits.set(key, { attempts: data.attempts, resetAt: resetMs });
+        pinRateLimits.set(key, { attempts: data.count, resetAt: resetMs });
         return { allowed: false, retryAfterSeconds };
       }
     }
@@ -433,6 +509,7 @@ export async function recordVoteAttemptPersistent(
   const nowMs = Date.now();
   const resetAtMs = nowMs + windowMs;
   const resetAtIso = new Date(resetAtMs).toISOString();
+  const nowIso = new Date(nowMs).toISOString();
 
   // Local memory cache
   const entry = pinRateLimits.get(key);
@@ -442,38 +519,16 @@ export async function recordVoteAttemptPersistent(
     entry.attempts += 1;
   }
 
-  // Supabase persistence
+  // Supabase persistence in rate_limits
   try {
     const client = getSupabase();
     if (!client) return;
 
-    const { data: existing } = await client
-      .from('rate_limit_entries')
-      .select('attempts, reset_at')
-      .eq('key', key)
-      .maybeSingle();
-
-    if (existing && new Date(existing.reset_at).getTime() > nowMs) {
-      await client
-        .from('rate_limit_entries')
-        .update({
-          attempts: existing.attempts + 1,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('key', key);
-    } else {
-      await client.from('rate_limit_entries').upsert(
-        {
-          key,
-          target_member_id: cleanVoterId,
-          attempts: 1,
-          reset_at: resetAtIso,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'key' }
-      );
+    await atomicIncrementRateLimitKey(client, key, nowMs, windowMs);
+  } catch (err) {
+    if (err instanceof RateLimitConflictError) {
+      throw err;
     }
-  } catch {
     // Non-blocking in case table is temporarily unavailable
   }
 }

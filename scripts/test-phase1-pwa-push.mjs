@@ -201,10 +201,14 @@ async function run() {
     // -------------------------------------------------------------
     // 6. Live Multi-Device Push & Stale Pruning Test (if DB available)
     // -------------------------------------------------------------
+    const runnerMode = process.env.RUNNER_MODE || (process.argv.includes('--all') ? 'all' : 'unit');
+    const isAllMode = runnerMode === 'all';
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const hasCredentials = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
+    const isSupabaseLive = isAllMode && hasCredentials;
 
-    if (supabaseUrl && supabaseKey) {
+    if (isSupabaseLive) {
       console.log('\n--- 6. Live Multi-Device Subscriptions & Stale Pruning Verification ---');
       const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 

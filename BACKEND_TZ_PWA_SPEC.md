@@ -77,6 +77,34 @@ CREATE TABLE nightly_strike_logs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(target_member_id, sleep_cycle_date)
 );
+
+-- 5. Rate Limits Table (Serverless-persistent sliding window rate limiting)
+CREATE TABLE public.rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 1,
+  window_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_rate_limits_expires_at ON public.rate_limits (expires_at);
+ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.rate_limits FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.rate_limits TO service_role;
+CREATE POLICY "Service role full access on rate_limits" ON public.rate_limits
+  FOR ALL USING (auth.role() = 'service_role');
+
+-- 6. Cron Locks Table (Cron execution locks & notification event idempotency)
+CREATE TABLE public.cron_locks (
+  lock_key TEXT PRIMARY KEY,
+  locked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  metadata JSONB DEFAULT '{}'::jsonb
+);
+CREATE INDEX idx_cron_locks_expires_at ON public.cron_locks (expires_at);
+ALTER TABLE public.cron_locks ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.cron_locks FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.cron_locks TO service_role;
+CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
+  FOR ALL USING (auth.role() = 'service_role');
 ```
 
 ---
@@ -198,10 +226,10 @@ The accountability system ensures members adhere to their bedtimes with communit
 * Authenticated moderators using `MOD_SECRET_PASSCODE` can manually increment or decrement any member's `strikes_used` and `metastrikes_used` (bounded within $[0, 3]$).
 * Moderators can clear accidental strike votes or nightly logs via `POST /api/mod` with action `clear_strike_log`.
 
-#### 6. REST API Endpoints for Strikes
-* `POST /api/members/strikes/vote`: Casts a community strike vote (enforces non-self and uniqueness).
-* `POST /api/members/strikes/metastrike`: Activates a proactive pass or performs a 24-hour retroactive swap.
+#### 6. REST API Endpoints for Strikes (Canonical)
+* `POST /api/members/strikes`: Casts a community strike vote (enforces non-self and uniqueness).
 * `GET /api/members/strikes`: Retrieves strike counts and tonight's active log for a member.
+* `POST /api/members/strikes/metastrike`: Activates a proactive pass or performs a 24-hour retroactive swap.
 * `POST /api/mod`: Handles `adjust_strikes` and `clear_strike_log` moderator actions.
 
 ---
@@ -251,12 +279,14 @@ self.addEventListener('notificationclick', function(event) {
 });
 ```
 
-### 3.2 Notification Dispatcher Logic (Cron Endpoint)
-When the background cron job runs every minute, it enforces the **Sleep Shield**:
+### 3.2 Notification Dispatcher Logic (Canonical Cron Endpoint: `/api/cron/dispatch-notifications`)
+When the background cron job runs every minute, it enforces the **Sleep Shield** and distributed idempotency:
 
-1. Find all active members $M$ whose local time matches either **T-Minus 30 minutes** or **T-Minus 0 minutes**.
-2. **Personal Notification:** Send wind-down or bedtime hit push to $M$.
-3. **Community Nag Notification:** 
+1. **Window-Level Concurrency Lock:** Acquires `cron_window:<YYYY-MM-DDTHH:mm>` lock (55s TTL) in `public.cron_locks` to prevent duplicate concurrent runs between Vercel Cron and GitHub Actions fallback runners.
+2. Find all active members $M$ whose local time matches either **T-Minus 30 minutes** or **T-Minus 0 minutes**.
+3. **Per-Member Event Lock:** Acquires `notif:<member_id>:<date>:<event_type>` lock in `public.cron_locks` (24h TTL) before dispatching notifications or webhooks.
+4. **Personal Notification:** Send wind-down or bedtime hit push to $M$.
+5. **Community Nag Notification:** 
    * Query all members $C \neq M$ where `notify_community = true`.
    * Evaluate $C$'s sleep state using Algorithm 2.2.
    * **GUARDRAIL:** If $C$'s `isSleepShieldActive` is `true`, **exclude $C$ from the recipient list**.
@@ -269,3 +299,15 @@ All user-submitted journal links must be validated against this strict regex bef
 ```regex
 ^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$
 ```
+
+---
+
+## 5. Automated CI Pipeline & Unified Test Runner
+* **GitHub Actions Pipeline (`.github/workflows/ci.yml`):**
+  * Triggered on `push` to `main`, `dev`, `krish` and `pull_request` to `main`, `dev`.
+  * Runs on Ubuntu with Node.js 22.
+  * Steps: `npm ci` -> `npm run typecheck` -> `npm run build` -> `npm run test:unit`.
+* **NPM Helper Scripts:**
+  * `npm run typecheck`: Runs `tsc --noEmit` across all project files.
+  * `npm run test:unit`: Runs all 19 offline unit/static test suites via `node --import tsx scripts/run-tests.mjs --unit`.
+  * `npm run test:all`: Runs all 20 verification suites including live Supabase integration tests via `node --import tsx scripts/run-tests.mjs --all`.

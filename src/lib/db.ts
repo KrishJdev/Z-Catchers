@@ -1,5 +1,22 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Polyfill minimal WebSocket for headless environments without native WebSocket (e.g. Node < 22)
+if (typeof globalThis.WebSocket === 'undefined') {
+  class DummyWebSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
+    readyState = 3;
+    close() {}
+    addEventListener() {}
+    removeEventListener() {}
+    send() {}
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).WebSocket = DummyWebSocket;
+}
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -112,6 +129,20 @@ export interface RateLimitRecord {
   reset_at: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface RateLimitRow {
+  key: string;
+  count: number;
+  window_start: string;
+  expires_at: string;
+}
+
+export interface CronLockRow {
+  lock_key: string;
+  locked_at: string;
+  expires_at: string;
+  metadata?: Record<string, unknown>;
 }
 
 /**

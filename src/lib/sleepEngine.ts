@@ -170,6 +170,632 @@ export function detectUserTimezone(): string {
   return 'UTC';
 }
 
+/**
+ * Baseline canonical IANA timezones spanning all global territories, countries, and cities.
+ * Guaranteed to exist across all runtime environments (Node.js, edge, browser, SSR).
+ */
+export const BASE_IANA_TIMEZONES = [
+  'Africa/Abidjan',
+  'Africa/Accra',
+  'Africa/Addis_Ababa',
+  'Africa/Algiers',
+  'Africa/Asmera',
+  'Africa/Bamako',
+  'Africa/Bangui',
+  'Africa/Banjul',
+  'Africa/Bissau',
+  'Africa/Blantyre',
+  'Africa/Brazzaville',
+  'Africa/Bujumbura',
+  'Africa/Cairo',
+  'Africa/Casablanca',
+  'Africa/Ceuta',
+  'Africa/Conakry',
+  'Africa/Dakar',
+  'Africa/Dar_es_Salaam',
+  'Africa/Djibouti',
+  'Africa/Douala',
+  'Africa/El_Aaiun',
+  'Africa/Freetown',
+  'Africa/Gaborone',
+  'Africa/Harare',
+  'Africa/Johannesburg',
+  'Africa/Juba',
+  'Africa/Kampala',
+  'Africa/Khartoum',
+  'Africa/Kigali',
+  'Africa/Kinshasa',
+  'Africa/Lagos',
+  'Africa/Libreville',
+  'Africa/Lome',
+  'Africa/Luanda',
+  'Africa/Lubumbashi',
+  'Africa/Lusaka',
+  'Africa/Malabo',
+  'Africa/Maputo',
+  'Africa/Maseru',
+  'Africa/Mbabane',
+  'Africa/Mogadishu',
+  'Africa/Monrovia',
+  'Africa/Nairobi',
+  'Africa/Ndjamena',
+  'Africa/Niamey',
+  'Africa/Nouakchott',
+  'Africa/Ouagadougou',
+  'Africa/Porto-Novo',
+  'Africa/Sao_Tome',
+  'Africa/Tripoli',
+  'Africa/Tunis',
+  'Africa/Windhoek',
+  'America/Adak',
+  'America/Anchorage',
+  'America/Anguilla',
+  'America/Antigua',
+  'America/Araguaina',
+  'America/Argentina/La_Rioja',
+  'America/Argentina/Rio_Gallegos',
+  'America/Argentina/Salta',
+  'America/Argentina/San_Juan',
+  'America/Argentina/San_Luis',
+  'America/Argentina/Tucuman',
+  'America/Argentina/Ushuaia',
+  'America/Aruba',
+  'America/Asuncion',
+  'America/Bahia',
+  'America/Bahia_Banderas',
+  'America/Barbados',
+  'America/Belem',
+  'America/Belize',
+  'America/Blanc-Sablon',
+  'America/Boa_Vista',
+  'America/Bogota',
+  'America/Boise',
+  'America/Buenos_Aires',
+  'America/Cambridge_Bay',
+  'America/Campo_Grande',
+  'America/Cancun',
+  'America/Caracas',
+  'America/Catamarca',
+  'America/Cayenne',
+  'America/Cayman',
+  'America/Chicago',
+  'America/Chihuahua',
+  'America/Ciudad_Juarez',
+  'America/Coral_Harbour',
+  'America/Cordoba',
+  'America/Costa_Rica',
+  'America/Coyhaique',
+  'America/Creston',
+  'America/Cuiaba',
+  'America/Curacao',
+  'America/Danmarkshavn',
+  'America/Dawson',
+  'America/Dawson_Creek',
+  'America/Denver',
+  'America/Detroit',
+  'America/Dominica',
+  'America/Edmonton',
+  'America/Eirunepe',
+  'America/El_Salvador',
+  'America/Fort_Nelson',
+  'America/Fortaleza',
+  'America/Glace_Bay',
+  'America/Godthab',
+  'America/Goose_Bay',
+  'America/Grand_Turk',
+  'America/Grenada',
+  'America/Guadeloupe',
+  'America/Guatemala',
+  'America/Guayaquil',
+  'America/Guyana',
+  'America/Halifax',
+  'America/Havana',
+  'America/Hermosillo',
+  'America/Indiana/Knox',
+  'America/Indiana/Marengo',
+  'America/Indiana/Petersburg',
+  'America/Indiana/Tell_City',
+  'America/Indiana/Vevay',
+  'America/Indiana/Vincennes',
+  'America/Indiana/Winamac',
+  'America/Indianapolis',
+  'America/Inuvik',
+  'America/Iqaluit',
+  'America/Jamaica',
+  'America/Jujuy',
+  'America/Juneau',
+  'America/Kentucky/Monticello',
+  'America/Kralendijk',
+  'America/La_Paz',
+  'America/Lima',
+  'America/Los_Angeles',
+  'America/Louisville',
+  'America/Lower_Princes',
+  'America/Maceio',
+  'America/Managua',
+  'America/Manaus',
+  'America/Marigot',
+  'America/Martinique',
+  'America/Matamoros',
+  'America/Mazatlan',
+  'America/Mendoza',
+  'America/Menominee',
+  'America/Merida',
+  'America/Metlakatla',
+  'America/Mexico_City',
+  'America/Miquelon',
+  'America/Moncton',
+  'America/Monterrey',
+  'America/Montevideo',
+  'America/Montserrat',
+  'America/Nassau',
+  'America/New_York',
+  'America/Nome',
+  'America/Noronha',
+  'America/North_Dakota/Beulah',
+  'America/North_Dakota/Center',
+  'America/North_Dakota/New_Salem',
+  'America/Ojinaga',
+  'America/Panama',
+  'America/Paramaribo',
+  'America/Phoenix',
+  'America/Port-au-Prince',
+  'America/Port_of_Spain',
+  'America/Porto_Velho',
+  'America/Puerto_Rico',
+  'America/Punta_Arenas',
+  'America/Rankin_Inlet',
+  'America/Recife',
+  'America/Regina',
+  'America/Resolute',
+  'America/Rio_Branco',
+  'America/Santarem',
+  'America/Santiago',
+  'America/Santo_Domingo',
+  'America/Sao_Paulo',
+  'America/Scoresbysund',
+  'America/Sitka',
+  'America/St_Barthelemy',
+  'America/St_Johns',
+  'America/St_Kitts',
+  'America/St_Lucia',
+  'America/St_Thomas',
+  'America/St_Vincent',
+  'America/Swift_Current',
+  'America/Tegucigalpa',
+  'America/Thule',
+  'America/Tijuana',
+  'America/Toronto',
+  'America/Tortola',
+  'America/Vancouver',
+  'America/Whitehorse',
+  'America/Winnipeg',
+  'America/Yakutat',
+  'Antarctica/Casey',
+  'Antarctica/Davis',
+  'Antarctica/DumontDUrville',
+  'Antarctica/Macquarie',
+  'Antarctica/Mawson',
+  'Antarctica/McMurdo',
+  'Antarctica/Palmer',
+  'Antarctica/Rothera',
+  'Antarctica/Syowa',
+  'Antarctica/Troll',
+  'Antarctica/Vostok',
+  'Arctic/Longyearbyen',
+  'Asia/Aden',
+  'Asia/Almaty',
+  'Asia/Amman',
+  'Asia/Anadyr',
+  'Asia/Aqtau',
+  'Asia/Aqtobe',
+  'Asia/Ashgabat',
+  'Asia/Atyrau',
+  'Asia/Baghdad',
+  'Asia/Bahrain',
+  'Asia/Baku',
+  'Asia/Bangkok',
+  'Asia/Barnaul',
+  'Asia/Beirut',
+  'Asia/Bishkek',
+  'Asia/Brunei',
+  'Asia/Calcutta',
+  'Asia/Chita',
+  'Asia/Colombo',
+  'Asia/Damascus',
+  'Asia/Dhaka',
+  'Asia/Dili',
+  'Asia/Dubai',
+  'Asia/Dushanbe',
+  'Asia/Famagusta',
+  'Asia/Gaza',
+  'Asia/Hebron',
+  'Asia/Hong_Kong',
+  'Asia/Hovd',
+  'Asia/Ho_Chi_Minh',
+  'Asia/Irkutsk',
+  'Asia/Jakarta',
+  'Asia/Jayapura',
+  'Asia/Jerusalem',
+  'Asia/Kabul',
+  'Asia/Kamchatka',
+  'Asia/Karachi',
+  'Asia/Kathmandu',
+  'Asia/Katmandu',
+  'Asia/Khandyga',
+  'Asia/Kolkata',
+  'Asia/Krasnoyarsk',
+  'Asia/Kuala_Lumpur',
+  'Asia/Kuching',
+  'Asia/Kuwait',
+  'Asia/Macau',
+  'Asia/Magadan',
+  'Asia/Makassar',
+  'Asia/Manila',
+  'Asia/Muscat',
+  'Asia/Nicosia',
+  'Asia/Novokuznetsk',
+  'Asia/Novosibirsk',
+  'Asia/Omsk',
+  'Asia/Oral',
+  'Asia/Phnom_Penh',
+  'Asia/Pontianak',
+  'Asia/Pyongyang',
+  'Asia/Qatar',
+  'Asia/Qostanay',
+  'Asia/Qyzylorda',
+  'Asia/Rangoon',
+  'Asia/Riyadh',
+  'Asia/Saigon',
+  'Asia/Sakhalin',
+  'Asia/Samarkand',
+  'Asia/Seoul',
+  'Asia/Shanghai',
+  'Asia/Singapore',
+  'Asia/Srednekolymsk',
+  'Asia/Taipei',
+  'Asia/Tashkent',
+  'Asia/Tbilisi',
+  'Asia/Tehran',
+  'Asia/Thimphu',
+  'Asia/Tokyo',
+  'Asia/Tomsk',
+  'Asia/Ulaanbaatar',
+  'Asia/Urumqi',
+  'Asia/Ust-Nera',
+  'Asia/Vientiane',
+  'Asia/Vladivostok',
+  'Asia/Yakutsk',
+  'Asia/Yangon',
+  'Asia/Yekaterinburg',
+  'Asia/Yerevan',
+  'Atlantic/Azores',
+  'Atlantic/Bermuda',
+  'Atlantic/Canary',
+  'Atlantic/Cape_Verde',
+  'Atlantic/Faeroe',
+  'Atlantic/Madeira',
+  'Atlantic/Reykjavik',
+  'Atlantic/South_Georgia',
+  'Atlantic/St_Helena',
+  'Atlantic/Stanley',
+  'Australia/Adelaide',
+  'Australia/Brisbane',
+  'Australia/Broken_Hill',
+  'Australia/Darwin',
+  'Australia/Eucla',
+  'Australia/Hobart',
+  'Australia/Lindeman',
+  'Australia/Lord_Howe',
+  'Australia/Melbourne',
+  'Australia/Perth',
+  'Australia/Sydney',
+  'Europe/Amsterdam',
+  'Europe/Andorra',
+  'Europe/Astrakhan',
+  'Europe/Athens',
+  'Europe/Belgrade',
+  'Europe/Berlin',
+  'Europe/Bratislava',
+  'Europe/Brussels',
+  'Europe/Bucharest',
+  'Europe/Budapest',
+  'Europe/Busingen',
+  'Europe/Chisinau',
+  'Europe/Copenhagen',
+  'Europe/Dublin',
+  'Europe/Gibraltar',
+  'Europe/Guernsey',
+  'Europe/Helsinki',
+  'Europe/Isle_of_Man',
+  'Europe/Istanbul',
+  'Europe/Jersey',
+  'Europe/Kaliningrad',
+  'Europe/Kiev',
+  'Europe/Kyiv',
+  'Europe/Kirov',
+  'Europe/Lisbon',
+  'Europe/Ljubljana',
+  'Europe/London',
+  'Europe/Luxembourg',
+  'Europe/Madrid',
+  'Europe/Malta',
+  'Europe/Mariehamn',
+  'Europe/Minsk',
+  'Europe/Monaco',
+  'Europe/Moscow',
+  'Europe/Oslo',
+  'Europe/Paris',
+  'Europe/Podgorica',
+  'Europe/Prague',
+  'Europe/Riga',
+  'Europe/Rome',
+  'Europe/Samara',
+  'Europe/San_Marino',
+  'Europe/Sarajevo',
+  'Europe/Saratov',
+  'Europe/Simferopol',
+  'Europe/Skopje',
+  'Europe/Sofia',
+  'Europe/Stockholm',
+  'Europe/Tallinn',
+  'Europe/Tirane',
+  'Europe/Ulyanovsk',
+  'Europe/Vaduz',
+  'Europe/Vatican',
+  'Europe/Vienna',
+  'Europe/Vilnius',
+  'Europe/Volgograd',
+  'Europe/Warsaw',
+  'Europe/Zagreb',
+  'Europe/Zurich',
+  'Indian/Antananarivo',
+  'Indian/Chagos',
+  'Indian/Christmas',
+  'Indian/Cocos',
+  'Indian/Comoro',
+  'Indian/Kerguelen',
+  'Indian/Mahe',
+  'Indian/Maldives',
+  'Indian/Mauritius',
+  'Indian/Mayotte',
+  'Indian/Reunion',
+  'Pacific/Apia',
+  'Pacific/Auckland',
+  'Pacific/Bougainville',
+  'Pacific/Chatham',
+  'Pacific/Easter',
+  'Pacific/Efate',
+  'Pacific/Enderbury',
+  'Pacific/Fakaofo',
+  'Pacific/Fiji',
+  'Pacific/Funafuti',
+  'Pacific/Galapagos',
+  'Pacific/Gambier',
+  'Pacific/Guadalcanal',
+  'Pacific/Guam',
+  'Pacific/Honolulu',
+  'Pacific/Kiritimati',
+  'Pacific/Kosrae',
+  'Pacific/Kwajalein',
+  'Pacific/Majuro',
+  'Pacific/Marquesas',
+  'Pacific/Midway',
+  'Pacific/Nauru',
+  'Pacific/Niue',
+  'Pacific/Norfolk',
+  'Pacific/Noumea',
+  'Pacific/Pago_Pago',
+  'Pacific/Palau',
+  'Pacific/Pitcairn',
+  'Pacific/Ponape',
+  'Pacific/Port_Moresby',
+  'Pacific/Rarotonga',
+  'Pacific/Saipan',
+  'Pacific/Tahiti',
+  'Pacific/Tarawa',
+  'Pacific/Tongatapu',
+  'Pacific/Truk',
+  'Pacific/Wake',
+  'Pacific/Wallis',
+  'UTC',
+] as const;
+
+/**
+ * Complete list of all canonical IANA timezones, enriched dynamically from runtime Intl API if available.
+ */
+export const ALL_IANA_TIMEZONES: readonly string[] = (() => {
+  try {
+    if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+      const runtimeZones = Intl.supportedValuesOf('timeZone');
+      if (runtimeZones && runtimeZones.length > 0) {
+        const merged = new Set([
+          ...BASE_IANA_TIMEZONES,
+          ...runtimeZones,
+          'Asia/Kolkata',
+          'Asia/Kathmandu',
+          'Asia/Ho_Chi_Minh',
+          'Asia/Yangon',
+          'Europe/Kyiv',
+          'UTC',
+        ]);
+        return Array.from(merged).filter(isValidTimezone).sort();
+      }
+    }
+  } catch {
+    // Fall back to BASE_IANA_TIMEZONES on non-supporting runtimes
+  }
+  return BASE_IANA_TIMEZONES.filter(isValidTimezone);
+})();
+
+/**
+ * Complete union of all global timezones: GMT offsets (-12:00 to +14:00) and all canonical IANA timezones.
+ */
+export const ALL_TIMEZONES: readonly string[] = [...GMT_OFFSETS, ...ALL_IANA_TIMEZONES];
+
+export interface TimezoneOption {
+  value: string;
+  label: string;
+}
+
+export interface TimezoneGroup {
+  label: string;
+  options: TimezoneOption[];
+}
+
+const ALL_TIMEZONES_SET = new Set<string>([...GMT_OFFSETS, ...ALL_IANA_TIMEZONES]);
+
+/**
+ * Checks whether the given string is recognized in our comprehensive timezone catalog or valid in Luxon.
+ */
+export function isKnownTimezone(zoneStr: string | null | undefined): boolean {
+  if (!zoneStr || typeof zoneStr !== 'string') return false;
+  const clean = zoneStr.trim();
+  return ALL_TIMEZONES_SET.has(clean) || isValidTimezone(clean);
+}
+
+/**
+ * Normalizes a user search query for offset matching (e.g. "+5", "-5", "GMT+5", "+5:30").
+ */
+function normalizeOffsetQuery(q: string): { isOffset: boolean; sign?: string; h?: string; m?: string } {
+  const trimmed = q.trim().toLowerCase();
+  const offsetMatch = trimmed.match(/^(?:gmt|utc)?([+-])(\d{1,2})(?::?(\d{2}))?$/i);
+  if (offsetMatch) {
+    const sign = offsetMatch[1];
+    const h = String(parseInt(offsetMatch[2], 10)).padStart(2, '0');
+    const m = offsetMatch[3] ? offsetMatch[3] : '';
+    return { isOffset: true, sign, h, m };
+  }
+  return { isOffset: false };
+}
+
+/**
+ * Matches a timezone identifier and formatted label against a search query.
+ */
+export function matchesTimezoneQuery(value: string, label: string, query: string): boolean {
+  if (!query || !query.trim()) return true;
+  const nq = normalizeOffsetQuery(query);
+  const lowerLabel = label.toLowerCase();
+  const lowerValue = value.toLowerCase();
+  const cleanLabel = lowerLabel.replace(/_/g, ' ');
+  const cleanValue = lowerValue.replace(/_/g, ' ');
+
+  if (nq.isOffset && nq.sign && nq.h) {
+    if (nq.m) {
+      const fullOffset = nq.sign + nq.h + ':' + nq.m;
+      const shortOffset = nq.sign + parseInt(nq.h, 10) + ':' + nq.m;
+      return (
+        lowerLabel.includes(fullOffset) ||
+        lowerValue.includes(fullOffset) ||
+        lowerLabel.includes(shortOffset) ||
+        lowerValue.includes(shortOffset)
+      );
+    } else {
+      // Hour-only query: match a complete hour token (e.g. +01:, +1:, or token boundary)
+      // to avoid matching longer hour values such as +1 against +10..+14, while preserving
+      // partial-minute matches (e.g. +5 matching GMT+05:30)
+      const escapedSign = nq.sign === '+' ? '\\+' : '-';
+      const hourRegex = new RegExp(`(?:gmt|utc)?${escapedSign}(?:${nq.h}|${parseInt(nq.h, 10)})(?::|\\b|$)`, 'i');
+      return hourRegex.test(lowerLabel) || hourRegex.test(lowerValue);
+    }
+  }
+
+  const rawQ = query.toLowerCase().trim();
+  const qSpaced = rawQ.replace(/_/g, ' ');
+  return (
+    cleanLabel.includes(qSpaced) ||
+    cleanValue.includes(qSpaced) ||
+    lowerLabel.includes(rawQ) ||
+    lowerValue.includes(rawQ)
+  );
+}
+
+/**
+ * Builds categorized timezone groups for UI selection (Popular, GMT Offsets, Americas, Europe, Asia, Africa, Oceania, Other).
+ */
+export function getTimezoneGroups(): TimezoneGroup[] {
+  const commonOptions: TimezoneOption[] = COMMON_IANA_TIMEZONES.map((tz) => ({
+    value: tz,
+    label: `${tz} (${formatGmtOffset(tz)})`,
+  }));
+
+  const gmtOptions: TimezoneOption[] = GMT_OFFSETS.map((tz) => ({
+    value: tz,
+    label: tz,
+  }));
+
+  const americasOptions: TimezoneOption[] = ALL_IANA_TIMEZONES.filter((tz) =>
+    tz.startsWith('America/')
+  ).map((tz) => ({
+    value: tz,
+    label: `${tz} (${formatGmtOffset(tz)})`,
+  }));
+
+  const europeOptions: TimezoneOption[] = ALL_IANA_TIMEZONES.filter((tz) =>
+    tz.startsWith('Europe/')
+  ).map((tz) => ({
+    value: tz,
+    label: `${tz} (${formatGmtOffset(tz)})`,
+  }));
+
+  const asiaOptions: TimezoneOption[] = ALL_IANA_TIMEZONES.filter((tz) =>
+    tz.startsWith('Asia/')
+  ).map((tz) => ({
+    value: tz,
+    label: `${tz} (${formatGmtOffset(tz)})`,
+  }));
+
+  const africaOptions: TimezoneOption[] = ALL_IANA_TIMEZONES.filter((tz) =>
+    tz.startsWith('Africa/')
+  ).map((tz) => ({
+    value: tz,
+    label: `${tz} (${formatGmtOffset(tz)})`,
+  }));
+
+  const oceaniaOptions: TimezoneOption[] = ALL_IANA_TIMEZONES.filter(
+    (tz) => tz.startsWith('Australia/') || tz.startsWith('Pacific/')
+  ).map((tz) => ({
+    value: tz,
+    label: `${tz} (${formatGmtOffset(tz)})`,
+  }));
+
+  const otherOptions: TimezoneOption[] = ALL_IANA_TIMEZONES.filter(
+    (tz) =>
+      tz.startsWith('Atlantic/') ||
+      tz.startsWith('Indian/') ||
+      tz.startsWith('Antarctica/') ||
+      tz.startsWith('Arctic/') ||
+      tz === 'UTC'
+  ).map((tz) => ({
+    value: tz,
+    label: `${tz} (${formatGmtOffset(tz)})`,
+  }));
+
+  return [
+    { label: 'Popular Timezones', options: commonOptions },
+    { label: 'Standard GMT Offsets', options: gmtOptions },
+    { label: 'Americas', options: americasOptions },
+    { label: 'Europe', options: europeOptions },
+    { label: 'Asia', options: asiaOptions },
+    { label: 'Africa', options: africaOptions },
+    { label: 'Oceania & Pacific', options: oceaniaOptions },
+    { label: 'Atlantic, Indian & Polar', options: otherOptions },
+  ];
+}
+
+/**
+ * Filters timezone groups and their child options according to a search query.
+ */
+export function filterTimezoneGroups(groups: TimezoneGroup[], query: string): TimezoneGroup[] {
+  if (!query || !query.trim()) return groups;
+  return groups
+    .map((g) => ({
+      label: g.label,
+      options: g.options.filter((opt) => matchesTimezoneQuery(opt.value, opt.label, query)),
+    }))
+    .filter((g) => g.options.length > 0);
+}
+
 export type SleepBucket =
   | 'BEDTIME_NOW'
   | 'BEDTIME_GRACE'

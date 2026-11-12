@@ -1,5 +1,13 @@
 import { DateTime } from 'luxon';
 import { computeMemberState, checkCooldownPromotion, getSleepCycleDate } from '../src/lib/sleepEngine.ts';
+import {
+  acquireCronLock,
+  getCronLock,
+  recordCronLockDeliveredSub,
+  markCronLockCompleted,
+  releaseCronLock,
+  clearAllCronLocks,
+} from '../src/lib/cronDispatcher.ts';
 
 console.log('🧪 Starting Web Push Notification Engine & Cron Dispatcher Verification...\n');
 
@@ -189,7 +197,74 @@ const staleState = computeMemberState(sleeperMember, 'UTC', staleNowUtc);
 const isBedtimeDueStale = staleState.diffMinutes >= 0 && staleState.diffMinutes <= 30;
 assert(isBedtimeDueStale === false, 'Stale notification is strictly ignored beyond 30m lookback window (diff=45m)');
 
-// 5. Test Summary
+// 5. Distributed Cron Locks, Processing Leases & Crash Recovery
+console.log('\n--- 5. Cron Lock Leases, Crash Recovery & Duplicate Prevention ---');
+clearAllCronLocks();
+
+const testLockKey = 'notif:test-member-99:2026-11-09:BEDTIME_HIT';
+
+// Test 5A: Acquire short lease
+const acquired1 = await acquireCronLock(testLockKey, 300, {
+  member_id: 'test-member-99',
+  stage: 'BEDTIME_HIT',
+  local_date: '2026-11-09',
+  state: 'processing',
+  delivered_sub_ids: [],
+});
+assert(acquired1 === true, 'Initial 300-second processing lease acquired');
+
+// Test 5B: Concurrent worker is rejected while lease is active
+const acquiredConcurrent = await acquireCronLock(testLockKey, 300);
+assert(acquiredConcurrent === false, 'Concurrent runner is blocked while active processing lease is held');
+
+// Test 5C: Record delivered push subscription
+await recordCronLockDeliveredSub(testLockKey, 'sub-endpoint-device-1');
+const lockStateMidFlight = await getCronLock(testLockKey);
+const deliveredList = lockStateMidFlight?.metadata?.delivered_sub_ids;
+assert(
+  Array.isArray(deliveredList) && deliveredList.includes('sub-endpoint-device-1'),
+  'Delivered sub-endpoint recorded in lock metadata during processing'
+);
+
+// Test 5D: Simulated worker crash & recovery after short lease expiration
+// Manually expire the lock to simulate 5-minute lease timeout
+const memLock = await getCronLock(testLockKey);
+if (memLock) {
+  memLock.expiresAt = Date.now() - 1000; // Expired 1 second ago
+}
+
+// Recovery worker attempts to acquire lock
+const recovered = await acquireCronLock(testLockKey, 300, {
+  member_id: 'test-member-99',
+  stage: 'BEDTIME_HIT',
+  local_date: '2026-11-09',
+  state: 'processing',
+});
+assert(recovered === true, 'Recovery worker successfully re-acquires expired lease after previous worker crash');
+
+const recoveredLock = await getCronLock(testLockKey);
+const recoveredSubs = recoveredLock?.metadata?.delivered_sub_ids;
+assert(
+  Array.isArray(recoveredSubs) && recoveredSubs.includes('sub-endpoint-device-1'),
+  'Previous delivered subscription preserved during recovery lease renewal to prevent duplicate delivery'
+);
+
+// Test 5E: Mark completed seals with 24-hour durable lock
+await markCronLockCompleted(testLockKey, { member_id: 'test-member-99', stage: 'BEDTIME_HIT' });
+const completedLock = await getCronLock(testLockKey);
+assert(completedLock?.metadata?.completed === true, 'Lock marked completed: true');
+assert(completedLock?.metadata?.state === 'completed', 'Lock state marked completed');
+
+// Test 5F: Subsequent worker blocked even after time passes because cycle is completed
+const tryAfterCompletion = await acquireCronLock(testLockKey, 300);
+assert(tryAfterCompletion === false, 'Cannot re-acquire lock once marked durably completed');
+
+// Test 5G: Release lock
+await releaseCronLock(testLockKey);
+const lockAfterRelease = await getCronLock(testLockKey);
+assert(lockAfterRelease === null, 'Lock successfully cleared on releaseCronLock');
+
+// 6. Test Summary
 console.log('\n-----------------------------------------------------------');
 if (failed) {
   console.error('❌ SOME TESTS FAILED!');

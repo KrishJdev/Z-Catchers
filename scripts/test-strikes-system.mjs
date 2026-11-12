@@ -457,10 +457,14 @@ async function run() {
   assert(pinCheck.allowed === true, 'PIN rate limit remains allowed and unaffected by voter rate limit');
 
   // 7D: Batched Recent Eligible Strikes Database-Backed Integration Test
+  const runnerMode = process.env.RUNNER_MODE || (process.argv.includes('--all') ? 'all' : 'unit');
+  const isAllMode = runnerMode === 'all';
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const hasCredentials = Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'));
+  const isSupabaseLive = isAllMode && hasCredentials;
 
-  if (supabaseUrl && supabaseKey) {
+  if (isSupabaseLive) {
     console.log('\n--- 7D: Database-Backed Batched Recent Eligible Strikes Integration Test ---');
     const { createClient } = await import('@supabase/supabase-js');
     const dbAdmin = createClient(supabaseUrl, supabaseKey);

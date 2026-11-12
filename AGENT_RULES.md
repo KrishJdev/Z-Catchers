@@ -113,8 +113,9 @@ z-catchers/
 
 Whenever you complete a milestone from `PROJECT_SPEC.md`:
 1. **Type & Build Check:** Run `tsc --noEmit` (or `npm run build`) and fix any TypeScript or bundling errors immediately.
-2. **Timezone Sanity Check:** Verify that the seed data includes members in at least 4 distinct timezones (including `Asia/Kolkata` for half-hour UTC offsets like $\text{UTC}+5\text{:}30$) and confirm their status buckets render accurately.
-3. **Responsive & Mascot Verification:** Ensure both mobile viewport (< 768px) and desktop viewport (≥ 768px) render cleanly with the Fox mascot visible and multi-column grid functioning properly.
+2. **Mandatory Unit Tests:** Every feature or endpoint that is implemented **must** have corresponding automated unit tests. Run `npm run test:unit` and verify all suites pass cleanly before concluding your task or opening a PR.
+3. **Timezone Sanity Check:** Verify that the seed data includes members in at least 4 distinct timezones (including `Asia/Kolkata` for half-hour UTC offsets like $\text{UTC}+5\text{:}30$) and confirm their status buckets render accurately.
+4. **Responsive & Mascot Verification:** Ensure both mobile viewport (< 768px) and desktop viewport (≥ 768px) render cleanly with the Fox mascot visible and multi-column grid functioning properly.
 
 ---
 

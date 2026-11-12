@@ -14,6 +14,7 @@
 4. **Sleep Shield:** Never send push notifications to any member currently inside their 8-hour sleep window.
 5. **Discord URL Sanitization:** Enforce the regex `^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$` for all journal links.
 6. **Warm Dark UI:** Strictly adhere to the Warm Dark low-blue-light design system (`#120F0D` background, `#F5EBE1` text) and include the Sleepy Fox mascot.
+7. **Mandatory Unit Tests:** Every feature that is implemented **must** have corresponding automated unit tests. Never consider a feature complete or merge-ready without automated test coverage (`npm run test:unit` must pass cleanly).
 
 ---
 
@@ -27,7 +28,7 @@
 1. **Header Metadata:**
    * Update the `Last Updated` ISO timestamp.
    * Verify and record the active working branch (`krish`).
-   * Record the latest commit hash and verification check result (`npx tsc --noEmit`).
+   * Record the latest commit hash and verification check results (`npx tsc --noEmit` and `npm run test:unit`).
 2. **Task Changelog:**
    * Summarize what was accomplished during the current task.
    * List all files created, modified, or deleted.

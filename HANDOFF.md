@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T02:40:00+05:30  
+> **Last Updated:** 2026-11-12T15:10:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 47653b3  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23)  
-> **Active Integration Pull Request:** [#25 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22)  
-> **Active Production Release Pull Request:** None (PR #22 merged into `main`)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 30/30 routes | `node scripts/test-wake-up-and-overflow.mjs` passed | `node scripts/test-nag-notifications.mjs` passed | `node scripts/test-in-bed-and-streaks.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
+> **Latest Commit:** 629cbae  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
+> **Active Integration Pull Request:** [#27 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
+> **Active Production Release Pull Request:** [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26)  
+> **Build Status:** Passing (`npm run typecheck` clean, 0 errors | `npm run build` clean, 26/26 routes | `npm run test:unit` clean, 19/19 suites passed | `npm run test:all` clean, 20/20 suites passed)
 
 ---
 
@@ -69,6 +69,200 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 58: Mandatory Unit Testing Directive in Agent Specifications
+* **Multi-Agent Directive Update (`AGENTS.md`):**
+  - Added Rule 7 to **Golden Operating Rules**: Every feature that is implemented **must** have corresponding automated unit tests. Features are never considered complete or merge-ready without automated test coverage (`npm run test:unit` must pass cleanly).
+  - Updated Section 2 (Mandatory Handoff Protocol) to mandate recording `npm run test:unit` verification results alongside `npx tsc --noEmit`.
+* **Agent Technical Guardrails Update (`AGENT_RULES.md`):**
+  - Updated Section 6 (Execution & Verification Protocol) with Step 2: "Mandatory Unit Tests: Every feature or endpoint that is implemented **must** have corresponding automated unit tests. Run `npm run test:unit` and verify all suites pass cleanly before concluding your task or opening a PR."
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified passing (19/19 suites passed cleanly).
+
+### Phase 57: CI Pipeline Test Runner TypeScript Loader, Node 22 & Offline CI Isolation Fixes
+* **TypeScript ESM Module Resolution in CI (`package.json`, `package-lock.json`):**
+  - Added `tsx` (`^4.23.15`) to `devDependencies` so Node.js environments can cleanly resolve and transpile TypeScript modules (`.ts` files like `src/lib/sleepEngine.ts`, `src/lib/auth.ts`, `src/lib/rateLimit.ts`) imported by `.mjs` test suites.
+  - Updated npm test scripts (`"test"`, `"test:unit"`, `"test:all"`) to invoke `node --import tsx scripts/run-tests.mjs ...`.
+* **Universal Test Subprocess Loader Propagation (`scripts/run-tests.mjs`):**
+  - Enhanced child process argument construction in `scripts/run-tests.mjs` to detect active TypeScript loaders (`tsx` or `strip-types`) in `process.execArgv` and forward them, or prepend `--import tsx` when spawning child test suites via `child_process.spawnSync`.
+  - Guarantees all 19 offline unit test suites run cleanly across local workstations and GitHub Actions CI without `ERR_UNKNOWN_FILE_EXTENSION` errors.
+* **Node.js 22 LTS CI Upgrade & WebSocket Polyfill (`.github/workflows/ci.yml`, `src/lib/db.ts`):**
+  - Upgraded GitHub Actions CI workflow to Node.js 22 LTS (`node-version: 22`), matching `@types/node: ^22.13.1` and satisfying `@supabase/supabase-js`'s requirement for native global `WebSocket`.
+  - Added a defensive `DummyWebSocket` polyfill in `src/lib/db.ts` for headless or Node < 22 environments where native WebSocket might be undefined, preventing client initialization crashes.
+* **Offline CI Test Isolation (`scripts/test-*.mjs`):**
+  - Audited all unit test suites (`test-login-and-auth.mjs`, `test-nag-notifications.mjs`, `test-strikes-system.mjs`, `test-signup-and-profiles.mjs`, `test-discord-webhook-and-assists.mjs`, `test-in-bed-and-streaks.mjs`, `test-phase1-pwa-push.mjs`).
+  - Added explicit check `Boolean(supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder') && !supabaseKey.includes('placeholder'))` so placeholder CI credentials safely skip external network database calls without assertion failures.
+* **Specification Sync (`BACKEND_TZ_PWA_SPEC.md`):**
+  - Updated Section 5 to reflect Node.js 22 runner environment and `node --import tsx` syntax.
+
+### Phase 56: Code Review & Security Hardening
+* **Timezone Selector Accessibility & Touch Target UX (`src/components/TimezoneSelect.tsx`):**
+  - Added default accessible name `aria-label="Timezone"` (with optional `ariaLabel` prop override) to `<select>`, ensuring screen readers and automated accessibility checkers can reliably identify the control when parent integrations lack an explicit `<label>`.
+  - Updated the clear filter button to meet WCAG 2.5.5 minimum 44x44px touch targets (`min-w-[44px] min-h-[44px] w-11 h-11 flex items-center justify-center`), positioned cleanly in the search control.
+  - Increased search input right padding to `pr-11` (44px) so input text does not overlap with the touch-accessible clear button.
+* **Cron Execution Lock Concurrency & Memory Hygiene (`src/lib/cronDispatcher.ts`):**
+  - Hardened `acquireCronLock` so database update or insert errors immediately delete provisional in-memory lock entries (`inMemoryCronLocks.delete(lockKey)`) before returning false, retaining the local lock only when the database confirms an active lock and its expiry.
+  - Conditioned lock renewal updates with `.lte('expires_at', nowIso)` and `.select('lock_key').maybeSingle()` to prevent race conditions where concurrent runners both renew expired locks simultaneously.
+* **Atomic Persistent Rate Limiting (`src/lib/rateLimit.ts`):**
+  - Implemented `atomicIncrementRateLimitKey` utilizing optimistic concurrency control (CAS) via `.eq('count', existing.count)` on updates, conditional window resets via `.lte('expires_at', nowIso)`, and retry loops handling concurrent first-attempt insert collisions.
+  - Applied atomic increments to both `recordPinFailurePersistent` and `recordVoteAttemptPersistent`.
+  - Preserved read idempotency and failure-only tracking semantics for `checkPinRateLimit` / `checkPinRateLimitPersistent`, avoiding premature rate limit exhaustion on valid PINs or read checks.
+* **Precise Timezone Search Query Filtering (`src/lib/sleepEngine.ts`):**
+  - Refined `matchesTimezoneQuery` so hour-only queries (`!nq.m`) match a complete hour token boundary via regex `(?:gmt|utc)?${escapedSign}(?:${nq.h}|${parseInt(nq.h, 10)})(?::|\\b|$)`, preventing queries like `+1` from false-positive matching `+10`..`+14` while preserving partial-minute matches like `+5` matching `GMT+05:30`.
+  - Filtered both merged runtime timezones and `BASE_IANA_TIMEZONES` fallback in `ALL_IANA_TIMEZONES` through `isValidTimezone`.
+* **Automated Verification (`scripts/test-gmt-timezones.mjs`):**
+  - Added assertions verifying `+1` matches `GMT+01:00` without matching `GMT+10:00`/`GMT+12:00`, `+5` matches `Asia/Kolkata` (`GMT+05:30`), and all `ALL_IANA_TIMEZONES` pass `isValidTimezone`.
+
+### Phase 55: Automated CI Pipeline & Unified Test Runner
+* **Helper Scripts Configuration (`package.json`):**
+  - Added `"typecheck": "tsc --noEmit"` for TypeScript static validation.
+  - Added `"test:unit": "node scripts/run-tests.mjs --unit"` executing all 19 offline unit/static test suites.
+  - Added `"test:all": "node scripts/run-tests.mjs --all"` executing all 20 verification suites including live DB integration tests.
+  - Added `"test": "node scripts/run-tests.mjs --unit"`.
+* **Cross-Platform Unified Test Runner (`scripts/run-tests.mjs`):**
+  - Built a fast, cross-platform runner that cleanly executes `.mjs` test suites via `child_process.spawnSync`.
+  - Categorized suites into offline standalone unit tests (19 suites) and live E2E database suites (`test-e2e-api-endpoints.mjs`).
+  - Summarizes execution timing, total suites, passes, and detailed failure outputs.
+* **Offline Fallback Hardening (`scripts/test-phase1-security.mjs`):**
+  - Added automatic `.env.local` parser and graceful offline handling: runs pure unit tests (`sanitizeMember`) and skips remote database checks when Supabase credentials are not configured.
+* **Automated GitHub Actions CI Workflow (`.github/workflows/ci.yml`):**
+  - Configured CI pipeline triggered on `push` (to `main`, `dev`, `krish`) and `pull_request` (to `main`, `dev`).
+  - Pipeline executes: checkout, Node.js 20 setup with npm cache, `npm ci`, `npm run typecheck`, `npm run build` (with safe dummy env vars), and `npm run test:unit`.
+* **Verification Check:**
+  - `npm run typecheck`: clean, 0 errors.
+  - `npm run build`: compiled all 26/26 routes cleanly.
+  - `npm run test:unit`: all 19/19 suites passed in under 10 seconds.
+  - `npm run test:all`: all 20/20 suites passed cleanly.
+
+### Phase 54: Task 4 - Global IANA & GMT Timezones Expansion & Reusable Selector
+* **Comprehensive Global Timezone Catalog (`src/lib/sleepEngine.ts`, `src/lib/timezone.ts`):**
+  - Expanded timezone support from a restricted 35-item list to the full canonical IANA timezone database (424 canonical timezones and regional aliases) plus all standard GMT offsets (`GMT-12:00` to `GMT+14:00`).
+  - Added `BASE_IANA_TIMEZONES` guaranteeing complete cross-platform offline coverage for all inhabited continents and cities (Americas, Europe, Asia, Africa, Oceania, Pacific, Polar).
+  - Added runtime enrichment with `Intl.supportedValuesOf('timeZone')` for dynamic forward-compatibility.
+  - Implemented `ALL_TIMEZONES` uniting all canonical IANA zones with `GMT_OFFSETS`.
+  - Implemented `isKnownTimezone(zoneStr)` to recognize canonical zones, offsets, and valid Luxon specifiers.
+* **Intelligent Query Matching & Categorized Optgroups (`src/lib/sleepEngine.ts`):**
+  - Implemented `getTimezoneGroups()` generating 8 structured groups with live, DST-accurate GMT offset labels:
+    - `Popular Timezones` (Curated Discord community hotspots)
+    - `Standard GMT Offsets` (All 38 standard GMT / UTC offsets from -12:00 to +14:00)
+    - `Americas` (144 canonical cities and territories)
+    - `Europe` (58 canonical cities and territories)
+    - `Asia` (83 canonical cities and territories)
+    - `Africa` (52 canonical cities and territories)
+    - `Oceania & Pacific` (49 canonical cities and territories)
+    - `Atlantic, Indian & Polar` (34 canonical regions)
+  - Implemented `matchesTimezoneQuery(value, label, query)` and `filterTimezoneGroups(groups, query)` supporting intelligent search by city name, country/region, timezone ID, or offset (e.g. `karachi`, `london`, `new york`, `+5`, `-5`, `GMT+5:30`, `+5:30`).
+* **Reusable Searchable Timezone Selector Component (`src/components/TimezoneSelect.tsx`):**
+  - Created `<TimezoneSelect />` with real-time text filter and clear button styled strictly according to the Warm Dark design system (`#120F0D` bg, `#2A2421` border, `#F5EBE1` text, `#E89D47` amber focus).
+  - Guaranteed zero loss or accidental modification of existing user timezones: if a user's current timezone is not in the filtered results or represents a custom/legacy zone, it is automatically pinned at the top as an active option (`[Current Selection]`), preventing any accidental changes or form overrides.
+* **Frontend Integration Across All Signup, Member & Mod Views:**
+  - `src/app/join/page.tsx`: Upgraded member onboarding/signup form to use `<TimezoneSelect />`, enabling friends in any global timezone or ±GMT offset to easily find or auto-detect their local timezone.
+  - `src/components/MyScheduleModal.tsx`: Upgraded member self-service schedule editor to use `<TimezoneSelect />`.
+  - `src/components/ModDrawer.tsx`: Upgraded both member schedule editing and new member creation forms to use `<TimezoneSelect />`.
+* **Zero Database Mutation of Existing User Timezones:**
+  - Strictly preserved all existing user timezones (`Asia/Tokyo`, `America/New_York`, `Europe/London`, `Asia/Kolkata`, etc.) without altering any database records or migrations.
+* **Expanded Timezone Test Suite (`scripts/test-gmt-timezones.mjs`):**
+  - Added test suites 8, 9, 10, and 11 verifying `ALL_IANA_TIMEZONES`, `ALL_TIMEZONES`, `getTimezoneGroups()`, `filterTimezoneGroups()` with city & offset queries, and verification that all existing user timezones remain valid and intact.
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run build` compiled all 26/26 routes cleanly.
+  - `node scripts/test-gmt-timezones.mjs` passed all 11 test suites.
+  - `node scripts/test-weekend-hours.mjs` passed all 32 tests.
+  - `node scripts/test-schedule-cooldown.mjs` passed all 14 tests.
+  - `node scripts/test-wake-up-and-overflow.mjs` passed cleanly.
+  - `node scripts/test-strikes-system.mjs` passed cleanly.
+
+### Phase 54: CodeRabbit Review Findings Resolution Across CI, Rate-Limiting, Cron Leases & Test Isolation
+* **GitHub Actions CI Security Hardening (`.github/workflows/ci.yml`):**
+  - Added top-level `permissions: contents: read` block restricting default workflow token scopes to read-only.
+  - Added `with: persist-credentials: false` under `actions/checkout@v4` preventing token persistence in local runner git config.
+* **Documented Setup & Copyable Migration RLS Enforcement (`BACKEND_TZ_PWA_SPEC.md`, `HANDOFF.md`):**
+  - Added `ALTER TABLE ENABLE ROW LEVEL SECURITY`, `REVOKE ALL FROM anon, authenticated`, `GRANT ALL TO service_role`, and service-role policies for both `public.rate_limits` and `public.cron_locks` in `BACKEND_TZ_PWA_SPEC.md` and `HANDOFF.md`.
+* **Rate Limiter OCC Retry Exhaustion Protection (`src/lib/rateLimit.ts`):**
+  - Defined and exported `RateLimitConflictError` with code `RATE_LIMIT_RETRY_EXHAUSTED` and key context.
+  - Increased compare-and-swap (CAS) retry attempts to 5 with jittered exponential backoff in `atomicIncrementRateLimitKey`.
+  - Threw `RateLimitConflictError` upon retry exhaustion instead of discarding attempts, and propagated the error through `recordPinFailurePersistent` and `recordVoteAttemptPersistent`.
+  - Added comprehensive automated unit tests in `scripts/test-pin-rate-limiting.mjs` verifying OCC conflict simulation and error propagation.
+* **Cron Dispatcher Short Processing Leases & Crash Recovery (`src/lib/cronDispatcher.ts`):**
+  - Reduced initial lock lease during active notification dispatch from 24 hours to 5 minutes (`NOTIFICATION_LEASE_SECONDS = 300`), eliminating 24-hour lockout stalls when serverless runners crash mid-dispatch.
+  - Added incremental delivery tracking (`delivered_sub_ids`) in lock metadata for personal notifications, community nag alerts, and Discord webhooks.
+  - Preserved previously delivered targets across worker crash-recovery renewals so recovered runs never send duplicate push notifications.
+  - Upgraded completed dispatches to durable 24-hour locks with `completed: true` via `markCronLockCompleted`.
+  - Added automated unit test suite in `scripts/test-push-and-cron.mjs` verifying lease acquisition, worker crash recovery, duplicate prevention, and durable completion sealing.
+* **Offline Test Suite Isolation & Explicit Integration Opt-In (`scripts/`):**
+  - Updated `scripts/run-tests.mjs` to inject `RUNNER_MODE: mode` into child test process environments.
+  - Updated `scripts/test-phase1-security.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/test-discord-webhook-and-assists.mjs`, `scripts/test-in-bed-and-streaks.mjs`, `scripts/test-nag-notifications.mjs`, `scripts/test-signup-and-profiles.mjs`, `scripts/test-strikes-system.mjs`, and `scripts/test-phase1-pwa-push.mjs` to require both explicit `RUNNER_MODE === 'all'` opt-in AND real credentials, ensuring `npm run test:unit` is 100% offline and never writes to Supabase even when `.env.local` exists.
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 19/19 test suites passing (11.44s).
+
+### Phase 53: Task 3 - Database-Backed Rate Limiting & Cron Idempotency Locks
+* **Database Schema Enhancement (`supabase/schema.sql`, `src/lib/db.ts`):**
+  - Added `public.rate_limits` table with indexes (`idx_rate_limits_expires_at`) for persistent serverless rate limiting.
+  - Added `public.cron_locks` table with indexes (`idx_cron_locks_expires_at`) for distributed execution locks and notification idempotency.
+  - Added Row-Level Security (RLS) policies for `rate_limits` and `cron_locks` with service-role full access.
+  - Added `RateLimitRow` and `CronLockRow` interfaces to `src/lib/db.ts`.
+* **Database-Backed Rate Limiter Refactor (`src/lib/rateLimit.ts`):**
+  - Upgraded rate limiter to query and store attempt counts and lockouts in the `rate_limits` table via `src/lib/db.ts`.
+  - Maintained synchronized dual-layer caching (global in-memory map + Supabase persistence) with graceful offline fallback for unit tests and local development.
+  - Preserved 100% backward-compatible function signatures across synchronous and async callers (`checkPinRateLimit`, `checkPinRateLimitPersistent`, `recordPinFailure`, `recordPinFailurePersistent`, `resetPinFailure`, `checkVoteRateLimitPersistent`, etc.).
+  - Added opportunistic pruning of expired rate limit rows.
+* **Cron Dispatcher Idempotency Locks (`src/lib/cronDispatcher.ts`):**
+  - Implemented `acquireCronLock`, `releaseCronLock`, and `clearAllCronLocks` backed by `cron_locks` with in-memory fallback.
+  - Added 55-second window-level execution lock (`cron_window:<YYYY-MM-DDTHH:mm>`) to prevent duplicate runs when Vercel Cron and GitHub Actions fire within the same minute window.
+  - Added per-member 24-hour event idempotency locks (`notif:<member_id>:<date>:<event_type>`) ensuring zero duplicate Web Push notifications or Discord webhooks during retries or concurrent dispatches.
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run build` compiled all 26/26 routes cleanly.
+  - `node scripts/test-pin-rate-limiting.mjs` passed cleanly.
+  - `node scripts/test-push-and-cron.mjs` passed cleanly.
+  - `node scripts/test-strikes-system.mjs` passed cleanly.
+  - `node --env-file=.env.local scripts/test-phase1-security.mjs` passed cleanly.
+
+### Phase 52: Task 2 - Consolidate Redundant API Proxies into Canonical Endpoints
+* **API Proxy Redundancy Audit & Elimination:**
+  - Audited all occurrences of `/api/cron`, `/api/members/strike`, `/api/members/strikes/vote`, and `/api/members/metastrike` across `src/`, `scripts/`, `.github/workflows/`, and `vercel.json`.
+  - Confirmed `.github/workflows/cron-dispatcher.yml` and `vercel.json` already point directly to the canonical `/api/cron/dispatch-notifications` endpoint.
+  - Updated [`src/app/page.tsx`](file:///d:/Projects/Z%20Catchers/src/app/page.tsx#L597) to target canonical `/api/members/strikes` directly instead of `/api/members/strikes/vote`.
+  - Deleted redundant pass-through proxy routes and directories:
+    - `src/app/api/cron/route.ts` (proxied to `./dispatch-notifications/route`)
+    - `src/app/api/members/strike/route.ts` (proxied to `../strikes/route`)
+    - `src/app/api/members/strikes/vote/route.ts` (proxied to `../route`)
+    - `src/app/api/members/metastrike/route.ts` (proxied to `../strikes/metastrike/route`)
+* **Route Structure Consolidation:**
+  - Standardized canonical endpoints:
+    - Cron: `/api/cron/dispatch-notifications`
+    - Strikes: `/api/members/strikes`
+    - Metastrike: `/api/members/strikes/metastrike`
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run build` compiled all 26/26 static and dynamic routes cleanly.
+  - `node scripts/test-push-and-cron.mjs` passed cleanly.
+  - `node scripts/test-strikes-system.mjs` passed cleanly.
+
+### Phase 51: Task 1 - Metastrike Route Resolution & Standardization
+* **Metastrike Handler & Export Inspection (`src/app/api/members/strikes/metastrike/route.ts`):**
+  - Confirmed `src/app/api/members/strikes/metastrike/route.ts` is the canonical implementation exporting `POST`.
+* **Frontend and Codebase Audit:**
+  - Audited `src/components/MetastrikeModal.tsx`, `src/components/MemberCard.tsx`, `src/app/page.tsx`, `scripts/test-strikes-system.mjs`, and `scripts/test-e2e-api-endpoints.mjs`.
+  - Confirmed all active UI callers (`MetastrikeModal.tsx`) already target the canonical `/api/members/strikes/metastrike` route.
+* **Backward-Compatible Re-Export (`src/app/api/members/metastrike/route.ts`):**
+  - Verified `src/app/api/members/metastrike/route.ts` cleanly re-exports `POST` from `../strikes/metastrike/route` with zero typecheck or build errors.
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run build` compiled all 30/30 static and dynamic routes cleanly.
+  - `node scripts/test-strikes-system.mjs` passed cleanly.
+
+### Phase 50: Production Release PR #26 (`dev` → `main`)
+* **Production Release Pull Request Creation:**
+  * Created production release Pull Request [#26 (`dev` → `main`)](https://github.com/KrishJdev/Z-Catchers/pull/26) to promote verified features from Phase 49 into production (`main`).
+  * Encompasses sleeping state to awake undo action, early wake-up state machine override in `sleepEngine.ts`, `WOKE_UP` notification logging, moderator reset controls, hero greeting dynamic state, and symmetrical flexbox layout eliminating "Leave quiet note" overflow.
+* **Comprehensive Release Verification Check:**
+  * Clean zero-conflict tree merge verified between `origin/main` and `origin/dev`.
+  * `npx tsc --noEmit` verified clean with 0 errors.
+  * `npm run build` verified clean with all 30/30 static and dynamic routes compiled.
+  * All automated test suites executed and verified passing (`scripts/test-wake-up-and-overflow.mjs`, `scripts/test-nag-notifications.mjs`, `scripts/test-in-bed-and-streaks.mjs`, `scripts/test-strikes-system.mjs`).
 
 ### Phase 49: Sleeping State to Awake Undo Action & Leave Quiet Note Overflow Fix
 * **Problem Diagnosis & Root Cause:**
@@ -791,19 +985,28 @@ d:\Projects\Z Catchers\
 | **ZC-24**| Phase 40: Comprehensive Code Review Remediations, Session Owner Auth & A11y | **DONE** | Phase 40 |
 | **ZC-25**| Phase 41: Complete CodeRabbit Review Remediations & PR #17 Update | **DONE** | Phase 41 |
 | **ZC-26**| Phase 49: Sleeping State to Awake Undo Action & Leave Quiet Note Overflow Fix | **DONE** | PR #25 (Commit `4aa2d40`) |
+| **ZC-27**| Phase 54: Global IANA & GMT Timezones Expansion & Reusable Selector | **DONE** | Commit `95762f3` |
+| **ZC-28**| Phase 55: Immediate Codebase & Architectural Fixes (Tasks 1-5) | **DONE** | Commit `16de25b` |
+| **ZC-29**| Phase 57: CI Pipeline Test Runner TypeScript Loader Fix (`tsx`) | **DONE** | PR #27 |
 
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Review & Merge Active Integration Pull Request [#25 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/25):**
-   * Active PR: [#25 `fix(sleeping): add option to undo sleep state to awake and fix leave quiet note overflow`](https://github.com/KrishJdev/Z-Catchers/pull/25) targets `dev` from `krish`.
-   * Includes awake transition override in `sleepEngine.ts`, `WOKE_UP` notification logging & API endpoints, touch-friendly `[ ☀️ Wake Up (Undo) ]` buttons across dashboard banner, card body, action bar, and Mod Drawer, plus symmetrical flexbox layout eliminating "Leave quiet note" overflow.
-   * Verify CI and merge into `dev`.
+1. **Review & Merge Active Integration Pull Request (`krish` -> `dev`):**
+   * Active PR: `feat(timezone): add comprehensive global IANA timezones and GMT offsets selector` targets `dev` from `krish`.
+   * Integrates full canonical IANA timezone catalog (424 timezones) + all 38 standard GMT offsets, categorized `<optgroup>`s, real-time query filtering, and preservation of existing user timezones across `/join`, `MyScheduleModal.tsx`, and `ModDrawer.tsx`.
+   * Verify automated CI checks (`.github/workflows/ci.yml`) and merge into `dev`.
 
-2. **Database Migration Execution in Supabase SQL Editor:**
+2. **Review & Merge Active Production Release Pull Request [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26):**
+   * Active PR: [#26 `release: promote sleep state undo option and leave quiet note overflow fix to main`](https://github.com/KrishJdev/Z-Catchers/pull/26) targets `main` from `dev`.
+   * Promotes Phase 49 verified features (PR #25) into production: awake state machine transition, early wake-up/undo buttons, `WOKE_UP` notification logging, and "Leave quiet note" overflow fix.
+   * Verify CI and merge into `main`.
+
+3. **Database Migration Execution in Supabase SQL Editor:**
    * Run the idempotent migration block from `supabase/schema.sql` on the remote Supabase database:
      ```sql
+     -- Members table columns
      ALTER TABLE members ADD COLUMN IF NOT EXISTS discord_id TEXT;
      ALTER TABLE members ADD COLUMN IF NOT EXISTS is_moderator BOOLEAN DEFAULT FALSE;
      ALTER TABLE members ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE;
@@ -814,9 +1017,39 @@ d:\Projects\Z Catchers\
        END IF;
      END $$;
      CREATE INDEX IF NOT EXISTS idx_members_discord_id ON members(discord_id);
+
+     -- Persistent Rate Limiting Table
+     CREATE TABLE IF NOT EXISTS public.rate_limits (
+       key TEXT PRIMARY KEY,
+       count INTEGER NOT NULL DEFAULT 1,
+       window_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       expires_at TIMESTAMPTZ NOT NULL
+     );
+     CREATE INDEX IF NOT EXISTS idx_rate_limits_expires_at ON public.rate_limits (expires_at);
+
+     -- Cron Execution & Notification Idempotency Locks
+     CREATE TABLE IF NOT EXISTS public.cron_locks (
+       lock_key TEXT PRIMARY KEY,
+       locked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       expires_at TIMESTAMPTZ NOT NULL,
+       metadata JSONB DEFAULT '{}'::jsonb
+     );
+     CREATE INDEX IF NOT EXISTS idx_cron_locks_expires_at ON public.cron_locks (expires_at);
+
+     -- Row Level Security & Service Role Policies
+     ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
+     ALTER TABLE public.cron_locks ENABLE ROW LEVEL SECURITY;
+
+     DROP POLICY IF EXISTS "Service role full access on rate_limits" ON public.rate_limits;
+     CREATE POLICY "Service role full access on rate_limits" ON public.rate_limits
+       FOR ALL USING (auth.role() = 'service_role');
+
+     DROP POLICY IF EXISTS "Service role full access on cron_locks" ON public.cron_locks;
+     CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
+       FOR ALL USING (auth.role() = 'service_role');
      ```
 
-2. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
+4. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 

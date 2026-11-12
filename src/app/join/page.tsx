@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { FoxMascot } from '@/components/FoxMascot';
 import type { Member } from '@/lib/db';
 import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset } from '@/lib/timezone';
+import { TimezoneSelect } from '@/components/TimezoneSelect';
 import {
   setStoredAuthToken,
   setStoredAuthMember,
@@ -516,17 +517,11 @@ function JoinPageContent() {
                     <label className="block text-xs font-medium text-cream-secondary mb-1">
                       Your Local Timezone
                     </label>
-                    <select
+                    <TimezoneSelect
                       value={regTimezone}
-                      onChange={(e) => setRegTimezone(e.target.value)}
-                      className="w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-cream-primary text-sm focus:border-status-amber focus:outline-none"
-                    >
-                      {COMMON_IANA_TIMEZONES.map((tz) => (
-                        <option key={tz} value={tz}>
-                          {tz} ({formatGmtOffset(tz)})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setRegTimezone}
+                      selectClassName="w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-cream-primary text-sm focus:border-status-amber focus:outline-none"
+                    />
                   </div>
                 </div>
               )}
