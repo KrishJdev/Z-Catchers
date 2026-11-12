@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T15:40:00+05:30  
+> **Last Updated:** 2026-11-12T15:42:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -8,7 +8,7 @@
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
 > **Active Integration Pull Request:** None (all merged)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26)  
-> **Active Production Release Pull Request:** None (all merged)  
+> **Active Production Release Pull Request:** [#28 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
 > **Build Status:** Passing (`npm run typecheck` clean, 0 errors | `npm run build` clean, 26/26 routes | `npm run test:unit` clean, 19/19 suites passed | `npm run test:all` clean, 20/20 suites passed)
 
 ---
@@ -69,6 +69,33 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 60: Production Release Pull Request #28 (`dev` → `main`)
+* **Created Production Release PR #28:**
+  - Opened PR: [#28 `release: promote global IANA timezones, persistent rate limiting, cron idempotency locks, and CI pipeline to main`](https://github.com/KrishJdev/Z-Catchers/pull/28)
+  - Targets `main` from `dev`.
+  - Promotes all merged Phase 51 through Phase 59 features, security hardenings, and architectural improvements into production:
+    1. **Global IANA Timezone Catalog & Searchable GMT Offsets Selector:**
+       - Full 424 IANA timezone database and 38 GMT offsets (`GMT-12:00` to `GMT+14:00`).
+       - Categorized `<optgroup>`s with real-time query filtering.
+       - Reusable `<TimezoneSelect />` component ensuring zero mutation of existing user timezones.
+    2. **Persistent Supabase Rate Limiting & Distributed Cron Idempotency:**
+       - Persistent `rate_limits` table with sliding window and automatic DB cleanup.
+       - Distributed `cron_locks` table preventing duplicate background cron runs and overlapping push/Discord notifications.
+       - Idempotent database schema definitions in `supabase/schema.sql`.
+    3. **Canonical API Consolidation & Optimistic Concurrency:**
+       - Canonical endpoints for strike voting, strikes, and metastrikes with backward compatibility.
+       - Optimistic concurrency locking and precision timezone calculations.
+    4. **Unified CI/CD Pipeline & Automated Testing Suite:**
+       - GitHub Actions CI workflow (`.github/workflows/ci.yml`) on Node.js 22.
+       - Unified test runner (`scripts/run-tests.mjs`) with automated CI offline gating for live database calls.
+       - Mandatory unit testing directive codified in `AGENTS.md` and `AGENT_RULES.md`.
+    5. **CodeRabbit Review Hardening:**
+       - All CodeRabbit review findings resolved across rate limiting schemas, cron lease expiries, and test isolation.
+* **Verification & Merge Pre-Checks:**
+  - `git merge-tree origin/main origin/dev` confirmed 0 conflicts.
+  - `npx tsc --noEmit` clean (0 errors).
+  - `npm run test:unit` clean (all 19 test suites passed in 21.46s).
 
 ### Phase 59: GitHub & Jira Issue Status Audit and Lifecycle Synchronization
 * **GitHub Open Issues Audit & Completion:**
@@ -1018,7 +1045,17 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Refresh Atlassian Jira API Token in GitHub Secrets:**
+1. **Review & Merge Active Production Release Pull Request [#28 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/28):**
+   * Active PR: [#28 `release: promote global IANA timezones, persistent rate limiting, cron idempotency locks, and CI pipeline to main`](https://github.com/KrishJdev/Z-Catchers/pull/28) targets `main` from `dev`.
+   * Promotes all verified Phase 51–59 features:
+     - Global IANA timezones (424 zones) and 38 GMT offsets (`TimezoneSelect.tsx`).
+     - Persistent rate limiting (`rate_limits` table) & distributed cron idempotency leases (`cron_locks` table).
+     - Canonical API consolidation and backward-compatible endpoints.
+     - GitHub Actions CI workflow on Node.js 22 with automated test offline gating.
+   * Merge tree confirmed 0 conflicts (`git merge-tree origin/main origin/dev`).
+   * Verify CI workflow execution and merge into `main`.
+
+2. **Refresh Atlassian Jira API Token in GitHub Secrets:**
    * In GitHub Actions, the `Jira Issue Transition` workflow confirmed that the current secret `JIRA_TOKEN` returns HTTP 401 Unauthorized against `krishjaiswal2182003.atlassian.net`.
    * To automatically complete the remote Jira transition for keys `ZC-1`, `ZC-5`, `ZC-6`, `ZC-7`, `ZC-8`, `ZC-9`, and `ZC-10`:
      1. Generate an API token at: [Atlassian API Tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
