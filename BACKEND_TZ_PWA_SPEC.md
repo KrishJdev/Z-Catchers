@@ -115,7 +115,7 @@ CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
 -- 7. Sleep Logs Table (Historical Sleep & Wake Duration Records)
 CREATE TABLE IF NOT EXISTS public.sleep_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  member_id TEXT NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+  member_id UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
   cycle_date TEXT NOT NULL, -- "YYYY-MM-DD" in member's local IANA timezone representing the night's cycle
   timezone TEXT NOT NULL DEFAULT 'UTC',
   target_bedtime TEXT,      -- "HH:mm" scheduled bedtime for this cycle
@@ -133,8 +133,9 @@ CREATE TABLE IF NOT EXISTS public.sleep_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_sleep_logs_member_cycle ON public.sleep_logs (member_id, cycle_date DESC);
 ALTER TABLE public.sleep_logs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public read sleep_logs" ON public.sleep_logs FOR SELECT USING (true);
-CREATE POLICY "Service role full access sleep_logs" ON public.sleep_logs FOR ALL USING (auth.role() = 'service_role');
+DROP POLICY IF EXISTS "Public read sleep_logs" ON public.sleep_logs;
+DROP POLICY IF EXISTS "Public can view sleep logs" ON public.sleep_logs;
+CREATE POLICY "Service role full access on sleep_logs" ON public.sleep_logs FOR ALL USING (auth.role() = 'service_role');
 ```
 
 ---

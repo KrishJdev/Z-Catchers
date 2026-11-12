@@ -193,6 +193,7 @@ export function SleepCalendarModal({
       activeRequestRef.current = { memberId: mId, currentMonth: monthStr };
       setLoading(true);
       setError(null);
+      setData(null);
       try {
         const res = await fetch(
           `/api/members/sleep-history?memberId=${encodeURIComponent(mId)}&month=${encodeURIComponent(monthStr)}`

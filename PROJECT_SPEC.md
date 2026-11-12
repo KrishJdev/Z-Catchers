@@ -208,7 +208,7 @@ Stores daily sleep check-ins (`in_bed_at`), wake logs (`woke_up_at`), scheduled 
 ```sql
 CREATE TABLE IF NOT EXISTS public.sleep_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  member_id TEXT NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+  member_id UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
   cycle_date TEXT NOT NULL, -- "YYYY-MM-DD" in member's local IANA timezone representing the night's cycle
   timezone TEXT NOT NULL DEFAULT 'UTC',
   target_bedtime TEXT,      -- "HH:mm" scheduled bedtime for this cycle

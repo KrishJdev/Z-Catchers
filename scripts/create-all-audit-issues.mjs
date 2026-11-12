@@ -476,7 +476,9 @@ export async function createGitHubIssues() {
         const ex = existingMap.get(i.id);
         return ex ? { ...ex, ...i, ghUrl: ex.ghUrl, ghNumber: ex.ghNumber, jiraKey: ex.jiraKey, jiraUrl: ex.jiraUrl, remoteLinked: ex.remoteLinked } : i;
       });
-      fs.writeFileSync(mapFile, JSON.stringify(checkpointResults, null, 2), 'utf8');
+      const tmpMapFile = `${mapFile}.tmp`;
+      fs.writeFileSync(tmpMapFile, JSON.stringify(checkpointResults, null, 2), 'utf8');
+      fs.renameSync(tmpMapFile, mapFile);
     } catch (err) {
       hasError = true;
       console.error(`  -> Failed to create issue #${item.id}:`, err.message);

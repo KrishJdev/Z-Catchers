@@ -260,7 +260,9 @@ export async function syncAllToJira() {
         console.log(`  -> Created Jira issue: ${currentItem.jiraKey} (${currentItem.jiraUrl})`);
 
         // Atomically persist newly created Jira key checkpoint to file
-        fs.writeFileSync(finalMapFile, JSON.stringify(issuesList, null, 2), 'utf8');
+        const tmpFinalMapFile = `${finalMapFile}.tmp`;
+        fs.writeFileSync(tmpFinalMapFile, JSON.stringify(issuesList, null, 2), 'utf8');
+        fs.renameSync(tmpFinalMapFile, finalMapFile);
       } catch (err) {
         console.error(`  -> Failed for "${currentItem.title}":`, err.message);
         currentItem.error = err.message;

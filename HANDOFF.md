@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T02:13:00+05:30  
+> **Last Updated:** 2026-11-13T02:41:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `722efdf`  
+> **Latest Commit:** `cf6d614`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44)  
 > **Active Integration Pull Request:** [#49 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
@@ -69,6 +69,19 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 74: PR #49 Comprehensive Review Verification & Atomic Persistence Hardening
+* **Specification Documents Synchronization:**
+  - `BACKEND_TZ_PWA_SPEC.md` & `PROJECT_SPEC.md`: Changed `sleep_logs.member_id` from `TEXT` to `UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE` to match `members.id`.
+  - `BACKEND_TZ_PWA_SPEC.md`: Replaced legacy permissive public `SELECT` policy on `sleep_logs` with explicit drop and strict service-role-only policy (`Service role full access on sleep_logs`).
+* **Atomic Checkpoint Hardening:**
+  - `scripts/create-all-audit-issues.mjs` & `scripts/sync-audit-issues-to-jira.mjs`: Upgraded checkpoint map file writes to atomic replacement (`.tmp` write followed by `fs.renameSync`) to eliminate data corruption risks in case of abnormal script termination.
+* **Component UI & State Cleanup:**
+  - `src/components/SleepCalendarModal.tsx`: Added `setData(null)` immediately upon starting `fetchHistory` to prevent stale profile history from flashing while loading new data.
+* **Review Verification:**
+  - Audited all 51 CodeRabbit review comments across PR #49, verifying full satisfaction of data integrity, UX, timezone math, and security requirements.
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 25/25 test suites passing (14.77s).
 
 ### Phase 73: Prioritize Winding Down State Over Awake Status & Fix Status Pill
 * **Diagnosis of Discrepancy & Root Cause:**
