@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T03:25:00+05:30  
+> **Last Updated:** 2026-11-12T13:25:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** ab3957f  
+> **Latest Commit:** 792ae6f  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
-> **Active Integration Pull Request:** None  
+> **Active Integration Pull Request:** Pending creation from `krish` to `dev`  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
 > **Active Production Release Pull Request:** [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26)  
-> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `node scripts/test-wake-up-and-overflow.mjs` passed | `node scripts/test-nag-notifications.mjs` passed | `node scripts/test-in-bed-and-streaks.mjs` passed | `node scripts/test-login-and-auth.mjs` passed | `node scripts/test-logout-flow.mjs` passed | `node scripts/test-strikes-system.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-phase1-pwa-push.mjs` passed | `node scripts/test-profile-and-schedule-tab.mjs` passed)
+> **Build Status:** Passing (`tsc --noEmit` clean, 0 errors | `npm run build` clean, 26/26 routes | `node scripts/test-gmt-timezones.mjs` passed (11/11 test suites) | `node scripts/test-weekend-hours.mjs` passed | `node scripts/test-schedule-cooldown.mjs` passed | `node scripts/test-wake-up-and-overflow.mjs` passed | `node scripts/test-strikes-system.mjs` passed)
 
 ---
 
@@ -69,6 +69,44 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 54: Task 4 - Global IANA & GMT Timezones Expansion & Reusable Selector
+* **Comprehensive Global Timezone Catalog (`src/lib/sleepEngine.ts`, `src/lib/timezone.ts`):**
+  - Expanded timezone support from a restricted 35-item list to the full canonical IANA timezone database (424 canonical timezones and regional aliases) plus all standard GMT offsets (`GMT-12:00` to `GMT+14:00`).
+  - Added `BASE_IANA_TIMEZONES` guaranteeing complete cross-platform offline coverage for all inhabited continents and cities (Americas, Europe, Asia, Africa, Oceania, Pacific, Polar).
+  - Added runtime enrichment with `Intl.supportedValuesOf('timeZone')` for dynamic forward-compatibility.
+  - Implemented `ALL_TIMEZONES` uniting all canonical IANA zones with `GMT_OFFSETS`.
+  - Implemented `isKnownTimezone(zoneStr)` to recognize canonical zones, offsets, and valid Luxon specifiers.
+* **Intelligent Query Matching & Categorized Optgroups (`src/lib/sleepEngine.ts`):**
+  - Implemented `getTimezoneGroups()` generating 8 structured groups with live, DST-accurate GMT offset labels:
+    - `Popular Timezones` (Curated Discord community hotspots)
+    - `Standard GMT Offsets` (All 38 standard GMT / UTC offsets from -12:00 to +14:00)
+    - `Americas` (144 canonical cities and territories)
+    - `Europe` (58 canonical cities and territories)
+    - `Asia` (83 canonical cities and territories)
+    - `Africa` (52 canonical cities and territories)
+    - `Oceania & Pacific` (49 canonical cities and territories)
+    - `Atlantic, Indian & Polar` (34 canonical regions)
+  - Implemented `matchesTimezoneQuery(value, label, query)` and `filterTimezoneGroups(groups, query)` supporting intelligent search by city name, country/region, timezone ID, or offset (e.g. `karachi`, `london`, `new york`, `+5`, `-5`, `GMT+5:30`, `+5:30`).
+* **Reusable Searchable Timezone Selector Component (`src/components/TimezoneSelect.tsx`):**
+  - Created `<TimezoneSelect />` with real-time text filter and clear button styled strictly according to the Warm Dark design system (`#120F0D` bg, `#2A2421` border, `#F5EBE1` text, `#E89D47` amber focus).
+  - Guaranteed zero loss or accidental modification of existing user timezones: if a user's current timezone is not in the filtered results or represents a custom/legacy zone, it is automatically pinned at the top as an active option (`[Current Selection]`), preventing any accidental changes or form overrides.
+* **Frontend Integration Across All Signup, Member & Mod Views:**
+  - `src/app/join/page.tsx`: Upgraded member onboarding/signup form to use `<TimezoneSelect />`, enabling friends in any global timezone or ±GMT offset to easily find or auto-detect their local timezone.
+  - `src/components/MyScheduleModal.tsx`: Upgraded member self-service schedule editor to use `<TimezoneSelect />`.
+  - `src/components/ModDrawer.tsx`: Upgraded both member schedule editing and new member creation forms to use `<TimezoneSelect />`.
+* **Zero Database Mutation of Existing User Timezones:**
+  - Strictly preserved all existing user timezones (`Asia/Tokyo`, `America/New_York`, `Europe/London`, `Asia/Kolkata`, etc.) without altering any database records or migrations.
+* **Expanded Timezone Test Suite (`scripts/test-gmt-timezones.mjs`):**
+  - Added test suites 8, 9, 10, and 11 verifying `ALL_IANA_TIMEZONES`, `ALL_TIMEZONES`, `getTimezoneGroups()`, `filterTimezoneGroups()` with city & offset queries, and verification that all existing user timezones remain valid and intact.
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run build` compiled all 26/26 routes cleanly.
+  - `node scripts/test-gmt-timezones.mjs` passed all 11 test suites.
+  - `node scripts/test-weekend-hours.mjs` passed all 32 tests.
+  - `node scripts/test-schedule-cooldown.mjs` passed all 14 tests.
+  - `node scripts/test-wake-up-and-overflow.mjs` passed cleanly.
+  - `node scripts/test-strikes-system.mjs` passed cleanly.
 
 ### Phase 53: Task 3 - Database-Backed Rate Limiting & Cron Idempotency Locks
 * **Database Schema Enhancement (`supabase/schema.sql`, `src/lib/db.ts`):**
@@ -858,12 +896,18 @@ d:\Projects\Z Catchers\
 | **ZC-24**| Phase 40: Comprehensive Code Review Remediations, Session Owner Auth & A11y | **DONE** | Phase 40 |
 | **ZC-25**| Phase 41: Complete CodeRabbit Review Remediations & PR #17 Update | **DONE** | Phase 41 |
 | **ZC-26**| Phase 49: Sleeping State to Awake Undo Action & Leave Quiet Note Overflow Fix | **DONE** | PR #25 (Commit `4aa2d40`) |
+| **ZC-27**| Phase 54: Global IANA & GMT Timezones Expansion & Reusable Selector | **DONE** | Commit `95762f3` |
 
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Review & Merge Active Production Release Pull Request [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26):**
+1. **Review & Merge Active Integration Pull Request (`krish` -> `dev`):**
+   * Active PR: `feat(timezone): add comprehensive global IANA timezones and GMT offsets selector` targets `dev` from `krish`.
+   * Integrates full canonical IANA timezone catalog (424 timezones) + all 38 standard GMT offsets, categorized `<optgroup>`s, real-time query filtering, and preservation of existing user timezones across `/join`, `MyScheduleModal.tsx`, and `ModDrawer.tsx`.
+   * Verify automated CI checks and merge into `dev`.
+
+2. **Review & Merge Active Production Release Pull Request [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26):**
    * Active PR: [#26 `release: promote sleep state undo option and leave quiet note overflow fix to main`](https://github.com/KrishJdev/Z-Catchers/pull/26) targets `main` from `dev`.
    * Promotes Phase 49 verified features (PR #25) into production: awake state machine transition, early wake-up/undo buttons, `WOKE_UP` notification logging, and "Leave quiet note" overflow fix.
    * Verify CI and merge into `main`.
