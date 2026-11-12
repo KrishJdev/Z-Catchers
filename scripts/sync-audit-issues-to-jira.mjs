@@ -177,6 +177,12 @@ async function syncAllToJira() {
   const synchedResults = [];
 
   for (const item of issuesList) {
+    if (item.jiraKey) {
+      console.log(`[Item #${item.id}] Already synced: ${item.jiraKey} (${item.title.slice(0, 40)}...)`);
+      synchedResults.push(item);
+      continue;
+    }
+
     console.log(`[Item #${item.id}] Creating Jira issue for: "${item.title}"...`);
     try {
       const jiraResult = await createJiraIssue(item);

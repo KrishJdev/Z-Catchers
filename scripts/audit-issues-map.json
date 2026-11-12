@@ -3,7 +3,7 @@
     "id": 1,
     "priorityTag": "P1 - High",
     "jiraPriority": "High",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P1 - High] Security: Remove hardcoded fallback session secrets & dev PIN salt in production",
     "labels": [
       "security",
@@ -20,7 +20,7 @@
     "id": 2,
     "priorityTag": "P1 - High",
     "jiraPriority": "High",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P1 - High] Security: Fix unauthenticated push endpoint deletion in /api/push/unsubscribe",
     "labels": [
       "security",
@@ -38,7 +38,7 @@
     "id": 3,
     "priorityTag": "P1 - High",
     "jiraPriority": "High",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P1 - High] Security: Enforce database-backed persistent rate limiting in cancel-pending and push/subscribe",
     "labels": [
       "security",
@@ -55,7 +55,7 @@
     "id": 4,
     "priorityTag": "P1 - High",
     "jiraPriority": "High",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P1 - High] Security: Sanitize and validate x-forwarded-host in OAuth redirect base URL",
     "labels": [
       "security",
@@ -72,7 +72,7 @@
     "id": 5,
     "priorityTag": "P1 - High",
     "jiraPriority": "High",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P1 - High] Security: Prevent IDOR / unauthenticated claim in update-schedule when mod rate limit is exceeded",
     "labels": [
       "security",
@@ -89,7 +89,7 @@
     "id": 6,
     "priorityTag": "P2 - Medium",
     "jiraPriority": "Medium",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P2 - Medium] PWA / Notifications: Prevent race condition by recording nag deduplication before sending push",
     "labels": [
       "pwa",
@@ -106,7 +106,7 @@
     "id": 7,
     "priorityTag": "P2 - Medium",
     "jiraPriority": "Medium",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P2 - Medium] PWA / Push: Add Authorization Bearer header to push test and unsubscribe requests",
     "labels": [
       "pwa",
@@ -123,7 +123,7 @@
     "id": 8,
     "priorityTag": "P2 - Medium",
     "jiraPriority": "Medium",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P2 - Medium] Backend: Align nag-assist date calculation with getSleepCycleDate()",
     "labels": [
       "backend",
@@ -139,7 +139,7 @@
     "id": 9,
     "priorityTag": "P2 - Medium",
     "jiraPriority": "Medium",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P2 - Medium] PWA / Service Worker: Resolve notificationclick message dropping during tab navigation",
     "labels": [
       "pwa",
@@ -155,7 +155,7 @@
     "id": 10,
     "priorityTag": "P2 - Medium",
     "jiraPriority": "Medium",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P2 - Medium] Backend: Remove wake_time_local default destructuring to prevent schedule overwrites",
     "labels": [
       "backend",
@@ -171,7 +171,7 @@
     "id": 11,
     "priorityTag": "P3 - Medium",
     "jiraPriority": "Medium",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P3 - Medium] State Machine: Reconcile Sleep Shield active vs canVoteStrike in 60-480m overdue window",
     "labels": [
       "frontend",
@@ -188,7 +188,7 @@
     "id": 12,
     "priorityTag": "P3 - Low",
     "jiraPriority": "Low",
-    "issueTypeId": "10067",
+    "issueTypeId": "10071",
     "title": "[P3 - Low] State Machine: Enforce mutual exclusion between is_in_bed and is_woke_up flags",
     "labels": [
       "backend",
@@ -216,7 +216,9 @@
     "file": "src/components/ModDrawer.tsx",
     "body": "## Summary & Problem Statement\nThe moderator drawer caches the raw master moderator passcode in plaintext in browser `sessionStorage`.\n\n## Root Cause Analysis\n`src/components/ModDrawer.tsx#L141`:\n```typescript\nconst cached = sessionStorage.getItem('z_catchers_mod_passcode');\nif (cached) {\n  setPasscode(cached);\n  setIsUnlocked(true);\n}\n```\n\n## Impact & Failure Mode\n- Plaintext secret exposure: Any script running in the browser tab (such as third-party scripts or extensions) can access the master moderator secret.\n\n## Target Files & Line References\n- `src/components/ModDrawer.tsx` lines 138-147\n\n## Remediation Plan\n1. Rely on the server-authenticated session cookie with verified moderator role claims instead of caching the master passcode in plaintext.\n2. If temporary client-side caching is required, issue a short-lived signed moderator JWT.",
     "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/42",
-    "ghNumber": "42"
+    "ghNumber": "42",
+    "jiraKey": "ZC-14",
+    "jiraUrl": "https://krishjaiswal2182003.atlassian.net/browse/ZC-14"
   },
   {
     "id": 14,
@@ -232,6 +234,8 @@
     "file": "public/sw.js",
     "body": "## Summary & Problem Statement\nThe service worker caches Next.js static chunks using stale-while-revalidate under a static cache key (`z-catchers-shell-v1`), which does not automatically bust on new deployments.\n\n## Root Cause Analysis\n`public/sw.js#L4, L192-L206`:\n```javascript\nif (url.pathname.startsWith('/_next/static/')) { ... }\n```\nAssets are matched against cache first while revalidating in background. When a new deployment compiles with new chunk hashes, users can load stale JavaScript chunks.\n\n## Impact & Failure Mode\n- Installed PWA users can experience React hydration mismatches or `ChunkLoadError` on their first visit following a production deployment.\n\n## Target Files & Line References\n- `public/sw.js` lines 4, 192-206\n\n## Remediation Plan\n1. Use network-first caching for `_next/static/` with offline cache fallback, or incorporate a build timestamp / git commit hash into the cache name.",
     "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/43",
-    "ghNumber": "43"
+    "ghNumber": "43",
+    "jiraKey": "ZC-15",
+    "jiraUrl": "https://krishjaiswal2182003.atlassian.net/browse/ZC-15"
   }
 ]
