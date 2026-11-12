@@ -1,12 +1,13 @@
-const JIRA_DOMAIN = process.env.JIRA_DOMAIN || 'krishjaiswal2182003.atlassian.net';
-const JIRA_EMAIL = process.env.JIRA_EMAIL || 'krish.jaiswal2182003@gmail.com';
-const JIRA_TOKEN = process.env.JIRA_TOKEN;
+const JIRA_DOMAIN = (process.env.JIRA_DOMAIN || 'krishjaiswal2182003.atlassian.net').trim();
+const JIRA_EMAIL = (process.env.JIRA_EMAIL || 'krish.jaiswal2182003@gmail.com').trim();
+const JIRA_TOKEN = (process.env.JIRA_TOKEN || '').trim();
 
 if (!JIRA_TOKEN) {
   console.log('No JIRA_TOKEN set. If running locally, set JIRA_TOKEN to execute Jira transition.');
   process.exit(0);
 }
 
+console.log(`[Jira Auth Config] Email: ${JIRA_EMAIL} (len ${JIRA_EMAIL.length}), Token len: ${JIRA_TOKEN.length}, Token prefix: ${JIRA_TOKEN.slice(0, 4)}...`);
 const authHeader = 'Basic ' + Buffer.from(`${JIRA_EMAIL}:${JIRA_TOKEN}`).toString('base64');
 
 async function debugJira() {
