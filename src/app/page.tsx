@@ -12,6 +12,7 @@ import { ModDrawer } from '@/components/ModDrawer';
 import { PushModal } from '@/components/PushModal';
 import { BottomNav, type MobileNavTab } from '@/components/BottomNav';
 import { MetastrikeModal } from '@/components/MetastrikeModal';
+import { SleepCalendarModal } from '@/components/SleepCalendarModal';
 import { computeMemberState, MemberState } from '@/lib/sleepEngine';
 import { formatGmtOffset } from '@/lib/timezone';
 import {
@@ -36,6 +37,8 @@ import {
   Users,
   KeyRound,
   BedDouble,
+  Clock,
+  Calendar,
 } from 'lucide-react';
 
 const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
@@ -79,6 +82,15 @@ export default function HomePage() {
   // Dialog / Modal states: 'schedule' | 'mod' | 'push' | null
   const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | 'push' | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileNavTab>('roster');
+  const [calendarModalMemberId, setCalendarModalMemberId] = useState<string | null>(null);
+  const [calendarModalTab, setCalendarModalTab] = useState<'calendar' | 'timetable'>('calendar');
+  const [showHeroManualWake, setShowHeroManualWake] = useState(false);
+  const [heroManualWakeTime, setHeroManualWakeTime] = useState('07:30');
+
+  const handleOpenMemberProfile = useCallback((memberId: string, initialTab: 'calendar' | 'timetable' = 'calendar') => {
+    setCalendarModalMemberId(memberId);
+    setCalendarModalTab(initialTab);
+  }, []);
 
   // Throttled foreground refetch tracking ref
   const lastForegroundSyncRef = useRef<number>(0);
@@ -336,6 +348,63 @@ export default function HomePage() {
       setIsCheckingIn(false);
     }
   }, [fetchRoster, router]);
+
+  // Wake Up handler (Instant Button or Manual Time Entry)
+  const handleWakeUp = useCallback(
+    async (memberId: string, mode: 'button' | 'manual' = 'button', wokeUpTime?: string, cycleDate?: string) => {
+      try {
+        setIsCheckingIn(true);
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        const token = getStoredAuthToken();
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/members/wake-up', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ memberId, mode, wokeUpTime, cycleDate }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          setCurrentUser((prev) =>
+            prev && prev.id === memberId
+              ? { ...prev, is_in_bed: false, is_woke_up: true, last_woke_up_at: data.sleep_log?.woke_up_at }
+              : prev
+          );
+          setIsSleepShieldActive(false);
+          setShowHeroManualWake(false);
+          setToastMessage({
+            text:
+              data.message ||
+              (data.formatted_duration
+                ? `Good morning! Logged ${data.formatted_duration} of sleep.`
+                : 'Good morning! Wake-up logged.'),
+            type: 'success',
+          });
+          await fetchRoster();
+          return true;
+        } else if (res.status === 401) {
+          router.push('/join');
+          return false;
+        } else {
+          setToastMessage({
+            text: data.error || 'Failed to log wake-up.',
+            type: 'error',
+          });
+          return false;
+        }
+      } catch (err) {
+        console.error('Failed to log wake-up:', err);
+        setToastMessage({
+          text: err instanceof Error ? err.message : 'Network error logging wake-up.',
+          type: 'error',
+        });
+        return false;
+      } finally {
+        setIsCheckingIn(false);
+      }
+    },
+    [fetchRoster, router]
+  );
 
   // Cancel "I'm in Bed" / Wake Up undo check-in handler
   const handleCancelInBed = useCallback(async (memberId: string) => {
@@ -795,26 +864,105 @@ export default function HomePage() {
 
               <div>
                 {/* Dynamic personalized greeting if viewer is claimed and near bedtime */}
-                {claimedMember && claimedMember.is_in_bed ? (
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div>
-                      <h2 className="text-sm font-bold tracking-wide text-status-amber sm:text-base">
-                        Goodnight, {claimedMember.discord_username}!
-                      </h2>
-                      <p className="text-xs text-cream-secondary sm:text-sm">
-                        You&apos;re safely tucked in. Sleep Shield active; community nags are suppressed.
-                      </p>
+                {claimedMember && (claimedMember.is_in_bed || claimedMemberState?.needsWakeUpLog || claimedMemberState?.bucket === 'SLEEPING') ? (
+                  <div className="flex flex-col gap-2.5">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div>
+                        <h2 className="text-sm font-bold tracking-wide text-status-amber sm:text-base">
+                          {claimedMember.is_in_bed ? `Goodnight, ${claimedMember.discord_username}!` : `Rise and shine, ${claimedMember.discord_username}!`}
+                        </h2>
+                        <p className="text-xs text-cream-secondary sm:text-sm">
+                          {claimedMember.is_in_bed
+                            ? "You're safely tucked in. Sleep Shield active; community nags are suppressed."
+                            : "Log your wake-up time to complete your sleep cycle and see duration stats."}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Primary Instant ☀️ I Woke Up Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleWakeUp(claimedMember.id, 'button')}
+                          disabled={isCheckingIn}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber text-night-bg px-3.5 h-11 min-h-[44px] text-xs font-bold hover:bg-status-amber/90 active:scale-95 transition-all whitespace-nowrap shadow-sm"
+                          title="Log wake-up right now"
+                        >
+                          <Sun className="h-4 w-4" />
+                          <span>☀️ I Woke Up</span>
+                        </button>
+
+                        {/* Secondary Enter Time Manually Button */}
+                        <button
+                          type="button"
+                          onClick={() => setShowHeroManualWake((prev) => !prev)}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3 h-11 min-h-[44px] text-xs font-semibold text-cream-secondary hover:text-cream-primary hover:border-night-border/80 active:scale-95 transition-all whitespace-nowrap"
+                          title="Enter exact wake-up time manually"
+                        >
+                          <Clock className="h-3.5 w-3.5 text-status-amber" />
+                          <span>Enter Time Manually</span>
+                        </button>
+
+                        {/* Undo check-in Option (only when actively in bed) */}
+                        {claimedMember.is_in_bed && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelInBed(claimedMember.id)}
+                            disabled={isCheckingIn}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 h-11 min-h-[44px] text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all whitespace-nowrap shadow-sm"
+                            title="Undo check-in (returns from sleeping state to awake)"
+                          >
+                            <Sun className="h-4 w-4" />
+                            <span>Undo check-in</span>
+                          </button>
+                        )}
+
+                        {/* View My Calendar */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenMemberProfile(claimedMember.id, 'calendar')}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3 h-11 min-h-[44px] text-xs font-medium text-cream-muted hover:text-cream-secondary active:scale-95 transition-all whitespace-nowrap"
+                          title="Open my sleep history calendar"
+                        >
+                          <Calendar className="h-3.5 w-3.5 text-status-amber" />
+                          <span>Calendar</span>
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCancelInBed(claimedMember.id)}
-                      disabled={isCheckingIn}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3.5 h-11 min-h-[44px] text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all whitespace-nowrap shadow-sm"
-                      title="Wake up and undo sleep status (returns from sleeping state to awake)"
-                    >
-                      <Sun className="h-4 w-4" />
-                      <span>Wake Up / Undo</span>
-                    </button>
+
+                    {/* Inline Manual Time Entry Form */}
+                    {showHeroManualWake && (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (!heroManualWakeTime) return;
+                          handleWakeUp(claimedMember.id, 'manual', heroManualWakeTime);
+                        }}
+                        className="flex items-center gap-2 p-2.5 rounded-xl bg-night-elevated/80 border border-night-border/70 flex-wrap"
+                      >
+                        <span className="text-xs font-semibold text-cream-secondary">What time did you wake up?</span>
+                        <input
+                          type="time"
+                          value={heroManualWakeTime}
+                          onChange={(e) => setHeroManualWakeTime(e.target.value)}
+                          required
+                          className="rounded-lg border border-night-border bg-night-surface px-2.5 py-1.5 text-xs text-cream-primary font-mono focus:border-status-amber focus:outline-none min-h-[44px]"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isCheckingIn}
+                          className="h-11 min-h-[44px] px-3.5 rounded-lg bg-status-amber text-xs font-bold text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all"
+                        >
+                          {isCheckingIn ? 'Saving...' : 'Save Wake Time'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowHeroManualWake(false)}
+                          className="h-11 min-h-[44px] px-3 rounded-lg border border-night-border text-xs font-medium text-cream-secondary hover:text-cream-primary"
+                        >
+                          Cancel
+                        </button>
+                      </form>
+                    )}
                   </div>
                 ) : claimedMember && claimedMember.is_woke_up ? (
                   <div className="flex items-center gap-3 flex-wrap">
@@ -826,16 +974,28 @@ export default function HomePage() {
                         You&apos;re marked as awake. Ready for today&apos;s adventures in the den!
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCheckIn(claimedMember.id)}
-                      disabled={isCheckingIn}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 h-11 min-h-[44px] text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 active:scale-95 transition-all whitespace-nowrap shadow-sm"
-                      title="Heading back to bed? Tap to silence outgoing community nag alerts."
-                    >
-                      <BedDouble className="h-4 w-4 text-status-amber" />
-                      <span>Back to Bed</span>
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleCheckIn(claimedMember.id)}
+                        disabled={isCheckingIn}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 h-11 min-h-[44px] text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 active:scale-95 transition-all whitespace-nowrap shadow-sm"
+                        title="Heading back to bed? Tap to silence outgoing community nag alerts."
+                      >
+                        <BedDouble className="h-4 w-4 text-status-amber" />
+                        <span>Back to Bed</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenMemberProfile(claimedMember.id, 'calendar')}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 h-11 min-h-[44px] text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 active:scale-95 transition-all whitespace-nowrap shadow-sm"
+                        title="View monthly sleep & wake calendar"
+                      >
+                        <Calendar className="h-4 w-4 text-status-amber" />
+                        <span>Sleep Calendar</span>
+                      </button>
+                    </div>
                   </div>
                 ) : claimedMember &&
                   claimedMemberState &&
@@ -1011,6 +1171,9 @@ export default function HomePage() {
                   onOpenMetastrike={handleOpenMetastrike}
                   isVotingStrike={isVotingStrike}
                   isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
+                  onOpenProfile={handleOpenMemberProfile}
+                  onOpenSleepCalendar={handleOpenMemberProfile}
+                  onWakeUp={handleWakeUp}
                 />
               ))}
             </StatusBucket>
@@ -1039,6 +1202,9 @@ export default function HomePage() {
                   onOpenMetastrike={handleOpenMetastrike}
                   isVotingStrike={isVotingStrike}
                   isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
+                  onOpenProfile={handleOpenMemberProfile}
+                  onOpenSleepCalendar={handleOpenMemberProfile}
+                  onWakeUp={handleWakeUp}
                 />
               ))}
             </StatusBucket>
@@ -1066,6 +1232,9 @@ export default function HomePage() {
                   onOpenMetastrike={handleOpenMetastrike}
                   isVotingStrike={isVotingStrike}
                   isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
+                  onOpenProfile={handleOpenMemberProfile}
+                  onOpenSleepCalendar={handleOpenMemberProfile}
+                  onWakeUp={handleWakeUp}
                 />
               ))}
             </StatusBucket>
@@ -1095,6 +1264,9 @@ export default function HomePage() {
                   onOpenMetastrike={handleOpenMetastrike}
                   isVotingStrike={isVotingStrike}
                   isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
+                  onOpenProfile={handleOpenMemberProfile}
+                  onOpenSleepCalendar={handleOpenMemberProfile}
+                  onWakeUp={handleWakeUp}
                 />
               ))}
             </StatusBucket>
@@ -1119,6 +1291,7 @@ export default function HomePage() {
         onRefreshRoster={fetchRoster}
         currentUser={currentUser}
         onLogout={handleLogout}
+        onOpenSleepCalendar={(mId) => setCalendarModalMemberId(mId)}
       />
 
       {/* Push Notification Settings & Sleep Shield Modal */}
@@ -1166,6 +1339,24 @@ export default function HomePage() {
           }}
         />
       )}
+
+      {/* Interactive Member Profile, Sleep & Wake History Calendar, and Weekly Timetable Modal */}
+      <SleepCalendarModal
+        isOpen={Boolean(calendarModalMemberId)}
+        onClose={() => setCalendarModalMemberId(null)}
+        memberId={calendarModalMemberId}
+        member={calendarModalMemberId ? members.find((m) => m.id === calendarModalMemberId) || null : null}
+        currentUser={currentUser}
+        onWakeUpUpdated={fetchRoster}
+        onToggleStar={handleToggleStar}
+        isStarred={calendarModalMemberId ? starredMembers.includes(calendarModalMemberId) : false}
+        initialTab={calendarModalTab}
+        onOpenScheduleModal={() => {
+          setCalendarModalMemberId(null);
+          setActiveModal('schedule');
+          setMobileTab('schedule');
+        }}
+      />
     </main>
   );
 }

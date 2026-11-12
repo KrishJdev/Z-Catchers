@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-12T15:10:00+05:30  
+> **Last Updated:** 2026-11-13T04:06:27+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** 629cbae  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25)  
-> **Active Integration Pull Request:** [#27 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/27)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24)  
-> **Active Production Release Pull Request:** [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26)  
-> **Build Status:** Passing (`npm run typecheck` clean, 0 errors | `npm run build` clean, 26/26 routes | `npm run test:unit` clean, 19/19 suites passed | `npm run test:all` clean, 20/20 suites passed)
+> **Latest Commit:** `06b3379`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44)  
+> **Active Integration Pull Request:** [#49 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
+> **Active Production Release Pull Request:** None (all merged)  
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 25/25 suites passed | Dev server running on `http://localhost:3000`)
 
 ---
 
@@ -69,6 +69,489 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 75: PR #49 CodeRabbit Review Suggestions Resolution & Full Hardening
+* **PostgreSQL Schema Migration Guarding (`supabase/schema.sql` & `HANDOFF.md`):**
+  - Added guarded conversion block following `CREATE TABLE IF NOT EXISTS public.sleep_logs`.
+  - Safely purges orphan records and non-UUID values before executing `ALTER COLUMN member_id TYPE UUID USING member_id::uuid`.
+  - Added `sleep_logs_member_id_fkey` constraint with `ON DELETE CASCADE` referencing `public.members(id)` if not already present.
+* **Sleep Log Prior Wake Field Clearance on Re-Check-In (`src/app/api/members/in-bed/route.ts`):**
+  - When a member checks in early or re-checks in, explicitly passed `woke_up_at: null`, `woke_up_local_time: null`, `wake_source: null`, and `duration_minutes: null` to `upsertSleepLog` alongside clearing `last_wake_cycle_date` on the member row, ensuring stale morning wake records are wiped for the fresh sleep session.
+* **Wake-Up Nag Shield & Selected Cycle Schedule Verification (`src/app/api/members/nag-notif/route.ts`):**
+  - Extended Metastrike pass shield suppression to the wake-up nag flow (`if (isMetastrikeActive)` returns `{ success: false, shieldActive: true }`), ensuring members with excused passes are never nagged in the morning.
+  - Calculated wake-up time eligibility against the target member's selected cycle schedule (`getNightScheduleDateTime(targetMember, cycleDt)`) rather than relying on `computeMemberState`'s active cycle date, preventing erroneous shield blocks when reviewing yesterday's cycle after 13:00.
+* **Sleep History Pending Vote Exclusion (`src/app/api/members/sleep-history/route.ts`):**
+  - Updated strike merge loop to ignore records where `record_type === 'pending_vote'`, ensuring unconfirmed active community strike votes do not register as missed nights or skew the on-time percentage calculation.
+* **Wake-Up Mode Validation (`src/app/api/members/wake-up/route.ts`):**
+  - Added early input validation: rejects any mode other than `'button'` and `'manual'` with HTTP 400 before historical cycle checks or calculation branches execute.
+* **In-Memory Cooldown Expiry Fallback (`src/components/MemberCard.tsx`):**
+  - Updated `checkCooldown` logic to initialize with `inMemoryExpiriesRef.current[type] - Date.now()`, ensuring that in browsers where `localStorage.setItem` fails (e.g. private browsing or full quota) but `getItem` returns null, the in-memory expiry countdown is strictly preserved.
+* **Request Sequence Verification (`src/components/SleepCalendarModal.tsx`):**
+  - Replaced composite key checks in `fetchHistory` with monotonically increasing `requestSeqRef.current = ++requestId` guard, ensuring stale asynchronous responses cannot overwrite fresh calendar data or cause loading state discrepancies.
+* **Pre-Read Failure Protection & Test Fixture Isolation (`src/lib/db.ts`):**
+  - Pre-read query in `upsertSleepLog` checks for both returned errors and exceptions; on failure, halts durable write and returns `data: null` to prevent partial data from overwriting persisted columns in Supabase.
+  - Added `isTestMemberFixture` detection to isolate unit test mock members (`mem_fox_test_*`), preventing test runs from querying remote Supabase tables while guaranteeing complete cache eviction for deleted members in production.
+* **Uniform Weekly Schedule Weekend Badge Handling (`src/lib/sleepEngine.ts`):**
+  - Updated `hasWeekendOverride` in both `getBedtimeForNight` and `getNightScheduleDateTime`: when `weekly_schedule` is configured, the weekend override flag is only enabled if the night's bedtime or wake time differs from at least one other weekday, preventing uniform schedules from incorrectly displaying the "Weekend" badge.
+* **Atomic Map & Synced Results Persistence (`scripts/create-all-audit-issues.mjs` & `scripts/sync-audit-issues-to-jira.mjs`):**
+  - Wrapped final JSON serialization writes in temporary file replacement (`.tmp` write followed by `fs.renameSync`) to ensure atomic persistence and prevent file corruption if interrupted.
+* **Integration Test for Atomic Persistence (`scripts/test-audit-issue-sync.mjs`):**
+  - Upgraded Test 4 to an isolated integration test in a temporary working directory verifying initial seeding, intermediate atomic Jira key retention, failure tolerance, and non-duplicate retry linking.
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 25/25 test suites passing (12.56s).
+
+### Phase 74: PR #49 Comprehensive Review Verification & Atomic Persistence Hardening
+* **Specification Documents Synchronization:**
+  - `BACKEND_TZ_PWA_SPEC.md` & `PROJECT_SPEC.md`: Changed `sleep_logs.member_id` from `TEXT` to `UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE` to match `members.id`.
+  - `BACKEND_TZ_PWA_SPEC.md`: Replaced legacy permissive public `SELECT` policy on `sleep_logs` with explicit drop and strict service-role-only policy (`Service role full access on sleep_logs`).
+* **Atomic Checkpoint Hardening:**
+  - `scripts/create-all-audit-issues.mjs` & `scripts/sync-audit-issues-to-jira.mjs`: Upgraded checkpoint map file writes to atomic replacement (`.tmp` write followed by `fs.renameSync`) to eliminate data corruption risks in case of abnormal script termination.
+* **Component UI & State Cleanup:**
+  - `src/components/SleepCalendarModal.tsx`: Added `setData(null)` immediately upon starting `fetchHistory` to prevent stale profile history from flashing while loading new data.
+* **Review Verification:**
+  - Audited all 51 CodeRabbit review comments across PR #49, verifying full satisfaction of data integrity, UX, timezone math, and security requirements.
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 25/25 test suites passing (14.77s).
+
+### Phase 73: Prioritize Winding Down State Over Awake Status & Fix Status Pill
+* **Diagnosis of Discrepancy & Root Cause:**
+  - When a user approached their bedtime (e.g. 1:52 AM with a 2:00 AM bedtime, within the 60-minute wind-down window `-60 <= diffMinutes < 0`), their card was placed in the **AWAKE** bucket instead of **WINDING DOWN**, and their card status pill rendered `☀️ Awake` instead of `✨ in 8m`.
+  - In `src/lib/sleepEngine.ts`, `if (hasLoggedWakeUp)` was checked unconditionally at the top of the evaluation ladder prior to checking `diffMinutes`. Any member with an active `is_woke_up` flag (or historical wake record matching the active cycle date) was immediately assigned `bucket = 'AWAKE'`, completely bypassing `WINDING_DOWN` and `BEDTIME_NOW`.
+  - In `src/components/MemberCard.tsx`, `getStatusPillConfig()` checked `if (isWokeUp)` before checking `bucket === 'WINDING_DOWN'`, causing the pill to render `☀️ Awake` even when in the wind-down window.
+* **Sleep Engine State Machine Hardening (`src/lib/sleepEngine.ts`):**
+  - Reordered the state evaluation ladder in `computeMemberState`:
+    1. Evaluated `effectiveInBed && !hasLoggedWakeUp && diffMinutes >= -180` first (`SLEEPING`).
+    2. Prioritized `diffMinutes < 0 && diffMinutes >= -60` (`WINDING_DOWN`), ensuring pre-bedtime members not actively in bed enter the cozy wind-down bucket regardless of whether they logged wake-up earlier in the day.
+    3. Evaluated `hasLoggedWakeUp` only for post-bedtime / daytime states (`diffMinutes >= 0`), preserving morning wake-up and undo behaviors without interfering with subsequent nighttime wind-downs.
+* **UI Component & Status Pill Hierarchy (`src/components/MemberCard.tsx`):**
+  - Reordered `getStatusPillConfig()`:
+    1. Evaluated `isNagNow` first.
+    2. Evaluated `bucket === 'WINDING_DOWN'` (rendering `✨ in {X}m` or `✨ in {X}h {Y}m`) before `isWokeUp`.
+    3. Evaluated `bucket === 'SLEEPING'` (rendering `💤 Asleep` or `✨ In bed early`).
+    4. Evaluated `isWokeUp` as daytime / awake fallback pill.
+  - Added missing `useRef` imports and cleaned up duplicate statement artifacts in `src/components/MemberCard.tsx`, `src/components/SleepCalendarModal.tsx`, and `src/app/api/members/nag-notif/route.ts`.
+* **Automated Unit Testing & Verification (`scripts/test-wind-down-awake-fix.mjs`, `scripts/run-tests.mjs`):**
+  - Created standalone test suite `scripts/test-wind-down-awake-fix.mjs` covering 6 comprehensive test scenarios:
+    1. User with `is_woke_up: true` at T-8m (`1:52:29 AM` with `2:00 AM` bedtime) categorizes into `WINDING_DOWN`.
+    2. Formatted status label displays `Bedtime in 8m`.
+    3. Daytime user with `is_woke_up: true` (e.g. `12:00 PM`) correctly categorizes into `AWAKE`.
+    4. In-bed user at T-8m categorizes into `SLEEPING`.
+    5. `MemberCard.tsx` checks `bucket === 'WINDING_DOWN'` before `isWokeUp`.
+    6. `sleepEngine.ts` does not unconditionally short-circuit `hasLoggedWakeUp` before wind-down.
+  - Registered test in `scripts/run-tests.mjs` (25/25 unit test suites passing cleanly in 13.61s).
+  - Verified `npx tsc --noEmit` clean with 0 errors.
+
+### Phase 72: PR #49 Remaining CodeRabbit Review Suggestions & Edge-Case Hardening
+* **Scripts & Migration Hardening:**
+  - `scripts/create-all-audit-issues.mjs`: Updated checkpoint mapper to `{ ...ex, ...i, ... }` to ensure definition fields take precedence over existing entries during atomic checkpoints.
+  - `scripts/sync-audit-issues-to-jira.mjs`: Updated in-place `issuesList[i] = currentItem` before checkpoints to ensure accumulated Jira keys are never lost across iterations.
+  - `scripts/seed-demo-members.mjs`: Sanitized timezone fallbacks with `toValidLuxonZone`; added `{ onConflict: 'member_id,cycle_date', ignoreDuplicates: true }` and failure warning logs to sleep log upserts.
+  - `scripts/test-wake-up-nag.mjs`: Added structural tests verifying all `☀️ I Woke Up` buttons are strictly guarded by `isViewer` conditional checks.
+* **API Endpoints & Validation Guardrails:**
+  - `src/app/api/auth/claim-profile/route.ts`: Explicitly rejected invalid weekly schedules with HTTP 400 (including non-objects, invalid formats, or identical bedtime/wake times) instead of silently falling back to flat fields.
+  - `src/app/api/members/update-schedule/route.ts`: Validated all 7 days of `targetWeeklySchedule` so legacy merged edits reject identical bedtime and wake times with HTTP 400.
+  - `src/app/api/mod/route.ts`: Added `updates.pending_timezone = null;` when moderator updates timezone directly.
+  - `src/app/api/members/nag-notif/route.ts`: Bound anonymous senders with stable `helperKey = 'anon_target'` to prevent header spoofing bypass; resolved yesterday's check-in cycle for wake-up nags when appropriate; claimed cooldown record in `notification_logs` before dispatching web pushes.
+  - `src/app/api/members/in-bed/route.ts`: In GET: derived `is_in_bed: isInBed && !isWokeUp`; in POST check-in: cleared `last_woke_up_at: null` and `last_wake_cycle_date: null`.
+  - `src/app/api/members/wake-up/route.ts`: Disallowed button mode on historical `cycleDate`; resolved bedtime and wake targets via `getNightScheduleDateTime` when `existingLog` is absent; safely persisted across durable and test environments with `isDurable` indicator in response; updated `last_woke_up_at` and `last_wake_cycle_date` only when wake event is newer than stored.
+  - `src/app/api/members/route.ts`: Derived `is_in_bed = memberCheckins.includes(localDateStr) && !is_woke_up` to prevent showing Sleep Shield after wake-up.
+  - `src/app/api/members/sleep-history/route.ts`: Included accountable missed nights (`status IN ('on_time', 'late', 'missed')`) in `onTimePercentage` calculation.
+* **UI Components & UX:**
+  - `src/components/MemberCard.tsx`: Enforced 44px minimum mobile touch targets on member name and secondary action buttons; scoped `storageKey` by sender and separated bedtime from wake cooldowns with in-memory expiry fallback; restored optimistic rollback on `onWakeUp` rejection across all wake modes; rendered Wake Up Nag alongside Vote Strike when voting is eligible.
+  - `src/app/page.tsx`: Returned boolean from `handleWakeUp`; restricted "Undo check-in" button to `claimedMember.is_in_bed`.
+  - `src/components/SleepCalendarModal.tsx`: Added `activeRequestRef` to discard out-of-order fetch responses when `memberId` or `currentMonth` changes; replaced blue/indigo classes with Warm Dark design tokens.
+* **Sleep Engine & DB Storage:**
+  - `src/lib/sleepEngine.ts`: In `checkCooldownPromotion`, built `nextWeeklySchedule` from pending flat fields when `pending_weekly_schedule` is null before falling back to active weekly schedule; in `resolveTargetSchedule`, computed `maxYesterdayEnd` using `postWakeWindow` (4 hours post wake) so yesterday's morning cycle is retained without requiring prior `is_in_bed` check-in hydration.
+  - `src/lib/db.ts`: Added durable columns check (`weekly_schedule`, `pending_weekly_schedule`) to `insertMemberSafe`, rejecting with migration error if missing rather than stripping and storing in memory; enhanced `upsertSleepLog` to query existing row in Supabase prior to merging, preventing null overwrites of `in_bed_at` / `in_bed_local_time` during partial wake updates.
+* **PostgreSQL Schema & Security Policies (`supabase/schema.sql`):**
+  - Changed `sleep_logs.member_id` from `TEXT` to `UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE`.
+  - Removed public read policies on `sleep_logs` (`DROP POLICY IF EXISTS "Public can view sleep logs"` and `"Public read sleep_logs"`), maintaining strictly internal service-role access.
+  - Added backfill query for `pending_weekly_schedule` for members with active cooldown (`pending_effective_at IS NOT NULL AND pending_weekly_schedule IS NULL`).
+* **Automated Verification:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 25 test suites passing (12.86s).
+
+### Phase 71: MemberCard Metastrike Pill & Secondary Action Row Overflow Fix
+* **Issue Diagnosis & Root Cause:**
+  - When a community member missed bedtime and activated an excused Metastrike pass with a long reason (e.g. `"Work / Study Deadline"`), the card displayed both `[Shield On]` (due to Sleep Shield being active from the Metastrike) and `[🛡️ Metastrike: Work / Study Deadline]` side-by-side in the secondary action row.
+  - Because the secondary action row (`<div className="flex items-center gap-2 w-full">`), the Nag Notif button (`className="flex-1 ... whitespace-nowrap"`), and the Metastrike pill (`className="flex-1 ... whitespace-nowrap"`) lacked `min-w-0`, the flex items defaulted to `min-width: auto` per CSS Flexbox specification.
+  - As a result, the inner `<span className="truncate">` never triggered ellipsis truncation because its parent flex container expanded to the full content width (~280px + ~95px button + 8px gap = ~383px), blowing out past the card's right boundary.
+* **Flexbox Shrink & Truncation Hardening (`src/components/MemberCard.tsx`):**
+  - Added `hasSecondaryNagAction` helper in `MemberCard` to dynamically determine if any secondary pill (`isMetastrikeActive`, `isStrikeIssuedTonight`, `BEDTIME_GRACE`, or `onVoteStrike`) is rendered alongside the Nag Notif button.
+  - Configured Nag Notif button width dynamically: sizes to `w-full` if no secondary pill exists, or `flex-1 min-w-0` when paired.
+  - Added `min-w-0` to the secondary action row container (`flex items-center gap-2 w-full min-w-0`) and all flex children (`min-w-0 h-9 min-h-[36px]`).
+  - Wrapped text in `<span className="truncate">` across all secondary action pill variants: `isMetastrikeActive` (`Metastrike: [Reason]`), `isStrikeIssuedTonight` (`Strike Issued`), `state.status === 'BEDTIME_GRACE'` (`Grace: [X]m left`), and `onVoteStrike` (`Vote Strike (X/2)`).
+  - Hardened non-nag body Metastrike notice (`isMetastrikeActive && !isNagNow`) with `min-w-0` and `<span className="truncate">`.
+  - Added `min-w-0` and `<span className="truncate">` to Early Bedtime Check-In and Metastrike self-service buttons.
+  - Allowed clicking "Shield On" button in `isNagNow` and `WINDING_DOWN` (`disabled={isSendingNagNotif || nagCooldownSeconds > 0}`) so users can tap to view the informative Sleep Shield feedback notice toast.
+* **Automated Unit Testing (`scripts/test-metastrike-overflow-fix.mjs`, `scripts/run-tests.mjs`):**
+  - Created standalone offline test suite `scripts/test-metastrike-overflow-fix.mjs` verifying:
+    1. Root container enforces `max-w-full overflow-hidden`.
+    2. Dynamic row sizing with `hasSecondaryNagAction`.
+    3. `min-w-0` enforcement on secondary row and all action pills.
+    4. Text truncation on `Metastrike: [Reason]`, `Shield On`, `Strike Issued`, `Grace`, and `Vote Strike`.
+    5. Card body Metastrike notice `min-w-0` and text truncation.
+  - Added test suite to `scripts/run-tests.mjs` (all 24/24 unit test suites passing cleanly).
+* **Verification Check:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` executed with all 24 test suites passing cleanly (12.99s).
+
+### Phase 70: PR #49 Comprehensive Code Review Resolution & Hardening
+* **Untrusted Review Data Handling & Verification:**
+  - Audited all PR #49 code review comments across scripts, API endpoints, UI modals, and database persistence layers.
+  - Verified each finding against live code, fixing verified edge cases while skipping obsolete or already-resolved items with clear technical rationale:
+    - *Skipped `MemberCard.tsx:477`*: Inline routine toggle button was already replaced in Phase 66 by clicking the member profile to open `SleepCalendarModal`.
+    - *Verified `MyScheduleModal.tsx:253`*: Verified `hasScheduleChanged` useMemo is already positioned above early return.
+    - *Verified `sleepEngine.ts:1209`*: Verified `is_woke_up` does not prematurely truncate sleep cycles before scheduled wake end time.
+* **Scripts Checkpoint & Issue Linking Hardening:**
+  - `scripts/create-all-audit-issues.mjs`: Atomically persists `mapFile` after each successful issue creation to guarantee resume safety; prioritized issue definition fields (`issueTypeId`, etc.) over existing cached fields while preserving remote IDs (`ghUrl`, `jiraKey`, etc.).
+  - `scripts/sync-audit-issues-to-jira.mjs`: Relaxed ADF markdown fenced code-block splitting to match code fences anywhere in text; added stable `globalId: ghUrl` to Jira remote-link payloads for idempotent link retries; verified both Jira key and GitHub URL match before reusing `remoteLinked` status; persisted atomic checkpoints to `finalMapFile` immediately after each Jira issue creation.
+* **Schedule & Profile Validation & Cooldown Integrity:**
+  - `src/app/api/auth/claim-profile/route.ts`: Immediately returns HTTP 400 when an invalid `weekly_schedule` format is supplied instead of silently falling back to legacy flat times.
+  - `src/lib/sleepEngine.ts`, `src/app/api/members/route.ts`, `src/lib/cronDispatcher.ts`, `src/app/api/mod/route.ts`: Hardened `checkCooldownPromotion` and promotion persistence paths to preserve active `weekly_schedule` when `pending_weekly_schedule` is null, preventing accidental wiping of custom routines upon promotion.
+  - `src/app/api/mod/route.ts`: In moderator member edits, preserved `existing.weekly_schedule` and existing `pending_*` fields on profile-only edits (e.g., `journal_url`), updating only explicitly edited days/fields.
+  - `src/app/api/members/update-schedule/route.ts`: Avoided defaulting wake time to 07:00 when omitted; iterated across `DAY_KEYS` to compare routine changes day-by-day; compared against legacy bedtime/wake fields when `weekly_schedule` is null so journal-only edits do not stage unwanted cooldowns.
+* **Component UI & Responsive Touch Targets:**
+  - `src/components/ModDrawer.tsx`: Updated quick-mode detection to verify bedtime and wake-time matches across all weekdays and weekends; updated day selector pill container to responsive `grid grid-cols-4 sm:grid-cols-7 gap-1.5` for 44px+ touch targets; displayed per-day pending changes from `member.pending_weekly_schedule` in cooldown approval cards.
+  - `src/components/MyScheduleModal.tsx`: Resolved weekend bedtime and wake time independently with fallbacks; derived dual-time preview in custom mode from `weeklySchedule[selectedScheduleDay]?.bedtime`; updated custom day-selector grid to responsive `grid grid-cols-4 sm:grid-cols-7 gap-1.5`; normalized weekend overrides in API submission payload.
+* **Database Persistence Layer Hardening (`src/lib/db.ts`):**
+  - Updated `setInMemoryWeekendHours` to only set fields explicitly provided in updates, preventing undefined overwrites.
+  - Enforced durable DB storage requirement for `weekly_schedule` and `pending_weekly_schedule`: rejected writes when Supabase is configured but columns are unmigrated, rather than masking failures with ephemeral in-memory fallbacks.
+* **Documentation & Migration Clarity (`HANDOFF.md`):**
+  - Updated Step 5 to explicitly direct operators to run the complete, updated migration from `supabase/schema.sql` before deployment, including `weekly_schedule` and `pending_weekly_schedule` columns and backfill.
+
+### Phase 69: Authoritative Discord OAuth Handle Sync & Stale Handle Inversion Fix
+* **Diagnosis of Discrepancy:**
+  - Discovered that in Phase 46, an automated database update script mistakenly hardcoded `discord_handle = '@krish'` for `discord_id = 617551062102048779` because the git branch and developer name was `krish`.
+  - In `src/app/api/auth/discord/callback/route.ts`, returning members were updated using `discord_handle: member.discord_handle || discordHandle`. Because the database row already had `'@krish'`, the true verified Discord handle (`@nrgslayer`) was blocked from updating on Discord login.
+* **Authoritative OAuth Handle Synchronization (`src/app/api/auth/discord/callback/route.ts`):**
+  - Updated OAuth callback update payload to `discord_handle: discordHandle || member.discord_handle`. Verified Discord OAuth data is now authoritative for Discord handles, ensuring returning users always receive their real, current Discord handle (`@nrgslayer`).
+  - Corrected database row in Supabase (`discord_id = '617551062102048779'`) to `discord_handle = '@nrgslayer'`.
+* **Automated Regression Verification:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` executed: all 23/23 unit test suites passing cleanly.
+
+### Phase 68: 15-Minute Nag Notification Cooldown & In-Button Live Countdown
+* **15-Minute Cooldown Endpoint Logic (`src/app/api/members/nag-notif/route.ts`):**
+  - Replaced once-per-night hard rate limiting with a 15-minute (900s) cooldown window for both bedtime reminders and wake-up nags.
+  - Queries `notification_logs` for `dispatched_at` timestamp of recent nags from the sender (`helperKey`) to the target member.
+  - If fewer than 15 minutes have elapsed, returns HTTP 429 with remaining `cooldownSeconds` and `cooldownMinutes` (`"You can send another reminder to {name} in {x}m."`).
+  - If 15 minutes have elapsed, allows the nag to dispatch and updates `dispatched_at: nowUtc.toISO()` via upsert on conflict `(member_id, notification_type, local_date)`.
+  - Returns `cooldownSeconds: 900` on successful dispatch.
+* **In-Button Live Countdown UI (`src/components/MemberCard.tsx`):**
+  - Added `nagCooldownSeconds` state and `useEffect` timer ticking down each second.
+  - Persists cooldown expiry timestamp in `localStorage` under `nag_cooldown_${member.id}` so the countdown persists across tab switches and page refreshes.
+  - Formats remaining time into digital MM:SS (`formatNagCooldown`), rendering `<Clock /> Nag in {MM:SS}` directly inside the nag button across all 3 nag contexts (`WINDING_DOWN`, `BEDTIME_NOW`/`OVERDUE_NAG_NOW`, and `SLEEPING` past wake time).
+  - Automatically re-enables the button when the countdown reaches 0:00.
+* **Automated Unit Testing (`scripts/test-wake-up-nag.mjs`):**
+  - Verified server-side 15-minute cooldown enforcement, payload properties (`cooldownSeconds`, `cooldownMinutes`, 429 status), and client-side countdown rendering in `MemberCard`.
+  - All 23 unit test suites passed cleanly (`npm run test:unit`).
+
+### Phase 67: Wake-Up Status Authorization Protection & "Wake Up Nag" Feature
+* **Awake Status Authorization Protection (`src/components/MemberCard.tsx`):**
+  - Resolved security/UX violation where viewers looking at another member's sleeping/in-bed card were rendered a `"Wake Up (Undo)"` button due to `(member.is_in_bed || isModerator) && onCancelInBed`.
+  - Restricted all wake-up and sleep status undo actions (`☀️ I Woke Up`, `Enter Time`, `Wake Up (Undo)`) exclusively to the profile owner (`isViewer === true`).
+  - Restricted in-bed sleeping status banner undo strictly to the card owner (`isViewer && isInBed && bucket === 'SLEEPING'`).
+* **Sleep Engine Wake Time Evaluation (`src/lib/sleepEngine.ts`):**
+  - Added `isPastWakeTime` calculation comparing `sleeperNow >= activeCycle.targetWakeTime`.
+  - Maintained `isSleepShieldActive = true` while sleeping before wake time; deactivates nighttime Sleep Shield once the target wake time has elapsed to allow morning wake-up accountability.
+  - Extended yesterday's cycle end window for in-bed sleepers who haven't logged wake-up so their morning overdue state remains accurately tracked.
+* **"Wake Up Nag" Notification Support (`src/components/MemberCard.tsx`, `src/app/api/members/nag-notif/route.ts`):**
+  - Added `☀️ Wake Up Nag` button on sleeping cards when viewed by friends after the member's target awake time has arrived.
+  - Enhanced `POST /api/members/nag-notif` to support `type: 'wake_up'`:
+    - Checks that target member has not already marked themselves awake.
+    - Validates that target member's target wake time has elapsed; if not, responds that Sleep Shield is active until their wake time.
+    - Implements anti-spam deduplication per sender per morning using `MANUAL_NAG:WAKE_UP:${helperKey}`.
+    - Dispatches rich push notifications: `"☀️ Rise and Shine! [Sender] is nudging you to wake up! Time to start the day 🦊"`.
+    - Increments community assist counters.
+* **Automated Unit Testing (`scripts/test-wake-up-nag.mjs`, `scripts/run-tests.mjs`):**
+  - Created standalone unit test suite validating `isPastWakeTime` transitions, authorization barriers in `MemberCard`, and wake-up nag endpoint rules.
+  - Verified with all 23 unit test suites passing cleanly (`npm run test:unit`).
+
+### Phase 66: Member Profile Section, Weekly Timetable, Streak Calendar, and Banner Overflow Fix
+* **Text Overflow Resolution (`src/components/MemberCard.tsx`):**
+  - Identified that feedback and error toast messages (`cardFeedback`, `cardError`) utilized `whitespace-nowrap`, which prevented long strings (such as `"You already sent a bedtime reminder to Afnan for tonight's bedtime."` or rate-limit warnings) from wrapping, causing them to project out past the card's right boundary.
+  - Removed `whitespace-nowrap` and applied `break-words text-balance px-3 py-2 leading-snug`.
+  - Added `max-w-full overflow-hidden` to the root `MemberCard` container and `min-w-0` to flex child containers, preventing any horizontal text spillover.
+* **Banner Cleanliness & Decluttering (`src/components/MemberCard.tsx`):**
+  - Removed the inline `"7-day routine"` toggle button and `"History"` calendar button from the member card header.
+  - Removed the inline expandable 7-day routine tray (`showRoutine`) from the card, streamlining the card into a clean accountability view.
+* **Interactive Profile Trigger (`src/components/MemberCard.tsx`, `src/app/page.tsx`):**
+  - Converted the member's display name and avatar into accessible, interactive buttons with subtle hover effects (`hover:text-status-amber hover:underline cursor-pointer`) and descriptive title/aria tags.
+  - Tapping either the name or avatar opens the full Member Profile Modal (`SleepCalendarModal`), which now acts as the comprehensive profile view.
+* **Member Profile, Streak Calendar & Weekly Timetable Modal (`src/components/SleepCalendarModal.tsx`):**
+  - Upgraded `SleepCalendarModal` with a dedicated member profile header:
+    - Member avatar (with in-bed check badge), username, handle, `YOU` / `MOD` role badges.
+    - Timezone pill (e.g. `GMT+05:30`) and live current local time in that timezone.
+    - Accountability star toggle button (`⭐`) and direct Discord journal thread link (`🔗 Journal`).
+    - Current streak badge (`🔥 Xd streak`), strikes counter (`⚡ Strikes: X/3`), and excused metastrikes counter (`🛡️ Meta: Y/3`).
+  - Added two top tabs with smooth switching:
+    - **Tab 1: Calendar & Streak:** Monthly navigation (`< Month Year >`), 3-pill monthly summary strip (Avg Sleep duration, Avg Bed → Wake, On-Time percentage), 7-column Monday–Sunday calendar grid with color-coded status badges, selected day inspector, and self-edit wake time form.
+    - **Tab 2: Weekly Timetable:** 7-day schedule breakdown (Monday through Sunday) with active day highlighted with a `"TODAY"` badge, target bedtimes, target wake times, calculated planned sleep durations (e.g. `8 hrs 00 mins`), weekend/custom schedule tags, and a direct `"Edit Schedule"` shortcut for the profile owner.
+* **API Enhancement (`src/app/api/members/sleep-history/route.ts`):**
+  - Updated endpoint to return `weekly_schedule`, `weekend_bedtime_local`, `weekend_wake_time_local`, `journal_url`, `role`, and strike counters on the `member` object.
+* **Automated Unit Testing (`scripts/test-member-profile-and-overflow-fix.mjs`, `scripts/run-tests.mjs`):**
+  - Created a comprehensive test suite validating:
+    1. MemberCard banner does not show "7-day routine" or "History" buttons.
+    2. MemberCard name and avatar click triggers `onOpenProfile`.
+    3. `cardFeedback` and `cardError` wrap cleanly without `whitespace-nowrap`.
+    4. SleepCalendarModal renders profile header, Weekly Timetable tab with TODAY badge and calculated durations, and Streak Calendar.
+    5. `page.tsx` passes `onOpenProfile` and coordinating tab states.
+  - Registered in `scripts/run-tests.mjs` (22/22 unit test suites passing cleanly).
+
+### Phase 65: Bugfix - React Hook Order Violation in MyScheduleModal
+* **Root Cause Analysis:**
+  - An early return statement `if (!isOpen) return null;` in `src/components/MyScheduleModal.tsx` was placed directly before `const hasScheduleChanged = useMemo(...)` (hook #27).
+  - When the modal was closed (`isOpen === false`), React executed 26 hooks and returned early. When the user clicked on "My Profile" (`isOpen === true`), render proceeded past the guard and called `hasScheduleChanged` as hook #27.
+  - This violated the Rules of Hooks by creating a hook count discrepancy between renders (`undefined` vs `useMemo`), crashing the app when opening the profile modal.
+* **Resolution:**
+  - Relocated `hasScheduleChanged` above `if (!isOpen) return null;`, ensuring all 27 hooks execute unconditionally in identical order on every render.
+* **Verification:**
+  - TypeScript type check (`npx tsc --noEmit`) clean with 0 errors.
+  - Full automated unit test suite passed cleanly (`npm run test:unit`, 21/21 suites passed).
+
+### Phase 64: "I Woke Up" Mechanic & Interactive Sleep & Wake History Calendar Implementation
+* **Database Schema & Storage Layer (`supabase/schema.sql`, `src/lib/db.ts`):**
+  - Added fast wake-up tracking columns `last_woke_up_at TIMESTAMPTZ` and `last_wake_cycle_date TEXT` to `members` table definition and migration statements.
+  - Created `public.sleep_logs` table keyed by `(member_id, cycle_date)` with columns for `timezone`, `target_bedtime`, `target_wake_time`, `in_bed_at`, `in_bed_local_time`, `woke_up_at`, `woke_up_local_time`, `wake_source` (`button` | `manual`), `duration_minutes`, and `status` (`on_time` | `late` | `missed` | `metastrike`).
+  - Added index `idx_sleep_logs_member_cycle` and enabled Supabase realtime publication on `sleep_logs`.
+  - Added helper methods in `src/lib/db.ts`: `upsertSleepLog`, `getMemberSleepLogs`, in-memory fallback cache `memorySleepLogs`, and robust member fallback `getMemberByIdSafe`.
+  - Updated `src/lib/demoSeed.ts` (`generateDemoSleepLogs`, `seedDemoSleepLogsInMemory`) and `scripts/seed-demo-members.mjs` to seed 30 days of realistic variance sleep logs for demo members.
+* **"I Woke Up" Endpoint & Sleep Engine Integration (`src/app/api/members/wake-up/route.ts`, `src/app/api/members/in-bed/route.ts`, `src/lib/sleepEngine.ts`):**
+  - Updated `POST /api/members/in-bed` to record bedtime check-in into `sleep_logs` with active schedule targets.
+  - Created `POST /api/members/wake-up` supporting two modes:
+    - **Instant Button Mode (`mode: 'button'`):** Uses current UTC instant in member's timezone, sets `wake_source: 'button'`, calculates sleep duration, and updates `last_woke_up_at` and `last_wake_cycle_date`.
+    - **Manual Mode (`mode: 'manual'`):** Validates 24-hour `HH:mm` format, checks past-7-days window, rejects future times, and computes cross-midnight duration (e.g., 23:30 to 07:15 = 465 minutes).
+  - Updated `src/lib/sleepEngine.ts`:
+    - Added `needsWakeUpLog?: boolean` to `MemberState`.
+    - When a member is in bed or inside the sleep window without a logged wake-up, exposes `needsWakeUpLog: true`.
+    - Once wake-up is logged for the cycle date (`last_wake_cycle_date === activeCycleDate`), status immediately transitions to `AWAKE` with `needsWakeUpLog: false` and `isSleepShieldActive: false`.
+* **Sleep & Wake History API (`src/app/api/members/sleep-history/route.ts`):**
+  - Created GET route taking `memberId` and `month` (YYYY-MM).
+  - Fetches monthly logs, merges strikes from `nightly_strike_logs`, and calculates summary statistics:
+    - `totalLoggedNights`: Count of nights with recorded sleep/wake.
+    - `avgDurationMinutes`: Average sleep duration in minutes.
+    - `avgBedtime`: Circular mean across midnight.
+    - `avgWakeTime`: Linear mean.
+    - `onTimePercentage`: Percentage of logged nights with `status === 'on_time'`.
+  - Auto-populates 30-day realistic history for demo seed profiles if records are empty.
+* **Frontend UI Components (`SleepCalendarModal.tsx`, `MemberCard.tsx`, `MyScheduleModal.tsx`, `page.tsx`):**
+  - Built mobile-first `src/components/SleepCalendarModal.tsx`:
+    - Month navigation (Prev / Next / Current Month).
+    - 3-Pill Monthly Summary Bar: Avg Sleep Duration, Avg Bed/Wake, and On-Time percentage.
+    - 7-Column Mon–Sun Calendar Grid: Day numbers with color-coded status badges (emerald for on-time, indigo for sleeping/pending, purple for metastrike, rose for missed/late). Enforces $\ge 48$px touch targets.
+    - Selected Day Inspector Card: Displays target vs. actual times, wake source, duration, and self-service manual wake time editor.
+  - Updated `src/components/MemberCard.tsx`:
+    - Added prominent "☀️ I Woke Up" button and "Enter Time" manual wake picker in `SLEEPING` state.
+    - Added "📅 History" button to open the sleep calendar modal for any community member.
+  - Updated `src/components/MyScheduleModal.tsx`:
+    - Added "📅 View My Sleep & Wake Calendar" action trigger for the authenticated user.
+  - Updated `src/app/page.tsx`:
+    - Integrated prominent hero banner "☀️ I Woke Up" button and manual wake time picker.
+    - Mounted `SleepCalendarModal` with responsive state management.
+* **Automated Verification & Unit Tests:**
+  - Created `scripts/test-sleep-history-and-wakeup.mjs` verifying storage layer, instant and manual wake-up routes, sleep history calculations, sleep engine transitions, and UI touch targets.
+  - Updated `scripts/test-in-bed-and-streaks.mjs` and `scripts/test-wake-up-and-overflow.mjs`.
+  - Added suite to `scripts/run-tests.mjs`: all 21/21 unit test suites passed cleanly.
+  - Production build clean: `npm run build` (28/28 routes compiled).
+  - TypeScript clean: `npx tsc --noEmit` (0 errors).
+
+### Phase 63: 7-Day Variable Sleep Schedule Engine & 3-Mode Schedule Editor Implementation
+* **Database Schema & Backfill Migration (`supabase/schema.sql`):**
+  - Added `weekly_schedule JSONB` and `pending_weekly_schedule JSONB` to `members` table definition and migration statements.
+  - Implemented idempotent SQL backfill migration mapping `mon`..`thu` & `sun` to `bedtime_local`/`wake_time_local` and `fri`..`sat` to `COALESCE(weekend_bedtime_local, bedtime_local)`.
+* **Seed Members & In-Memory Hydration (`scripts/seed-demo-members.mjs`, `src/lib/db.ts`):**
+  - Updated all seeded demo profiles (Aoi, SarahK, Marcus, Arjun) with realistic `weekly_schedule` objects, including mid-week schedule variations (e.g. SarahK's Tue/Thu shifts).
+  - Maintained `scripts/test-demo-seed-fingerprint.mjs` verification passing (11/11 tests).
+  - Exported canonical types `DayKey`, `DailySchedule`, and `WeeklySchedule` from `src/lib/db.ts` and `src/lib/timezone.ts`.
+  - Updated `knownMemberColumns`, `memoryScheduleData`, `hydrateMemberWeekendHours`, `updateMemberSafe`, and `insertMemberSafe` to preserve both `weekly_schedule` and `pending_weekly_schedule`.
+* **Sleep Engine & Cross-Midnight Resolution (`src/lib/sleepEngine.ts`, `src/lib/timezone.ts`):**
+  - Defined `DAY_KEYS` (`mon`..`sun`) and `WEEKDAY_TO_DAY_KEY`.
+  - Implemented `getScheduleForDay(member, luxonDateTime): DailySchedule` with full fallback resolution.
+  - Implemented `resolveActiveSleepCycle(member, sleeperNow, isInBed)`: evaluates yesterday's cycle first (`sleeperNow.minus({ days: 1 })`) from bedtime - 180m until wake time or 8-hour sleep shield window has elapsed; evaluates today's cycle second.
+  - Updated `computeMemberState` to return `activeBedtimeLocal`, `activeWakeTimeLocal`, `isCustomScheduleToday`, `isWeekendSchedule`, and `dayKey`.
+  - Updated `getBedtimeForNight`, `getNightBedtimeDateTime`, `getSleepCycleDate`, `isWeekendCycle`, and `checkCooldownPromotion` (promoting `pending_weekly_schedule` -> `weekly_schedule`).
+* **Subsystems & APIs Integration:**
+  - `src/lib/strikes.ts`: Sleep cycle dates and strike evaluations resolve against active 7-day schedule.
+  - `src/app/api/members/in-bed/route.ts`: Check-in eligibility and streak tracking utilize resolved cycle.
+  - `src/lib/cronDispatcher.ts` & `src/app/api/members/route.ts`: Cron dispatches and cooldown promotions promote `pending_weekly_schedule`.
+  - `src/app/api/members/cancel-pending/route.ts`: Clears `pending_weekly_schedule: null`.
+  - `src/app/api/members/update-schedule/route.ts`: Accepts `weekly_schedule` in POST/PUT payloads, validates 24h format and `bedtime !== wake_time`, auto-synthesizes 7-day schedule from flat columns if legacy, syncs `mon` to `bedtime_local` and `sat` to `weekend_bedtime_local`, and preserves 48h cooldown.
+  - `src/app/api/auth/claim-profile/route.ts` & `src/app/join/page.tsx`: Initializes complete `weekly_schedule` on claim and registration.
+  - `src/app/api/mod/route.ts` & `src/components/ModDrawer.tsx`: Added 7-day variable schedule editor for privileged moderator overrides with instant effect.
+* **UI/UX 7-Day Variable Schedule Editor Redesign (`src/components/MyScheduleModal.tsx`):**
+  - Replaced weekend toggle with 3-Mode Preset Switcher:
+    1. **Every Day:** Single bedtime/wake time applied to all 7 days.
+    2. **Weekdays / Weekends:** Classic Mon–Thu+Sun vs. Fri–Sat setup.
+    3. **Custom Per Day:** Interactive 7-day selector pills (Mon–Sun) with min 44px touch targets.
+  - Added quick copy actions ("Copy to Weekdays", "Copy to Weekend", "Apply to All 7 Days").
+  - Added compact 7-day summary preview before Save.
+  - Preserved all profile constraints, locked Discord handle, website username editing, and 48-hour cooldown notice.
+* **MemberCard Active Schedule & 7-Day Routine Tray (`src/components/MemberCard.tsx`):**
+  - Displays resolved active bedtime and wake time (`activeBedtimeLocal` → `activeWakeTimeLocal`).
+  - Renders subtle "Custom today" badge when current day differs from Monday baseline.
+  - Added expandable 7-day sleep routine tray displaying the full week's routine with active day highlighted.
+* **Verification & Automated Test Coverage:**
+  - Expanded `scripts/test-weekend-hours.mjs`: Added Section 7 with 17 mid-week variable schedule test assertions (all 49/49 passed cleanly).
+  - All 20 unit test suites passed cleanly via `npm run test:unit`.
+  - Full production build verified via `npm run build` (26/26 routes compiled).
+  - Strict TypeScript check verified via `npx tsc --noEmit` (0 errors).
+
+### Phase 62: Integration Pull Request #44 (`krish` → `dev`)
+* **Created Integration Pull Request #44:**
+  - Opened PR: [#44 `chore: sync code audit issues to Jira, cross-link GitHub issues, and update transition tooling`](https://github.com/KrishJdev/Z-Catchers/pull/44)
+  - Targets `dev` from `krish`.
+  - Integrates all Phase 61 audit synchronization and Jira transition tooling into `dev`:
+    1. **Jira Issue Synchronization (`scripts/create-all-audit-issues.mjs`, `scripts/sync-audit-issues-to-jira.mjs`):**
+       - Automated creation of 14 audit tasks (`ZC-14` through `ZC-27`) in Jira under project `ZC` with complete technical breakdowns, impact analysis, code references, and acceptance criteria.
+       - Standardized issue type to top-level Task (`10071`).
+    2. **Audit Mapping & Cross-Linking (`scripts/audit-issues-map.json`, `scripts/link-gh-to-jira.mjs`):**
+       - Complete taxonomy mapping of all 14 audit issues across security, push/PWA robustness, timezone math, and rate limiting.
+       - Cross-linked Jira keys to GitHub issues `#30` through `#43` with automated linking comments.
+    3. **Transition Script Hardening (`scripts/transition-jira-issue.mjs`, `.github/workflows/jira-transition.yml`):**
+       - Added credential sanitization, improved error handling, and transition idempotency.
+       - Added GitHub Actions workflow dispatch options.
+    4. **Documentation & Handoff Updates (`HANDOFF.md`):**
+       - Documented Phase 59–61 audit findings, Jira issue mappings, and current production release status.
+* **Verification Check:**
+  - `npm run test:unit` clean (19/19 suites passed).
+  - `npx tsc --noEmit` clean (0 errors).
+
+### Phase 62: Review Remediation — Audit Issue Sync Robustness & Markdown ADF Parsing
+* **Resolved All Review Feedback Across Audit Issue Scripts & Deployment Specs:**
+  1. **Deployment Guidance & Production Security Preconditions (`HANDOFF.md`):**
+     - Updated production deployment instructions to clarify that `SESSION_SECRET` and `PIN_SALT` are strictly mandatory environment configurations, not optional.
+     - Documented that configuring `SESSION_SECRET` alone does not secure authentication while fallback-secret verification remains active in `src/lib/auth.ts`.
+     - Specified that `ZC-16` / GH #30 must be resolved (removing hardcoded fallback session secrets and enforcing fail-closed secret validation in production) before claiming the deployment is protected.
+  2. **Standardized Issue Type in Audit Definitions (`scripts/create-all-audit-issues.mjs`):**
+     - Updated `issueTypeId` across all 14 audit issue definitions to the top-level Task type (`10071`) so `audit-issues-map.json` retains `10071` consistently.
+  3. **Robust Mapping Load/Write Flow (`scripts/create-all-audit-issues.mjs`):**
+     - Updated `createGitHubIssues()` to load existing mappings and incorporate saved Jira keys from `audit-issues-synced.json`.
+     - Changed entries only after their corresponding issue creation succeeds, ensuring failed or partial runs never discard existing entries.
+     - Implemented `--reset` / `RESET_MAP=true` as the sole mechanism for clearing mapping state.
+     - Guarded direct execution via `fileURLToPath(import.meta.url) === path.resolve(process.argv[1])` to prevent accidental execution when imported.
+  4. **Markdown ADF Description Parsing Fix (`scripts/sync-audit-issues-to-jira.mjs`):**
+     - Updated `markdownToAdf()` to parse headings on an individual line basis rather than treating entire blank-line-delimited blocks as a single heading.
+     - Preserved and processed all text following each heading as section content (paragraphs, ordered lists, bullet lists, code blocks), ensuring summaries, root causes, and remediation plans are fully populated in Jira.
+  5. **Jira Checkpointing, Remote Link Retries & Failure Exit Codes (`scripts/sync-audit-issues-to-jira.mjs`):**
+     - Checkpointed `jiraKey` and `jiraUrl` immediately upon successful Jira issue creation before requesting remote links.
+     - Separated remote link failures from Jira creation errors; retries now link the existing Jira issue rather than creating duplicates.
+     - Set process exit code to failure (`process.exitCode = 1`) whenever creation or remote linking fails, while still persisting result files (`audit-issues-synced.json` and `audit-issues-map.json`).
+     - Hardened top-level rejection handler to exit with status code 1.
+  6. **Authoritative Mapping Synchronization (`scripts/sync-audit-issues-to-jira.mjs`):**
+     - Updated load/write flow to incorporate saved Jira keys by stable audit ID before creating issues, writing the authoritative mapping to both `audit-issues-synced.json` and `audit-issues-map.json`.
+  7. **Automated Unit Testing (`scripts/test-audit-issue-sync.mjs`, `scripts/run-tests.mjs`):**
+     - Added a dedicated test suite verifying ADF heading parsing, section content preservation, issueTypeId conformance, and checkpointing/retry flows.
+     - Integrated `test-audit-issue-sync.mjs` into `UNIT_TESTS` in `scripts/run-tests.mjs`.
+* **Verification Check:**
+  - `npm run test:unit` clean (20/20 suites passed).
+  - `npx tsc --noEmit` clean (0 errors).
+
+### Phase 61: Comprehensive Website & PWA Code Audit, GitHub Issues & Jira Synchronization
+* **Full-Stack Robustness & Security Audit:**
+  - Executed a deep-dive code audit across `src/lib/`, `src/app/api/`, `src/components/`, `public/sw.js`, and PWA lifecycle handlers to identify robustness flaws, edge cases, race conditions, and security risks.
+  - Identified 14 distinct issues categorized into three priority tiers:
+    - **P1 - High Priority (Security & Authorization Integrity):** Issues 1–5 (`#30`–`#34` / `ZC-16`–`ZC-20`).
+    - **P2 - Medium Priority (PWA, Push Desync & Timing Race Conditions):** Issues 6–10 (`#35`–`#39` / `ZC-21`–`ZC-25`).
+    - **P3 - Low/Medium Priority (State Machine Inconsistencies & Caching):** Issues 11–14 (`#40`–`#43` / `ZC-26`, `ZC-27`, `ZC-14`, `ZC-15`).
+* **GitHub Issues & Taxonomy:**
+  - Established taxonomy labels: `security`, `pwa`, `backend`, `frontend`, `bug`, `enhancement`, `priority: high`, `priority: medium`, `priority: low`.
+  - Created 14 detailed GitHub issues (`#30` through `#43`) with comprehensive technical breakdowns including Problem Statement, Root Cause Analysis, Impact & Threat Model, Exact File & Line References, and Actionable Remediation Plans.
+* **Jira Cloud Project `ZC` Synchronization:**
+  - Created 14 matching Jira issues in project `ZC` (Project ID `10033`, Cloud Domain `krishjaiswal2182003.atlassian.net`) using top-level Task type (`10071`).
+  - Parsed structured Markdown into compliant Atlassian Document Format (ADF) v1 with headings, bullet lists, ordered lists, code blocks, and hard breaks.
+  - Mapped priorities cleanly (`High` for P1, `Medium` for P2/P3-medium, `Low` for P3-low) and attached corresponding labels.
+* **Bidirectional Issue Cross-Linking:**
+  - Added native Atlassian remote links on Jira tickets pointing directly to corresponding GitHub issue URLs.
+  - Posted cross-linking comments on each GitHub issue (`#30` through `#43`) pointing back to its corresponding Jira issue.
+* **Comprehensive Cross-Reference Matrix:**
+  | Issue # | Jira Key | Priority | Domain | Summary |
+  |---|---|---|---|---|
+  | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | [ZC-16](https://krishjaiswal2182003.atlassian.net/browse/ZC-16) | High (P1) | Security | Remove hardcoded fallback session secrets & dev PIN salt in production |
+  | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) | [ZC-17](https://krishjaiswal2182003.atlassian.net/browse/ZC-17) | High (P1) | Security / PWA | Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` |
+  | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | [ZC-18](https://krishjaiswal2182003.atlassian.net/browse/ZC-18) | High (P1) | Security | Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` |
+  | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) | [ZC-19](https://krishjaiswal2182003.atlassian.net/browse/ZC-19) | High (P1) | Security | Sanitize and validate `x-forwarded-host` in OAuth redirect base URL |
+  | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | [ZC-20](https://krishjaiswal2182003.atlassian.net/browse/ZC-20) | High (P1) | Security | Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded |
+  | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | [ZC-21](https://krishjaiswal2182003.atlassian.net/browse/ZC-21) | Medium (P2) | PWA / Push | Prevent race condition by recording nag deduplication before sending push |
+  | [#36](https://github.com/KrishJdev/Z-Catchers/issues/36) | [ZC-22](https://krishjaiswal2182003.atlassian.net/browse/ZC-22) | Medium (P2) | PWA / Frontend | Add Authorization Bearer header to push test and unsubscribe requests |
+  | [#37](https://github.com/KrishJdev/Z-Catchers/issues/37) | [ZC-23](https://krishjaiswal2182003.atlassian.net/browse/ZC-23) | Medium (P2) | Backend / Timezones | Align nag-assist date calculation with `getSleepCycleDate()` |
+  | [#38](https://github.com/KrishJdev/Z-Catchers/issues/38) | [ZC-24](https://krishjaiswal2182003.atlassian.net/browse/ZC-24) | Medium (P2) | PWA / Service Worker | Resolve `notificationclick` message dropping during tab navigation |
+  | [#39](https://github.com/KrishJdev/Z-Catchers/issues/39) | [ZC-25](https://krishjaiswal2182003.atlassian.net/browse/ZC-25) | Medium (P2) | Backend | Remove `wake_time_local` default destructuring to prevent schedule overwrites |
+  | [#40](https://github.com/KrishJdev/Z-Catchers/issues/40) | [ZC-26](https://krishjaiswal2182003.atlassian.net/browse/ZC-26) | Medium (P3) | State Machine | Reconcile Sleep Shield active vs `canVoteStrike` in 60-480m overdue window |
+  | [#41](https://github.com/KrishJdev/Z-Catchers/issues/41) | [ZC-27](https://krishjaiswal2182003.atlassian.net/browse/ZC-27) | Low (P3) | State Machine | Enforce mutual exclusion between `is_in_bed` and `is_woke_up` flags |
+  | [#42](https://github.com/KrishJdev/Z-Catchers/issues/42) | [ZC-14](https://krishjaiswal2182003.atlassian.net/browse/ZC-14) | Low (P3) | Security / Frontend | Avoid storing plaintext moderator passcode in `sessionStorage` |
+  | [#43](https://github.com/KrishJdev/Z-Catchers/issues/43) | [ZC-15](https://krishjaiswal2182003.atlassian.net/browse/ZC-15) | Low (P3) | PWA / Caching | Implement versioned cache invalidation for `_next/static` assets in Service Worker |
+* **Verification Check:**
+  - `npm run typecheck` clean (0 errors).
+  - `npm run test:unit` clean (19/19 suites passed in 10.25s).
+
+### Phase 60: Production Release Pull Request #28 (`dev` → `main`)
+* **Created Production Release PR #28:**
+  - Opened PR: [#28 `release: promote global IANA timezones, persistent rate limiting, cron idempotency locks, and CI pipeline to main`](https://github.com/KrishJdev/Z-Catchers/pull/28)
+  - Targets `main` from `dev`.
+  - Promotes all merged Phase 51 through Phase 59 features, security hardenings, and architectural improvements into production:
+    1. **Global IANA Timezone Catalog & Searchable GMT Offsets Selector:**
+       - Full 424 IANA timezone database and 38 GMT offsets (`GMT-12:00` to `GMT+14:00`).
+       - Categorized `<optgroup>`s with real-time query filtering.
+       - Reusable `<TimezoneSelect />` component ensuring zero mutation of existing user timezones.
+    2. **Persistent Supabase Rate Limiting & Distributed Cron Idempotency:**
+       - Persistent `rate_limits` table with sliding window and automatic DB cleanup.
+       - Distributed `cron_locks` table preventing duplicate background cron runs and overlapping push/Discord notifications.
+       - Idempotent database schema definitions in `supabase/schema.sql`.
+    3. **Canonical API Consolidation & Optimistic Concurrency:**
+       - Canonical endpoints for strike voting, strikes, and metastrikes with backward compatibility.
+       - Optimistic concurrency locking and precision timezone calculations.
+    4. **Unified CI/CD Pipeline & Automated Testing Suite:**
+       - GitHub Actions CI workflow (`.github/workflows/ci.yml`) on Node.js 22.
+       - Unified test runner (`scripts/run-tests.mjs`) with automated CI offline gating for live database calls.
+       - Mandatory unit testing directive codified in `AGENTS.md` and `AGENT_RULES.md`.
+    5. **CodeRabbit Review Hardening:**
+       - All CodeRabbit review findings resolved across rate limiting schemas, cron lease expiries, and test isolation.
+* **Verification & Merge Pre-Checks:**
+  - `git merge-tree origin/main origin/dev` confirmed 0 conflicts.
+  - `npx tsc --noEmit` clean (0 errors).
+  - `npm run test:unit` clean (all 19 test suites passed in 21.46s).
+
+### Phase 59: GitHub & Jira Issue Status Audit and Lifecycle Synchronization
+* **GitHub Open Issues Audit & Completion:**
+  - Audited all 7 open GitHub issues (`#1`, `#5`, `#6`, `#7`, `#8`, `#9`, `#10`).
+  - Confirmed 100% of underlying features, APIs, unit tests, and security guardrails are fully implemented, verified, and merged into production:
+    - `[ZC-1] Phase 1 MVP: Core Cross-Timezone Accountability`: Updated epic checklist with all 6 deliverables marked done; closed issue #1 as completed.
+    - `[ZC-5] Phase 1.4: Self-Service Schedule Edit Modal & 48-Hour Cooldown`: Closed issue #5 with complete audit notes referencing `MyScheduleModal.tsx`, 48-hour cooldown queue, and Discord journal validation regex.
+    - `[ZC-6] Phase 1.5: Web Push Notification Engine & Service Worker`: Closed issue #6 with audit notes referencing `public/sw.js`, VAPID key pairing, and multi-device preference management via `/api/push/subscribe`.
+    - `[ZC-7] Phase 1.6: 1-Minute Cron Dispatcher & Sleep Shield Guardrail`: Closed issue #7 with audit notes referencing `/api/cron/dispatch-notifications`, distributed locks, short leases, and Sleep Shield guarantees.
+    - `[ZC-8] Phase 2: Moderation & Anti-Dodge Controls`: Closed issue #8 with audit notes referencing `ModDrawer.tsx`, passcode/session unlock, and roster admin API `/api/mod`.
+    - `[ZC-9] Phase 2.1: Passcode-Protected Moderator Drawer (ModDrawer.tsx)`: Closed issue #9 with audit notes referencing drawer UI, pending queue, and `<TimezoneSelect />`.
+    - `[ZC-10] Phase 2.2: Instant Cooldown Override & Roster Admin API`: Closed issue #10 with audit notes referencing `/api/mod` CRUD, rate limiting, and live allowlist authorization.
+  - Verified `gh issue list --state open` is now 100% clean (0 open issues).
+* **Jira Board & Cloud API Synchronization:**
+  - Updated GitHub Repository secret `JIRA_TOKEN` via `gh secret set JIRA_TOKEN` with the refreshed Atlassian API key.
+  - Authenticated against `krishjaiswal2182003.atlassian.net` as `krish.jaiswal2182003@gmail.com`.
+  - Discovered all 13 issues in project `ZC` and transitioned all active tasks to `Done` (IDs verified on Jira):
+    - `ZC-1`: Phase 1 MVP: Core Cross-Timezone Accountability -> `Done`
+    - `ZC-2`: Phase 1.1: Database Schema & Supabase Configuration -> `Done`
+    - `ZC-3`: Phase 1.2: Luxon Sleep Engine & Cross-Timezone Calculations -> `Done`
+    - `ZC-4`: Phase 1.3: Warm Dark Mobile Dashboard UI & Status Buckets -> `Done`
+    - `ZC-5`: Phase 1.4: Self-Service Schedule Edit Modal & 48-Hour Cooldown -> `Done`
+    - `ZC-6`: Phase 1.5: Web Push Notification Engine & Service Worker -> `Done`
+    - `ZC-7`: Phase 1.6: 1-Minute Cron Dispatcher & Sleep Shield Guardrail -> `Done`
+    - `ZC-8`: Phase 2: Moderation & Anti-Dodge Controls -> `Done`
+    - `ZC-9`: Phase 2.1: Passcode-Protected Moderator Drawer (ModDrawer.tsx) -> `Done`
+    - `ZC-10`: Phase 2.2: Instant Cooldown Override & Roster Admin API -> `Done`
+    - `ZC-11`: Phase 3: Sleep Streaks, Badges & Discord Webhooks -> `Done`
+    - `ZC-12`: Phase 3.1: Bedtime Compliance Scoring & Streak Tracking -> `Done`
+    - `ZC-13`: Phase 3.2: Automated Discord Channel Webhooks & Polish -> `Done`
+  - Added idempotency check to `scripts/transition-jira-issue.mjs` verifying current status before fetching transitions, preventing errors when issues are already in target status.
+  - Updated JQL search endpoint in `scripts/transition-jira-issue.mjs` to request explicit fields (`id,key,summary,status`).
+* **Architecture & Roadmap Change of Plans Documentation:**
+  - Documented deprecation of legacy unauthenticated registration `POST /api/members` (HTTP 410 Gone) in favor of Discord OAuth2 authentication.
+  - Documented evolution of "Custom Quiet Hours" into dynamic Sleep Shield early check-in ("I'm In Bed") and excused Metastrike passes.
+  - Documented locking of Discord handles (auto-filled from Discord OAuth) to prevent member impersonation.
+  - Documented consolidation of legacy API proxy routes into canonical endpoints (`/api/cron/dispatch-notifications`, `/api/members/strikes`, `/api/members/strikes/metastrike`).
+* **Verification Check:**
+  - `npx tsc --noEmit` clean (0 errors).
+  - `npm run test:unit` clean (19/19 suites passed).
 
 ### Phase 58: Mandatory Unit Testing Directive in Agent Specifications
 * **Multi-Agent Directive Update (`AGENTS.md`):**
@@ -956,6 +1439,27 @@ d:\Projects\Z Catchers\
 
 ## 6. Current Status of Jira Tasks & Milestones
 
+### Active Backlog Tasks: Phase 61 Robustness & Security Audit
+
+| Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
+|---|---|---|---|---|---|
+| **ZC-16** | **High (P1)** | Security: Remove hardcoded fallback session secrets & dev PIN salt in production | `src/lib/auth.ts` | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | **TODO** |
+| **ZC-17** | **High (P1)** | Security: Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` | `src/app/api/push/unsubscribe/route.ts` | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) | **TODO** |
+| **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | **TODO** |
+| **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) | **TODO** |
+| **ZC-20** | **High (P1)** | Security: Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded | `src/app/api/members/update-schedule/route.ts` | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | **TODO** |
+| **ZC-21** | **Medium (P2)** | PWA / Notifications: Prevent race condition by recording nag deduplication before sending push | `src/app/api/members/nag-notif/route.ts` | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | **TODO** |
+| **ZC-22** | **Medium (P2)** | PWA / Push: Add Authorization Bearer header to push test and unsubscribe requests | `src/components/PushModal.tsx`, `src/lib/pushClient.ts` | [#36](https://github.com/KrishJdev/Z-Catchers/issues/36) | **TODO** |
+| **ZC-23** | **Medium (P2)** | Backend: Align nag-assist date calculation with `getSleepCycleDate()` | `src/app/api/members/nag-assist/route.ts` | [#37](https://github.com/KrishJdev/Z-Catchers/issues/37) | **TODO** |
+| **ZC-24** | **Medium (P2)** | PWA / Service Worker: Resolve `notificationclick` message dropping during tab navigation | `public/sw.js` | [#38](https://github.com/KrishJdev/Z-Catchers/issues/38) | **TODO** |
+| **ZC-25** | **Medium (P2)** | Backend: Remove `wake_time_local` default destructuring to prevent schedule overwrites | `src/app/api/members/update-schedule/route.ts` | [#39](https://github.com/KrishJdev/Z-Catchers/issues/39) | **TODO** |
+| **ZC-26** | **Medium (P3)** | State Machine: Reconcile Sleep Shield active vs `canVoteStrike` in 60-480m overdue window | `src/lib/sleepEngine.ts`, `src/components/MemberCard.tsx` | [#40](https://github.com/KrishJdev/Z-Catchers/issues/40) | **TODO** |
+| **ZC-27** | **Low (P3)** | State Machine: Enforce mutual exclusion between `is_in_bed` and `is_woke_up` flags | `src/app/api/auth/me/route.ts`, `src/app/api/members/route.ts` | [#41](https://github.com/KrishJdev/Z-Catchers/issues/41) | **TODO** |
+| **ZC-14** | **Low (P3)** | Security / ModDrawer: Avoid storing plaintext moderator passcode in `sessionStorage` | `src/components/ModDrawer.tsx` | [#42](https://github.com/KrishJdev/Z-Catchers/issues/42) | **TODO** |
+| **ZC-15** | **Low (P3)** | PWA / Cache: Implement versioned cache invalidation for `_next/static` assets in Service Worker | `public/sw.js` | [#43](https://github.com/KrishJdev/Z-Catchers/issues/43) | **TODO** |
+
+### Historical Implementation Milestones (Completed & Verified)
+
 | Issue Key | Summary / Milestone | Status | Completed In |
 |---|---|---|---|
 | **ZC-1** | Epic: Phase 1 MVP Core Application | DONE | MVP Complete |
@@ -965,46 +1469,47 @@ d:\Projects\Z Catchers\
 | **ZC-5** | Phase 1.4: Self-Service Schedule Edit Modal & 48h Cooldown | DONE | Commit `46025db` |
 | **ZC-6** | Phase 1.5: Web Push Notification Engine & Service Worker | DONE | Commit `fee9f22` |
 | **ZC-7** | Phase 1.6: 1-Minute Cron Dispatcher & Sleep Shield Guardrail | DONE | Commit `fee9f22` |
-| **ZC-8** | Epic: Phase 2 Moderation & Anti-Dodge Controls | **DONE** | Commit `f8ddcb2` |
+| **ZC-8** | Epic: Phase 2 Moderation & Anti-Dodge Controls | DONE | Commit `f8ddcb2` |
 | **ZC-9** | Phase 2.1: Passcode-Protected Moderator Drawer (`ModDrawer.tsx`)| DONE | Commit `d66de1f` / `4339402` |
 | **ZC-10**| Phase 2.2: Instant Cooldown Override & Roster Admin API | DONE | Commit `a3fc7fa` |
-| **ZC-13**| Phase 2.3: Simple Member PIN Login & Session Profile Binding | **DONE** | ZC-13 / Milestone 6 |
-| **ZC-11**| Epic: Phase 3 Sleep Streaks, Badges & Discord Webhooks | **DONE** | Phase 8 Complete |
-| **ZC-12**| Phase 3.1: Bedtime Compliance Scoring & Streak Tracking | **DONE** | Phase 5 / Phase 8 |
-| **ZC-13**| Phase 3.2: Automated Discord Channel Webhooks & Nag Assists | **DONE** | Phase 8 Complete |
-| **ZC-14**| Epic / Phase 4: Monthly Strikes & Metastrikes Accountability System | **DONE** | Phase 25 |
-| **ZC-15**| Mobile Layout Bugfixes & Standalone Onboarding Flow (`/join`) | **DONE** | Phase 29 |
-| **ZC-16**| MemberCard & Status Bucket Headers Warm Dark Refactor | **DONE** | Phase 30 |
-| **ZC-17**| Phase 1: Mobile PWA Lifecycle, Service Worker & Multi-Device Push | **DONE** | Phase 31 |
-| **ZC-18**| Phase 2: Mobile Navigation, Standalone Onboarding & Touch UX | **DONE** | Phase 32 |
-| **ZC-19**| Phase 3: Sleep Engine, IANA Timezone Math & Idempotent Cron | **DONE** | Phase 33 |
-| **ZC-20**| Phase 4: Community Accountability Mechanics & Serverless Security | **DONE** | Phase 34 |
-| **ZC-21**| Phase 35: PWA Phone Robustness, Safe Areas, Keyboard dvh & Offline Resilience | **DONE** | Phase 35 |
-| **ZC-22**| Phase 36: Ubiquitous Member Log Out & Auth Session De-identification | **DONE** | Commit `ac191d0` |
-| **ZC-23**| Phase 37: Code Review Remediations, Security Hardening & Concurrency Protection | **DONE** | Phase 37 |
-| **ZC-24**| Phase 40: Comprehensive Code Review Remediations, Session Owner Auth & A11y | **DONE** | Phase 40 |
-| **ZC-25**| Phase 41: Complete CodeRabbit Review Remediations & PR #17 Update | **DONE** | Phase 41 |
-| **ZC-26**| Phase 49: Sleeping State to Awake Undo Action & Leave Quiet Note Overflow Fix | **DONE** | PR #25 (Commit `4aa2d40`) |
-| **ZC-27**| Phase 54: Global IANA & GMT Timezones Expansion & Reusable Selector | **DONE** | Commit `95762f3` |
-| **ZC-28**| Phase 55: Immediate Codebase & Architectural Fixes (Tasks 1-5) | **DONE** | Commit `16de25b` |
-| **ZC-29**| Phase 57: CI Pipeline Test Runner TypeScript Loader Fix (`tsx`) | **DONE** | PR #27 |
+| **ZC-11**| Epic: Phase 3 Sleep Streaks, Badges & Discord Webhooks | DONE | Phase 8 Complete |
+| **ZC-12**| Phase 3.1: Bedtime Compliance Scoring & Streak Tracking | DONE | Phase 5 / Phase 8 |
+| **ZC-13**| Phase 3.2: Automated Discord Channel Webhooks & Nag Assists | DONE | Phase 8 Complete |
 
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Review & Merge Active Integration Pull Request (`krish` -> `dev`):**
-   * Active PR: `feat(timezone): add comprehensive global IANA timezones and GMT offsets selector` targets `dev` from `krish`.
-   * Integrates full canonical IANA timezone catalog (424 timezones) + all 38 standard GMT offsets, categorized `<optgroup>`s, real-time query filtering, and preservation of existing user timezones across `/join`, `MyScheduleModal.tsx`, and `ModDrawer.tsx`.
-   * Verify automated CI checks (`.github/workflows/ci.yml`) and merge into `dev`.
+1. **Sprint 1 — P1 (High Priority) Security & Auth Hardening:**
+   * **ZC-16 / GH #30 (`src/lib/auth.ts`):** Fail closed in production for `SESSION_SECRET` and `PIN_SALT`. Strip fallback secrets when `NODE_ENV === 'production'`.
+   * **ZC-17 / GH #31 (`src/app/api/push/unsubscribe/route.ts`):** Require active authenticated session for unsubscriptions; scope deletion to `sessionMemberId`.
+   * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** Replace in-memory rate limiting with `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
+   * **ZC-19 / GH #33 (`src/lib/auth.ts`):** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
+   * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles.
 
-2. **Review & Merge Active Production Release Pull Request [#26 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/26):**
-   * Active PR: [#26 `release: promote sleep state undo option and leave quiet note overflow fix to main`](https://github.com/KrishJdev/Z-Catchers/pull/26) targets `main` from `dev`.
-   * Promotes Phase 49 verified features (PR #25) into production: awake state machine transition, early wake-up/undo buttons, `WOKE_UP` notification logging, and "Leave quiet note" overflow fix.
-   * Verify CI and merge into `main`.
+2. **Sprint 2 — P2 (Medium Priority) PWA, Push & Concurrency Fixes:**
+   * **ZC-21 / GH #35 (`src/app/api/members/nag-notif/route.ts`):** Commit notification log deduplication record before dispatching push notifications.
+   * **ZC-22 / GH #36 (`src/components/PushModal.tsx`, `src/lib/pushClient.ts`):** Attach `Authorization: Bearer <token>` header to `/api/push/test` and `/api/push/unsubscribe`.
+   * **ZC-23 / GH #37 (`src/app/api/members/nag-assist/route.ts`):** Calculate local date using `getSleepCycleDate()` instead of standard calendar day.
+   * **ZC-24 / GH #38 (`public/sw.js`):** Clean up `postMessage` during `client.navigate()` in service worker `notificationclick` handler to avoid dropped deep link actions.
+   * **ZC-25 / GH #39 (`src/app/api/members/update-schedule/route.ts`):** Remove default `= '07:00'` destructuring to prevent unintentional overwriting of custom wake times.
 
-3. **Database Migration Execution in Supabase SQL Editor:**
-   * Run the idempotent migration block from `supabase/schema.sql` on the remote Supabase database:
+3. **Sprint 3 — P3 (Low Priority) State Machine, UI Polish & SW Cache Invalidation:**
+   * **ZC-26 / GH #40 (`src/lib/sleepEngine.ts`, `src/components/MemberCard.tsx`):** Reconcile conflicting `isSleepShieldActive` vs `canVoteStrike` states in 60-480m overdue window.
+   * **ZC-27 / GH #41 (`src/app/api/auth/me/route.ts`, `src/app/api/members/route.ts`):** Enforce mutual exclusion between `is_in_bed` and `is_woke_up`.
+   * **ZC-14 / GH #42 (`src/components/ModDrawer.tsx`):** Avoid storing plaintext master moderator passcode in browser `sessionStorage`.
+   * **ZC-15 / GH #43 (`public/sw.js`):** Implement build-hash or versioned cache busting for `_next/static` assets to prevent hydration mismatches on new deployments.
+
+4. **Review & Merge Active Integration Pull Request [#44 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/44):**
+   * Active PR: [#44 `chore: sync code audit issues to Jira, cross-link GitHub issues, and update transition tooling`](https://github.com/KrishJdev/Z-Catchers/pull/44) targets `dev` from `krish`.
+   * Integrates all verified Phase 61 audit synchronization and Jira transition tooling into `dev`:
+     - Jira audit issues `ZC-14` through `ZC-27` mapped to GitHub issues `#30` through `#43`.
+     - Hardened Jira transition workflow and idempotent transition scripts.
+     - Documented audit matrix and taxonomy in `HANDOFF.md`.
+   * Note: Production release PR [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28) was successfully merged into `main`.
+
+5. **Database Migration Execution in Supabase SQL Editor:**
+   * Run the complete, updated idempotent migration from `supabase/schema.sql` on the remote Supabase database before deployment, ensuring it includes the `weekly_schedule` and `pending_weekly_schedule` column changes and backfill:
      ```sql
      -- Members table columns
      ALTER TABLE members ADD COLUMN IF NOT EXISTS discord_id TEXT;
@@ -1017,6 +1522,36 @@ d:\Projects\Z Catchers\
        END IF;
      END $$;
      CREATE INDEX IF NOT EXISTS idx_members_discord_id ON members(discord_id);
+
+     -- 7-Day Variable Sleep Schedule Migration & Backfill (Phase 63)
+     ALTER TABLE public.members ADD COLUMN IF NOT EXISTS weekly_schedule JSONB;
+     ALTER TABLE public.members ADD COLUMN IF NOT EXISTS pending_weekly_schedule JSONB;
+
+     -- Backfill existing members from their current weekday and weekend columns
+     UPDATE public.members
+     SET weekly_schedule = jsonb_build_object(
+       'mon', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+       'tue', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+       'wed', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+       'thu', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
+       'fri', jsonb_build_object('bedtime', COALESCE(weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(weekend_wake_time_local, wake_time_local)),
+       'sat', jsonb_build_object('bedtime', COALESCE(weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(weekend_wake_time_local, wake_time_local)),
+       'sun', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local)
+     )
+     WHERE weekly_schedule IS NULL;
+
+     -- Backfill pending schedules for members with active cooldown
+     UPDATE public.members
+     SET pending_weekly_schedule = jsonb_build_object(
+       'mon', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+       'tue', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+       'wed', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+       'thu', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+       'fri', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
+       'sat', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
+       'sun', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local))
+     )
+     WHERE pending_effective_at IS NOT NULL AND pending_weekly_schedule IS NULL;
 
      -- Persistent Rate Limiting Table
      CREATE TABLE IF NOT EXISTS public.rate_limits (
@@ -1047,13 +1582,79 @@ d:\Projects\Z Catchers\
      DROP POLICY IF EXISTS "Service role full access on cron_locks" ON public.cron_locks;
      CREATE POLICY "Service role full access on cron_locks" ON public.cron_locks
        FOR ALL USING (auth.role() = 'service_role');
+
+     -- Fast Wake-Up State Resolution & Sleep Logs Migration
+     ALTER TABLE public.members
+       ADD COLUMN IF NOT EXISTS last_woke_up_at TIMESTAMPTZ,
+       ADD COLUMN IF NOT EXISTS last_wake_cycle_date TEXT;
+
+     CREATE TABLE IF NOT EXISTS public.sleep_logs (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       member_id UUID NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+       cycle_date TEXT NOT NULL,
+       timezone TEXT NOT NULL DEFAULT 'UTC',
+       target_bedtime TEXT,
+       target_wake_time TEXT,
+       in_bed_at TIMESTAMPTZ,
+       in_bed_local_time TEXT,
+       woke_up_at TIMESTAMPTZ,
+       woke_up_local_time TEXT,
+       wake_source TEXT CHECK (wake_source IN ('button', 'manual')),
+       duration_minutes INTEGER,
+       status TEXT NOT NULL DEFAULT 'on_time' CHECK (status IN ('on_time', 'late', 'missed', 'metastrike')),
+       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       UNIQUE (member_id, cycle_date)
+     );
+
+     -- Guarded migration: Convert sleep_logs.member_id from TEXT to UUID and link foreign key if upgrading existing table
+     DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'sleep_logs'
+           AND column_name = 'member_id' AND data_type = 'text'
+       ) THEN
+         DELETE FROM public.sleep_logs
+         WHERE member_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            OR member_id::uuid NOT IN (SELECT id FROM public.members);
+
+         ALTER TABLE public.sleep_logs
+           ALTER COLUMN member_id TYPE UUID USING member_id::uuid;
+
+         IF NOT EXISTS (
+           SELECT 1 FROM information_schema.table_constraints
+           WHERE constraint_schema = 'public'
+             AND table_name = 'sleep_logs'
+             AND constraint_name = 'sleep_logs_member_id_fkey'
+         ) THEN
+           ALTER TABLE public.sleep_logs
+             ADD CONSTRAINT sleep_logs_member_id_fkey
+             FOREIGN KEY (member_id) REFERENCES public.members(id) ON DELETE CASCADE;
+         END IF;
+       END IF;
+     END $$;
+
+     CREATE INDEX IF NOT EXISTS idx_sleep_logs_member_cycle
+       ON public.sleep_logs (member_id, cycle_date DESC);
+
+     ALTER TABLE public.sleep_logs ENABLE ROW LEVEL SECURITY;
+     DROP POLICY IF EXISTS "Public read sleep_logs" ON public.sleep_logs;
+     DROP POLICY IF EXISTS "Public can view sleep logs" ON public.sleep_logs;
+     DROP POLICY IF EXISTS "Service role full access sleep_logs" ON public.sleep_logs;
+     DROP POLICY IF EXISTS "Service role full access on sleep_logs" ON public.sleep_logs;
+     CREATE POLICY "Service role full access on sleep_logs" ON public.sleep_logs FOR ALL USING (auth.role() = 'service_role');
+     ALTER PUBLICATION supabase_realtime ADD TABLE public.sleep_logs;
      ```
 
-4. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
+6. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
-3. **Verify Production Deployment Following PR #22 Merge (`main`):**
-   * Production release PR #22 successfully merged into `main`: [PR #22](https://github.com/KrishJdev/Z-Catchers/pull/22)
+7. **Verify Production Deployment Following Release Merges (`main`):**
+   * Production releases up to PR #26 successfully merged into `main`.
    * Verify deployment logs and Discord login flow in Vercel following merge to production `main`.
-   * (Optional Best Practice) Add `SESSION_SECRET` (random 32+ char string) in Vercel Project Settings > Environment Variables for explicit key configuration.
+   * **Mandatory Environment Configuration & Security Precondition:**
+     * `SESSION_SECRET` (random 32+ char string) and `PIN_SALT` must be explicitly configured in Vercel Project Settings > Environment Variables. Do not treat `SESSION_SECRET` as optional.
+     * Note that configuring `SESSION_SECRET` alone does **not** secure authentication: production deployments must **not** be considered secure while fallback-secret verification remains active in `src/lib/auth.ts`.
+     * **ZC-16 / GH #30** must be resolved (removing hardcoded fallback session secrets and enforcing fail-closed secret validation in production) before claiming the production deployment is protected.

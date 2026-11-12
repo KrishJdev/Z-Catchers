@@ -15,7 +15,7 @@ import {
   recordPinFailurePersistent,
   resetPinFailurePersistent,
 } from '@/lib/rateLimit';
-import { isValidTimezone } from '@/lib/timezone';
+import { isValidTimezone, DAY_KEYS, type WeeklySchedule } from '@/lib/timezone';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -105,6 +105,7 @@ export async function POST(request: Request) {
       timezone,
       weekend_bedtime_local,
       weekend_wake_time_local,
+      weekly_schedule,
     } = body;
 
     // 1. Verify signed claim token
@@ -247,21 +248,41 @@ export async function POST(request: Request) {
       const isDbMod = finalDbRole === 'moderator';
       const effectiveIsMod = isDbMod || isModerator;
 
+      const claimUpdates: Record<string, any> = {
+        discord_id: payload.discordId,
+        discord_username: payload.discordUsername || target.discord_username,
+        discord_handle:
+          payload.discordHandle ||
+          target.discord_handle ||
+          (target.discord_username ? `@${target.discord_username.toLowerCase().replace(/\s+/g, '')}` : null),
+        avatar_url: payload.avatarUrl || target.avatar_url,
+        is_moderator: isDbMod,
+        role: finalDbRole,
+        onboarding_completed: true,
+        updated_at: DateTime.utc().toISO() as string,
+      };
+
+      if (!target.weekly_schedule) {
+        claimUpdates.weekly_schedule = {
+          mon: { bedtime: target.bedtime_local, wake_time: target.wake_time_local },
+          tue: { bedtime: target.bedtime_local, wake_time: target.wake_time_local },
+          wed: { bedtime: target.bedtime_local, wake_time: target.wake_time_local },
+          thu: { bedtime: target.bedtime_local, wake_time: target.wake_time_local },
+          fri: {
+            bedtime: target.weekend_bedtime_local || target.bedtime_local,
+            wake_time: target.weekend_wake_time_local || target.wake_time_local,
+          },
+          sat: {
+            bedtime: target.weekend_bedtime_local || target.bedtime_local,
+            wake_time: target.weekend_wake_time_local || target.wake_time_local,
+          },
+          sun: { bedtime: target.bedtime_local, wake_time: target.wake_time_local },
+        };
+      }
+
       const { data: updatedMember, error: updateErr } = await updateMemberSafe(
         target.id,
-        {
-          discord_id: payload.discordId,
-          discord_username: payload.discordUsername || target.discord_username,
-          discord_handle:
-            payload.discordHandle ||
-            target.discord_handle ||
-            (target.discord_username ? `@${target.discord_username.toLowerCase().replace(/\s+/g, '')}` : null),
-          avatar_url: payload.avatarUrl || target.avatar_url,
-          is_moderator: isDbMod,
-          role: finalDbRole,
-          onboarding_completed: true,
-          updated_at: DateTime.utc().toISO() as string,
-        },
+        claimUpdates,
         { requireUnlinkedDiscord: true }
       );
 
@@ -347,15 +368,66 @@ export async function POST(request: Request) {
         );
       }
 
+      let targetWeeklySchedule: WeeklySchedule;
+      if (weekly_schedule !== undefined && weekly_schedule !== null) {
+        if (typeof weekly_schedule !== 'object' || Array.isArray(weekly_schedule)) {
+          return NextResponse.json(
+            { error: 'weekly_schedule must be a valid 7-day schedule object.' },
+            { status: 400 }
+          );
+        }
+        for (const day of DAY_KEYS) {
+          const ds = weekly_schedule[day];
+          if (!ds || typeof ds !== 'object' || !ds.bedtime || !ds.wake_time || !TIME_FORMAT_REGEX.test(ds.bedtime.trim()) || !TIME_FORMAT_REGEX.test(ds.wake_time.trim())) {
+            return NextResponse.json(
+              { error: 'Invalid weekly_schedule format. Each day (mon through sun) must specify valid 24h HH:mm bedtime and wake_time.' },
+              { status: 400 }
+            );
+          }
+          if (ds.bedtime.trim() === ds.wake_time.trim()) {
+            return NextResponse.json(
+              { error: `Invalid schedule for "${day}": Bedtime and wake time cannot be identical.` },
+              { status: 400 }
+            );
+          }
+        }
+        targetWeeklySchedule = {
+          mon: { bedtime: weekly_schedule.mon.bedtime.trim(), wake_time: weekly_schedule.mon.wake_time.trim() },
+          tue: { bedtime: weekly_schedule.tue.bedtime.trim(), wake_time: weekly_schedule.tue.wake_time.trim() },
+          wed: { bedtime: weekly_schedule.wed.bedtime.trim(), wake_time: weekly_schedule.wed.wake_time.trim() },
+          thu: { bedtime: weekly_schedule.thu.bedtime.trim(), wake_time: weekly_schedule.thu.wake_time.trim() },
+          fri: { bedtime: weekly_schedule.fri.bedtime.trim(), wake_time: weekly_schedule.fri.wake_time.trim() },
+          sat: { bedtime: weekly_schedule.sat.bedtime.trim(), wake_time: weekly_schedule.sat.wake_time.trim() },
+          sun: { bedtime: weekly_schedule.sun.bedtime.trim(), wake_time: weekly_schedule.sun.wake_time.trim() },
+        };
+      } else {
+        targetWeeklySchedule = {
+          mon: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
+          tue: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
+          wed: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
+          thu: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
+          fri: {
+            bedtime: weekend_bedtime_local?.trim() && TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim()) ? weekend_bedtime_local.trim() : cleanBedtime,
+            wake_time: weekend_wake_time_local?.trim() && TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim()) ? weekend_wake_time_local.trim() : cleanWakeTime,
+          },
+          sat: {
+            bedtime: weekend_bedtime_local?.trim() && TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim()) ? weekend_bedtime_local.trim() : cleanBedtime,
+            wake_time: weekend_wake_time_local?.trim() && TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim()) ? weekend_wake_time_local.trim() : cleanWakeTime,
+          },
+          sun: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
+        };
+      }
+
       const insertPayload: Record<string, unknown> = {
         discord_id: payload.discordId,
         discord_username: cleanUsername,
         discord_handle: discord_handle?.trim() || null,
         avatar_url: payload.avatarUrl,
         journal_url: cleanJournal,
-        bedtime_local: cleanBedtime,
-        wake_time_local: cleanWakeTime,
+        bedtime_local: targetWeeklySchedule.mon.bedtime,
+        wake_time_local: targetWeeklySchedule.mon.wake_time,
         timezone: cleanTz,
+        weekly_schedule: targetWeeklySchedule,
         is_moderator: false,
         role: 'member',
         onboarding_completed: true,
@@ -365,11 +437,11 @@ export async function POST(request: Request) {
         strike_cycle_month: DateTime.utc().toFormat('yyyy-MM'),
       };
 
-      if (weekend_bedtime_local?.trim() && TIME_FORMAT_REGEX.test(weekend_bedtime_local.trim())) {
-        insertPayload.weekend_bedtime_local = weekend_bedtime_local.trim();
+      if (targetWeeklySchedule.sat.bedtime) {
+        insertPayload.weekend_bedtime_local = targetWeeklySchedule.sat.bedtime;
       }
-      if (weekend_wake_time_local?.trim() && TIME_FORMAT_REGEX.test(weekend_wake_time_local.trim())) {
-        insertPayload.weekend_wake_time_local = weekend_wake_time_local.trim();
+      if (targetWeeklySchedule.sat.wake_time) {
+        insertPayload.weekend_wake_time_local = targetWeeklySchedule.sat.wake_time;
       }
 
       const { data: createdMember, error: insertErr } = await insertMemberSafe(insertPayload);

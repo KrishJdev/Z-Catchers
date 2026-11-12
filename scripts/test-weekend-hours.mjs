@@ -195,9 +195,95 @@ assert(getSleepCycleDate(memberWithWeekend, monMorningGraceUtc) === '2026-11-15'
 assert(isWeekendCycle(memberWithWeekend, sunNightUtc) === false, 'Sunday night is NOT weekend cycle');
 assert(isWeekendCycle(memberWithWeekend, monMorningGraceUtc) === false, 'Monday morning grace is NOT weekend cycle');
 
+// 7. 7-Day Variable Sleep Schedule & Mid-Week Transitions
+console.log('\n--- 7. 7-Day Variable Sleep Schedule & Mid-Week Transitions ---');
+const variableMember = {
+  id: 'member-variable-1',
+  discord_username: 'VariableSleeper',
+  discord_handle: 'variablesleeper',
+  avatar_url: null,
+  journal_url: 'https://discord.com/channels/123/456',
+  bedtime_local: '22:30',
+  wake_time_local: '06:30',
+  timezone: 'America/New_York',
+  weekend_bedtime_local: '01:00',
+  weekend_wake_time_local: '09:00',
+  weekly_schedule: {
+    mon: { bedtime: '22:30', wake_time: '06:30' },
+    tue: { bedtime: '00:30', wake_time: '08:30' }, // Mid-week shift: late Tuesday night
+    wed: { bedtime: '23:00', wake_time: '07:00' }, // Mid-week shift: Wednesday night
+    thu: { bedtime: '22:00', wake_time: '06:00' }, // Mid-week shift: early Thursday night
+    fri: { bedtime: '01:30', wake_time: '09:30' }, // Weekend Friday
+    sat: { bedtime: '01:30', wake_time: '09:30' }, // Weekend Saturday
+    sun: { bedtime: '22:30', wake_time: '06:30' }, // Sunday
+  },
+  pending_bedtime_local: null,
+  pending_wake_time_local: null,
+  pending_timezone: null,
+  pending_effective_at: null,
+  role: 'member',
+  passcode_hash: null,
+  is_active: true,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+
+// Check bedtime resolution across variable days
+const monBed = getBedtimeForNight(variableMember, monday);
+assert(monBed.bedtimeStr === '22:30' && !monBed.isWeekend, 'Monday resolves to custom 22:30 bedtime');
+
+const tueBed = getBedtimeForNight(variableMember, tuesday);
+assert(tueBed.bedtimeStr === '00:30' && !tueBed.isWeekend, 'Tuesday resolves to custom 00:30 bedtime');
+
+const wedBed = getBedtimeForNight(variableMember, wednesday);
+assert(wedBed.bedtimeStr === '23:00' && !wedBed.isWeekend, 'Wednesday resolves to custom 23:00 bedtime');
+
+const thuBed = getBedtimeForNight(variableMember, thursday);
+assert(thuBed.bedtimeStr === '22:00' && !thuBed.isWeekend, 'Thursday resolves to custom 22:00 bedtime');
+
+const friBed = getBedtimeForNight(variableMember, friday);
+assert(friBed.bedtimeStr === '01:30' && friBed.isWeekend, 'Friday resolves to custom 01:30 bedtime (weekend)');
+
+// Test computeMemberState transitions on mid-week shift days:
+// Scenario 7A: Monday night at 22:00 (T-30m before 22:30 bedtime -> WINDING_DOWN)
+const monNightUtc = DateTime.fromISO('2026-11-09T22:00:00', { zone: 'America/New_York' }).toUTC();
+const monState = computeMemberState(variableMember, 'America/New_York', monNightUtc);
+assert(monState.bucket === 'WINDING_DOWN', 'Monday 22:00 is WINDING_DOWN for 22:30 bedtime');
+assert(monState.isCustomScheduleToday === false, 'Monday matches baseline so isCustomScheduleToday is false');
+assert(monState.activeBedtimeLocal === '22:30', 'Active bedtime is 22:30');
+assert(monState.activeWakeTimeLocal === '06:30', 'Active wake time is 06:30');
+
+// Scenario 7B: Tuesday evening at 22:30 (On Monday user would be at bedtime, but Tuesday bedtime is 00:30 -> AWAKE)
+const tueEveningUtc = DateTime.fromISO('2026-11-10T22:30:00', { zone: 'America/New_York' }).toUTC();
+const tueState = computeMemberState(variableMember, 'America/New_York', tueEveningUtc);
+assert(tueState.bucket === 'AWAKE', 'Tuesday 22:30 is AWAKE because Tuesday bedtime is 00:30');
+assert(tueState.isCustomScheduleToday === true, 'Tuesday differs from Monday so isCustomScheduleToday is true');
+assert(tueState.activeBedtimeLocal === '00:30', 'Tuesday active bedtime is 00:30');
+
+// Scenario 7C: Wednesday at 00:15 AM (Tuesday night cycle, T-15m before 00:30 -> WINDING_DOWN)
+const wedEarlyUtc = DateTime.fromISO('2026-11-11T00:15:00', { zone: 'America/New_York' }).toUTC();
+const wedEarlyState = computeMemberState(variableMember, 'America/New_York', wedEarlyUtc);
+assert(wedEarlyState.bucket === 'WINDING_DOWN', 'Wednesday 00:15 AM is WINDING_DOWN for Tuesday night 00:30 bedtime');
+assert(getSleepCycleDate(variableMember, wedEarlyUtc) === '2026-11-10', 'Wednesday 00:15 AM resolves to Tuesday cycle date 2026-11-10');
+
+// Scenario 7D: Wednesday evening at 22:45 (T-15m before 23:00 -> WINDING_DOWN)
+const wedNightUtc = DateTime.fromISO('2026-11-11T22:45:00', { zone: 'America/New_York' }).toUTC();
+const wedNightState = computeMemberState(variableMember, 'America/New_York', wedNightUtc);
+assert(wedNightState.bucket === 'WINDING_DOWN', 'Wednesday 22:45 is WINDING_DOWN for 23:00 bedtime');
+assert(wedNightState.isCustomScheduleToday === true, 'Wednesday differs from Monday so isCustomScheduleToday is true');
+assert(wedNightState.activeBedtimeLocal === '23:00', 'Wednesday active bedtime is 23:00');
+assert(getSleepCycleDate(variableMember, wedNightUtc) === '2026-11-11', 'Wednesday night maps to 2026-11-11 cycle date');
+
+// Scenario 7E: Thursday evening at 22:10 (10m after 22:00 bedtime -> BEDTIME_NOW)
+const thuNightUtc = DateTime.fromISO('2026-11-12T22:10:00', { zone: 'America/New_York' }).toUTC();
+const thuNightState = computeMemberState(variableMember, 'America/New_York', thuNightUtc);
+assert(thuNightState.bucket === 'BEDTIME_NOW', 'Thursday 22:10 is BEDTIME_NOW for 22:00 bedtime');
+assert(thuNightState.isCustomScheduleToday === true, 'Thursday is custom schedule today');
+assert(thuNightState.activeBedtimeLocal === '22:00', 'Thursday active bedtime is 22:00');
+
 if (failed) {
   console.error('\n❌ SOME TESTS FAILED!');
   process.exit(1);
 } else {
-  console.log('\n🎉 ALL 32 WEEKEND HOURS & CANONICAL SLEEP CYCLE TESTS PASSED CLEANLY!');
+  console.log('\n🎉 ALL 49 WEEKEND HOURS, 7-DAY SCHEDULE & CANONICAL SLEEP CYCLE TESTS PASSED CLEANLY!');
 }

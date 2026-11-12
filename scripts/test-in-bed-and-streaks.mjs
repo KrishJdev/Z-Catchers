@@ -99,6 +99,7 @@ const afterCheckin = computeMemberState(
 assert(afterCheckin.bucket === 'SLEEPING', 'After "I\'m in Bed" Safe Button: bucket immediately transforms to SLEEPING');
 assert(afterCheckin.isSleepShieldActive === true, 'After "I\'m in Bed": Sleep Shield becomes ACTIVE early');
 assert(afterCheckin.checkedInEarly === true, 'checkedInEarly flag is TRUE');
+assert(afterCheckin.needsWakeUpLog === true, 'After check-in: needsWakeUpLog is true');
 
 // At bedtime hit (23:05): if in bed, stays SLEEPING instead of urgent BEDTIME_NOW
 const atBedtimeWithCheckin = computeMemberState(
@@ -108,6 +109,23 @@ const atBedtimeWithCheckin = computeMemberState(
   true
 );
 assert(atBedtimeWithCheckin.bucket === 'SLEEPING', 'At bedtime hit: member remains in SLEEPING bucket (not BEDTIME_NOW)');
+assert(atBedtimeWithCheckin.needsWakeUpLog === true, 'At bedtime hit while in bed: needsWakeUpLog is true');
+
+// Once wake up is logged for the cycle, status transitions to AWAKE and needsWakeUpLog becomes false
+const wokeUpMember = {
+  ...mockMember,
+  is_in_bed: false,
+  last_woke_up_at: '2026-11-10T07:15:00.000Z',
+  last_wake_cycle_date: '2026-11-09',
+};
+const afterWakeUp = computeMemberState(
+  wokeUpMember,
+  'UTC',
+  DateTime.fromISO('2026-11-10T07:15:00.000Z', { zone: 'UTC' }),
+  false
+);
+assert(afterWakeUp.bucket === 'AWAKE', 'After wake-up logged: member resolves to AWAKE bucket');
+assert(afterWakeUp.needsWakeUpLog === false, 'After wake-up logged: needsWakeUpLog is false');
 
 // -------------------------------------------------------------
 // 3. Live Database & Cron Suppression Test

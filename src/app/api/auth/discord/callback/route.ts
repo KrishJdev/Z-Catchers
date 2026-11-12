@@ -170,7 +170,7 @@ export async function GET(request: Request) {
 
       await updateMemberSafe(member.id, {
         discord_username: member.discord_username || discordUsername,
-        discord_handle: member.discord_handle || discordHandle,
+        discord_handle: discordHandle || member.discord_handle,
         avatar_url: avatarUrl,
         is_moderator: isDbMod,
         role: member.role,

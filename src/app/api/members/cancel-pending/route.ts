@@ -96,6 +96,7 @@ export async function POST(request: Request) {
         pending_timezone: null,
         pending_weekend_bedtime_local: null,
         pending_weekend_wake_time_local: null,
+        pending_weekly_schedule: null,
         pending_effective_at: null,
         updated_at: DateTime.utc().toISO() as string,
       },
