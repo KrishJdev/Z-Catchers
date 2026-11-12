@@ -25,6 +25,7 @@ import {
 
 import { setStoredMemberId, setStoredAuthToken, setStoredAuthMember } from '@/lib/pushClient';
 import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
+import { TimezoneSelect } from '@/components/TimezoneSelect';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 
@@ -742,20 +743,11 @@ export function MyScheduleModal({
                   <label className="block text-xs font-medium text-cream-secondary mb-1">
                     Your Timezone (GMT Offset)
                   </label>
-                  <select
+                  <TimezoneSelect
                     value={timezone}
-                    onChange={(e) => setTimezone(e.target.value)}
-                    className="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
-                  >
-                    {!COMMON_IANA_TIMEZONES.includes(timezone as any) && (
-                      <option value={timezone}>{timezone} ({formatGmtOffset(timezone)})</option>
-                    )}
-                    {COMMON_IANA_TIMEZONES.map((tz) => (
-                      <option key={tz} value={tz}>
-                        {tz} ({formatGmtOffset(tz)})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setTimezone}
+                    selectClassName="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
+                  />
                 </div>
 
                 {/* Weekend Hours Toggle & Controls (Friday & Saturday Nights) */}

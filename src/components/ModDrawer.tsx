@@ -46,6 +46,7 @@ const DISCORD_WEBHOOK_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/api\/we
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone } from '@/lib/timezone';
+import { TimezoneSelect } from '@/components/TimezoneSelect';
 
 interface ModDrawerProps {
   isOpen: boolean;
@@ -1074,20 +1075,11 @@ export function ModDrawer({
                     <label className="text-[11px] font-semibold text-cream-muted">
                       Timezone (GMT Offset)
                     </label>
-                    <select
+                    <TimezoneSelect
                       value={editTimezone}
-                      onChange={(e) => setEditTimezone(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
-                    >
-                      {!COMMON_IANA_TIMEZONES.includes(editTimezone as any) && (
-                        <option value={editTimezone}>{editTimezone} ({formatGmtOffset(editTimezone)})</option>
-                      )}
-                      {COMMON_IANA_TIMEZONES.map((tz) => (
-                        <option key={tz} value={tz}>
-                          {tz} ({formatGmtOffset(tz)})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setEditTimezone}
+                      selectClassName="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
+                    />
                   </div>
 
                   <div>
@@ -1732,20 +1724,11 @@ export function ModDrawer({
                     <label className="text-[11px] font-semibold text-cream-muted">
                       Timezone (GMT Offset) *
                     </label>
-                    <select
+                    <TimezoneSelect
                       value={newTimezone}
-                      onChange={(e) => setNewTimezone(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                    >
-                      {!COMMON_IANA_TIMEZONES.includes(newTimezone as any) && (
-                        <option value={newTimezone}>{newTimezone} ({formatGmtOffset(newTimezone)})</option>
-                      )}
-                      {COMMON_IANA_TIMEZONES.map((tz) => (
-                        <option key={tz} value={tz}>
-                          {tz} ({formatGmtOffset(tz)})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setNewTimezone}
+                      selectClassName="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                    />
                   </div>
 
                   <div>
