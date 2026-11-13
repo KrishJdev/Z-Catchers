@@ -1,18 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T15:15:00+05:30  
+> **Last Updated:** 2026-11-13T18:24:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `dec863d`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51)  
-> **Active Integration Pull Requests:**  
->   - [#53 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/53) (`krish` -> `dev`: unauthenticated push deletion fix & authorized client requests)  
->   - [#54 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/54) (`feat/zc-18-persistent-rate-limiting` -> `dev`: persistent rate limiting in cancel-pending & push/subscribe)  
->   - [#55 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/55) (`feat/zc-19-sanitize-oauth-redirect` -> `dev`: sanitize & validate x-forwarded-host in OAuth redirect)  
+> **Latest Commit:** `84f2397`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55)  
+> **Active Integration Pull Requests:** [#56 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/56) (`krish` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
 > **Active Production Release Pull Request:** [#52 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/52) (dev -> main)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 27/27 suites passed | `npm run build` clean, 28/28 routes)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 31/31 suites passed | `npm run build` clean)
 
 ---
 
@@ -72,6 +69,98 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 84: UI Normalization, Button Touch-Target Sizing & Anti-Wrapping Standardization
+* **Root Cause & Visual Bug Identification (`ModDrawer.tsx`):**
+  - In `Pending Approvals` tab, the "Approve Now" button on cards with extended schedule diffs (e.g. 7-Day Variable routine) was squished into 3 vertical wrapped lines (`⚡ \n Approve \n Now`), and vertically misaligned against the "Reject" button.
+  - The card root container used `sm:items-center`, causing action buttons on multi-row cards to float awkwardly in the center rather than aligning with the member's header info.
+  - The left info flex container lacked `min-w-0 flex-1`, allowing schedule diff chips to push against the action buttons wrapper, which lacked `shrink-0`.
+  - The "Approve Now" and "Reject" buttons lacked `whitespace-nowrap shrink-0` and standardized `min-h-[40px]`.
+  - The "Approve Now" button rendered duplicate lightning icons: both `<Zap className="h-3.5 w-3.5" />` AND `<span>⚡ Approve Now</span>`.
+  - 7-Day routine schedule diff chips used rigid `grid grid-cols-2 sm:grid-cols-3 gap-1`, which forced narrow column widths that broke time ranges across digits (e.g. `03:00- \n 11:00`).
+  - In the tab bar, "Pending Approvals" had a badge pill, whereas "Full Roster" used plain text parentheses `({modMembers.length})`, creating visual asymmetry.
+* **Layout Normalization & Anti-Wrapping Fixes (`src/components/ModDrawer.tsx`):**
+  - Added `sm:items-start sm:justify-between` to pending approval cards so action buttons align cleanly with the member header row.
+  - Added `min-w-0 flex-1` to the member details container to contain text flow.
+  - Converted schedule diff chips to `flex flex-wrap gap-1.5` with `whitespace-nowrap tabular-nums` to guarantee time strings (`03:00–11:00`) never wrap across hyphens.
+  - Added `shrink-0` to the action buttons container.
+  - Standardized "Approve Now" and "Reject" with `min-h-[40px] whitespace-nowrap shrink-0`, removed the duplicate `⚡` text emoji, and added `fill-current` to the `Zap` icon.
+  - Normalized the tab bar with `overflow-x-auto no-scrollbar` for mobile safety, `min-h-[40px] whitespace-nowrap shrink-0`, and unified pill count badges for both "Pending Approvals" and "Full Roster".
+  - Normalized Full Roster member action container with `shrink-0`, and upgraded strikes/metastrikes adjuster buttons from `h-5 w-5` to `h-6 w-6 rounded-md font-bold transition-colors`.
+  - Normalized Webhook dispatch, Add Member submit, and PIN reset buttons with `min-h-[44px] whitespace-nowrap shadow-sm`.
+* **Related Modal & Surface Normalizations:**
+  - **`src/components/MyScheduleModal.tsx`:** Removed duplicate emoji in `<span>View My Sleep & Wake Calendar</span>`, updated active navigation tab token to `bg-status-amber text-night-bg font-bold shadow`, and added `min-h-[36px] whitespace-nowrap` to the "Cancel Shift" button.
+  - **`src/components/MetastrikeModal.tsx`:** Normalized modal close button to `min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-night-border`.
+  - **`src/components/SleepCalendarModal.tsx`:** Normalized "Edit Schedule" button to `min-h-[40px] whitespace-nowrap shrink-0` (upgraded from sub-standard 38px), normalized "Log/Edit Wake-Up Time" button and manual time entry submit/cancel buttons to `min-h-[44px] whitespace-nowrap shrink-0`.
+  - **`src/components/PwaBanner.tsx`:** Normalized dismiss buttons across native install banner, iOS instructions, and push prompt from `p-1` to accessible touch target `min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors`.
+  - **`src/app/page.tsx`:** Normalized hero wake time manual entry save/cancel buttons with `whitespace-nowrap shrink-0`.
+* **Automated Unit Tests & Verification:**
+  - Created and expanded `scripts/test-ui-normalization-and-button-wrapping.mjs` verifying anti-wrapping classes, icon deduplication, layout flex constraints, and touch targets across modals and banners (`ModDrawer`, `MyScheduleModal`, `MetastrikeModal`, `SleepCalendarModal`, `PwaBanner`, `page.tsx`).
+  - Registered test suite in `scripts/run-tests.mjs`.
+  - Verified `npm run test:unit` clean with all 31/31 test suites passing.
+  - Verified `npx tsc --noEmit` clean with 0 errors.
+  - Verified `npm run build` clean with Next.js 15 production build succeeding (all 28 routes compiled and prerendered).
+* **Pull Request & Code Review:**
+  - Pushed all commits to `origin/krish`.
+  - Opened Pull Request **[#56](https://github.com/KrishJdev/Z-Catchers/pull/56)** from `krish` into `dev`: *`fix(ui): normalize layout, touch targets, and anti-wrapping across ModDrawer and modals`*.
+  - Triggered CodeRabbit automated review on PR #56 via comment `@coderabbitai review`.
+  - Resolved review comments across PR #56:
+    1. **`HANDOFF.md`:** Clarified that legacy-schema schedules are held in process-local memory (`globalThis.memoryScheduleData`) and require running the PostgreSQL migration for cross-process and restart durability.
+    2. **`scripts/test-ui-normalization-and-button-wrapping.mjs`:** Grouped numeral-order class alternatives with `whitespace-nowrap` and flex container assertions so operator precedence guarantees all conditions are met.
+    3. **`src/components/ModDrawer.tsx`:** Updated all tabs, passcode unlock, and inline form actions to `min-h-[44px]`; upgraded strike and metastrike adjusters to `min-h-[44px] min-w-[44px]` touch targets.
+    4. **`src/components/MyScheduleModal.tsx`:** Standardized profile navigation tabs and the "Cancel Shift" control to `min-h-[44px]`.
+    5. **`src/components/PwaBanner.tsx`:** Upgraded all 3 dismiss controls to `min-h-[44px] min-w-[44px]` and isolated them in right-hand flex containers to prevent any overlap with CTA action buttons.
+    6. **`src/components/SleepCalendarModal.tsx`:** Upgraded "Edit Schedule" button touch target to `min-h-[44px]`.
+    7. **`src/lib/db.ts`:** Updated pending weekend hydration to preserve explicit `null` and `undefined` when absent from both sources; staged schedule updates locally in `updateMemberSafe` so failed updates or 0-row matches never mutate shared cache state.
+    8. **`supabase/migrations/20261113_add_weekly_schedule.sql`:** Moved pending schedule backfill before `weekly_schedule` initialization and scoped it strictly to rows where `weekly_schedule IS NULL`.
+    9. **Automated tests:** Expanded `test-weekly-schedule-resilience.mjs` and `test-ui-normalization-and-button-wrapping.mjs` to assert these invariants. All 31 suites passing cleanly.
+
+### Phase 83: Database Missing `weekly_schedule` Schema Fallback & Migration Script
+* **Root Cause Identification:**
+  - When members edited custom sleep hours for specific days in `MyScheduleModal.tsx`, the backend rejected the update with HTTP 500: `"Database is missing durable 'weekly_schedule' or 'pending_weekly_schedule' columns. Please run the schema migration from supabase/schema.sql."`
+  - In `src/lib/db.ts`, a hard rejection check prematurely halted `updateMemberSafe` and `insertMemberSafe` whenever Supabase PostgreSQL was missing `weekly_schedule` or `pending_weekly_schedule` columns, preventing users from saving any routine changes.
+* **Graceful Degradation & In-Memory Fallback (`src/lib/db.ts`):**
+  - Updated `updateMemberSafe` and `insertMemberSafe` to never crash or throw fatal errors on unmigrated columns.
+  - Staged schedule definitions (`weekly_schedule`, `pending_weekly_schedule`, `pending_weekend_*`) into `memoryScheduleData` via `setInMemoryWeekendHours`.
+  - Allowed `sanitizeMemberPayload` to strip unmigrated columns from the PostgREST UPDATE/INSERT payload so PostgreSQL succeeds cleanly.
+  - Hydrated returned member entities with `hydrateMemberWeekendHours`, ensuring the frontend and API responses receive the complete 7-day routine.
+  - Bound `memoryScheduleData` and `memoryMembers` to `globalThis` to prevent Next.js development hot-module reloads from clearing cached schedules.
+  - Added cache TTL (30s) and `clearKnownMemberColumns()` so freshly added database columns are picked up automatically without requiring a server restart.
+* **Cron Dispatcher Member Hydration (`src/lib/cronDispatcher.ts`):**
+  - Integrated `hydrateMemberWeekendHours` into the member evaluation and self-healing cooldown promotion loop so active routines persist across background runs even on legacy database schemas. Note: on legacy schemas lacking `weekly_schedule` or `pending_weekly_schedule` columns, these schedules are cached in process-local memory (`globalThis.memoryScheduleData`), which may be lost upon server process restart or unavailable across multi-process deployments. Applying the database migration (`supabase/migrations/20261113_add_weekly_schedule.sql`) is required for durable, cross-process persistence.
+* **Standalone PostgreSQL Migration Script (`supabase/migrations/20261113_add_weekly_schedule.sql`):**
+  - Created a dedicated, one-click migration file containing idempotent `ALTER TABLE public.members ADD COLUMN IF NOT EXISTS ...` statements for `weekly_schedule`, `pending_weekly_schedule`, `weekend_*`, `strikes_*`, and notification tracking columns.
+  - Added backfill routines to generate 7-day variable schedules from existing weekday/weekend columns for legacy records.
+  - Included `NOTIFY pgrst, 'reload schema';` to immediately refresh PostgREST's schema cache.
+* **Automated Test Coverage (`scripts/test-weekly-schedule-resilience.mjs` & `scripts/run-tests.mjs`):**
+  - Created automated test suite covering:
+    1. Schema cache resilience in `updateMemberSafe` with missing columns.
+    2. Member hydration in `getMemberByIdSafe`.
+    3. Missing column handling in `insertMemberSafe`.
+    4. Cooldown promotion persistence with in-memory schedules.
+    5. Dynamic column detection on cache refresh.
+  - Registered `test-weekly-schedule-resilience.mjs` into `UNIT_TESTS` in `scripts/run-tests.mjs`.
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 30/30 test suites passing.
+
+### Phase 82: Merge Conflict Resolution & Scope Isolation Across Open PRs (PR #54 & PR #55)
+* **PR #54 (`feat/zc-18-persistent-rate-limiting` -> `dev`) Conflict Resolution & Pre-Merge Compliance:**
+  - Integrated latest `origin/dev` (`54924d2`) into `feat/zc-18-persistent-rate-limiting`.
+  - Resolved merge conflicts across `HANDOFF.md`, `scripts/test-push-unsubscribe-security.mjs`, `src/app/api/push/unsubscribe/route.ts`, and `src/components/PushModal.tsx` by synchronizing them directly with `origin/dev`.
+  - Verified exact file isolation: only 5 intended files modified against `origin/dev` (`scripts/run-tests.mjs`, `scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs`, `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`, `src/lib/rateLimit.ts`).
+  - Executed all 28 unit test suites (`npm run test:unit`) and type checking (`npx tsc --noEmit`), passing with 0 errors.
+  - Pushed merge commit `46bb0d7` to origin. Verified PR #54 status transitioned to `MERGEABLE`.
+* **PR #55 (`feat/zc-19-sanitize-oauth-redirect` -> `dev`) Conflict Resolution & Out-of-Scope Cleanup:**
+  - Integrated latest `origin/dev` (`54924d2`) into `feat/zc-19-sanitize-oauth-redirect`.
+  - Addressed CodeRabbit Pre-Merge Out-of-Scope Check by removing unrelated rate-limiting files (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`, `scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs`) and restoring `HANDOFF.md` from `origin/dev`.
+  - Verified exact file isolation: only 6 intended files modified against `origin/dev` (`src/lib/auth.ts`, `src/app/api/auth/login/route.ts`, `src/app/api/auth/register/route.ts`, `scripts/test-oauth-redirect-host-validation.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/run-tests.mjs`).
+  - Executed all 28 unit test suites (`npm run test:unit`) and type checking (`npx tsc --noEmit`), passing with 0 errors.
+  - Pushed merge commit `e4e0345` to origin. Verified PR #55 status transitioned to `MERGEABLE`.
+* **Active Working Branch (`krish`) Synchronization:**
+  - Switched back to canonical working branch `krish`.
+  - Fast-forward merged `origin/dev` containing PR #53 into `krish`.
+  - Verified both open PRs #54 and #55 are healthy, green, and fully mergeable without conflicts.
 
 ### Phase 81: CodeRabbit PR Review Resolutions & Multi-PR Synchronizations (PR #53, PR #54, PR #55)
 * **PR #53 (`krish` -> `dev`) - Unauthenticated Push Deletion & Client Authorization Review Hardening:**

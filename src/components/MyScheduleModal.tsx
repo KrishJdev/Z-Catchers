@@ -486,9 +486,9 @@ export function MyScheduleModal({
               setTab('claim');
               setErrorMessage(null);
             }}
-            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all ${
+            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all min-h-[44px] ${
               tab === 'claim'
-                ? 'bg-night-surface text-status-amber shadow'
+                ? 'bg-status-amber text-night-bg font-bold shadow'
                 : 'text-cream-muted hover:text-cream-secondary'
             }`}
           >
@@ -507,9 +507,9 @@ export function MyScheduleModal({
               setWakeTime('07:00');
               setTimezone(formatGmtOffset(viewerTimezone));
             }}
-            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all ${
+            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all min-h-[44px] ${
               tab === 'new'
-                ? 'bg-night-surface text-status-amber shadow'
+                ? 'bg-status-amber text-night-bg font-bold shadow'
                 : 'text-cream-muted hover:text-cream-secondary'
             }`}
           >
@@ -583,7 +583,7 @@ export function MyScheduleModal({
                     type="button"
                     onClick={handleCancelPending}
                     disabled={cancelLoading}
-                    className="shrink-0 rounded-lg border border-night-border bg-night-surface px-2.5 py-1 text-[11px] font-medium text-cream-muted hover:text-status-coral hover:border-status-coral/40 transition-colors"
+                    className="shrink-0 min-h-[44px] rounded-lg border border-night-border bg-night-surface px-3 py-1.5 text-[11px] font-semibold text-cream-muted hover:text-status-coral hover:border-status-coral/40 transition-colors whitespace-nowrap"
                   >
                     {cancelLoading ? 'Cancelling...' : 'Cancel Shift'}
                   </button>
@@ -1337,7 +1337,7 @@ export function MyScheduleModal({
                     className="flex items-center justify-center gap-2 rounded-2xl border border-status-amber/40 bg-status-amber/15 px-4 text-xs font-bold text-status-amber hover:bg-status-amber/25 transition-all h-12 min-h-[44px] w-full shadow-sm"
                   >
                     <Calendar className="h-4 w-4 text-status-amber" />
-                    <span>📅 View My Sleep & Wake Calendar</span>
+                    <span>View My Sleep & Wake Calendar</span>
                   </button>
                 )}
 

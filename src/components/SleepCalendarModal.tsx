@@ -836,7 +836,7 @@ export function SleepCalendarModal({
                           setEditError(null);
                           setEditSuccess(null);
                         }}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all min-h-[44px]"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all min-h-[44px] whitespace-nowrap shrink-0"
                       >
                         <Sun className="h-3.5 w-3.5" />
                         <span>{selectedLog?.woke_up_local_time ? 'Edit Wake-Up Time' : 'Log Wake-Up Time'}</span>
@@ -858,7 +858,7 @@ export function SleepCalendarModal({
                           <button
                             type="submit"
                             disabled={editSubmitting}
-                            className="rounded-lg bg-status-amber px-3.5 py-1.5 text-xs font-bold text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all min-h-[44px]"
+                            className="rounded-lg bg-status-amber px-3.5 py-1.5 text-xs font-bold text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all min-h-[44px] whitespace-nowrap shrink-0"
                           >
                             {editSubmitting ? 'Saving...' : 'Save Wake Time'}
                           </button>
@@ -868,7 +868,7 @@ export function SleepCalendarModal({
                               setIsEditingWakeTime(false);
                               setEditError(null);
                             }}
-                            className="rounded-lg border border-night-border bg-night-surface px-3 py-1.5 text-xs font-medium text-cream-secondary hover:text-cream-primary min-h-[44px]"
+                            className="rounded-lg border border-night-border bg-night-surface px-3 py-1.5 text-xs font-medium text-cream-secondary hover:text-cream-primary min-h-[44px] whitespace-nowrap shrink-0"
                           >
                             Cancel
                           </button>
@@ -916,7 +916,7 @@ export function SleepCalendarModal({
                     triggerHaptic(10);
                     onOpenScheduleModal();
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-1.5 text-xs font-semibold text-status-amber hover:bg-status-amber/25 transition-all min-h-[38px]"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-1.5 text-xs font-semibold text-status-amber hover:bg-status-amber/25 transition-all min-h-[44px] whitespace-nowrap shrink-0"
                 >
                   <Edit3 className="h-3.5 w-3.5" />
                   <span>Edit Schedule</span>
