@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T04:06:27+05:30  
+> **Last Updated:** 2026-11-13T11:30:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `06b3379`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44)  
-> **Active Integration Pull Request:** [#49 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
+> **Latest Commit:** `42d3a43`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
+> **Active Integration Pull Request:** [#51 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/51)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
-> **Active Production Release Pull Request:** None (all merged)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 25/25 suites passed | Dev server running on `http://localhost:3000`)
+> **Active Production Release Pull Request:** [#50 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/50) (dev -> main)  
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 26/26 suites passed | `npm run build` clean)
 
 ---
 
@@ -69,6 +69,76 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 78: CodeRabbit PR #51 Review Hardening - Auth Fallback Gates, DB Pre-Read Fallback, Cycle Selection & Clock Freezing
+* **Fallback-Key Gating Hardening (`src/lib/auth.ts`):**
+  - Updated fallback gates in `getPinSalt()`, `getSessionSecret()`, and `getVerificationSessionSecrets()` so default dev secrets and salts are enabled only when `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'`.
+  - All unset, staging, or unknown environments now fail closed by throwing `[CRITICAL]` errors or omitting public candidate keys, eliminating any risk of token forgery outside dev/test.
+* **Graceful Non-Durable Pre-Read DB Fallback (`src/lib/db.ts`):**
+  - Updated `upsertSleepLog` pre-read error handling: If the pre-read query encounters any error (including `PGRST205` or non-schema-cache read failure), sets `supabaseTableAvailable = false` and cleanly falls back to the in-memory store without attempting a durable upsert that could overwrite existing persisted columns with missing data.
+* **Active Sleep Cycle Recovery Window Validation (`src/app/api/members/wake-up/route.ts`):**
+  - Updated automatic cycle selection around `recentInBed` / check-in logs to validate the recovered cycle against the active-cycle window (`daysDiff >= 0 && daysDiff <= 1`) before assigning to `activeCycleDate`. Stale historical check-ins are ignored and default to the canonical current cycle.
+* **Independent Active Cycle Button-Mode Guard (`src/app/api/members/wake-up/route.ts`):**
+  - Updated button-mode validation to compare requested `cycleDate` against `activeCycleDate` (`if (mode === 'button' && cycleDate && cycleDate !== activeCycleDate)`), preventing historical button check-in requests before any sleep log write.
+* **Chronological Manual Candidate Ordering (`src/app/api/members/wake-up/route.ts`):**
+  - Updated candidate order in manual mode to evaluate `[candSameDay, candNextDay, candDayAfter]` in strict chronological order before filtering by bedtime reference and current time.
+* **Deterministic Test Clock Freezing & Non-Fixture DB Stubbing (`scripts/test-wake-up-durability-and-times.mjs`):**
+  - Freezes Luxon clock via `Settings.now = () => fixedNowMillis` and restores in `finally`, making route tests, 7-day guards, and candidate ordering completely independent of calendar execution date.
+  - Added Section 1B testing `upsertSleepLog` on a non-fixture member ID (`usr_prod_krish_non_fixture`) with stubbed `supabaseAdmin.from` returning `PGRST205`. Asserts null error, non-null fallback data, `isDurable: false`, and `stubUpsertAttempted: false` without triggering live database queries.
+* **Test Runner & Auth Pipeline Isolation (`scripts/run-tests.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/test-schedule-cooldown.mjs`):**
+  - Configured `scripts/run-tests.mjs` and `test-schedule-cooldown.mjs` to set `NODE_ENV = 'test'` if unset so all unit tests execute under explicit test mode.
+  - Added test section 1B.4 to `scripts/test-login-and-auth.mjs` asserting fail-closed behavior when `NODE_ENV` is unset or `'staging'`.
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 26/26 test suites passing (42.62s).
+
+### Phase 77: Wake-Up Durability, Sleep Log Persistence Fallback & State Machine Hardening
+* **In-Memory Fallback & Missing Schema Cache Resilience (`src/lib/db.ts`):**
+  - Identified root cause of `"Failed to durably persist sleep log."`: `upsertSleepLog` pre-read query returned `{ data: null, error: readErr }` when `public.sleep_logs` was missing from Supabase's schema cache (`PGRST205`), causing `POST /api/members/wake-up` to abort with HTTP 500.
+  - Hardened `upsertSleepLog`: When a pre-read query encounters `PGRST205` or a schema cache warning, flags `supabaseTableAvailable = false`, falls back cleanly to the in-memory store without failing, and returns `{ data: merged, error: null, isDurable: false }`.
+* **Sticky In-Bed Session State Resolution (`src/app/api/auth/me/route.ts`):**
+  - Resolved bug where waking up did not persist across sessions: `sanitized.is_in_bed` was evaluated as `types.includes('IN_BED_EARLY')` without checking `!types.includes('WOKE_UP')`, which caused subsequent `/api/auth/me` calls to overwrite `currentUser.is_in_bed` back to `true`.
+  - Updated to `sanitized.is_in_bed = types.includes('IN_BED_EARLY') && !types.includes('WOKE_UP')` and `sanitized.is_woke_up = types.includes('WOKE_UP')`.
+* **Intelligent Active Cycle Date & Check-In Bedtime Recovery (`src/app/api/members/wake-up/route.ts`):**
+  - Dynamically inspects `notification_logs` for un-woken `IN_BED_EARLY` entries when `cycleDate` is not passed, ensuring wake-up calls anchor to the exact sleep cycle the member checked in for, or seamlessly falling back to canonical `getSleepCycleDate`.
+  - Recovers original check-in timestamp (`in_bed_at` / `in_bed_local_time`) from `notification_logs` when `sleep_logs` records are uninitialized, ensuring accurate cross-midnight sleep duration calculations (`duration_minutes` and `formatted_duration`).
+* **Multi-Candidate Manual Wake Time Resolution (`src/app/api/members/wake-up/route.ts`):**
+  - Replaced rigid single-day offset math with multi-candidate chronological evaluation (`candNextDay`, `candSameDay`, `candDayAfter`) anchored against check-in bedtime and sleeper local time.
+  - Eliminates false "Wake-up time cannot be in the future" and "Wake-up time must be after check-in" rejections for past-midnight bedtimes and daytime wake-up logging.
+  - Returns updated member with explicit `is_in_bed: false` and `is_woke_up: true` in API response.
+* **Daytime Active Sleep Cycle Preservation (`src/lib/sleepEngine.ts`):**
+  - Updated `resolveActiveSleepCycle`: When a member is in bed (`effectiveInBed: true`) and has not yet logged wake-up (`!hasWokeUpForYesterday`), keeps yesterday's sleep cycle active throughout the morning and afternoon until today's wind-down window begins (`todayWindDownStart`), preventing afternoon users from being prematurely assigned to tonight's un-started cycle.
+* **Automated Unit Testing & Verification (`scripts/test-wake-up-durability-and-times.mjs`, `scripts/run-tests.mjs`):**
+  - Created standalone test suite `scripts/test-wake-up-durability-and-times.mjs` verifying:
+    1. `upsertSleepLog` fallback durability and in-memory retrieval when Supabase schema cache is missing tables.
+    2. Active sleep cycle resolution across morning, afternoon, and evening hours.
+    3. `POST /api/members/wake-up` instant button execution (HTTP 200, `is_in_bed: false`, `is_woke_up: true`).
+    4. Manual wake-up mode multi-candidate time resolution, sleep duration calculation, and future time rejection.
+  - Wired into `scripts/run-tests.mjs` UNIT_TESTS (all 26/26 suites passing cleanly).
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 26/26 test suites passing (27.16s).
+
+### Phase 76: Security Hardening - Remove Hardcoded Fallback Session Secrets & Dev PIN Salt in Production (GH #30 / #45, ZC-16)
+* **Fail-Closed Cryptographic Secret Enforcement (`src/lib/auth.ts`):**
+  - Hardened `getPinSalt()`: In production environments (`NODE_ENV === 'production'`), strictly throws an explicit error (`[CRITICAL] Production deployment requires PIN_SALT or server credentials...`) when neither `PIN_SALT` nor server credentials (`SUPABASE_SERVICE_ROLE_KEY` / `DISCORD_CLIENT_SECRET`) are configured, preventing reliance on static, crackable dev salts.
+  - Hardened `getSessionSecret()`: In production environments, strictly throws an explicit error (`[CRITICAL] Production deployment requires SESSION_SECRET or server credentials...`) when neither `SESSION_SECRET` nor server credentials are configured, preventing token signing with public fallback keys.
+  - Hardened `getVerificationSessionSecrets()`: Strictly gated candidate fallback verification secrets (`'z_catchers_session_secret_fox_den_fallback_2026'` and `'z_catchers_session_secret_dev_only'`) behind `if (process.env.NODE_ENV !== 'production')`.
+* **Forged Fallback Token Rejection & Token Verification Defense (`src/lib/auth.ts`):**
+  - In production, candidate verification secrets now strictly contain only explicitly configured `SESSION_SECRET` and derived server credentials.
+  - Any attacker attempt to forge session tokens or claim tokens using the public repository fallback secrets is strictly rejected by `verifySessionToken` and `verifyClaimToken` with `null`, preventing authentication and authorization bypass.
+  - Preserved backward-compatible zero-configuration developer flow in non-production environments (`NODE_ENV === 'development'`).
+* **Automated Unit Testing & Security Assertion Suite (`scripts/test-login-and-auth.mjs`):**
+  - Updated Section 1B of `scripts/test-login-and-auth.mjs`:
+    1. Verified that `getSessionSecret()` and `getPinSalt()` fail closed by throwing `[CRITICAL]` errors in production when unconfigured.
+    2. Verified `getVerificationSessionSecrets()` returns an empty array when no secrets are set in production.
+    3. Verified that forged tokens signed with public fallback secrets are strictly rejected in production both before and after configuring explicit `SESSION_SECRET`.
+    4. Verified legitimate session and claim token creation and validation under explicit production secrets.
+    5. Verified seamless fallback secret support when running in local development mode.
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 25/25 test suites passing (12.63s).
+  - `npm run build` verified clean with all 28 routes compiled successfully.
 
 ### Phase 75: PR #49 CodeRabbit Review Suggestions Resolution & Full Hardening
 * **PostgreSQL Schema Migration Guarding (`supabase/schema.sql` & `HANDOFF.md`):**
@@ -1443,7 +1513,7 @@ d:\Projects\Z Catchers\
 
 | Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
 |---|---|---|---|---|---|
-| **ZC-16** | **High (P1)** | Security: Remove hardcoded fallback session secrets & dev PIN salt in production | `src/lib/auth.ts` | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | **TODO** |
+| **ZC-16** | **High (P1)** | Security: Remove hardcoded fallback session secrets & dev PIN salt in production | `src/lib/auth.ts` | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | **DONE** |
 | **ZC-17** | **High (P1)** | Security: Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` | `src/app/api/push/unsubscribe/route.ts` | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) | **TODO** |
 | **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | **TODO** |
 | **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) | **TODO** |
@@ -1481,8 +1551,8 @@ d:\Projects\Z Catchers\
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
 1. **Sprint 1 — P1 (High Priority) Security & Auth Hardening:**
-   * **ZC-16 / GH #30 (`src/lib/auth.ts`):** Fail closed in production for `SESSION_SECRET` and `PIN_SALT`. Strip fallback secrets when `NODE_ENV === 'production'`.
-   * **ZC-17 / GH #31 (`src/app/api/push/unsubscribe/route.ts`):** Require active authenticated session for unsubscriptions; scope deletion to `sessionMemberId`.
+   * **ZC-16 / GH #30 (`src/lib/auth.ts`):** **[DONE in Phase 76]** Failed closed in production for `SESSION_SECRET` and `PIN_SALT`. Strictly stripped fallback secrets when `NODE_ENV === 'production'`.
+   * **ZC-17 / GH #31 (`src/app/api/push/unsubscribe/route.ts`):** **[NEXT UP]** Require active authenticated session for unsubscriptions; scope deletion to `sessionMemberId`.
    * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** Replace in-memory rate limiting with `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
    * **ZC-19 / GH #33 (`src/lib/auth.ts`):** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
    * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles.
@@ -1657,4 +1727,4 @@ d:\Projects\Z Catchers\
    * **Mandatory Environment Configuration & Security Precondition:**
      * `SESSION_SECRET` (random 32+ char string) and `PIN_SALT` must be explicitly configured in Vercel Project Settings > Environment Variables. Do not treat `SESSION_SECRET` as optional.
      * Note that configuring `SESSION_SECRET` alone does **not** secure authentication: production deployments must **not** be considered secure while fallback-secret verification remains active in `src/lib/auth.ts`.
-     * **ZC-16 / GH #30** must be resolved (removing hardcoded fallback session secrets and enforcing fail-closed secret validation in production) before claiming the production deployment is protected.
+     * **ZC-16 / GH #30** is resolved in Phase 76: hardcoded fallback session secrets and dev PIN salts are stripped in production with fail-closed validation enforced.

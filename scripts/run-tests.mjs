@@ -3,6 +3,10 @@ import { spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'test';
+}
+
 const args = process.argv.slice(2);
 const mode = args.includes('--all') ? 'all' : 'unit';
 
@@ -30,6 +34,7 @@ const UNIT_TESTS = [
   'test-sleep-history-and-wakeup.mjs',
   'test-strikes-system.mjs',
   'test-wake-up-and-overflow.mjs',
+  'test-wake-up-durability-and-times.mjs',
   'test-wake-up-nag.mjs',
   'test-weekend-hours.mjs',
   'test-wind-down-awake-fix.mjs',
@@ -72,7 +77,7 @@ for (const file of testFiles) {
 
   const result = spawnSync(process.execPath, childArgs, {
     stdio: 'pipe',
-    env: { ...process.env, RUNNER_MODE: mode },
+    env: { ...process.env, NODE_ENV: process.env.NODE_ENV || 'test', RUNNER_MODE: mode },
     encoding: 'utf8',
   });
 
