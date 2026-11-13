@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db';
 import { getRequestSessionMemberId, verifyPin } from '@/lib/auth';
-import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 
 /**
  * POST: Register or rotate a Web Push subscription endpoint linked to an authenticated member.
@@ -98,7 +103,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
         }
         const clientIp = getClientIp(request);
-        const rateCheck = checkPinRateLimit(clientIp, member.id);
+        const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
         if (!rateCheck.allowed) {
           return NextResponse.json(
             {
@@ -114,9 +119,9 @@ export async function POST(request: Request) {
         const cleanPin = pin.trim();
         if (member.passcode_hash && verifyPin(cleanPin, member.passcode_hash)) {
           isPinMatch = true;
-          resetPinFailure(clientIp, member.id);
+          await resetPinFailurePersistent(clientIp, member.id);
         } else {
-          recordPinFailure(clientIp, member.id);
+          await recordPinFailurePersistent(clientIp, member.id);
         }
       }
     }

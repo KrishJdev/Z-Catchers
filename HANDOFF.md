@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T11:45:00+05:30  
-> **Active Working Branch:** `krish`  
+> **Last Updated:** 2026-11-13T12:25:00+05:30  
+> **Active Working Branch:** `feat/zc-18-persistent-rate-limiting`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `11c6f34`  
+> **Latest Commit:** Pending Feature Commit (`feat(security): enforce persistent rate limiting in cancel-pending and push/subscribe`)  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51)  
 > **Active Integration Pull Request:** [#53 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/53)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
 > **Active Production Release Pull Request:** [#52 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/52) (dev -> main)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 27/27 suites passed | `npm run build` clean, 28/28 routes)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 28/28 suites passed | `npm run build` clean, 28/28 routes)
 
 ---
 
@@ -69,6 +69,31 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 81: Security Hardening - Enforce Database-Backed Persistent Rate Limiting in `cancel-pending` and `push/subscribe` (GH #32, ZC-18)
+* **Persistent Rate Limiting in Cancel-Pending (`src/app/api/members/cancel-pending/route.ts`):**
+  - Resolved serverless rate limiting vulnerability (GH #32, ZC-18) where callers could bypass PIN rate limiting during cold starts or across distributed concurrent containers by eliminating in-memory `checkPinRateLimit`, `recordPinFailure`, and `resetPinFailure`.
+  - Replaced with database-backed `checkPinRateLimitPersistent`, `recordPinFailurePersistent`, and `resetPinFailurePersistent` backed by the Supabase `rate_limits` table with synchronized dual-layer in-memory mirror and graceful fallback.
+  - Enforced persistent rate limiting for moderator passcode overrides: checks `modGateTarget` via `checkPinRateLimitPersistent(clientIp, modGateTarget)`, immediately rejects with HTTP 429 Too Many Requests and `Retry-After` header when rate limit is exceeded, records failed attempts, and resets upon valid passcode verification.
+  - Enforced persistent rate limiting on member PIN cancellations: rejects brute-force attempts after 5 failures with HTTP 429 Too Many Requests and `Retry-After` header, recording failures and resetting tracking upon successful verification.
+* **Persistent Rate Limiting in Push Subscription (`src/app/api/push/subscribe/route.ts`):**
+  - Replaced legacy in-memory rate limiting functions with `checkPinRateLimitPersistent`, `recordPinFailurePersistent`, and `resetPinFailurePersistent`.
+  - Enforces persistent database-backed lockout after 5 failed PIN attempts during push subscription binding, preventing brute-force PIN guessing across concurrent serverless instances.
+  - Resets failure counter upon successful PIN authentication via `await resetPinFailurePersistent(clientIp, member.id)`.
+* **Automated Unit Testing & Verification (`scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs`, `scripts/run-tests.mjs`):**
+  - Created comprehensive standalone test suite `scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs` verifying:
+    1. Static AST / source inspection confirming persistent imports and zero calls to non-persistent rate limit helpers across both routes.
+    2. Cancel-pending member PIN brute-force lockout after 5 failed attempts (HTTP 429 and `Retry-After` duration).
+    3. Cancel-pending successful schedule cancellation and rate tracking reset upon valid PIN entry.
+    4. Cancel-pending moderator passcode rate limiting, brute-force lockout with HTTP 429, and lockout headers.
+    5. Push subscribe member PIN brute-force lockout after 5 failed attempts (HTTP 429 and `Retry-After`).
+    6. Push subscribe rate limit reset upon valid PIN entry and subscription linking.
+    7. Cross-route and cross-member isolation preventing rate limit cross-talk between unrelated users and IPs.
+  - Registered test suite in `scripts/run-tests.mjs` (all 28/28 unit test suites passing cleanly in 47.86s).
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 28/28 test suites passing.
+  - `npm run build` verified clean with all 28 routes compiled successfully.
 
 ### Phase 80: Security Hardening - Fix Unauthenticated Push Endpoint Deletion in `/api/push/unsubscribe` & Authorize Client Push Requests (GH #31, #46, #36, ZC-17, ZC-22)
 * **Unauthenticated Push Subscription Deletion Prevention (`src/app/api/push/unsubscribe/route.ts`):**
@@ -1550,7 +1575,7 @@ d:\Projects\Z Catchers\
 |---|---|---|---|---|---|
 | **ZC-16** | **High (P1)** | Security: Remove hardcoded fallback session secrets & dev PIN salt in production | `src/lib/auth.ts` | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | **DONE** |
 | **ZC-17** | **High (P1)** | Security: Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` | `src/app/api/push/unsubscribe/route.ts` | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) / [#46](https://github.com/KrishJdev/Z-Catchers/issues/46) | **DONE** |
-| **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | **TODO** |
+| **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | **DONE** |
 | **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) | **TODO** |
 | **ZC-20** | **High (P1)** | Security: Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded | `src/app/api/members/update-schedule/route.ts` | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | **TODO** |
 | **ZC-21** | **Medium (P2)** | PWA / Notifications: Prevent race condition by recording nag deduplication before sending push | `src/app/api/members/nag-notif/route.ts` | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | **TODO** |
@@ -1589,8 +1614,8 @@ d:\Projects\Z Catchers\
    * **ZC-16 / GH #30 (`src/lib/auth.ts`):** **[DONE in Phase 76]** Failed closed in production for `SESSION_SECRET` and `PIN_SALT`. Strictly stripped fallback secrets when `NODE_ENV === 'production'`.
    * **ZC-17 / GH #31 & #46 (`src/app/api/push/unsubscribe/route.ts`):** **[DONE in Phase 80]** Strictly enforced authenticated member session for all unsubscriptions; chained `.eq('member_id', sessionMemberId)` on endpoint deletions to prevent IDOR and DoS subscription wiping.
    * **ZC-22 / GH #36 (`src/components/PushModal.tsx`, `src/lib/pushClient.ts`):** **[DONE in Phase 80]** Injected `Authorization: Bearer <token>` into `/api/push/unsubscribe` and `/api/push/test` requests to survive cookie-restricted PWA runtimes.
-   * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** **[NEXT UP]** Replace in-memory rate limiting with `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
-   * **ZC-19 / GH #33 (`src/lib/auth.ts`):** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
+   * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** **[DONE in Phase 81]** Enforced database-backed persistent rate limiting using `checkPinRateLimitPersistent`, `recordPinFailurePersistent`, and `resetPinFailurePersistent` backed by Supabase `rate_limits` table.
+   * **ZC-19 / GH #33 (`src/lib/auth.ts`):** **[NEXT UP]** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
    * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles.
 
 2. **Sprint 2 — P2 (Medium Priority) PWA, Push & Concurrency Fixes:**
