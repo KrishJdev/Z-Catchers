@@ -1544,7 +1544,7 @@ export function checkMonthlyStrikeReset(
   activeMember: Member;
 } {
   const currentMonth = getCurrentStrikeMonth(member, nowUtc);
-  const cycleMonth = member.strike_cycle_month || '2026-01';
+  const cycleMonth = member.strike_cycle_month || currentMonth;
 
   if (cycleMonth !== currentMonth) {
     const updated: Member = {

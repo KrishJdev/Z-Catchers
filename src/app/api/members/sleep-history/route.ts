@@ -4,6 +4,7 @@ import { DateTime } from 'luxon';
 import { toValidLuxonZone } from '@/lib/timezone';
 import { isDemoSeedMember, generateDemoSleepLogs } from '@/lib/demoSeed';
 import { calculateSleepStreak } from '@/lib/sleepEngine';
+import { resolveMemberStrikeCounts } from '@/lib/strikes';
 
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -183,6 +184,8 @@ export async function GET(request: Request) {
 
     const checkinDates = (checkinRows || []).map((l: { local_date: string }) => l.local_date);
     const streakDays = calculateSleepStreak(checkinDates, nowLocal);
+    const nowUtc = DateTime.utc();
+    const strikeCounts = await resolveMemberStrikeCounts(member, nowUtc);
 
     return NextResponse.json({
       member: {
@@ -201,8 +204,11 @@ export async function GET(request: Request) {
         role: member.role,
         is_in_bed: member.is_in_bed,
         is_woke_up: member.is_woke_up,
-        strikes_count: typeof member.strikes_count === 'number' ? member.strikes_count : member.strikes_used || 0,
-        metastrikes_count: typeof member.metastrikes_count === 'number' ? member.metastrikes_count : member.metastrikes_used || 0,
+        strikes_used: strikeCounts.strikes_used,
+        strikes_count: strikeCounts.strikes_used,
+        metastrikes_used: strikeCounts.metastrikes_used,
+        metastrikes_count: strikeCounts.metastrikes_used,
+        strike_cycle_month: strikeCounts.strike_cycle_month,
       },
       month: targetMonth,
       logs: sleepLogs.map((l) => ({
