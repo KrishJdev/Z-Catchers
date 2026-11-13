@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T17:50:00+05:30  
+> **Last Updated:** 2026-11-13T18:24:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `d69e3d9`  
+> **Latest Commit:** `84f2397`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55)  
 > **Active Integration Pull Requests:** [#56 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/56) (`krish` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
@@ -104,6 +104,16 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   - Pushed all commits to `origin/krish`.
   - Opened Pull Request **[#56](https://github.com/KrishJdev/Z-Catchers/pull/56)** from `krish` into `dev`: *`fix(ui): normalize layout, touch targets, and anti-wrapping across ModDrawer and modals`*.
   - Triggered CodeRabbit automated review on PR #56 via comment `@coderabbitai review`.
+  - Resolved review comments across PR #56:
+    1. **`HANDOFF.md`:** Clarified that legacy-schema schedules are held in process-local memory (`globalThis.memoryScheduleData`) and require running the PostgreSQL migration for cross-process and restart durability.
+    2. **`scripts/test-ui-normalization-and-button-wrapping.mjs`:** Grouped numeral-order class alternatives with `whitespace-nowrap` and flex container assertions so operator precedence guarantees all conditions are met.
+    3. **`src/components/ModDrawer.tsx`:** Updated all tabs, passcode unlock, and inline form actions to `min-h-[44px]`; upgraded strike and metastrike adjusters to `min-h-[44px] min-w-[44px]` touch targets.
+    4. **`src/components/MyScheduleModal.tsx`:** Standardized profile navigation tabs and the "Cancel Shift" control to `min-h-[44px]`.
+    5. **`src/components/PwaBanner.tsx`:** Upgraded all 3 dismiss controls to `min-h-[44px] min-w-[44px]` and isolated them in right-hand flex containers to prevent any overlap with CTA action buttons.
+    6. **`src/components/SleepCalendarModal.tsx`:** Upgraded "Edit Schedule" button touch target to `min-h-[44px]`.
+    7. **`src/lib/db.ts`:** Updated pending weekend hydration to preserve explicit `null` and `undefined` when absent from both sources; staged schedule updates locally in `updateMemberSafe` so failed updates or 0-row matches never mutate shared cache state.
+    8. **`supabase/migrations/20261113_add_weekly_schedule.sql`:** Moved pending schedule backfill before `weekly_schedule` initialization and scoped it strictly to rows where `weekly_schedule IS NULL`.
+    9. **Automated tests:** Expanded `test-weekly-schedule-resilience.mjs` and `test-ui-normalization-and-button-wrapping.mjs` to assert these invariants. All 31 suites passing cleanly.
 
 ### Phase 83: Database Missing `weekly_schedule` Schema Fallback & Migration Script
 * **Root Cause Identification:**
