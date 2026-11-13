@@ -1,12 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T13:35:00+05:30  
-> **Active Working Branch:** `feat/zc-18-persistent-rate-limiting`  
+> **Last Updated:** 2026-11-13T15:15:00+05:30  
+> **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `b443749`  
+> **Latest Commit:** `dec863d`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51)  
-> **Active Integration Pull Requests:** [#53 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/54)  
+> **Active Integration Pull Requests:**  
+>   - [#53 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/53) (`krish` -> `dev`: unauthenticated push deletion fix & authorized client requests)  
+>   - [#54 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/54) (`feat/zc-18-persistent-rate-limiting` -> `dev`: persistent rate limiting in cancel-pending & push/subscribe)  
+>   - [#55 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/55) (`feat/zc-19-sanitize-oauth-redirect` -> `dev`: sanitize & validate x-forwarded-host in OAuth redirect)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
 > **Active Production Release Pull Request:** [#52 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/52) (dev -> main)  
 > **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 27/27 suites passed | `npm run build` clean, 28/28 routes)
@@ -70,38 +73,57 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 ## 4. Comprehensive Task Changelog
 
-### Phase 81: Security Hardening - Enforce Database-Backed Persistent Rate Limiting in `cancel-pending` and `push/subscribe` (GH #32, ZC-18)
-* **Persistent Rate Limiting in Cancel-Pending (`src/app/api/members/cancel-pending/route.ts`):**
-  - Resolved serverless rate limiting vulnerability (GH #32, ZC-18) where callers could bypass PIN rate limiting during cold starts or across distributed concurrent containers by eliminating in-memory `checkPinRateLimit`, `recordPinFailure`, and `resetPinFailure`.
-  - Replaced with database-backed `checkPinRateLimitPersistent`, `recordPinFailurePersistent`, and `resetPinFailurePersistent` backed by the Supabase `rate_limits` table with synchronized dual-layer in-memory mirror and graceful fallback.
-  - Enforced persistent rate limiting for moderator passcode overrides: checks `modGateTarget` via `checkPinRateLimitPersistent(clientIp, modGateTarget)`, immediately rejects with HTTP 429 Too Many Requests and `Retry-After` header when rate limit is exceeded, records failed attempts, and resets upon valid passcode verification.
-  - Enforced persistent rate limiting on member PIN cancellations: rejects brute-force attempts after 5 failures with HTTP 429 Too Many Requests and `Retry-After` header, recording failures and resetting tracking upon successful verification.
-  - Guarded PIN validation failure recording: requests missing a PIN or passing non-string values return HTTP 401 without invoking `recordPinFailurePersistent`, preventing unauthenticated callers from incrementing failure counters for checks that never occurred.
-* **Persistent Rate Limiting in Push Subscription (`src/app/api/push/subscribe/route.ts`):**
-  - Replaced legacy in-memory rate limiting functions with `checkPinRateLimitPersistent`, `recordPinFailurePersistent`, and `resetPinFailurePersistent`.
-  - Enforces persistent database-backed lockout after 5 failed PIN attempts during push subscription binding, preventing brute-force PIN guessing across concurrent serverless instances.
-  - Resets failure counter upon successful PIN authentication via `await resetPinFailurePersistent(clientIp, member.id)`.
-* **In-Memory Cache Isolation Helper (`src/lib/rateLimit.ts`):**
-  - Added exported `clearInMemoryPinRateLimits()` function that clears the local in-memory Map cache without triggering asynchronous persistent table deletions, allowing deterministic cold-instance verification in test environments.
-* **Automated Unit Testing & Verification (`scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs`, `scripts/run-tests.mjs`):**
-  - Created comprehensive standalone test suite `scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs` verifying:
-    1. Static AST / source inspection confirming persistent imports and zero calls to non-persistent rate limit helpers across both routes.
-    2. Missing PIN request verification confirming HTTP 401 without recording rate limit failure in `rateLimitsDb`.
-    3. Cancel-pending member PIN brute-force lockout after 5 failed attempts, verifying expected persisted database rows in `rateLimitsDb`.
-    4. Isolation of persistent database lookup by clearing local memory cache via `clearInMemoryPinRateLimits()` and asserting HTTP 429 and `Retry-After` header.
-    5. Cold-instance lockout verification: seeded persisted lockout in `rateLimitsDb` with zero local memory state returning HTTP 429.
-    6. Cancel-pending successful schedule cancellation and rate tracking reset upon valid PIN entry.
-    7. Cancel-pending moderator passcode rate limiting, brute-force lockout with HTTP 429, and lockout headers.
-    8. Push subscribe member PIN brute-force lockout after 5 failed attempts (HTTP 429 and `Retry-After`).
-    9. Push subscribe rate limit reset upon valid PIN entry and subscription linking.
-    10. Cross-route and cross-member isolation preventing rate limit cross-talk between unrelated users and IPs.
-    11. Clean test teardown: `finally` block runs `clearAllPinRateLimitsPersistent` while Supabase mock is active before restoring `supabaseAdmin.from`.
-  - Registered test suite in `scripts/run-tests.mjs` (all 27/27 unit test suites passing cleanly).
-* **Pre-Merge Out of Scope Changes Resolution:**
-  - Reverted push-unsubscribe authorization changes (`src/app/api/push/unsubscribe/route.ts`, `src/components/PushModal.tsx`, `src/lib/pushClient.ts`) to merge base `origin/dev`; removed `scripts/test-push-unsubscribe-security.mjs` and its entry in `scripts/run-tests.mjs`; removed Phase 80 handoff entries on this branch (isolated in PR #53).
+### Phase 81: CodeRabbit PR Review Resolutions & Multi-PR Synchronizations (PR #53, PR #54, PR #55)
+* **PR #53 (`krish` -> `dev`) - Unauthenticated Push Deletion & Client Authorization Review Hardening:**
+  - **Malformed Body Rejection (`src/app/api/push/unsubscribe/route.ts`):** Resolved CodeRabbit review finding regarding destructive fallback on malformed JSON. Validates request body structure; returns HTTP 400 Bad Request for malformed JSON or non-object payloads before any database operations, eliminating accidental member-wide deletion.
+  - **Client Endpoint Retention on Server Error (`src/lib/pushClient.ts`):** Retains subscription endpoint in `STORAGE_KEY_PENDING_UNSUBSCRIBE = 'zcatchers_pending_unsubscribe_endpoint'` when server unregister returns non-OK status (e.g. 401 token expiration). Implemented `retryPendingUnsubscribe()` which automatically retries unregistering with the fresh session token upon login/token refresh.
+  - **Line-Ending Normalization:** Normalized CRLF line endings to LF across `src/lib/pushClient.ts`, `src/app/api/push/unsubscribe/route.ts`, and `HANDOFF.md`, eliminating over 3,500 lines of spurious whitespace diff churn.
+  - **Automated Tests (`scripts/test-push-unsubscribe-security.mjs`):** Added tests verifying HTTP 400 rejection for malformed JSON, array payloads, and pending unsubscribe retry state preservation.
+* **PR #54 (`feat/zc-18-persistent-rate-limiting` -> `dev`) - CodeRabbit Review Hardening & Scope Isolation:**
+  - **Pre-Merge Check & Scope Isolation:** Reverted line-ending-only changes in `src/app/api/push/unsubscribe/route.ts`, `src/components/PushModal.tsx`, and `src/lib/pushClient.ts` so they match merge base `dev` with zero diff (0 lines changed), satisfying CodeRabbit Out-of-Scope Pre-Merge check.
+  - **Moderator Passcode Double-Count Prevention (`src/app/api/members/cancel-pending/route.ts`):** Added guard rejecting invalid moderator passcode requests with HTTP 401 immediately when no PIN is supplied, preventing double counting of failures against shared client IP.
+  - **Rate Limiting Suite Hardening (`scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs`):**
+    1. Verified lockouts after explicitly clearing in-memory cache mirrors before 6th attempt, confirming routes return HTTP 429 from persistent database rows.
+    2. Added cold-instance test cases for both cancel-pending and push-subscribe with seeded persistent lockouts.
+    3. Added scenarios verifying route automatically resets rate-limit counters upon successful authentication with fewer than 5 failures without manual pre-clearing.
+    4. Ensured `clearAllPinRateLimitsPersistent()` runs inside mock adapter boundary before restoring `supabaseAdmin.from = origFrom`.
+* **PR #55 (`feat/zc-19-sanitize-oauth-redirect` -> `dev`) - OAuth Redirect Host Validation Review Hardening:**
+  - **Strict Preview Host Matching (`src/lib/auth.ts`):** Replaced loose prefix match `z-catchers-*.vercel.app` with strict regex requiring verified branch preview (`z-catchers-git-*.vercel.app`) or team-scoped deployment (`*-projects.vercel.app`), preventing prefix collisions from unrelated Vercel projects.
+  - **Structural URL Validation (`src/lib/auth.ts`):** In `getAppBaseUrl()`, validates `NEXT_PUBLIC_APP_URL` structurally via `new URL()` and checks `hostname` against exact known placeholder domains rather than loose substring matching, preserving valid domains such as `https://notexample.com`.
+  - **Production HTTPS Policy on `request.url` Fallback (`src/lib/auth.ts`):** Enforces HTTPS scheme in production for non-loopback hosts on `request.url` fallback.
+  - **Test Environment Isolation (`scripts/test-oauth-redirect-host-validation.mjs`):** Isolated `VERCEL_*` and `TRUSTED_HOSTS` environment variables around the production fallback test.
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors across all three branches.
+  - `npm run test:unit` verified clean with all 27/27 test suites passing (56.32s).
+
+### Phase 80: Security Hardening & CodeRabbit Enhancements - Fix Unauthenticated Push Endpoint Deletion in `/api/push/unsubscribe` & Authorize Client Push Requests (GH #31, #46, #36, ZC-17, ZC-22)
+* **Unauthenticated Push Subscription Deletion Prevention (`src/app/api/push/unsubscribe/route.ts`):**
+  - Resolved critical security vulnerability (GH #31 / #46, ZC-17) where anonymous callers could delete arbitrary push subscriptions by sending `{ endpoint }`.
+  - Added strict session authentication guard: verifies `getRequestSessionMemberId(request)`. Rejects unauthenticated or invalid session requests immediately with HTTP 401 Unauthorized (`Unauthorized: Active member session required to unsubscribe from push notifications.`).
+  - Added input validation for `endpoint`: rejects empty/whitespace strings and non-string types with HTTP 400 Bad Request.
+  - Enforced member ownership filter: chained `.eq('endpoint', trimmedEndpoint).eq('member_id', sessionMemberId)` on database deletion, ensuring even authenticated actors cannot delete push subscriptions belonging to another user.
+  - Retained member-wide unsubscription when `endpoint` is omitted, strictly scoped to `.eq('member_id', sessionMemberId)`.
+  - Added `export const DELETE = POST;` to support RESTful HTTP `DELETE` calls alongside `POST`.
+  - **CodeRabbit Enhancement:** Added dual URL query parameter inspection (`new URL(request.url).searchParams.get('endpoint')`) alongside request body payload. Standard RESTful `DELETE /api/push/unsubscribe?endpoint=...` calls without a request body safely target and unregister that specific endpoint device without accidentally falling through to member-wide unsubscription.
+* **Client-Side Authorization Header Injection & Logging (`src/lib/pushClient.ts`, `src/components/PushModal.tsx`):**
+  - Updated `unsubscribeFromPush` in `src/lib/pushClient.ts` to retrieve `getStoredAuthToken()` and include `Authorization: Bearer <token>` in the fetch request to `/api/push/unsubscribe`.
+  - **CodeRabbit Enhancement:** Added non-2xx status logging in `pushClient.ts` (`if (res && !res.ok) console.warn(...)`) so HTTP 4xx/5xx responses from the unsubscribe endpoint are logged for diagnostic observability while maintaining resilient client unsubscription UX.
+  - Updated `handleSendTestPush` in `src/components/PushModal.tsx` to retrieve `getStoredAuthToken()` and include `Authorization: Bearer <token>` in the fetch request to `/api/push/test` (GH #36, ZC-22).
+* **Automated Unit Testing & Verification (`scripts/test-push-unsubscribe-security.mjs`, `scripts/run-tests.mjs`):**
+  - Created comprehensive standalone test suite `scripts/test-push-unsubscribe-security.mjs` covering:
+    1. Anonymous request rejection with HTTP 401 and zero database calls.
+    2. Tampered/invalid Bearer token rejection with HTTP 401.
+    3. Authenticated owner unsubscription via Bearer token and Cookie with `.eq('endpoint', ...).eq('member_id', ...)` verification.
+    4. Cross-member IDOR attack prevention (attacker session cannot delete victim endpoint).
+    5. Invalid whitespace and numeric endpoint format rejection with HTTP 400.
+    6. Member-wide subscription removal scoped strictly to caller's `member_id`.
+    7. HTTP `DELETE` method parity with `POST`, both with JSON body and URL query parameter (`?endpoint=...`) without body.
+    8. Client-side authorization header presence checks in `pushClient.ts` and `PushModal.tsx`, plus non-2xx diagnostic warning checks.
+    9. Database error resilience and HTTP 500 handling.
+  - Wired into `scripts/run-tests.mjs` (all 27/27 test suites passing cleanly in 47.26s).
 * **Verification & Checks:**
   - `npx tsc --noEmit` verified clean with 0 errors.
-  - `npm run test:unit` verified clean with all 27/27 test suites passing (76.72s).
+  - `npm run test:unit` verified clean with all 27/27 test suites passing (47.26s).
   - `npm run build` verified clean with all 28 routes compiled successfully.
 
 ### Phase 79: Production Release PR #52 Opened (`dev` -> `main`)
@@ -1556,7 +1578,7 @@ d:\Projects\Z Catchers\
 |---|---|---|---|---|---|
 | **ZC-16** | **High (P1)** | Security: Remove hardcoded fallback session secrets & dev PIN salt in production | `src/lib/auth.ts` | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | **DONE** |
 | **ZC-17** | **High (P1)** | Security: Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` | `src/app/api/push/unsubscribe/route.ts` | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) / [#46](https://github.com/KrishJdev/Z-Catchers/issues/46) | **DONE** |
-| **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | **DONE** |
+| **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | **TODO** |
 | **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) | **TODO** |
 | **ZC-20** | **High (P1)** | Security: Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded | `src/app/api/members/update-schedule/route.ts` | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | **TODO** |
 | **ZC-21** | **Medium (P2)** | PWA / Notifications: Prevent race condition by recording nag deduplication before sending push | `src/app/api/members/nag-notif/route.ts` | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | **TODO** |
@@ -1593,10 +1615,10 @@ d:\Projects\Z Catchers\
 
 1. **Sprint 1 — P1 (High Priority) Security & Auth Hardening:**
    * **ZC-16 / GH #30 (`src/lib/auth.ts`):** **[DONE in Phase 76]** Failed closed in production for `SESSION_SECRET` and `PIN_SALT`. Strictly stripped fallback secrets when `NODE_ENV === 'production'`.
-   * **ZC-17 / GH #31 & #46 (`src/app/api/push/unsubscribe/route.ts`):** **[IN PROGRESS in PR #53]** Strictly enforce authenticated member session for all unsubscriptions; chain `.eq('member_id', sessionMemberId)` on endpoint deletions to prevent IDOR and DoS subscription wiping.
-   * **ZC-22 / GH #36 (`src/components/PushModal.tsx`, `src/lib/pushClient.ts`):** **[IN PROGRESS in PR #53]** Inject `Authorization: Bearer <token>` into `/api/push/unsubscribe` and `/api/push/test` requests to survive cookie-restricted PWA runtimes.
-   * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** **[DONE in Phase 81]** Enforced database-backed persistent rate limiting using `checkPinRateLimitPersistent`, `recordPinFailurePersistent`, and `resetPinFailurePersistent` backed by Supabase `rate_limits` table.
-   * **ZC-19 / GH #33 (`src/lib/auth.ts`):** **[NEXT UP]** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
+   * **ZC-17 / GH #31 & #46 (`src/app/api/push/unsubscribe/route.ts`):** **[DONE in Phase 80]** Strictly enforced authenticated member session for all unsubscriptions; chained `.eq('member_id', sessionMemberId)` on endpoint deletions to prevent IDOR and DoS subscription wiping.
+   * **ZC-22 / GH #36 (`src/components/PushModal.tsx`, `src/lib/pushClient.ts`):** **[DONE in Phase 80]** Injected `Authorization: Bearer <token>` into `/api/push/unsubscribe` and `/api/push/test` requests to survive cookie-restricted PWA runtimes.
+   * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** **[NEXT UP]** Replace in-memory rate limiting with `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
+   * **ZC-19 / GH #33 (`src/lib/auth.ts`):** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
    * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles.
 
 2. **Sprint 2 — P2 (Medium Priority) PWA, Push & Concurrency Fixes:**

@@ -22,6 +22,7 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
   getStoredMemberId,
+  getStoredAuthToken,
   isPushSupported,
   getNotificationPermission,
   isBraveBrowser,
@@ -155,9 +156,17 @@ export function PushModal({
     setFeedback(null);
 
     try {
+      const token = getStoredAuthToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch('/api/push/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
       });
 
       const data = await res.json();
