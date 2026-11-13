@@ -87,6 +87,9 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
     4. Legitimate first-time profile claims with 4-to-6 digit PINs (and no `mod_passcode`) succeed with HTTP 200.
     5. Valid moderator override bypasses the 48-hour cooldown and updates active schedule immediately.
     6. Authenticated session owner attempting invalid moderator passcodes is rate-limited on `mod_gate_member:${sessionMemberId}` and returns HTTP 429, but legitimate owner updates without `mod_passcode` succeed with the 48-hour cooldown.
+    7. Moderator initial PIN assignment on unclaimed profiles verifies `passcode_hash` is securely set to the hashed PIN.
+    8. Moderator `new_pin` replacement on claimed profiles verifies `passcode_hash` is updated to the hashed new PIN.
+    9. Moderator invalid PIN candidate returns HTTP 400 and guarantees member `passcode_hash` and schedule remain completely unchanged.
   - Registered in `scripts/run-tests.mjs` (all 33/33 unit test suites passing cleanly).
   - Verified `npx tsc --noEmit` clean with 0 errors.
   - Verified `npm run build` clean with all 28 Next.js routes compiled and prerendered.

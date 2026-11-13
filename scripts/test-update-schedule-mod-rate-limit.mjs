@@ -377,6 +377,7 @@ async function run() {
     };
     currentMemberRow = { ...claimedMember };
 
+    // 4a. Moderator override schedule update
     const validModReq = new Request('http://localhost:3000/api/members/update-schedule', {
       method: 'POST',
       headers: {
@@ -397,6 +398,87 @@ async function run() {
     testAssert(validModData.cooldown_applied === false, 'Moderator override bypasses 48-hour cooldown');
     testAssert(validModData.pending_effective_at === null, 'pending_effective_at is null');
     testAssert(currentMemberRow.bedtime_local === '02:00', 'Active bedtime_local updated immediately to 02:00');
+
+    // 4b. Moderator sets initial PIN on unclaimed member
+    currentMemberRow = { ...unclaimedMember, passcode_hash: null, bedtime_local: '22:00' };
+    const modInitialPinReq = new Request('http://localhost:3000/api/members/update-schedule', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-forwarded-for': '198.51.100.71',
+      },
+      body: JSON.stringify({
+        member_id: unclaimedMember.id,
+        mod_passcode: process.env.MOD_SECRET_PASSCODE,
+        pin: '1234',
+        bedtime_local: '01:30',
+        wake_time_local: '09:30',
+      }),
+    });
+    const modInitialPinRes = await handleUpdateSchedule(modInitialPinReq);
+    testAssert(modInitialPinRes.status === 200, 'Moderator initial PIN assignment returns HTTP 200');
+    testAssert(
+      currentMemberRow.passcode_hash === hashPin('1234'),
+      'Moderator initial PIN assignment sets stored passcode_hash to hash of submitted PIN'
+    );
+    testAssert(currentMemberRow.bedtime_local === '01:30', 'Moderator initial PIN assignment updates schedule');
+
+    // 4c. Moderator replaces PIN on claimed member using new_pin
+    currentMemberRow = { ...claimedMember, passcode_hash: hashPin('5555'), bedtime_local: '22:00' };
+    const modNewPinReq = new Request('http://localhost:3000/api/members/update-schedule', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-forwarded-for': '198.51.100.72',
+      },
+      body: JSON.stringify({
+        member_id: claimedMember.id,
+        mod_passcode: process.env.MOD_SECRET_PASSCODE,
+        new_pin: '9876',
+        bedtime_local: '02:30',
+        wake_time_local: '10:30',
+      }),
+    });
+    const modNewPinRes = await handleUpdateSchedule(modNewPinReq);
+    testAssert(modNewPinRes.status === 200, 'Moderator new_pin replacement returns HTTP 200');
+    testAssert(
+      currentMemberRow.passcode_hash === hashPin('9876'),
+      'Moderator new_pin replacement sets stored passcode_hash to hash of new_pin'
+    );
+    testAssert(currentMemberRow.bedtime_local === '02:30', 'Moderator new_pin replacement updates schedule');
+
+    // 4d. Moderator provides invalid PIN candidate (fails validation, returns 400, member unchanged)
+    const beforeInvalidHash = currentMemberRow.passcode_hash;
+    const beforeInvalidBedtime = currentMemberRow.bedtime_local;
+    const modInvalidPinReq = new Request('http://localhost:3000/api/members/update-schedule', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-forwarded-for': '198.51.100.73',
+      },
+      body: JSON.stringify({
+        member_id: claimedMember.id,
+        mod_passcode: process.env.MOD_SECRET_PASSCODE,
+        new_pin: '12', // Invalid: fewer than 4 digits
+        bedtime_local: '04:00',
+        wake_time_local: '12:00',
+      }),
+    });
+    const modInvalidPinRes = await handleUpdateSchedule(modInvalidPinReq);
+    testAssert(modInvalidPinRes.status === 400, 'Moderator invalid PIN candidate returns HTTP 400');
+    const modInvalidPinData = await modInvalidPinRes.json();
+    testAssert(
+      modInvalidPinData.error === 'PIN must be 4 to 6 digits.',
+      'Moderator invalid PIN candidate returns descriptive error message'
+    );
+    testAssert(
+      currentMemberRow.passcode_hash === beforeInvalidHash,
+      'Member passcode_hash remains unchanged after invalid PIN candidate attempt'
+    );
+    testAssert(
+      currentMemberRow.bedtime_local === beforeInvalidBedtime,
+      'Member schedule remains unchanged after invalid PIN candidate attempt'
+    );
 
     // -------------------------------------------------------------
     // Test Case 5: Authenticated Session Owner Mod Passcode Rate Limiting
