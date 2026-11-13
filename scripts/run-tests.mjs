@@ -43,6 +43,7 @@ const UNIT_TESTS = [
   'test-weekly-schedule-resilience.mjs',
   'test-wind-down-awake-fix.mjs',
   'test-ui-normalization-and-button-wrapping.mjs',
+  'test-strike-persistence-and-alias-reconciliation.mjs',
   'test-update-schedule-mod-rate-limit.mjs',
 ];
 

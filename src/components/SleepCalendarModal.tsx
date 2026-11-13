@@ -67,7 +67,9 @@ interface SleepHistoryData {
     role?: string;
     is_in_bed?: boolean;
     is_woke_up?: boolean;
+    strikes_used?: number;
     strikes_count?: number;
+    metastrikes_used?: number;
     metastrikes_count?: number;
   };
   month: string; // "YYYY-MM"
@@ -220,6 +222,17 @@ export function SleepCalendarModal({
     []
   );
 
+  const prevInitialMemberRef = useRef(initialMember);
+  useEffect(() => {
+    if (prevInitialMemberRef.current !== initialMember) {
+      prevInitialMemberRef.current = initialMember;
+      setData(null);
+      if (isOpen && (memberId || initialMember?.id)) {
+        fetchHistory(memberId || initialMember?.id || '', currentMonth);
+      }
+    }
+  }, [initialMember, isOpen, memberId, currentMonth, fetchHistory]);
+
   useEffect(() => {
     if (isOpen && memberId) {
       fetchHistory(memberId, currentMonth);
@@ -266,8 +279,21 @@ export function SleepCalendarModal({
     const weekendBedtime = base?.weekend_bedtime_local || apiMember?.weekend_bedtime_local || null;
     const weekendWakeTime = base?.weekend_wake_time_local || apiMember?.weekend_wake_time_local || null;
     const streak = typeof apiMember?.current_streak === 'number' ? apiMember.current_streak : (base?.streak_days || 0);
-    const strikesUsed = typeof base?.strikes_count === 'number' ? base.strikes_count : (typeof apiMember?.strikes_count === 'number' ? apiMember.strikes_count : 0);
-    const metastrikesUsed = typeof base?.metastrikes_count === 'number' ? base.metastrikes_count : (typeof apiMember?.metastrikes_count === 'number' ? apiMember.metastrikes_count : 0);
+    // Reconcile aliases strictly within a single snapshot: prefer the newer API snapshot when available,
+    // otherwise fallback to initialMember base, preserving corrected or decremented counts and monthly resets.
+    const activeSnapshot = apiMember || base;
+    const strikesUsed = activeSnapshot
+      ? Math.max(
+          typeof activeSnapshot.strikes_used === 'number' ? activeSnapshot.strikes_used : 0,
+          typeof activeSnapshot.strikes_count === 'number' ? activeSnapshot.strikes_count : 0
+        )
+      : 0;
+    const metastrikesUsed = activeSnapshot
+      ? Math.max(
+          typeof activeSnapshot.metastrikes_used === 'number' ? activeSnapshot.metastrikes_used : 0,
+          typeof activeSnapshot.metastrikes_count === 'number' ? activeSnapshot.metastrikes_count : 0
+        )
+      : 0;
     const weeklySchedule = base?.weekly_schedule || apiMember?.weekly_schedule || null;
     const journalUrl = base?.journal_url || apiMember?.journal_url || '';
     const role = base?.role || apiMember?.role || 'member';

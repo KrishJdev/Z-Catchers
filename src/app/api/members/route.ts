@@ -7,7 +7,7 @@ import {
   updateMemberSafe,
   hydrateMemberWeekendHours,
 } from '@/lib/db';
-import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
+import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate, getCurrentStrikeMonth } from '@/lib/sleepEngine';
 import { sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
 import { toValidLuxonZone, isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import {
@@ -15,6 +15,7 @@ import {
   getNightlyStrikeLogsBatch,
   getStrikeLogKey,
   getRecentEligibleStrikeLogsBatch,
+  getMonthlyStrikeCountsBatch,
 } from '@/lib/strikes';
 import { DateTime } from 'luxon';
 
@@ -31,7 +32,7 @@ const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 export async function GET(request: Request) {
   try {
     const sessionMemberId = getRequestSessionMemberId(request);
-    const { data: members, error } = await supabase
+    const { data: members, error } = await supabaseAdmin
       .from('members')
       .select('*')
       .eq('is_active', true)
@@ -134,9 +135,21 @@ export async function GET(request: Request) {
       });
     }
 
-    // Batched resolution: resolve member strike counts in parallel and batch query nightly & recent strike logs
-    const [strikeInfos, strikeLogsMap, recentStrikesMap] = await Promise.all([
-      Promise.all(memberItems.map((item) => resolveMemberStrikeCounts(item.hydratedMember, nowUtc))),
+    // Batched resolution: query monthly logged strikes grouped by local member strike month, nightly logs for tonight, and recent strikes
+    const membersByMonth = new Map<string, string[]>();
+    for (const item of memberItems) {
+      const localMonth = getCurrentStrikeMonth(item.hydratedMember, nowUtc);
+      const list = membersByMonth.get(localMonth) || [];
+      list.push(item.hydratedMember.id);
+      membersByMonth.set(localMonth, list);
+    }
+
+    const monthlyStrikePromises = Array.from(membersByMonth.entries()).map(([month, ids]) =>
+      getMonthlyStrikeCountsBatch(ids, month)
+    );
+
+    const [monthlyResults, strikeLogsMap, recentStrikesMap] = await Promise.all([
+      Promise.all(monthlyStrikePromises),
       getNightlyStrikeLogsBatch(
         memberItems.map((item) => ({
           targetMemberId: item.hydratedMember.id,
@@ -148,6 +161,23 @@ export async function GET(request: Request) {
         nowUtc
       ),
     ]);
+
+    const monthlyStrikeCountsMap = new Map<string, { strikes: number; metastrikes: number }>();
+    for (const batchMap of monthlyResults) {
+      for (const [id, counts] of batchMap.entries()) {
+        monthlyStrikeCountsMap.set(id, counts);
+      }
+    }
+
+    const strikeInfos = await Promise.all(
+      memberItems.map((item) => {
+        const monthly = monthlyStrikeCountsMap.get(item.hydratedMember.id);
+        return resolveMemberStrikeCounts(item.hydratedMember, nowUtc, {
+          loggedStrikes: monthly?.strikes,
+          loggedMetas: monthly?.metastrikes,
+        });
+      })
+    );
 
     const processedMembers: Member[] = memberItems.map((item, index) => {
       const strikeInfo = strikeInfos[index];
