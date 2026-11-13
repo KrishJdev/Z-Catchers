@@ -840,6 +840,7 @@ export interface MemberState {
   isSleepShieldActive: boolean;
   formattedViewerTime: string;
   formattedSleeperTime: string;
+  formattedWakeTime?: string;
   diffMinutes: number;
   graceMinutesLeft?: number;
   canVoteStrike?: boolean;
@@ -1341,6 +1342,22 @@ export function isWeekendCycle(member: Member, nowUtc = DateTime.utc()): boolean
 }
 
 /**
+ * Converts a 24-hour 'HH:mm' time string into consistent 12-hour 'h:mm A' format.
+ */
+export function formatTime12h(timeStr: string | null | undefined): string {
+  if (!timeStr) return '7:00 AM';
+  const clean = timeStr.trim();
+  if (/am|pm/i.test(clean)) return clean;
+  const match = clean.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return clean;
+  const hours = parseInt(match[1], 10);
+  const mins = match[2];
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const h12 = hours % 12 || 12;
+  return `${h12}:${mins} ${period}`;
+}
+
+/**
  * Computes a member's sleep bucket, viewer-adjusted bedtime, and sleep shield state.
  * Fully DST-aware using Luxon's IANA timezone conversion engine.
  * Supports distinct 7-day variable sleep schedules and weekend hours.
@@ -1479,6 +1496,7 @@ export function computeMemberState(
   const viewerBedtime = targetBedtime.setZone(targetViewerZone);
   const formattedViewerTime = viewerBedtime.toFormat('h:mm a');
   const formattedSleeperTime = targetBedtime.toFormat('h:mm a');
+  const formattedWakeTime = formatTime12h(activeWakeTimeLocal);
 
   // Cooldown notice calculation if pending
   let pendingNotice: string | null = null;
@@ -1503,6 +1521,7 @@ export function computeMemberState(
     isSleepShieldActive,
     formattedViewerTime,
     formattedSleeperTime,
+    formattedWakeTime,
     diffMinutes,
     graceMinutesLeft,
     canVoteStrike,
