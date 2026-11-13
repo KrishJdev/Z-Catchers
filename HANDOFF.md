@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T12:25:00+05:30  
-> **Active Working Branch:** `feat/zc-18-persistent-rate-limiting`  
+> **Last Updated:** 2026-11-13T12:45:00+05:30  
+> **Active Working Branch:** `feat/zc-19-sanitize-oauth-redirect`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `3b49b0a`  
+> **Latest Commit:** `PENDING`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51)  
 > **Active Integration Pull Requests:** [#53 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/54)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
 > **Active Production Release Pull Request:** [#52 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/52) (dev -> main)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 28/28 suites passed | `npm run build` clean, 28/28 routes)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 29/29 suites passed | `npm run build` clean, 28/28 routes)
 
 ---
 
@@ -69,6 +69,41 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 82: Security Hardening - Sanitize and Validate `x-forwarded-host` in OAuth Redirect Base URL (GH #33, #48, ZC-19)
+* **Host Header Format Sanitization (`src/lib/auth.ts`):**
+  - Resolved Host Header Poisoning vulnerability (GH #33, #48, ZC-19) where callers could supply arbitrary `x-forwarded-host` or `host` headers to hijack OAuth redirect URIs and steal Discord authorization codes.
+  - Implemented `sanitizeHostHeader(rawHost)`: extracts first client-facing host from multi-value proxy headers (`split(',')[0].trim()`), strictly rejecting whitespace, carriage returns (`\r`), newlines (`\n`), control characters, null bytes (`\0`), userinfo (`@`), path separators (`/`), query strings (`?`), fragments (`#`), backslashes, and quotes.
+  - Validates RFC 1123 hostname syntax (max label 63 chars, max length 253 chars, no leading/trailing hyphens, no consecutive dots) and numeric port ranges (1-65535) with support for domain names, IPv4, and bracketed IPv6 (`[::1]`).
+* **Trusted Origin Allowlist & Loopback Isolation (`src/lib/auth.ts`):**
+  - Implemented `isTrustedHost(rawHost, options)` validating candidate hosts against a strict multi-tier allowlist:
+    1. Exact canonical production domain `z-catchers.vercel.app` and its subdomains.
+    2. Vercel preview branch deployments: strictly matches `^z-catchers(-[a-z0-9-]+)?\.vercel\.app$` (rejecting prefix lookalikes such as `evil-z-catchers.vercel.app` and third-party deployments like `attacker.vercel.app`).
+    3. Authoritative environment URLs (`NEXT_PUBLIC_APP_URL` and `APP_URL`).
+    4. Vercel deployment variables (`VERCEL_URL` and `VERCEL_PROJECT_PRODUCTION_URL`).
+    5. Configurable custom domains via `ALLOWED_HOSTS` / `TRUSTED_HOSTS` with wildcard subdomain matching (`*.den.org`).
+    6. Scoped loopback / localhost validation: trusted in non-production environments (`NODE_ENV === 'development' || NODE_ENV === 'test'`), strictly rejected in production unless explicitly allowlisted or configured.
+* **Canonical Base URL Resolution & Fail-Safe Fallbacks (`src/lib/auth.ts`):**
+  - Updated `getAppBaseUrl(request?: Request)`:
+    - Authoritative source of truth: Prioritizes `process.env.NEXT_PUBLIC_APP_URL` whenever configured with a valid non-placeholder URL, completely ignoring any spoofed client headers.
+    - Header resolution: When `NEXT_PUBLIC_APP_URL` is omitted, verifies `x-forwarded-host` / `host` against `isTrustedHost()`.
+    - Protocol sanitization: Sanitizes `x-forwarded-proto`, strictly allowing only `'http'` and `'https'`, and enforcing `'https'` in production for all non-loopback hosts.
+    - Fail-safe fallback: If an untrusted host header is received, logs a security warning and safely falls back to canonical defaults (`https://z-catchers.vercel.app` in production, `http://localhost:3000` in dev/test) rather than echoing untrusted client input.
+* **Legacy Auth Redirect Route Hardening (`src/app/api/auth/login/route.ts`, `src/app/api/auth/register/route.ts`):**
+  - Replaced unvalidated `new URL('/api/auth/discord', request.url)` with `getAppBaseUrl(request)` in both GET redirect handlers, eliminating host header poisoning across all authentication entry points.
+* **Automated Unit Testing & Verification (`scripts/test-oauth-redirect-host-validation.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/run-tests.mjs`):**
+  - Created standalone test suite `scripts/test-oauth-redirect-host-validation.mjs` verifying:
+    1. Static AST / source inspection confirming exports, allowlist guards, and usage across all auth routes.
+    2. Host header sanitization covering multi-value headers, CRLF injection, control characters, userinfo, path, query, and port ranges.
+    3. Trusted host allowlist validation, preview wildcards, attacker lookalike rejections, and loopback production isolation.
+    4. Prioritization of `NEXT_PUBLIC_APP_URL` over spoofed headers, preview URL resolution, and fail-safe defaults.
+    5. End-to-end integration tests for `/api/auth/discord`, `/api/auth/discord/callback`, `/api/auth/login`, and `/api/auth/register`.
+  - Added legacy redirect poisoning assertions to `scripts/test-login-and-auth.mjs`.
+  - Registered test suite in `scripts/run-tests.mjs` (all 29/29 unit test suites passing cleanly in 51.25s).
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 29/29 test suites passing.
+  - `npm run build` verified clean with all 28 routes compiled successfully.
 
 ### Phase 81: Security Hardening - Enforce Database-Backed Persistent Rate Limiting in `cancel-pending` and `push/subscribe` (GH #32, ZC-18)
 * **Persistent Rate Limiting in Cancel-Pending (`src/app/api/members/cancel-pending/route.ts`):**
@@ -1615,8 +1650,8 @@ d:\Projects\Z Catchers\
    * **ZC-17 / GH #31 & #46 (`src/app/api/push/unsubscribe/route.ts`):** **[DONE in Phase 80]** Strictly enforced authenticated member session for all unsubscriptions; chained `.eq('member_id', sessionMemberId)` on endpoint deletions to prevent IDOR and DoS subscription wiping.
    * **ZC-22 / GH #36 (`src/components/PushModal.tsx`, `src/lib/pushClient.ts`):** **[DONE in Phase 80]** Injected `Authorization: Bearer <token>` into `/api/push/unsubscribe` and `/api/push/test` requests to survive cookie-restricted PWA runtimes.
    * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** **[DONE in Phase 81]** Enforced database-backed persistent rate limiting using `checkPinRateLimitPersistent`, `recordPinFailurePersistent`, and `resetPinFailurePersistent` backed by Supabase `rate_limits` table.
-   * **ZC-19 / GH #33 (`src/lib/auth.ts`):** **[NEXT UP]** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
-   * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles.
+   * **ZC-19 / GH #33 & #48 (`src/lib/auth.ts`, `src/app/api/auth/login/route.ts`, `src/app/api/auth/register/route.ts`):** **[DONE in Phase 82]** Sanitized host headers, enforced trusted origin allowlists (`isTrustedHost`) with preview and loopback isolation, prioritized `NEXT_PUBLIC_APP_URL` as authoritative source of truth, and prevented host header poisoning / OAuth redirect hijacking.
+   * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** **[NEXT UP]** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles.
 
 2. **Sprint 2 — P2 (Medium Priority) PWA, Push & Concurrency Fixes:**
    * **ZC-21 / GH #35 (`src/app/api/members/nag-notif/route.ts`):** Commit notification log deduplication record before dispatching push notifications.
