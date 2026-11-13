@@ -215,13 +215,21 @@ export async function fetchAllNotificationLogs<T = any>(
 /**
  * In-memory fallback cache for weekend hours & 7-day weekly schedules when columns are not yet migrated in Supabase
  */
-interface InMemoryScheduleData {
+export interface InMemoryScheduleData {
   weekend_bedtime_local?: string | null;
   weekend_wake_time_local?: string | null;
+  pending_weekend_bedtime_local?: string | null;
+  pending_weekend_wake_time_local?: string | null;
   weekly_schedule?: WeeklySchedule | null;
   pending_weekly_schedule?: WeeklySchedule | null;
 }
-const memoryScheduleData = new Map<string, InMemoryScheduleData>();
+
+const globalForScheduleData = globalThis as unknown as {
+  __memoryScheduleData?: Map<string, InMemoryScheduleData>;
+};
+const memoryScheduleData =
+  globalForScheduleData.__memoryScheduleData || new Map<string, InMemoryScheduleData>();
+globalForScheduleData.__memoryScheduleData = memoryScheduleData;
 
 /**
  * Retrieves in-memory schedule data for a member (used in testing or pre-migration fallbacks).
@@ -231,6 +239,13 @@ const memoryScheduleData = new Map<string, InMemoryScheduleData>();
  */
 export function getInMemoryWeekendHours(memberId: string): InMemoryScheduleData | undefined {
   return memoryScheduleData.get(memberId);
+}
+
+/**
+ * Clears in-memory schedule data for all members (used in testing).
+ */
+export function clearInMemoryWeekendHours(): void {
+  memoryScheduleData.clear();
 }
 
 /**
@@ -244,6 +259,8 @@ export function setInMemoryWeekendHours(memberId: string, hours: InMemorySchedul
   const merged: InMemoryScheduleData = { ...current };
   if ('weekend_bedtime_local' in hours) merged.weekend_bedtime_local = hours.weekend_bedtime_local;
   if ('weekend_wake_time_local' in hours) merged.weekend_wake_time_local = hours.weekend_wake_time_local;
+  if ('pending_weekend_bedtime_local' in hours) merged.pending_weekend_bedtime_local = hours.pending_weekend_bedtime_local;
+  if ('pending_weekend_wake_time_local' in hours) merged.pending_weekend_wake_time_local = hours.pending_weekend_wake_time_local;
   if ('weekly_schedule' in hours) merged.weekly_schedule = hours.weekly_schedule;
   if ('pending_weekly_schedule' in hours) merged.pending_weekly_schedule = hours.pending_weekly_schedule;
   memoryScheduleData.set(memberId, merged);
@@ -268,6 +285,14 @@ export function hydrateMemberWeekendHours(member: Member): Member {
       member.weekend_wake_time_local !== undefined && member.weekend_wake_time_local !== null
         ? member.weekend_wake_time_local
         : fallback.weekend_wake_time_local ?? null,
+    pending_weekend_bedtime_local:
+      member.pending_weekend_bedtime_local !== undefined && member.pending_weekend_bedtime_local !== null
+        ? member.pending_weekend_bedtime_local
+        : fallback.pending_weekend_bedtime_local ?? null,
+    pending_weekend_wake_time_local:
+      member.pending_weekend_wake_time_local !== undefined && member.pending_weekend_wake_time_local !== null
+        ? member.pending_weekend_wake_time_local
+        : fallback.pending_weekend_wake_time_local ?? null,
     weekly_schedule:
       member.weekly_schedule !== undefined && member.weekly_schedule !== null
         ? member.weekly_schedule
@@ -283,27 +308,36 @@ export function hydrateMemberWeekendHours(member: Member): Member {
  * Cached set of column names that actually exist on the 'members' table in Supabase.
  */
 let knownMemberColumns: Set<string> | null = null;
+let lastColumnCheck = 0;
+const COLUMN_CACHE_TTL_MS = 30000;
+
+export function clearKnownMemberColumns(): void {
+  knownMemberColumns = null;
+  lastColumnCheck = 0;
+}
 
 /**
  * Queries Supabase to detect existing column names on the members table to prevent insert/update errors.
  *
  * @returns Set of detected column names
  */
-export async function getExistingMemberColumns(): Promise<Set<string>> {
-  if (knownMemberColumns && knownMemberColumns.size > 0) {
+export async function getExistingMemberColumns(forceRefresh = false): Promise<Set<string>> {
+  const now = Date.now();
+  if (!forceRefresh && knownMemberColumns && knownMemberColumns.size > 0 && (now - lastColumnCheck) < COLUMN_CACHE_TTL_MS) {
     return knownMemberColumns;
   }
   try {
     const { data } = await supabaseAdmin.from('members').select('*').limit(1);
     if (data && data.length > 0) {
       knownMemberColumns = new Set(Object.keys(data[0]));
+      lastColumnCheck = now;
       return knownMemberColumns;
     }
   } catch (err) {
     console.warn('[db] Failed to detect live member columns:', err);
   }
   // Baseline known columns in initial migration
-  return new Set([
+  const baseline = new Set([
     'id',
     'discord_id',
     'discord_username',
@@ -340,6 +374,9 @@ export async function getExistingMemberColumns(): Promise<Set<string>> {
     'created_at',
     'updated_at',
   ]);
+  knownMemberColumns = baseline;
+  lastColumnCheck = now;
+  return knownMemberColumns;
 }
 
 /**
@@ -384,28 +421,28 @@ export async function updateMemberSafe(
     updates.metastrikes_used = updates.metastrikes_count;
   }
 
-  // Store weekend hours in memory cache in case columns do not exist in PostgreSQL.
-  // Weekly schedule fields require durable DB storage and must not fallback to memoryScheduleData.
-  const weekendUpdates: InMemoryScheduleData = {};
-  if ('weekend_bedtime_local' in updates) weekendUpdates.weekend_bedtime_local = updates.weekend_bedtime_local;
-  if ('weekend_wake_time_local' in updates) weekendUpdates.weekend_wake_time_local = updates.weekend_wake_time_local;
-  if (Object.keys(weekendUpdates).length > 0) {
-    setInMemoryWeekendHours(memberId, weekendUpdates);
+  // Store weekend hours & weekly schedule in memory cache in case columns do not exist in PostgreSQL.
+  const scheduleUpdates: InMemoryScheduleData = {};
+  if ('weekend_bedtime_local' in updates) scheduleUpdates.weekend_bedtime_local = updates.weekend_bedtime_local;
+  if ('weekend_wake_time_local' in updates) scheduleUpdates.weekend_wake_time_local = updates.weekend_wake_time_local;
+  if ('pending_weekend_bedtime_local' in updates) scheduleUpdates.pending_weekend_bedtime_local = updates.pending_weekend_bedtime_local;
+  if ('pending_weekend_wake_time_local' in updates) scheduleUpdates.pending_weekend_wake_time_local = updates.pending_weekend_wake_time_local;
+  if ('weekly_schedule' in updates) scheduleUpdates.weekly_schedule = updates.weekly_schedule;
+  if ('pending_weekly_schedule' in updates) scheduleUpdates.pending_weekly_schedule = updates.pending_weekly_schedule;
+  if (Object.keys(scheduleUpdates).length > 0) {
+    setInMemoryWeekendHours(memberId, scheduleUpdates);
   }
 
-  // Require durable DB storage for weekly schedules when Supabase is configured
+  // Warn if weekly schedule columns are not yet migrated in Supabase (fallback to in-memory)
   if (isSupabaseConfigured) {
     const existingCols = await getExistingMemberColumns();
     if (
       ('weekly_schedule' in updates && !existingCols.has('weekly_schedule')) ||
       ('pending_weekly_schedule' in updates && !existingCols.has('pending_weekly_schedule'))
     ) {
-      return {
-        data: null,
-        error: new Error(
-          "Database is missing durable 'weekly_schedule' or 'pending_weekly_schedule' columns. Please run the schema migration from supabase/schema.sql."
-        ),
-      };
+      console.warn(
+        `[Supabase Safe Update] Database missing durable 'weekly_schedule' or 'pending_weekly_schedule' columns. Schedule cached in memory. Run migrations from supabase/schema.sql for permanent DB storage.`
+      );
     }
   }
 
@@ -429,17 +466,12 @@ export async function updateMemberSafe(
     const match = error.message.match(/Could not find the '([^']+)' column/);
     if (match && match[1] && match[1] in cleanUpdates) {
       const missingCol = match[1];
-      if (missingCol === 'weekly_schedule' || missingCol === 'pending_weekly_schedule') {
-        return {
-          data: null,
-          error: new Error(
-            `Database column '${missingCol}' not found in Supabase schema cache. Durable storage is required for weekly schedules; please run migrations from supabase/schema.sql.`
-          ),
-        };
-      }
-      console.warn(`[Supabase Safe Update] Column '${missingCol}' not found in Supabase schema cache; stripping and retrying.`);
+      console.warn(`[Supabase Safe Update] Column '${missingCol}' not found in Supabase schema cache; caching in memory, stripping and retrying.`);
       if (knownMemberColumns) {
         knownMemberColumns.delete(missingCol);
+      }
+      if (missingCol in updates) {
+        setInMemoryWeekendHours(memberId, { [missingCol]: updates[missingCol] });
       }
       delete cleanUpdates[missingCol];
       const retry = await performUpdate(cleanUpdates);
@@ -472,19 +504,16 @@ export async function insertMemberSafe(
   payload: Record<string, any>,
   select = '*'
 ): Promise<{ data: Member | null; error: any }> {
-  // Require durable DB storage for weekly schedules when Supabase is configured
+  // Warn if weekly schedule columns are not yet migrated in Supabase (fallback to in-memory)
   if (isSupabaseConfigured) {
     const existingCols = await getExistingMemberColumns();
     if (
       ('weekly_schedule' in payload && !existingCols.has('weekly_schedule')) ||
       ('pending_weekly_schedule' in payload && !existingCols.has('pending_weekly_schedule'))
     ) {
-      return {
-        data: null,
-        error: new Error(
-          "Database is missing durable 'weekly_schedule' or 'pending_weekly_schedule' columns. Please run the schema migration from supabase/schema.sql."
-        ),
-      };
+      console.warn(
+        `[Supabase Safe Insert] Database missing durable 'weekly_schedule' or 'pending_weekly_schedule' columns. Schedule cached in memory. Run migrations from supabase/schema.sql for permanent DB storage.`
+      );
     }
   }
 
@@ -500,14 +529,6 @@ export async function insertMemberSafe(
     const match = error.message.match(/Could not find the '([^']+)' column/);
     if (match && match[1] && match[1] in cleanPayload) {
       const missingCol = match[1];
-      if (missingCol === 'weekly_schedule' || missingCol === 'pending_weekly_schedule') {
-        return {
-          data: null,
-          error: new Error(
-            `Database column '${missingCol}' not found in Supabase schema cache. Durable storage is required for weekly schedules; please run migrations from supabase/schema.sql.`
-          ),
-        };
-      }
       console.warn(`[Supabase Safe Insert] Column '${missingCol}' not found in Supabase schema cache; stripping and retrying.`);
       if (knownMemberColumns) {
         knownMemberColumns.delete(missingCol);
@@ -523,11 +544,20 @@ export async function insertMemberSafe(
 
   if (
     data &&
-    ('weekend_bedtime_local' in payload || 'weekend_wake_time_local' in payload)
+    ('weekend_bedtime_local' in payload ||
+      'weekend_wake_time_local' in payload ||
+      'pending_weekend_bedtime_local' in payload ||
+      'pending_weekend_wake_time_local' in payload ||
+      'weekly_schedule' in payload ||
+      'pending_weekly_schedule' in payload)
   ) {
     const memData: InMemoryScheduleData = {};
     if ('weekend_bedtime_local' in payload) memData.weekend_bedtime_local = payload.weekend_bedtime_local;
     if ('weekend_wake_time_local' in payload) memData.weekend_wake_time_local = payload.weekend_wake_time_local;
+    if ('pending_weekend_bedtime_local' in payload) memData.pending_weekend_bedtime_local = payload.pending_weekend_bedtime_local;
+    if ('pending_weekend_wake_time_local' in payload) memData.pending_weekend_wake_time_local = payload.pending_weekend_wake_time_local;
+    if ('weekly_schedule' in payload) memData.weekly_schedule = payload.weekly_schedule;
+    if ('pending_weekly_schedule' in payload) memData.pending_weekly_schedule = payload.pending_weekly_schedule;
     setInMemoryWeekendHours((data as unknown as Member).id, memData);
   }
 
@@ -546,8 +576,16 @@ export async function insertMemberSafe(
 /**
  * In-memory fallback map for members (testing and offline development)
  */
-const memoryMembers = new Map<string, Member>();
-const testFixtures = new Set<string>();
+const globalForMemoryMembers = globalThis as unknown as {
+  __memoryMembers?: Map<string, Member>;
+  __testFixtures?: Set<string>;
+};
+const memoryMembers =
+  globalForMemoryMembers.__memoryMembers || new Map<string, Member>();
+globalForMemoryMembers.__memoryMembers = memoryMembers;
+const testFixtures =
+  globalForMemoryMembers.__testFixtures || new Set<string>();
+globalForMemoryMembers.__testFixtures = testFixtures;
 
 export function isTestMemberFixture(memberId: string): boolean {
   return testFixtures.has(memberId) || memberId.startsWith('mem_');

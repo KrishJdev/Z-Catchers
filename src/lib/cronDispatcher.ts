@@ -6,6 +6,7 @@ import {
   PushSubscriptionRecord,
   fetchAllNotificationLogs,
   updateMemberSafe,
+  hydrateMemberWeekendHours,
 } from '@/lib/db';
 import { checkCooldownPromotion, computeMemberState, getSleepCycleDate } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
@@ -378,7 +379,8 @@ export async function executeNotificationDispatcher(options: {
 
   // 2. Perform self-healing 48-hour cooldown promotions
   const activeMembers: Member[] = [];
-  for (const m of rawMembers as Member[]) {
+  for (const rawM of rawMembers as Member[]) {
+    const m = hydrateMemberWeekendHours(rawM);
     const { promoted, activeMember } = checkCooldownPromotion(m, nowUtc);
     if (promoted && !options.dryRun) {
       results.promotionsCount++;

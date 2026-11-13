@@ -40,6 +40,7 @@ const UNIT_TESTS = [
   'test-wake-up-durability-and-times.mjs',
   'test-wake-up-nag.mjs',
   'test-weekend-hours.mjs',
+  'test-weekly-schedule-resilience.mjs',
   'test-wind-down-awake-fix.mjs',
 ];
 
