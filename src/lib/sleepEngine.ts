@@ -1270,7 +1270,7 @@ export function resolveActiveSleepCycle(
 
   const postWakeWindow = ySched.wakeDateTime.plus({ hours: 4 });
   const inBedEnd = effectiveInBed && !hasWokeUpForYesterday
-    ? DateTime.max(ySched.wakeDateTime.plus({ hours: 6 }), ySched.bedtimeDateTime.plus({ hours: 14 }))
+    ? todayWindDownStart
     : postWakeWindow;
   const maxYesterdayEnd = DateTime.max(postWakeWindow, inBedEnd);
   const yEnd = DateTime.min(maxYesterdayEnd, todayWindDownStart);

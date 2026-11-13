@@ -653,6 +653,7 @@ export async function upsertSleepLog(
   const memKey = getSleepLogMemoryKey(entry.member_id, entry.cycle_date);
   let existing = memorySleepLogs.get(memKey);
   const isTestFixture = isTestMemberFixture(entry.member_id);
+  let supabaseTableAvailable = true;
 
   if (isSupabaseConfigured && !isTestFixture) {
     try {
@@ -663,14 +664,18 @@ export async function upsertSleepLog(
         .eq('cycle_date', entry.cycle_date)
         .maybeSingle();
       if (readErr) {
-        console.warn('[db] upsertSleepLog pre-read failed; skipping durable write:', readErr.message);
-        return { data: null, error: readErr, isDurable: false };
-      }
-      if (dbRow) {
+        if (readErr.code === 'PGRST205' || readErr.message?.includes('schema cache')) {
+          console.warn('[db] sleep_logs table not found in Supabase schema cache; using in-memory fallback.');
+          supabaseTableAvailable = false;
+        } else {
+          console.warn('[db] upsertSleepLog pre-read warning; proceeding with memory fallback:', readErr.message);
+        }
+      } else if (dbRow) {
         existing = { ...(existing || {}), ...(dbRow as SleepLog) };
       }
     } catch (err: any) {
-      return { data: null, error: err, isDurable: false };
+      console.warn('[db] upsertSleepLog pre-read exception; using in-memory fallback:', err.message);
+      supabaseTableAvailable = false;
     }
   }
 
@@ -697,7 +702,7 @@ export async function upsertSleepLog(
   // Keep in-memory cache synchronized
   memorySleepLogs.set(memKey, merged);
 
-  if (isSupabaseConfigured && !isTestFixture) {
+  if (isSupabaseConfigured && !isTestFixture && supabaseTableAvailable) {
     try {
       const { data, error } = await supabaseAdmin
         .from('sleep_logs')

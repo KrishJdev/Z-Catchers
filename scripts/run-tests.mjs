@@ -30,6 +30,7 @@ const UNIT_TESTS = [
   'test-sleep-history-and-wakeup.mjs',
   'test-strikes-system.mjs',
   'test-wake-up-and-overflow.mjs',
+  'test-wake-up-durability-and-times.mjs',
   'test-wake-up-nag.mjs',
   'test-weekend-hours.mjs',
   'test-wind-down-awake-fix.mjs',
