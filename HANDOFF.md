@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T17:35:00+05:30  
+> **Last Updated:** 2026-11-13T17:46:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `aed534a`  
+> **Latest Commit:** `717009f`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55)  
 > **Active Integration Pull Requests:** None (All merged into `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
@@ -88,15 +88,18 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   - Normalized the tab bar with `overflow-x-auto no-scrollbar` for mobile safety, `min-h-[40px] whitespace-nowrap shrink-0`, and unified pill count badges for both "Pending Approvals" and "Full Roster".
   - Normalized Full Roster member action container with `shrink-0`, and upgraded strikes/metastrikes adjuster buttons from `h-5 w-5` to `h-6 w-6 rounded-md font-bold transition-colors`.
   - Normalized Webhook dispatch, Add Member submit, and PIN reset buttons with `min-h-[44px] whitespace-nowrap shadow-sm`.
-* **Related Modal Normalizations:**
+* **Related Modal & Surface Normalizations:**
   - **`src/components/MyScheduleModal.tsx`:** Removed duplicate emoji in `<span>View My Sleep & Wake Calendar</span>`, updated active navigation tab token to `bg-status-amber text-night-bg font-bold shadow`, and added `min-h-[36px] whitespace-nowrap` to the "Cancel Shift" button.
   - **`src/components/MetastrikeModal.tsx`:** Normalized modal close button to `min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border border-night-border`.
+  - **`src/components/SleepCalendarModal.tsx`:** Normalized "Edit Schedule" button to `min-h-[40px] whitespace-nowrap shrink-0` (upgraded from sub-standard 38px), normalized "Log/Edit Wake-Up Time" button and manual time entry submit/cancel buttons to `min-h-[44px] whitespace-nowrap shrink-0`.
+  - **`src/components/PwaBanner.tsx`:** Normalized dismiss buttons across native install banner, iOS instructions, and push prompt from `p-1` to accessible touch target `min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors`.
+  - **`src/app/page.tsx`:** Normalized hero wake time manual entry save/cancel buttons with `whitespace-nowrap shrink-0`.
 * **Automated Unit Tests & Verification:**
-  - Created `scripts/test-ui-normalization-and-button-wrapping.mjs` verifying anti-wrapping classes, icon deduplication, layout flex constraints, and touch targets across modals.
+  - Created and expanded `scripts/test-ui-normalization-and-button-wrapping.mjs` verifying anti-wrapping classes, icon deduplication, layout flex constraints, and touch targets across modals and banners (`ModDrawer`, `MyScheduleModal`, `MetastrikeModal`, `SleepCalendarModal`, `PwaBanner`, `page.tsx`).
   - Registered test suite in `scripts/run-tests.mjs`.
   - Verified `npm run test:unit` clean with all 31/31 test suites passing.
   - Verified `npx tsc --noEmit` clean with 0 errors.
-  - Verified `npm run build` clean with Next.js 15 production build succeeding.
+  - Verified `npm run build` clean with Next.js 15 production build succeeding (all 28 routes compiled and prerendered).
 
 ### Phase 83: Database Missing `weekly_schedule` Schema Fallback & Migration Script
 * **Root Cause Identification:**

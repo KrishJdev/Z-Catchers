@@ -104,5 +104,37 @@ assert(
   'Webhook digest button must have min-h-[44px] and whitespace-nowrap'
 );
 
+// 11. SleepCalendarModal: Edit Schedule button normalized with min-h-[40px] and whitespace-nowrap shrink-0
+const sleepCalendarModalPath = path.resolve('src/components/SleepCalendarModal.tsx');
+const sleepCalendarContent = fs.readFileSync(sleepCalendarModalPath, 'utf8');
+assert(
+  sleepCalendarContent.includes('min-h-[40px] whitespace-nowrap shrink-0') &&
+  sleepCalendarContent.includes('Edit Schedule'),
+  'SleepCalendarModal Edit Schedule button must have min-h-[40px] and whitespace-nowrap shrink-0'
+);
+
+// 12. SleepCalendarModal: Log/Edit wake-up button normalized with min-h-[44px] and whitespace-nowrap shrink-0
+assert(
+  sleepCalendarContent.includes('min-h-[44px] whitespace-nowrap shrink-0'),
+  'SleepCalendarModal wake-up log/edit button must have min-h-[44px] and whitespace-nowrap shrink-0'
+);
+
+// 13. PwaBanner: Dismiss button must meet min-h-[36px] min-w-[36px] touch target
+const pwaBannerPath = path.resolve('src/components/PwaBanner.tsx');
+const pwaBannerContent = fs.readFileSync(pwaBannerPath, 'utf8');
+assert(
+  pwaBannerContent.includes('min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg'),
+  'PwaBanner dismiss buttons must meet min-h-[36px] min-w-[36px] touch target'
+);
+
+// 14. HomePage: Hero manual wake form buttons have whitespace-nowrap and shrink-0
+const homePagePath = path.resolve('src/app/page.tsx');
+const homePageContent = fs.readFileSync(homePagePath, 'utf8');
+assert(
+  homePageContent.includes('Save Wake Time') &&
+  homePageContent.includes('whitespace-nowrap shrink-0'),
+  'HomePage hero manual wake time form buttons must have whitespace-nowrap and shrink-0'
+);
+
 console.log('✅ All UI Normalization & Button Anti-Wrapping assertions passed cleanly!');
 process.exit(0);

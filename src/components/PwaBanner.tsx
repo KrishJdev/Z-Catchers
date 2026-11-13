@@ -115,7 +115,7 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
       <div className="relative mb-3 flex items-center justify-between gap-3 rounded-2xl border border-status-amber/40 bg-night-surface p-3.5 shadow-sm">
         <button
           onClick={handleDismiss}
-          className="absolute right-2 top-2 p-1 text-cream-muted hover:text-cream-primary"
+          className="absolute right-2 top-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
           aria-label="Dismiss banner"
         >
           <X className="h-4 w-4" />
@@ -148,7 +148,7 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
       <div className="relative mb-3 rounded-2xl border border-status-amber/40 bg-status-amber/10 p-3.5 text-xs text-cream-secondary">
         <button
           onClick={handleDismiss}
-          className="absolute right-2 top-2 p-1 text-cream-muted hover:text-cream-primary"
+          className="absolute right-2 top-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
           aria-label="Dismiss banner"
         >
           <X className="h-4 w-4" />
@@ -172,7 +172,7 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
     <div className="relative mb-3 flex items-center justify-between gap-3 rounded-2xl border border-status-amber/40 bg-night-surface p-3.5 shadow-sm">
       <button
         onClick={handleDismiss}
-        className="absolute right-2 top-2 p-1 text-cream-muted hover:text-cream-primary"
+        className="absolute right-2 top-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
         aria-label="Dismiss banner"
       >
         <X className="h-4 w-4" />
