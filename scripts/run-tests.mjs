@@ -13,6 +13,7 @@ const mode = args.includes('--all') ? 'all' : 'unit';
 // Unit tests: offline/standalone verification suites that do not require live external services
 const UNIT_TESTS = [
   'test-audit-issue-sync.mjs',
+  'test-cancel-pending-and-subscribe-rate-limiting.mjs',
   'test-demo-seed-fingerprint.mjs',
   'test-discord-webhook-and-assists.mjs',
   'test-gmt-timezones.mjs',
