@@ -1,17 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T16:20:00+05:30  
+> **Last Updated:** 2026-11-13T17:08:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `54924d2`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53)  
-> **Active Integration Pull Requests:**  
->   - [#54 [OPEN - MERGEABLE]](https://github.com/KrishJdev/Z-Catchers/pull/54) (`feat/zc-18-persistent-rate-limiting` -> `dev`: persistent rate limiting in cancel-pending & push/subscribe)  
->   - [#55 [OPEN - MERGEABLE]](https://github.com/KrishJdev/Z-Catchers/pull/55) (`feat/zc-19-sanitize-oauth-redirect` -> `dev`: sanitize & validate x-forwarded-host in OAuth redirect)  
+> **Latest Commit:** `2151e30`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55)  
+> **Active Integration Pull Requests:** None (All merged into `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
 > **Active Production Release Pull Request:** [#52 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/52) (dev -> main)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 27/27 suites passed | `npm run build` clean, 28/28 routes)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 30/30 suites passed | `npm run build` clean)
 
 ---
 
@@ -71,6 +69,35 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 83: Database Missing `weekly_schedule` Schema Fallback & Migration Script
+* **Root Cause Identification:**
+  - When members edited custom sleep hours for specific days in `MyScheduleModal.tsx`, the backend rejected the update with HTTP 500: `"Database is missing durable 'weekly_schedule' or 'pending_weekly_schedule' columns. Please run the schema migration from supabase/schema.sql."`
+  - In `src/lib/db.ts`, a hard rejection check prematurely halted `updateMemberSafe` and `insertMemberSafe` whenever Supabase PostgreSQL was missing `weekly_schedule` or `pending_weekly_schedule` columns, preventing users from saving any routine changes.
+* **Graceful Degradation & In-Memory Fallback (`src/lib/db.ts`):**
+  - Updated `updateMemberSafe` and `insertMemberSafe` to never crash or throw fatal errors on unmigrated columns.
+  - Staged schedule definitions (`weekly_schedule`, `pending_weekly_schedule`, `pending_weekend_*`) into `memoryScheduleData` via `setInMemoryWeekendHours`.
+  - Allowed `sanitizeMemberPayload` to strip unmigrated columns from the PostgREST UPDATE/INSERT payload so PostgreSQL succeeds cleanly.
+  - Hydrated returned member entities with `hydrateMemberWeekendHours`, ensuring the frontend and API responses receive the complete 7-day routine.
+  - Bound `memoryScheduleData` and `memoryMembers` to `globalThis` to prevent Next.js development hot-module reloads from clearing cached schedules.
+  - Added cache TTL (30s) and `clearKnownMemberColumns()` so freshly added database columns are picked up automatically without requiring a server restart.
+* **Cron Dispatcher Member Hydration (`src/lib/cronDispatcher.ts`):**
+  - Integrated `hydrateMemberWeekendHours` into the member evaluation and self-healing cooldown promotion loop so active routines persist across background runs even on legacy database schemas.
+* **Standalone PostgreSQL Migration Script (`supabase/migrations/20261113_add_weekly_schedule.sql`):**
+  - Created a dedicated, one-click migration file containing idempotent `ALTER TABLE public.members ADD COLUMN IF NOT EXISTS ...` statements for `weekly_schedule`, `pending_weekly_schedule`, `weekend_*`, `strikes_*`, and notification tracking columns.
+  - Added backfill routines to generate 7-day variable schedules from existing weekday/weekend columns for legacy records.
+  - Included `NOTIFY pgrst, 'reload schema';` to immediately refresh PostgREST's schema cache.
+* **Automated Test Coverage (`scripts/test-weekly-schedule-resilience.mjs` & `scripts/run-tests.mjs`):**
+  - Created automated test suite covering:
+    1. Schema cache resilience in `updateMemberSafe` with missing columns.
+    2. Member hydration in `getMemberByIdSafe`.
+    3. Missing column handling in `insertMemberSafe`.
+    4. Cooldown promotion persistence with in-memory schedules.
+    5. Dynamic column detection on cache refresh.
+  - Registered `test-weekly-schedule-resilience.mjs` into `UNIT_TESTS` in `scripts/run-tests.mjs`.
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 30/30 test suites passing.
 
 ### Phase 82: Merge Conflict Resolution & Scope Isolation Across Open PRs (PR #54 & PR #55)
 * **PR #54 (`feat/zc-18-persistent-rate-limiting` -> `dev`) Conflict Resolution & Pre-Merge Compliance:**
