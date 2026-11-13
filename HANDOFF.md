@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T11:45:00+05:30  
+> **Last Updated:** 2026-11-13T13:38:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `11c6f34`  
+> **Latest Commit:** `60bf05f`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51)  
 > **Active Integration Pull Request:** [#53 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/53)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
@@ -70,7 +70,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 ## 4. Comprehensive Task Changelog
 
-### Phase 80: Security Hardening - Fix Unauthenticated Push Endpoint Deletion in `/api/push/unsubscribe` & Authorize Client Push Requests (GH #31, #46, #36, ZC-17, ZC-22)
+### Phase 80: Security Hardening & CodeRabbit Enhancements - Fix Unauthenticated Push Endpoint Deletion in `/api/push/unsubscribe` & Authorize Client Push Requests (GH #31, #46, #36, ZC-17, ZC-22)
 * **Unauthenticated Push Subscription Deletion Prevention (`src/app/api/push/unsubscribe/route.ts`):**
   - Resolved critical security vulnerability (GH #31 / #46, ZC-17) where anonymous callers could delete arbitrary push subscriptions by sending `{ endpoint }`.
   - Added strict session authentication guard: verifies `getRequestSessionMemberId(request)`. Rejects unauthenticated or invalid session requests immediately with HTTP 401 Unauthorized (`Unauthorized: Active member session required to unsubscribe from push notifications.`).
@@ -78,8 +78,10 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   - Enforced member ownership filter: chained `.eq('endpoint', trimmedEndpoint).eq('member_id', sessionMemberId)` on database deletion, ensuring even authenticated actors cannot delete push subscriptions belonging to another user.
   - Retained member-wide unsubscription when `endpoint` is omitted, strictly scoped to `.eq('member_id', sessionMemberId)`.
   - Added `export const DELETE = POST;` to support RESTful HTTP `DELETE` calls alongside `POST`.
-* **Client-Side Authorization Header Injection (`src/lib/pushClient.ts`, `src/components/PushModal.tsx`):**
+  - **CodeRabbit Enhancement:** Added dual URL query parameter inspection (`new URL(request.url).searchParams.get('endpoint')`) alongside request body payload. Standard RESTful `DELETE /api/push/unsubscribe?endpoint=...` calls without a request body safely target and unregister that specific endpoint device without accidentally falling through to member-wide unsubscription.
+* **Client-Side Authorization Header Injection & Logging (`src/lib/pushClient.ts`, `src/components/PushModal.tsx`):**
   - Updated `unsubscribeFromPush` in `src/lib/pushClient.ts` to retrieve `getStoredAuthToken()` and include `Authorization: Bearer <token>` in the fetch request to `/api/push/unsubscribe`.
+  - **CodeRabbit Enhancement:** Added non-2xx status logging in `pushClient.ts` (`if (res && !res.ok) console.warn(...)`) so HTTP 4xx/5xx responses from the unsubscribe endpoint are logged for diagnostic observability while maintaining resilient client unsubscription UX.
   - Updated `handleSendTestPush` in `src/components/PushModal.tsx` to retrieve `getStoredAuthToken()` and include `Authorization: Bearer <token>` in the fetch request to `/api/push/test` (GH #36, ZC-22).
 * **Automated Unit Testing & Verification (`scripts/test-push-unsubscribe-security.mjs`, `scripts/run-tests.mjs`):**
   - Created comprehensive standalone test suite `scripts/test-push-unsubscribe-security.mjs` covering:
@@ -89,13 +91,13 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
     4. Cross-member IDOR attack prevention (attacker session cannot delete victim endpoint).
     5. Invalid whitespace and numeric endpoint format rejection with HTTP 400.
     6. Member-wide subscription removal scoped strictly to caller's `member_id`.
-    7. HTTP `DELETE` method parity with `POST`.
-    8. Client-side authorization header presence checks in `pushClient.ts` and `PushModal.tsx`.
+    7. HTTP `DELETE` method parity with `POST`, both with JSON body and URL query parameter (`?endpoint=...`) without body.
+    8. Client-side authorization header presence checks in `pushClient.ts` and `PushModal.tsx`, plus non-2xx diagnostic warning checks.
     9. Database error resilience and HTTP 500 handling.
-  - Wired into `scripts/run-tests.mjs` (all 27/27 test suites passing cleanly in 43.39s).
+  - Wired into `scripts/run-tests.mjs` (all 27/27 test suites passing cleanly in 47.26s).
 * **Verification & Checks:**
   - `npx tsc --noEmit` verified clean with 0 errors.
-  - `npm run test:unit` verified clean with all 27/27 test suites passing (43.39s).
+  - `npm run test:unit` verified clean with all 27/27 test suites passing (47.26s).
   - `npm run build` verified clean with all 28 routes compiled successfully.
 
 ### Phase 79: Production Release PR #52 Opened (`dev` -> `main`)
