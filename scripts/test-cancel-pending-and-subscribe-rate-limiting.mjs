@@ -466,8 +466,8 @@ async function run() {
     testAssert(otherRateCheck.retryAfterSeconds === 0, 'Unrelated member has 0 retryAfterSeconds');
 
   } finally {
-    supabaseAdmin.from = origFrom;
     await clearAllPinRateLimitsPersistent();
+    supabaseAdmin.from = origFrom;
     clearAllPinRateLimits();
   }
 

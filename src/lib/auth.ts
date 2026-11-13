@@ -341,8 +341,12 @@ export function isTrustedHost(
   }
 
   // 3. Project preview deployments on Vercel
-  // Strictly matches z-catchers-*.vercel.app (rejects evil-z-catchers.vercel.app or other.vercel.app)
-  if (/^z-catchers(-[a-z0-9-]+)?\.vercel\.app$/i.test(hostname)) {
+  // Strictly matches verified branch previews (z-catchers-git-*.vercel.app) or scoped project preview URLs
+  // (*-projects.vercel.app), preventing arbitrary prefix collision from unrelated projects.
+  if (
+    /^z-catchers-git-[a-z0-9-]+(\.[a-z0-9-]+)?\.vercel\.app$/i.test(hostname) ||
+    /^z-catchers(-[a-z0-9-]+)?-[a-z0-9]+-projects\.vercel\.app$/i.test(hostname)
+  ) {
     return true;
   }
 
@@ -409,15 +413,17 @@ export function isTrustedHost(
 export function getAppBaseUrl(request?: Request): string {
   // 1. Authoritative source of truth: NEXT_PUBLIC_APP_URL
   const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (
-    envUrl &&
-    !envUrl.includes('placeholder') &&
-    !envUrl.includes('your-production-domain') &&
-    !envUrl.includes('example.com')
-  ) {
+  if (envUrl) {
     try {
       const parsed = new URL(envUrl);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      const hostLower = parsed.hostname.toLowerCase();
+      const isPlaceholderHost =
+        hostLower === 'example.com' ||
+        hostLower.endsWith('.example.com') ||
+        hostLower === 'your-production-domain.com' ||
+        hostLower.includes('placeholder');
+
+      if (!isPlaceholderHost && (parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
         return parsed.origin;
       }
     } catch {
@@ -474,6 +480,10 @@ export function getAppBaseUrl(request?: Request): string {
       try {
         const parsed = new URL(request.url);
         if (isTrustedHost(parsed.host)) {
+          const isLoopback = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(parsed.hostname);
+          if (process.env.NODE_ENV === 'production' && !isLoopback) {
+            return `https://${parsed.host}`;
+          }
           return parsed.origin;
         }
       } catch {

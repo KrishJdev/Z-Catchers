@@ -147,6 +147,7 @@ async function run() {
   assert(isTrustedHost('evil.com') === false, 'Strictly rejects evil.com');
   assert(isTrustedHost('attacker.org:3000') === false, 'Strictly rejects attacker.org:3000');
   assert(isTrustedHost('evil-z-catchers.vercel.app') === false, 'Strictly rejects prefix spoof evil-z-catchers.vercel.app');
+  assert(isTrustedHost('z-catchers-attacker.vercel.app') === false, 'Strictly rejects unrelated project prefix z-catchers-attacker.vercel.app');
   assert(isTrustedHost('z-catchers.vercel.app.evil.com') === false, 'Strictly rejects subdomain spoof z-catchers.vercel.app.evil.com');
   assert(isTrustedHost('attacker.vercel.app') === false, 'Strictly rejects other arbitrary vercel.app deployments');
   assert(isTrustedHost('fake-z-catchers.com') === false, 'Strictly rejects fake-z-catchers.com');
@@ -197,6 +198,18 @@ async function run() {
   assert(
     resolvedUrl1 === 'https://z-catchers.vercel.app',
     'Prioritizes authoritative NEXT_PUBLIC_APP_URL and ignores poisoned x-forwarded-host'
+  );
+
+  // Case 4A-2: Valid non-placeholder domain containing "example" as substring (e.g. notexample.com)
+  process.env.NEXT_PUBLIC_APP_URL = 'https://notexample.com';
+  assert(
+    getAppBaseUrl() === 'https://notexample.com',
+    'Accepts valid public URL even if substring contains "example" when host is not exact placeholder'
+  );
+  process.env.NEXT_PUBLIC_APP_URL = 'https://example.com';
+  assert(
+    getAppBaseUrl() !== 'https://example.com',
+    'Rejects exact placeholder example.com'
   );
 
   // Case 4B: NEXT_PUBLIC_APP_URL is unset; test request header validation
@@ -270,10 +283,41 @@ async function run() {
     'Neutralizes CRLF injection in host header and falls back safely'
   );
 
+  // Case 4E: request.url fallback in production enforces HTTPS policy
+  const origNodeEnv2 = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  const httpUrlReq = {
+    headers: { get: () => null },
+    url: 'http://z-catchers.vercel.app/api/auth/discord',
+  };
+  const httpFallbackResolved = getAppBaseUrl(httpUrlReq);
+  assert(
+    httpFallbackResolved === 'https://z-catchers.vercel.app',
+    'Enforces HTTPS policy on request.url fallback in production for non-loopback host'
+  );
+  process.env.NODE_ENV = origNodeEnv2;
+
   // Production fallback verification
   process.env.NODE_ENV = 'production';
-  const prodFallback = getAppBaseUrl();
-  assert(prodFallback === 'https://z-catchers.vercel.app', 'Defaults to canonical https://z-catchers.vercel.app in production');
+  const isolatedEnv = {
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    VERCEL_URL: process.env.VERCEL_URL,
+    TRUSTED_HOSTS: process.env.TRUSTED_HOSTS,
+    ALLOWED_HOSTS: process.env.ALLOWED_HOSTS,
+  };
+  delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  delete process.env.VERCEL_URL;
+  delete process.env.TRUSTED_HOSTS;
+  delete process.env.ALLOWED_HOSTS;
+  try {
+    const prodFallback = getAppBaseUrl();
+    assert(prodFallback === 'https://z-catchers.vercel.app', 'Defaults to canonical https://z-catchers.vercel.app in production');
+  } finally {
+    if (isolatedEnv.VERCEL_PROJECT_PRODUCTION_URL !== undefined) process.env.VERCEL_PROJECT_PRODUCTION_URL = isolatedEnv.VERCEL_PROJECT_PRODUCTION_URL;
+    if (isolatedEnv.VERCEL_URL !== undefined) process.env.VERCEL_URL = isolatedEnv.VERCEL_URL;
+    if (isolatedEnv.TRUSTED_HOSTS !== undefined) process.env.TRUSTED_HOSTS = isolatedEnv.TRUSTED_HOSTS;
+    if (isolatedEnv.ALLOWED_HOSTS !== undefined) process.env.ALLOWED_HOSTS = isolatedEnv.ALLOWED_HOSTS;
+  }
   process.env.NODE_ENV = origNodeEnv;
 
   // Restore original NEXT_PUBLIC_APP_URL

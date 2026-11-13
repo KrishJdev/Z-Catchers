@@ -60,6 +60,9 @@ export async function POST(request: Request) {
       isModerator = verifyModPasscode(mod_passcode);
       if (!isModerator) {
         await recordPinFailurePersistent(clientIp, modGateTarget);
+        if (!pin || typeof pin !== 'string') {
+          return NextResponse.json({ error: 'Invalid moderator passcode.' }, { status: 401 });
+        }
       } else {
         await resetPinFailurePersistent(clientIp, modGateTarget);
       }
