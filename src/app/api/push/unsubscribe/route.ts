@@ -3,9 +3,10 @@ import { supabaseAdmin } from '@/lib/db';
 import { getRequestSessionMemberId } from '@/lib/auth';
 
 /**
- * POST: Unsubscribe a specific push endpoint or all push endpoints for an authenticated member.
+ * POST / DELETE: Unsubscribe a specific push endpoint or all push endpoints for an authenticated member.
  * All unsubscription operations strictly require an authenticated member session to prevent
  * unauthenticated subscription deletion / denial of service.
+ * Supports endpoint specification in request body or URL query parameter (e.g. ?endpoint=...).
  *
  * @param request - Incoming HTTP request containing endpoint or session credentials
  * @returns JSON response with unsubscription status
@@ -20,8 +21,46 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request.json().catch(() => ({}));
-    const { endpoint } = body;
+    let endpoint: unknown = undefined;
+
+    // Check if request has a body (non-empty)
+    const rawBodyText = await request.text().catch(() => '');
+    if (rawBodyText.trim().length > 0) {
+      let parsedBody: unknown;
+      try {
+        parsedBody = JSON.parse(rawBodyText);
+      } catch {
+        return NextResponse.json(
+          { error: 'Malformed JSON payload in request body.' },
+          { status: 400 }
+        );
+      }
+
+      if (typeof parsedBody !== 'object' || parsedBody === null || Array.isArray(parsedBody)) {
+        return NextResponse.json(
+          { error: 'Invalid JSON payload. Expected a JSON object.' },
+          { status: 400 }
+        );
+      }
+
+      const bodyObj = parsedBody as Record<string, unknown>;
+      if ('endpoint' in bodyObj) {
+        endpoint = bodyObj.endpoint;
+      }
+    }
+
+    // Check URL query parameters if endpoint was not supplied in the request body (e.g. RESTful DELETE without a body)
+    if (endpoint === undefined || endpoint === null) {
+      try {
+        const url = new URL(request.url);
+        const queryEndpoint = url.searchParams.get('endpoint');
+        if (queryEndpoint !== null) {
+          endpoint = queryEndpoint;
+        }
+      } catch {
+        // Fall back to body evaluation if URL parsing fails
+      }
+    }
 
     // 1. Specific endpoint provided: delete only that specific device's endpoint for the authenticated member
     if (endpoint !== undefined && endpoint !== null) {

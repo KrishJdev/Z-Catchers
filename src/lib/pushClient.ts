@@ -10,6 +10,7 @@ export const STORAGE_KEY_AUTH_TOKEN = 'zcatchers_auth_token';
 export const STORAGE_KEY_AUTH_MEMBER = 'zcatchers_auth_member';
 export const STORAGE_KEY_NOTIFY_PERSONAL = 'zcatchers_notify_personal';
 export const STORAGE_KEY_NOTIFY_COMMUNITY = 'zcatchers_notify_community';
+export const STORAGE_KEY_PENDING_UNSUBSCRIBE = 'zcatchers_pending_unsubscribe_endpoint';
 
 /**
  * Scopes a notification preference localStorage key to a specific member ID.
@@ -370,11 +371,26 @@ export async function unsubscribeFromPush(): Promise<{ success: boolean; error?:
       }
 
       // Notify backend to remove from push_subscriptions
-      await fetch('/api/push/unsubscribe', {
+      const res = await fetch('/api/push/unsubscribe', {
         method: 'POST',
         headers,
         body: JSON.stringify({ endpoint }),
-      }).catch((err) => console.warn('Failed to unregister endpoint on server:', err));
+      }).catch((err) => {
+        console.warn('Network error unregistering endpoint on server:', err);
+        return null;
+      });
+
+      if (!res || !res.ok) {
+        const statusMsg = res ? `HTTP ${res.status}` : 'Network error';
+        console.warn(`Server unregister endpoint returned HTTP ${res?.status || 'error'}: ${statusMsg}`);
+        setStoredPendingUnsubscribeEndpoint(endpoint);
+        return {
+          success: false,
+          error: `Browser unsubscribed locally, but server unregister failed (${statusMsg}). Endpoint retained for retry.`,
+        };
+      }
+
+      setStoredPendingUnsubscribeEndpoint(null);
     }
 
     if (typeof localStorage !== 'undefined') {
@@ -423,6 +439,7 @@ export function setStoredAuthToken(token: string | null): void {
   if (typeof localStorage === 'undefined') return;
   if (token) {
     localStorage.setItem(STORAGE_KEY_AUTH_TOKEN, token);
+    retryPendingUnsubscribe().catch(() => {});
   } else {
     localStorage.removeItem(STORAGE_KEY_AUTH_TOKEN);
   }
@@ -464,4 +481,55 @@ export function setStoredAuthMember(member: unknown | null): void {
 export function clearAuthSession(): void {
   setStoredAuthToken(null);
   setStoredAuthMember(null);
+}
+
+/**
+ * Retrieves any pending unsubscribe endpoint stored in localStorage
+ */
+export function getStoredPendingUnsubscribeEndpoint(): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  return localStorage.getItem(STORAGE_KEY_PENDING_UNSUBSCRIBE);
+}
+
+/**
+ * Sets or clears the pending unsubscribe endpoint in localStorage
+ */
+export function setStoredPendingUnsubscribeEndpoint(endpoint: string | null): void {
+  if (typeof localStorage === 'undefined') return;
+  if (endpoint) {
+    localStorage.setItem(STORAGE_KEY_PENDING_UNSUBSCRIBE, endpoint);
+  } else {
+    localStorage.removeItem(STORAGE_KEY_PENDING_UNSUBSCRIBE);
+  }
+}
+
+/**
+ * Retries unregistering any locally pending push subscription endpoint against the server
+ * once an authenticated session token becomes available.
+ */
+export async function retryPendingUnsubscribe(): Promise<boolean> {
+  const pendingEndpoint = getStoredPendingUnsubscribeEndpoint();
+  if (!pendingEndpoint) return true;
+
+  const token = getStoredAuthToken();
+  if (!token) return false;
+
+  try {
+    const res = await fetch('/api/push/unsubscribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ endpoint: pendingEndpoint }),
+    });
+
+    if (res.ok) {
+      setStoredPendingUnsubscribeEndpoint(null);
+      return true;
+    }
+  } catch {
+    // Retry later
+  }
+  return false;
 }
