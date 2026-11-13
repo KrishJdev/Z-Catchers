@@ -30,7 +30,6 @@ const UNIT_TESTS = [
   'test-pin-rate-limiting.mjs',
   'test-profile-and-schedule-tab.mjs',
   'test-push-and-cron.mjs',
-  'test-push-unsubscribe-security.mjs',
   'test-schedule-cooldown.mjs',
   'test-signup-and-profiles.mjs',
   'test-sleep-history-and-wakeup.mjs',

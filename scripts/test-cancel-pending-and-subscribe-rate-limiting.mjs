@@ -6,6 +6,12 @@ import path from 'path';
 if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = 'test';
 }
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder')) {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://mock-rate-limiting-db.supabase.co';
+}
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'mock-service-role-key-rate-limiting';
+}
 if (!process.env.SESSION_SECRET) {
   process.env.SESSION_SECRET = 'z_catchers_test_session_secret_2026_rate_limit';
 }
@@ -19,6 +25,7 @@ const {
   resetPinFailurePersistent,
   clearAllPinRateLimitsPersistent,
   clearAllPinRateLimits,
+  clearInMemoryPinRateLimits,
 } = await import('../src/lib/rateLimit.ts');
 const { hashPin } = await import('../src/lib/auth.ts');
 const { supabaseAdmin } = await import('../src/lib/db.ts');
@@ -233,10 +240,35 @@ async function run() {
       wake_time_local: '07:00',
       timezone: 'America/New_York',
       pending_bedtime_local: '01:00',
+      pending_wake_time_local: '09:00',
+      pending_timezone: 'America/New_York',
+      pending_weekend_bedtime_local: null,
+      pending_weekend_wake_time_local: null,
+      pending_weekly_schedule: null,
+      weekly_schedule: null,
       pending_effective_at: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
     };
 
     const clientIp = '198.51.100.77';
+
+    // 2.0 Test requests without a PIN return 401 without recording a PIN failure
+    const reqNoPin = new Request('http://localhost:3000/api/members/cancel-pending', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-forwarded-for': clientIp,
+      },
+      body: JSON.stringify({
+        member_id: memberId,
+        // pin omitted
+      }),
+    });
+    const resNoPin = await handleCancelPending(reqNoPin);
+    const jsonNoPin = await resNoPin.json();
+    testAssert(resNoPin.status === 401, 'Request without PIN returns HTTP 401 Unauthorized');
+    testAssert(jsonNoPin.error && jsonNoPin.error.includes('PIN is required'), 'Returns PIN is required error');
+    testAssert(!rateLimitsDb.has(`ip:${clientIp}`), 'Request without PIN does not increment IP rate limit counter');
+    testAssert(!rateLimitsDb.has(`target:${memberId}`), 'Request without PIN does not increment target rate limit counter');
 
     // 2.1 Send 5 failed PIN attempts
     for (let i = 1; i <= 5; i++) {
@@ -258,7 +290,16 @@ async function run() {
       testAssert(json.error && json.error.includes('Invalid PIN'), `Attempt ${i}: Returns Invalid PIN message`);
     }
 
-    // 2.2 6th attempt should be blocked with HTTP 429 and Retry-After
+    // Verify expected persisted rows in rateLimitsDb
+    const persistedIpRow = rateLimitsDb.get(`ip:${clientIp}`);
+    const persistedTargetRow = rateLimitsDb.get(`target:${memberId}`);
+    testAssert(persistedIpRow && persistedIpRow.count === 5, 'rateLimitsDb contains persisted row with count=5 for IP');
+    testAssert(persistedTargetRow && persistedTargetRow.count === 5, 'rateLimitsDb contains persisted row with count=5 for target');
+
+    // Clear ONLY the in-memory PIN rate-limit state before the 6th request to verify persistent database lookup
+    clearInMemoryPinRateLimits();
+
+    // 2.2 6th attempt should be blocked with HTTP 429 and Retry-After via persistent lookup
     const reqBlocked = new Request('http://localhost:3000/api/members/cancel-pending', {
       method: 'POST',
       headers: {
@@ -273,7 +314,7 @@ async function run() {
 
     const resBlocked = await handleCancelPending(reqBlocked);
     const jsonBlocked = await resBlocked.json();
-    testAssert(resBlocked.status === 429, '6th attempt is blocked with HTTP 429 Too Many Requests');
+    testAssert(resBlocked.status === 429, '6th attempt is blocked with HTTP 429 Too Many Requests (persisted)');
     testAssert(
       jsonBlocked.error && jsonBlocked.error.includes('Too many failed attempts'),
       'Returns rate limit exceeded error message'
@@ -282,6 +323,61 @@ async function run() {
       resBlocked.headers.get('Retry-After') !== null && Number(resBlocked.headers.get('Retry-After')) > 0,
       'Response includes Retry-After header with positive duration'
     );
+
+    // 2.2b Cold instance test: Seed persisted lockout directly in rateLimitsDb with zero in-memory entries
+    clearInMemoryPinRateLimits();
+    const coldMemberId = 'mem_cold_test_99';
+    const coldIp = '198.51.100.99';
+    const coldPin = '4321';
+    rateLimitsDb.set(`target:${coldMemberId}`, {
+      key: `target:${coldMemberId}`,
+      count: 5,
+      window_start: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    });
+
+    // Point currentMemberRow to cold member
+    const savedMemberRow = currentMemberRow;
+    currentMemberRow = {
+      id: coldMemberId,
+      discord_username: 'ColdFox',
+      discord_id: null,
+      passcode_hash: hashPin(coldPin),
+      role: 'member',
+      is_active: true,
+      bedtime_local: '23:00',
+      wake_time_local: '07:00',
+      timezone: 'America/New_York',
+      pending_bedtime_local: '01:00',
+      pending_wake_time_local: '09:00',
+      pending_timezone: 'America/New_York',
+      pending_weekend_bedtime_local: null,
+      pending_weekend_wake_time_local: null,
+      pending_weekly_schedule: null,
+      weekly_schedule: null,
+      pending_effective_at: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+    };
+
+    const reqCold = new Request('http://localhost:3000/api/members/cancel-pending', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-forwarded-for': coldIp,
+      },
+      body: JSON.stringify({
+        member_id: coldMemberId,
+        pin: coldPin,
+      }),
+    });
+
+    const resCold = await handleCancelPending(reqCold);
+    const jsonCold = await resCold.json();
+    testAssert(resCold.status === 429, 'Cold instance with seeded persisted lockout returns HTTP 429');
+    testAssert(jsonCold.error && jsonCold.error.includes('Too many failed attempts'), 'Cold instance returns rate limit message');
+    testAssert(resCold.headers.get('Retry-After') !== null, 'Cold instance response includes Retry-After header');
+
+    // Restore member row for next assertions
+    currentMemberRow = savedMemberRow;
 
     // 2.3 Clear member rate limit and test success resets failure tracking
     await resetPinFailurePersistent(clientIp, memberId);
@@ -466,8 +562,8 @@ async function run() {
     testAssert(otherRateCheck.retryAfterSeconds === 0, 'Unrelated member has 0 retryAfterSeconds');
 
   } finally {
-    supabaseAdmin.from = origFrom;
     await clearAllPinRateLimitsPersistent();
+    supabaseAdmin.from = origFrom;
     clearAllPinRateLimits();
   }
 

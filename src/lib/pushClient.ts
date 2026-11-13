@@ -361,18 +361,10 @@ export async function unsubscribeFromPush(): Promise<{ success: boolean; error?:
       const endpoint = subscription.endpoint;
       await subscription.unsubscribe();
 
-      const token = getStoredAuthToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       // Notify backend to remove from push_subscriptions
       await fetch('/api/push/unsubscribe', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpoint }),
       }).catch((err) => console.warn('Failed to unregister endpoint on server:', err));
     }

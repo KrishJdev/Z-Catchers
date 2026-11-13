@@ -97,7 +97,14 @@ export async function POST(request: Request) {
         );
       }
 
-      if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), member.passcode_hash)) {
+      if (!pin || typeof pin !== 'string') {
+        return NextResponse.json(
+          { error: 'Invalid PIN. PIN is required to cancel your pending change.' },
+          { status: 401 }
+        );
+      }
+
+      if (!verifyPin(pin.trim(), member.passcode_hash)) {
         await recordPinFailurePersistent(clientIp, member.id);
         return NextResponse.json(
           { error: 'Invalid PIN. PIN is required to cancel your pending change.' },
