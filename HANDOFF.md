@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T03:28:00+05:30  
+> **Last Updated:** 2026-11-14T03:34:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `d6bc9f6`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57)  
-> **Active Integration Pull Requests:** [#58 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/58) (`feat/zc-20-update-schedule-mod-rate-limit` -> `dev`)  
+> **Latest Commit:** `7c0c65c`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58)  
+> **Active Integration Pull Requests:** None  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52)  
-> **Active Production Release Pull Request:** None  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 33/33 suites passed | `npm run build` clean)
+> **Active Production Release Pull Request:** [#59 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/59) (`dev` -> `main`)  
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 32/32 suites passed | `npm run build` clean)
 
 ---
 
@@ -69,6 +69,23 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 87: Production Release PR #59 (`dev` -> `main`)
+* **Objective & Promotion Scope:**
+  - Verified and prepared the major production release promoting all accumulated and verified fixes, features, and hardening from `dev` into `main`.
+* **Included Pull Requests & Capabilities:**
+  1. **PR #58 (Fixes GH #34, Jira ZC-20):** Prevent IDOR and unauthenticated claim in `update-schedule` when moderator rate limit is exceeded.
+  2. **PR #57:** Strike count durability, alias synchronization (`strikes_used` / `strikes_count`), `globalThis.__memoryStrikeStore` persistence, PostgREST schema-safe updates, and monthly ground-truth log reconciliation.
+  3. **PR #56 (Phase 84 & Phase 83):** UI normalization, 44px/48px touch targets, anti-wrapping on small viewports across `ModDrawer`, `SleepCalendarModal`, `PwaBanner`, and `MemberCard`; plus weekly schedule schema resilience and migration script.
+  4. **PR #55 (Closes GH #33, #48, Jira ZC-19):** Sanitize and validate `x-forwarded-host` in OAuth redirect base URL to prevent host-header poisoning.
+  5. **PR #54 (Fixes GH #32, Jira ZC-18):** Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe`.
+  6. **PR #53 (Fixes GH #31, #46, #36):** Prevent unauthenticated push deletion, authorize client requests, retain failed push endpoints for retry, and support query param endpoint deletion.
+* **Verification & QA:**
+  - Verified `git merge-tree` clean 3-way merge without conflicts between `origin/main` and `origin/dev`.
+  - Executed `npx tsc --noEmit` cleanly (0 errors).
+  - Executed `npm run test:unit` cleanly with 32/32 passing test suites.
+* **Production Release Pull Request:**
+  - Opened **[#59 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/59)**: *`release: promote security hardening, persistent strikes, weekly schedule resilience, and UI normalization to main`*.
 
 ### Phase 85: Strike Counts Durability, Alias Synchronization & Ground-Truth Reconciliation
 * **Root Cause & Vulnerability Analysis:**
