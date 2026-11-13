@@ -429,6 +429,14 @@ export async function clearAllPinRateLimitsPersistent(): Promise<void> {
 }
 
 /**
+ * Clears only the local in-memory rate limit map without deleting database rows.
+ * Primarily used in test suites to simulate serverless cold instances.
+ */
+export function clearInMemoryPinRateLimits(): void {
+  pinRateLimits.clear();
+}
+
+/**
  * Synchronously clears in-memory rate limit caches and asynchronously purges
  * the persistent rate limit table. Primarily used in automated testing suites.
  */

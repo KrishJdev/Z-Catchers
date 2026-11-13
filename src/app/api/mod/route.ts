@@ -95,7 +95,9 @@ export async function GET(request: Request) {
       processedMembers.push({
         ...sanitizeMember(hydrated),
         strikes_used: strikeCounts.strikes_used,
+        strikes_count: strikeCounts.strikes_used,
         metastrikes_used: strikeCounts.metastrikes_used,
+        metastrikes_count: strikeCounts.metastrikes_used,
         strike_cycle_month: strikeCounts.strike_cycle_month,
       });
     }
@@ -745,7 +747,9 @@ export async function POST(request: Request) {
         success: true,
         message: 'Member strikes and metastrikes updated successfully.',
         strikes_used: strikesNum,
+        strikes_count: strikesNum,
         metastrikes_used: metasNum,
+        metastrikes_count: metasNum,
       });
     }
 

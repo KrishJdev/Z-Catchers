@@ -950,14 +950,14 @@ export default function HomePage() {
                         <button
                           type="submit"
                           disabled={isCheckingIn}
-                          className="h-11 min-h-[44px] px-3.5 rounded-lg bg-status-amber text-xs font-bold text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all"
+                          className="h-11 min-h-[44px] px-3.5 rounded-lg bg-status-amber text-xs font-bold text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all whitespace-nowrap shrink-0"
                         >
                           {isCheckingIn ? 'Saving...' : 'Save Wake Time'}
                         </button>
                         <button
                           type="button"
                           onClick={() => setShowHeroManualWake(false)}
-                          className="h-11 min-h-[44px] px-3 rounded-lg border border-night-border text-xs font-medium text-cream-secondary hover:text-cream-primary"
+                          className="h-11 min-h-[44px] px-3 rounded-lg border border-night-border text-xs font-medium text-cream-secondary hover:text-cream-primary whitespace-nowrap shrink-0"
                         >
                           Cancel
                         </button>

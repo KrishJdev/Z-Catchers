@@ -13,6 +13,7 @@ const mode = args.includes('--all') ? 'all' : 'unit';
 // Unit tests: offline/standalone verification suites that do not require live external services
 const UNIT_TESTS = [
   'test-audit-issue-sync.mjs',
+  'test-cancel-pending-and-subscribe-rate-limiting.mjs',
   'test-demo-seed-fingerprint.mjs',
   'test-discord-webhook-and-assists.mjs',
   'test-gmt-timezones.mjs',
@@ -22,6 +23,7 @@ const UNIT_TESTS = [
   'test-member-profile-and-overflow-fix.mjs',
   'test-metastrike-overflow-fix.mjs',
   'test-nag-notifications.mjs',
+  'test-oauth-redirect-host-validation.mjs',
   'test-phase1-pwa-push.mjs',
   'test-phase1-security.mjs',
   'test-phase2-mobile-touch-ux.mjs',
@@ -29,6 +31,7 @@ const UNIT_TESTS = [
   'test-pin-rate-limiting.mjs',
   'test-profile-and-schedule-tab.mjs',
   'test-push-and-cron.mjs',
+  'test-push-unsubscribe-security.mjs',
   'test-schedule-cooldown.mjs',
   'test-signup-and-profiles.mjs',
   'test-sleep-history-and-wakeup.mjs',
@@ -37,7 +40,11 @@ const UNIT_TESTS = [
   'test-wake-up-durability-and-times.mjs',
   'test-wake-up-nag.mjs',
   'test-weekend-hours.mjs',
+  'test-weekly-schedule-resilience.mjs',
   'test-wind-down-awake-fix.mjs',
+  'test-ui-normalization-and-button-wrapping.mjs',
+  'test-strike-persistence-and-alias-reconciliation.mjs',
+  'test-update-schedule-mod-rate-limit.mjs',
 ];
 
 // E2E tests: require live Supabase database or running network services

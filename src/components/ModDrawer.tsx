@@ -584,8 +584,8 @@ export function ModDrawer({
 
   // Action: Moderator Adjust Strikes & Metastrikes
   const handleAdjustStrikes = async (member: Member, deltaStrikes: number, deltaMetas: number) => {
-    const currentStrikes = member.strikes_used ?? 0;
-    const currentMetas = member.metastrikes_used ?? 0;
+    const currentStrikes = Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0);
+    const currentMetas = Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0);
     const nextStrikes = Math.max(0, Math.min(3, currentStrikes + deltaStrikes));
     const nextMetas = Math.max(0, Math.min(3, currentMetas + deltaMetas));
 
@@ -952,7 +952,7 @@ export function ModDrawer({
               <button
                 type="submit"
                 disabled={verifying || !passcode}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-4 py-2.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50"
+                className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl bg-status-amber px-4 py-2.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50"
               >
                 {verifying ? (
                   <>
@@ -985,7 +985,7 @@ export function ModDrawer({
           /* Unlocked Moderator Panel View */
           <div className="mt-4 flex flex-col">
             {/* Tab Navigation Pill Bar */}
-            <div className="flex items-center gap-1 rounded-xl border border-night-border bg-night-elevated p-1 text-xs">
+            <div className="flex items-center gap-1 rounded-xl border border-night-border bg-night-elevated p-1 text-xs overflow-x-auto no-scrollbar">
               <button
                 type="button"
                 onClick={() => {
@@ -993,7 +993,7 @@ export function ModDrawer({
                   setEditingMember(null);
                   setPinResetMember(null);
                 }}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2 font-semibold transition-all ${
+                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-2 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'pending'
                     ? 'bg-status-amber text-night-bg shadow-sm'
                     : 'text-cream-muted hover:text-cream-primary'
@@ -1003,7 +1003,7 @@ export function ModDrawer({
                 <span>Pending Approvals</span>
                 {pendingMembers.length > 0 && (
                   <span
-                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                       activeTab === 'pending'
                         ? 'bg-night-bg text-status-amber'
                         : 'bg-status-coral text-cream-primary'
@@ -1021,7 +1021,7 @@ export function ModDrawer({
                   setEditingMember(null);
                   setPinResetMember(null);
                 }}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 font-semibold transition-all ${
+                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'roster'
                     ? 'bg-status-amber text-night-bg shadow-sm'
                     : 'text-cream-muted hover:text-cream-primary'
@@ -1029,7 +1029,15 @@ export function ModDrawer({
               >
                 <UserCheck className="h-3.5 w-3.5" />
                 <span>Full Roster</span>
-                <span className="text-[10px] opacity-75">({modMembers.length})</span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    activeTab === 'roster'
+                      ? 'bg-night-bg text-status-amber'
+                      : 'bg-night-surface border border-night-border text-cream-muted'
+                  }`}
+                >
+                  {modMembers.length}
+                </span>
               </button>
 
               <button
@@ -1039,7 +1047,7 @@ export function ModDrawer({
                   setEditingMember(null);
                   setPinResetMember(null);
                 }}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 font-semibold transition-all ${
+                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'add'
                     ? 'bg-status-amber text-night-bg shadow-sm'
                     : 'text-cream-muted hover:text-cream-primary'
@@ -1057,7 +1065,7 @@ export function ModDrawer({
                   setPinResetMember(null);
                   if (passcode) fetchWebhookStatus(passcode);
                 }}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 font-semibold transition-all ${
+                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'webhook'
                     ? 'bg-status-amber text-night-bg shadow-sm'
                     : 'text-cream-muted hover:text-cream-primary'
@@ -1404,14 +1412,14 @@ export function ModDrawer({
                     <button
                       type="button"
                       onClick={() => setEditingMember(null)}
-                      className="rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary"
+                      className="min-h-[44px] rounded-xl border border-night-border bg-night-bg px-4 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary whitespace-nowrap transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={actionLoadingId === 'save-edit'}
-                      className="flex items-center gap-1.5 rounded-xl bg-status-amber px-4 py-2 text-xs font-bold text-night-bg hover:opacity-95 disabled:opacity-50"
+                      className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl bg-status-amber px-4 py-2 text-xs font-bold text-night-bg hover:opacity-95 disabled:opacity-50 whitespace-nowrap shadow-sm transition-opacity"
                     >
                       {actionLoadingId === 'save-edit' ? (
                         <>
@@ -1420,7 +1428,7 @@ export function ModDrawer({
                         </>
                       ) : (
                         <>
-                          <Zap className="h-3.5 w-3.5" />
+                          <Zap className="h-3.5 w-3.5 fill-current" />
                           <span>Save & Apply Immediately</span>
                         </>
                       )}
@@ -1474,14 +1482,14 @@ export function ModDrawer({
                     <button
                       type="button"
                       onClick={() => setPinResetMember(null)}
-                      className="rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary"
+                      className="min-h-[44px] rounded-xl border border-night-border bg-night-bg px-4 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary whitespace-nowrap transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={actionLoadingId === 'reset-pin'}
-                      className="flex items-center gap-1.5 rounded-xl bg-status-coral px-4 py-2 text-xs font-bold text-cream-primary hover:opacity-95 disabled:opacity-50"
+                      className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl bg-status-coral px-4 py-2 text-xs font-bold text-cream-primary hover:opacity-95 disabled:opacity-50 whitespace-nowrap shadow-sm transition-opacity"
                     >
                       {actionLoadingId === 'reset-pin' ? (
                         <>
@@ -1542,21 +1550,21 @@ export function ModDrawer({
                       return (
                         <div
                           key={member.id}
-                          className="flex flex-col gap-3 rounded-2xl border border-night-border bg-night-elevated p-4 sm:flex-row sm:items-center sm:justify-between"
+                          className="flex flex-col gap-3 rounded-2xl border border-night-border bg-night-elevated p-4 sm:flex-row sm:items-start sm:justify-between"
                         >
-                          <div className="flex items-start gap-3">
+                          <div className="flex items-start gap-3 min-w-0 flex-1">
                             <img
                               src={member.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${member.discord_username}`}
                               alt={member.discord_username}
                               className="h-10 w-10 shrink-0 rounded-xl border border-night-border bg-night-surface"
                             />
-                            <div>
-                              <div className="flex items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-bold text-cream-primary">
                                   {member.discord_username}
                                 </span>
                                 {member.discord_handle && (
-                                  <span className="text-xs text-cream-muted">
+                                  <span className="text-xs text-cream-muted font-mono">
                                     {member.discord_handle}
                                   </span>
                                 )}
@@ -1564,13 +1572,13 @@ export function ModDrawer({
 
                               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                                 <span className="text-cream-muted">
-                                  Current: <strong className="text-cream-secondary">{member.bedtime_local}</strong> ({formatGmtOffset(member.timezone)})
-                                  {member.weekend_bedtime_local && <span> | Weekend: <strong className="text-cream-secondary">{member.weekend_bedtime_local}</strong></span>}
+                                  Current: <strong className="text-cream-secondary font-semibold">{member.bedtime_local}</strong> ({formatGmtOffset(member.timezone)})
+                                  {member.weekend_bedtime_local && <span> | Weekend: <strong className="text-cream-secondary font-semibold">{member.weekend_bedtime_local}</strong></span>}
                                 </span>
                                 <span className="text-cream-muted">→</span>
                                 <span className="text-status-amber">
-                                  Requested: <strong>{member.pending_bedtime_local || member.bedtime_local}</strong> ({formatGmtOffset(member.pending_timezone || member.timezone)})
-                                  {member.pending_weekend_bedtime_local && <span> | Weekend: <strong className="text-status-amber">{member.pending_weekend_bedtime_local}</strong></span>}
+                                  Requested: <strong className="font-semibold">{member.pending_bedtime_local || member.bedtime_local}</strong> ({formatGmtOffset(member.pending_timezone || member.timezone)})
+                                  {member.pending_weekend_bedtime_local && <span> | Weekend: <strong className="font-semibold">{member.pending_weekend_bedtime_local}</strong></span>}
                                 </span>
                                 {member.pending_weekly_schedule && (() => {
                                   const changedDays = DAY_KEYS.filter((d) => {
@@ -1583,22 +1591,26 @@ export function ModDrawer({
                                   });
                                   return (
                                     <>
-                                      <span className="inline-flex items-center gap-1 rounded bg-status-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30" title="Includes custom 7-day routine">
+                                      <span className="inline-flex items-center gap-1 rounded bg-status-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30 shrink-0" title="Includes custom 7-day routine">
                                         <Calendar className="h-2.5 w-2.5" />
                                         <span>7-Day Routine</span>
                                       </span>
                                       {changedDays.length > 0 && (
-                                        <div className="w-full mt-1.5 pt-1.5 border-t border-night-border/40 grid grid-cols-2 sm:grid-cols-3 gap-1 text-[11px]">
+                                        <div className="w-full mt-2 pt-2 border-t border-night-border/40 flex flex-wrap gap-1.5 text-xs">
                                           {changedDays.map((d) => {
                                             const p = member.pending_weekly_schedule![d];
                                             const isWeekend = d === 'fri' || d === 'sat';
                                             const curBed = member.weekly_schedule?.[d]?.bedtime || (isWeekend && member.weekend_bedtime_local) || member.bedtime_local;
                                             const curWake = member.weekly_schedule?.[d]?.wake_time || (isWeekend && member.weekend_wake_time_local) || member.wake_time_local;
                                             return (
-                                              <div key={`p-chg-${d}`} className="rounded bg-night-surface/60 px-1.5 py-0.5 border border-night-border/60">
-                                                <span className="font-semibold text-cream-primary">{DAY_LABELS[d].short}: </span>
-                                                <span className="text-cream-muted line-through">{curBed}–{curWake}</span>{' '}
-                                                <span className="text-status-amber font-medium">→ {p.bedtime}–{p.wake_time}</span>
+                                              <div
+                                                key={`p-chg-${d}`}
+                                                className="inline-flex items-center gap-1.5 rounded-lg bg-night-surface/80 px-2 py-1 text-xs border border-night-border/60 whitespace-nowrap"
+                                              >
+                                                <span className="font-semibold text-cream-primary">{DAY_LABELS[d].short}:</span>
+                                                <span className="text-cream-muted line-through tabular-nums">{curBed}–{curWake}</span>
+                                                <span className="text-cream-muted">→</span>
+                                                <span className="text-status-amber font-semibold tabular-nums">{p.bedtime}–{p.wake_time}</span>
                                               </div>
                                             );
                                           })}
@@ -1610,7 +1622,7 @@ export function ModDrawer({
                               </div>
 
                               <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cream-muted">
-                                <Clock className="h-3 w-3 text-status-amber" />
+                                <Clock className="h-3 w-3 text-status-amber shrink-0" />
                                 <span>
                                   Automatic promotion in{' '}
                                   <strong className="text-cream-primary">
@@ -1622,12 +1634,12 @@ export function ModDrawer({
                           </div>
 
                           {/* Action Buttons */}
-                          <div className="flex items-center gap-2 self-end sm:self-auto">
+                          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 pt-1 sm:pt-0">
                             <button
                               type="button"
                               onClick={() => handleCancelCooldown(member.id)}
                               disabled={actionLoadingId === `cancel-${member.id}`}
-                              className="rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs font-semibold text-cream-secondary transition-colors hover:border-status-coral/40 hover:text-status-coral disabled:opacity-50"
+                              className="min-h-[40px] rounded-xl border border-night-border bg-night-bg px-3.5 py-2 text-xs font-semibold text-cream-secondary transition-colors hover:border-status-coral/40 hover:text-status-coral disabled:opacity-50 whitespace-nowrap shrink-0"
                             >
                               {actionLoadingId === `cancel-${member.id}` ? 'Cancelling...' : 'Reject'}
                             </button>
@@ -1636,17 +1648,17 @@ export function ModDrawer({
                               type="button"
                               onClick={() => handleApproveCooldown(member.id)}
                               disabled={actionLoadingId === `approve-${member.id}`}
-                              className="flex items-center gap-1.5 rounded-xl bg-status-sage px-3.5 py-2 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50"
+                              className="min-h-[40px] flex items-center justify-center gap-1.5 rounded-xl bg-status-sage px-4 py-2 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50 whitespace-nowrap shrink-0 shadow-sm"
                             >
                               {actionLoadingId === `approve-${member.id}` ? (
                                 <>
-                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                  <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
                                   <span>Approving...</span>
                                 </>
                               ) : (
                                 <>
-                                  <Zap className="h-3.5 w-3.5" />
-                                  <span>⚡ Approve Now</span>
+                                  <Zap className="h-3.5 w-3.5 fill-current shrink-0" />
+                                  <span>Approve Now</span>
                                 </>
                               )}
                             </button>
@@ -1704,14 +1716,14 @@ export function ModDrawer({
                           : 'border-night-border/40 bg-night-surface/60 opacity-60'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <img
                           src={member.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${member.discord_username}`}
                           alt={member.discord_username}
                           className="h-9 w-9 shrink-0 rounded-xl border border-night-border bg-night-surface"
                         />
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold text-cream-primary text-sm">
                               {member.discord_username}
                             </span>
@@ -1753,14 +1765,14 @@ export function ModDrawer({
                               <span className="font-semibold text-fox-rust flex items-center gap-1">
                                 <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
                                 <span>Strikes:</span>
-                                <strong className="tabular-nums font-bold">{member.strikes_used ?? 0}/3</strong>
+                                <strong className="tabular-nums font-bold">{Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0)}/3</strong>
                               </span>
                               <div className="flex items-center gap-0.5 ml-1">
                                 <button
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, -1, 0)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.strikes_used ?? 0) <= 0}
-                                  className="h-5 w-5 rounded bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center"
+                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) <= 0}
+                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Decrement strikes"
                                 >
                                   -
@@ -1768,8 +1780,8 @@ export function ModDrawer({
                                 <button
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, 1, 0)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.strikes_used ?? 0) >= 3}
-                                  className="h-5 w-5 rounded bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center"
+                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) >= 3}
+                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Increment strikes"
                                 >
                                   +
@@ -1784,14 +1796,14 @@ export function ModDrawer({
                               <span className="font-semibold text-fox-amber flex items-center gap-1">
                                 <Shield className="h-3 w-3 fill-fox-amber/20 text-fox-amber" />
                                 <span>Meta:</span>
-                                <strong className="tabular-nums font-bold">{member.metastrikes_used ?? 0}/3</strong>
+                                <strong className="tabular-nums font-bold">{Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0)}/3</strong>
                               </span>
                               <div className="flex items-center gap-0.5 ml-1">
                                 <button
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, 0, -1)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.metastrikes_used ?? 0) <= 0}
-                                  className="h-5 w-5 rounded bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center"
+                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) <= 0}
+                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Decrement metastrikes"
                                 >
                                   -
@@ -1799,8 +1811,8 @@ export function ModDrawer({
                                 <button
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, 0, 1)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.metastrikes_used ?? 0) >= 3}
-                                  className="h-5 w-5 rounded bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center"
+                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) >= 3}
+                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Increment metastrikes"
                                 >
                                   +
@@ -1865,7 +1877,7 @@ export function ModDrawer({
                       </div>
 
                       {/* Member Actions */}
-                      <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                      <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
                         <a
                           href={member.journal_url}
                           target="_blank"
@@ -2076,7 +2088,7 @@ export function ModDrawer({
                   <button
                     type="submit"
                     disabled={actionLoadingId === 'add-member'}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-4 py-2.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50 sm:w-auto"
+                    className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-5 py-2.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50 sm:w-auto whitespace-nowrap shadow-sm"
                   >
                     {actionLoadingId === 'add-member' ? (
                       <>
@@ -2185,7 +2197,7 @@ export function ModDrawer({
                       type="button"
                       onClick={handleSendTestWebhook}
                       disabled={testingWebhook || sendingDigest}
-                      className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-status-amber px-3 text-xs font-bold text-night-bg transition-opacity hover:opacity-90 disabled:opacity-50"
+                      className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-status-amber px-3.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-90 disabled:opacity-50 whitespace-nowrap shadow-sm"
                     >
                       {testingWebhook ? (
                         <>
@@ -2204,7 +2216,7 @@ export function ModDrawer({
                       type="button"
                       onClick={handleSendMorningDigest}
                       disabled={testingWebhook || sendingDigest}
-                      className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-status-sage/40 bg-status-sage/15 px-3 text-xs font-bold text-status-sage transition-colors hover:bg-status-sage/25 disabled:opacity-50"
+                      className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-status-sage/40 bg-status-sage/15 px-3.5 text-xs font-bold text-status-sage transition-colors hover:bg-status-sage/25 disabled:opacity-50 whitespace-nowrap shadow-sm"
                     >
                       {sendingDigest ? (
                         <>

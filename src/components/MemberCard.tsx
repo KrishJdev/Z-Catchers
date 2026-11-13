@@ -193,19 +193,15 @@ export function MemberCard({
     setAvatarSrc(member.avatar_url || fallbackAvatarUrl);
   }, [member.avatar_url, fallbackAvatarUrl]);
 
-  // Strikes & Metastrikes data
-  const strikesUsed =
-    typeof member.strikes_count === 'number'
-      ? member.strikes_count
-      : typeof member.strikes_used === 'number'
-      ? member.strikes_used
-      : 0;
-  const metastrikesUsed =
-    typeof member.metastrikes_count === 'number'
-      ? member.metastrikes_count
-      : typeof member.metastrikes_used === 'number'
-      ? member.metastrikes_used
-      : 0;
+  // Strikes & Metastrikes data (reconciled across aliases)
+  const strikesUsed = Math.max(
+    typeof member.strikes_used === 'number' ? member.strikes_used : 0,
+    typeof member.strikes_count === 'number' ? member.strikes_count : 0
+  );
+  const metastrikesUsed = Math.max(
+    typeof member.metastrikes_used === 'number' ? member.metastrikes_used : 0,
+    typeof member.metastrikes_count === 'number' ? member.metastrikes_count : 0
+  );
   const isMetastrikeActive = Boolean(
     member.is_metastrike_active || member.tonight_strike_log?.record_type === 'metastrike'
   );

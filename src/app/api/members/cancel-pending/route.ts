@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
 import { verifyPin, verifyModPasscode, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
-import { getClientIp, checkPinRateLimit, recordPinFailure, resetPinFailure } from '@/lib/rateLimit';
+import {
+  getClientIp,
+  checkPinRateLimitPersistent,
+  recordPinFailurePersistent,
+  resetPinFailurePersistent,
+} from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
 /**
@@ -33,18 +38,32 @@ export async function POST(request: Request) {
     const member = memberData as Member;
     const clientIp = getClientIp(request);
 
-    let isModerator = false;
-    if (mod_passcode) {
-      if (checkPinRateLimit(clientIp, '').allowed) {
-        isModerator = verifyModPasscode(mod_passcode);
-        if (!isModerator) {
-          recordPinFailure(clientIp, '');
-        }
-      }
-    }
-
     const sessionMemberId = getRequestSessionMemberId(request);
     const isSessionOwner = Boolean(sessionMemberId && sessionMemberId === member.id);
+
+    let isModerator = false;
+    if (mod_passcode) {
+      const modGateTarget = sessionMemberId ? `mod_gate_member:${sessionMemberId}` : `mod_gate_ip:${clientIp}`;
+      const modRate = await checkPinRateLimitPersistent(clientIp, modGateTarget);
+      if (!modRate.allowed) {
+        return NextResponse.json(
+          {
+            error: `Too many failed moderator passcode attempts. Please wait ${modRate.retryAfterSeconds} seconds before trying again.`,
+          },
+          {
+            status: 429,
+            headers: { 'Retry-After': String(modRate.retryAfterSeconds) },
+          }
+        );
+      }
+
+      isModerator = verifyModPasscode(mod_passcode);
+      if (!isModerator) {
+        await recordPinFailurePersistent(clientIp, modGateTarget);
+      } else {
+        await resetPinFailurePersistent(clientIp, modGateTarget);
+      }
+    }
 
     if (!isModerator && isSessionOwner && !member.is_active) {
       return NextResponse.json({ error: 'Member is inactive.' }, { status: 403 });
@@ -65,7 +84,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const rateCheck = checkPinRateLimit(clientIp, member.id);
+      const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
       if (!rateCheck.allowed) {
         return NextResponse.json(
           {
@@ -78,14 +97,21 @@ export async function POST(request: Request) {
         );
       }
 
-      if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), member.passcode_hash)) {
-        recordPinFailure(clientIp, member.id);
+      if (!pin || typeof pin !== 'string') {
         return NextResponse.json(
           { error: 'Invalid PIN. PIN is required to cancel your pending change.' },
           { status: 401 }
         );
       }
-      resetPinFailure(clientIp, member.id);
+
+      if (!verifyPin(pin.trim(), member.passcode_hash)) {
+        await recordPinFailurePersistent(clientIp, member.id);
+        return NextResponse.json(
+          { error: 'Invalid PIN. PIN is required to cancel your pending change.' },
+          { status: 401 }
+        );
+      }
+      await resetPinFailurePersistent(clientIp, member.id);
     }
 
     const { data: updatedMember, error: updateError } = await updateMemberSafe(
