@@ -1,14 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T03:34:00+05:30  
+> **Last Updated:** 2026-11-14T03:45:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `cff9b40`  
+> **Latest Commit:** `df8dde3`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58)  
 > **Active Integration Pull Requests:** None  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52)  
-> **Active Production Release Pull Request:** [#59 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/59) (`dev` -> `main`)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)  
+> **Active Production Release Pull Request:** None  
 > **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 32/32 suites passed | `npm run build` clean)
 
 ---
@@ -85,7 +85,8 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   - Executed `npx tsc --noEmit` cleanly (0 errors).
   - Executed `npm run test:unit` cleanly with 32/32 passing test suites.
 * **Production Release Pull Request:**
-  - Opened **[#59 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/59)**: *`release: promote security hardening, persistent strikes, weekly schedule resilience, and UI normalization to main`*.
+  - Opened and successfully merged **[#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)**: *`release: promote security hardening, persistent strikes, weekly schedule resilience, and UI normalization to main`*.
+  - Successfully purged all merged feature branches locally and remotely (`feat/zc-20-update-schedule-mod-rate-limit`), retaining only active branches `krish`, `dev`, and `main`.
 
 ### Phase 85: Strike Counts Durability, Alias Synchronization & Ground-Truth Reconciliation
 * **Root Cause & Vulnerability Analysis:**
