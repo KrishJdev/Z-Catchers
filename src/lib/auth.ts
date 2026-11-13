@@ -212,21 +212,308 @@ export function isModDiscordId(discordId: string | null | undefined): boolean {
 }
 
 /**
+ * Configuration options for host header validation.
+ */
+export interface TrustedHostOptions {
+  /**
+   * Explicitly allow or disallow localhost / loopback hosts.
+   * If omitted, loopback hosts are allowed in development and test environments,
+   * but disallowed in production unless explicitly configured in ALLOWED_HOSTS.
+   */
+  allowLocalhost?: boolean;
+}
+
+/**
+ * Sanitizes and validates the format of a raw host header string.
+ * Strips multiple comma-separated proxy entries (taking the first client-facing host),
+ * and strictly rejects control characters, CRLF injections, spaces, userinfo (@),
+ * paths (/), query strings (?), and invalid characters.
+ *
+ * @param rawHost - Raw Host or X-Forwarded-Host header value
+ * @returns Sanitized lowercase host string (e.g. "z-catchers.vercel.app" or "localhost:3000"), or null if invalid
+ */
+export function sanitizeHostHeader(rawHost: string | null | undefined): string | null {
+  if (!rawHost) return null;
+
+  // Multi-value header defense: take first client-facing host if comma-separated
+  const first = rawHost.split(',')[0].trim();
+  if (!first) return null;
+
+  // Strict injection defense: reject any control characters, whitespace, CRLF, null bytes,
+  // quotes, backslashes, forward slashes, userinfo (@), query (?), fragments (#)
+  if (/[\s\r\n\0'"\\/@?#]/.test(first)) {
+    return null;
+  }
+
+  // Parse IPv6 [bracketed] host or standard hostname/IPv4 with optional port
+  const ipv6Match = first.match(/^\[([a-fA-F0-9:]+)\](?::([0-9]{1,5}))?$/);
+  const standardMatch = first.match(/^([a-zA-Z0-9.-]+)(?::([0-9]{1,5}))?$/);
+
+  if (!ipv6Match && !standardMatch) {
+    return null;
+  }
+
+  let hostname: string;
+  let port: string | undefined;
+
+  if (ipv6Match) {
+    hostname = `[${ipv6Match[1].toLowerCase()}]`;
+    port = ipv6Match[2];
+  } else if (standardMatch) {
+    hostname = standardMatch[1].toLowerCase();
+    port = standardMatch[2];
+
+    // RFC 1123 hostname validation:
+    // - Max total length 253 chars
+    // - Max label length 63 chars
+    // - Labels cannot start or end with a hyphen or dot
+    // - No consecutive dots
+    if (hostname.length > 253 || hostname.includes('..')) {
+      return null;
+    }
+    const labels = hostname.split('.');
+    for (const label of labels) {
+      if (!label || label.length > 63 || label.startsWith('-') || label.endsWith('-')) {
+        return null;
+      }
+    }
+  } else {
+    return null;
+  }
+
+  // Port range validation (1-65535)
+  if (port !== undefined) {
+    const portNum = parseInt(port, 10);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535 || String(portNum) !== port) {
+      return null;
+    }
+    return `${hostname}:${portNum}`;
+  }
+
+  return hostname;
+}
+
+/**
+ * Validates whether a given host is in the trusted origins allowlist.
+ * Prevents Host Header Poisoning, OAuth redirect hijacking, and SSRF.
+ *
+ * Trusted sources:
+ * 1. Host from NEXT_PUBLIC_APP_URL or APP_URL (if configured)
+ * 2. Host from ALLOWED_HOSTS / TRUSTED_HOSTS environment variable (comma-separated)
+ * 3. Exact Vercel production domain: z-catchers.vercel.app and its subdomains
+ * 4. Vercel deployment domain: VERCEL_URL / VERCEL_PROJECT_PRODUCTION_URL
+ * 5. Project preview deployments: ^z-catchers(-[a-z0-9-]+)?\.vercel\.app$
+ * 6. Localhost & loopback addresses (localhost, 127.0.0.1, [::1], 0.0.0.0, *.local)
+ *    in non-production environments (or when allowLocalhost is true).
+ *
+ * @param rawHost - Host string to validate
+ * @param options - Configuration options (e.g. allowLocalhost)
+ * @returns True if host is authenticated as trusted
+ */
+export function isTrustedHost(
+  rawHost: string | null | undefined,
+  options?: TrustedHostOptions
+): boolean {
+  const sanitized = sanitizeHostHeader(rawHost);
+  if (!sanitized) return false;
+
+  // Extract hostname without port for domain matching
+  const hostname = sanitized.startsWith('[')
+    ? sanitized.split(']')[0] + ']'
+    : sanitized.split(':')[0];
+
+  const isProduction = process.env.NODE_ENV === 'production';
+  const allowLocal = options?.allowLocalhost ?? !isProduction;
+
+  // 1. Loopback / Localhost validation
+  const isLoopback =
+    ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(hostname) ||
+    hostname.endsWith('.local');
+
+  if (isLoopback) {
+    if (allowLocal) return true;
+    // In production, loopback is rejected unless explicitly allowlisted in env
+  }
+
+  // 2. Canonical production domain
+  if (hostname === 'z-catchers.vercel.app' || hostname.endsWith('.z-catchers.vercel.app')) {
+    return true;
+  }
+
+  // 3. Project preview deployments on Vercel
+  // Strictly matches verified branch previews (z-catchers-git-*.vercel.app) or scoped project preview URLs
+  // (*-projects.vercel.app), preventing arbitrary prefix collision from unrelated projects.
+  if (
+    /^z-catchers-git-[a-z0-9-]+(\.[a-z0-9-]+)?\.vercel\.app$/i.test(hostname) ||
+    /^z-catchers(-[a-z0-9-]+)?-[a-z0-9]+-projects\.vercel\.app$/i.test(hostname)
+  ) {
+    return true;
+  }
+
+  // 4. Check NEXT_PUBLIC_APP_URL / APP_URL
+  for (const envKey of ['NEXT_PUBLIC_APP_URL', 'APP_URL'] as const) {
+    const envVal = process.env[envKey]?.trim();
+    if (envVal) {
+      try {
+        const u = new URL(envVal);
+        if (u.hostname.toLowerCase() === hostname) {
+          return true;
+        }
+      } catch {
+        // ignore malformed env URL
+      }
+    }
+  }
+
+  // 5. Check VERCEL_URL & VERCEL_PROJECT_PRODUCTION_URL
+  for (const envKey of ['VERCEL_URL', 'VERCEL_PROJECT_PRODUCTION_URL'] as const) {
+    const envVal = process.env[envKey]?.trim();
+    if (envVal) {
+      const cleanVal = envVal.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0].toLowerCase();
+      if (cleanVal === hostname) {
+        return true;
+      }
+    }
+  }
+
+  // 6. Check explicit ALLOWED_HOSTS / TRUSTED_HOSTS env variables
+  const customHosts = (process.env.ALLOWED_HOSTS || process.env.TRUSTED_HOSTS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  for (const pattern of customHosts) {
+    if (pattern.startsWith('*.')) {
+      const root = pattern.slice(2);
+      if (hostname === root || hostname.endsWith(`.${root}`)) {
+        return true;
+      }
+    } else if (hostname === pattern) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Resolves the canonical application base URL for OAuth callbacks and redirects.
  *
- * @param request - Incoming HTTP request
+ * Security Architecture (ZC-19 / GH #33):
+ * 1. Prioritizes NEXT_PUBLIC_APP_URL as the authoritative source of truth.
+ * 2. When resolving from incoming request headers (x-forwarded-host or host),
+ *    strictly validates and sanitizes against an allowlist of trusted origins.
+ * 3. Sanitizes x-forwarded-proto to prevent protocol injection.
+ * 4. Fails safe by returning a trusted default URL (production domain in prod,
+ *    localhost in dev) whenever an untrusted or malformed host is detected.
+ *
+ * @param request - Optional incoming HTTP request
  * @returns Canonical base URL string (without trailing slash)
  */
-export function getAppBaseUrl(request: Request): string {
+export function getAppBaseUrl(request?: Request): string {
+  // 1. Authoritative source of truth: NEXT_PUBLIC_APP_URL
   const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (envUrl && !envUrl.includes('placeholder') && !envUrl.includes('your-production-domain')) {
-    return envUrl.replace(/\/+$/, '');
+  if (envUrl) {
+    try {
+      const parsed = new URL(envUrl);
+      const hostLower = parsed.hostname.toLowerCase();
+      const isPlaceholderHost =
+        hostLower === 'example.com' ||
+        hostLower.endsWith('.example.com') ||
+        hostLower === 'your-production-domain.com' ||
+        hostLower.includes('placeholder');
+
+      if (!isPlaceholderHost && (parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
+        return parsed.origin;
+      }
+    } catch {
+      console.warn('[Security] Malformed NEXT_PUBLIC_APP_URL configured; proceeding to header resolution.');
+    }
   }
-  const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
-  const proto = request.headers.get('x-forwarded-proto') || 'http';
-  if (host) {
-    return `${proto}://${host}`;
+
+  // 2. Resolve and validate from incoming request headers
+  if (request) {
+    const rawHost = request.headers.get('x-forwarded-host') || request.headers.get('host');
+    const sanitizedHost = sanitizeHostHeader(rawHost);
+
+    if (sanitizedHost) {
+      if (isTrustedHost(sanitizedHost)) {
+        // Resolve and sanitize protocol
+        let proto = 'https';
+        const rawProto = request.headers.get('x-forwarded-proto');
+        if (rawProto) {
+          const firstProto = rawProto.split(',')[0].trim().toLowerCase();
+          if (firstProto === 'http' || firstProto === 'https') {
+            proto = firstProto;
+          }
+        } else if (request.url) {
+          try {
+            const u = new URL(request.url);
+            if (u.protocol === 'http:' || u.protocol === 'https:') {
+              proto = u.protocol.replace(':', '');
+            }
+          } catch {
+            // keep default https
+          }
+        }
+
+        // In production, force HTTPS unless host is loopback/localhost
+        const hostname = sanitizedHost.startsWith('[')
+          ? sanitizedHost.split(']')[0] + ']'
+          : sanitizedHost.split(':')[0];
+        const isLoopback = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(hostname);
+
+        if (process.env.NODE_ENV === 'production' && !isLoopback) {
+          proto = 'https';
+        }
+
+        return `${proto}://${sanitizedHost}`;
+      } else {
+        console.warn(
+          `[Security] Untrusted host header rejected: "${rawHost}". Falling back to safe default origin.`
+        );
+      }
+    }
+
+    // Check request.url if headers were missing or untrusted
+    if (request.url) {
+      try {
+        const parsed = new URL(request.url);
+        if (isTrustedHost(parsed.host)) {
+          const isLoopback = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(parsed.hostname);
+          if (process.env.NODE_ENV === 'production' && !isLoopback) {
+            return `https://${parsed.host}`;
+          }
+          return parsed.origin;
+        }
+      } catch {
+        // ignore malformed request.url
+      }
+    }
   }
+
+  // 3. Fallback to deployment-configured URLs
+  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (vercelProd) {
+    const clean = vercelProd.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    if (isTrustedHost(clean)) {
+      return `https://${clean}`;
+    }
+  }
+
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) {
+    const clean = vercelUrl.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    if (isTrustedHost(clean)) {
+      return `https://${clean}`;
+    }
+  }
+
+  // 4. Fail-safe canonical defaults
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://z-catchers.vercel.app';
+  }
+
   return 'http://localhost:3000';
 }
 

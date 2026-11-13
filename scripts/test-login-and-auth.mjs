@@ -573,8 +573,8 @@ async function run() {
 
     // 7. Deprecated PIN Routes Verification
     console.log('\n--- 7. Deprecated PIN Authentication Endpoints ---');
-    const { POST: loginPost } = await import('../src/app/api/auth/login/route.ts');
-    const { POST: registerPost } = await import('../src/app/api/auth/register/route.ts');
+    const { POST: loginPost, GET: loginGet } = await import('../src/app/api/auth/login/route.ts');
+    const { POST: registerPost, GET: registerGet } = await import('../src/app/api/auth/register/route.ts');
 
     const loginRes = await loginPost();
     assert(loginRes.status === 410, 'POST /api/auth/login returns 410 Gone');
@@ -586,6 +586,18 @@ async function run() {
     assert(regRes.status === 410, 'POST /api/auth/register returns 410 Gone');
     const regJson = await regRes.json();
     assert(regJson.deprecated === true, 'POST /api/auth/register includes deprecated: true');
+
+    // GET redirect tests with host poisoning defense (ZC-19 / GH #33)
+    const mockPoisonedReq = new Request('https://z-catchers.vercel.app/api/auth/login', {
+      headers: { 'x-forwarded-host': 'evil-phishing.com' },
+    });
+    const loginGetRes = await loginGet(mockPoisonedReq);
+    assert(loginGetRes.status === 302, 'GET /api/auth/login returns 302 redirect');
+    assert(!loginGetRes.headers.get('location')?.includes('evil-phishing.com'), 'GET /api/auth/login ignores evil host header');
+
+    const regGetRes = await registerGet(mockPoisonedReq);
+    assert(regGetRes.status === 302, 'GET /api/auth/register returns 302 redirect');
+    assert(!regGetRes.headers.get('location')?.includes('evil-phishing.com'), 'GET /api/auth/register ignores evil host header');
 
     if (failed) {
       console.error('\n❌ SOME TESTS FAILED.');

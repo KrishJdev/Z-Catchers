@@ -1,3 +1,5 @@
+import { getAppBaseUrl } from '@/lib/auth';
+
 /**
  * POST: Authenticate member session via PIN (Deprecated).
  * Superseded by production-ready Discord OAuth2 (/api/auth/discord).
@@ -18,11 +20,12 @@ export async function POST() {
 
 /**
  * GET: Browser redirect to Discord OAuth initiation endpoint.
+ * Sanitizes base URL via getAppBaseUrl to prevent host header poisoning.
  *
  * @param request - Incoming HTTP request
  * @returns 302 redirect to /api/auth/discord
  */
 export async function GET(request: Request) {
-  const url = new URL('/api/auth/discord', request.url);
-  return Response.redirect(url.toString(), 302);
+  const baseUrl = getAppBaseUrl(request);
+  return Response.redirect(`${baseUrl}/api/auth/discord`, 302);
 }
