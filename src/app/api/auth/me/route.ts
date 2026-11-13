@@ -75,7 +75,7 @@ export async function GET(request: Request) {
       .in('notification_type', ['IN_BED_EARLY', 'WOKE_UP']);
 
     const types = (logs || []).map((l: { notification_type: string }) => l.notification_type);
-    sanitized.is_in_bed = types.includes('IN_BED_EARLY');
+    sanitized.is_in_bed = types.includes('IN_BED_EARLY') && !types.includes('WOKE_UP');
     sanitized.is_woke_up = types.includes('WOKE_UP');
 
     const response = NextResponse.json({

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 // 1. Auto-load .env.local FIRST before dynamic imports
 try {
@@ -35,6 +36,7 @@ const {
   SESSION_MAX_AGE_SECONDS,
   getSessionSecret,
   getPinSalt,
+  getVerificationSessionSecrets,
 } = await import('../src/lib/auth.ts');
 
 const { updateMemberSafe, insertMemberSafe, supabaseAdmin, isSupabaseConfigured } = await import('../src/lib/db.ts');
@@ -101,72 +103,269 @@ async function run() {
     assert(verifySessionToken('invalid.token.extra') === null, 'Rejects tokens with invalid part count');
     assert(verifySessionToken('') === null, 'Rejects empty token');
 
-    // 1B. Production Environment Secret Fallback Tests
-    console.log('\n--- 1B. Production Environment Secret Fallback Tests ---');
+    // 1B. Production Environment Secret Fallback & Fail-Closed Tests (ZC-16 / GH #30)
+    console.log('\n--- 1B. Production Environment Secret Fallback & Fail-Closed Tests ---');
     const origNodeEnv = process.env.NODE_ENV;
     const origSessionSecret = process.env.SESSION_SECRET;
     const origPinSalt = process.env.PIN_SALT;
+    const origSupabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const origDiscordSecret = process.env.DISCORD_CLIENT_SECRET;
 
     try {
-      // Simulate production without SESSION_SECRET or PIN_SALT set
+      // 1B.1 Simulate production without any SESSION_SECRET, PIN_SALT, or server credentials
       process.env.NODE_ENV = 'production';
       delete process.env.SESSION_SECRET;
       delete process.env.PIN_SALT;
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+      delete process.env.DISCORD_CLIENT_SECRET;
 
       let caughtSecretErr = null;
-      let prodSecret = null;
       try {
-        prodSecret = getSessionSecret();
+        getSessionSecret();
       } catch (err) {
         caughtSecretErr = err;
       }
-      assert(caughtSecretErr === null, 'getSessionSecret() does not throw in production when SESSION_SECRET is unset');
-      assert(typeof prodSecret === 'string' && prodSecret.length > 0, 'getSessionSecret() returns non-empty derived or fallback secret');
+      assert(
+        caughtSecretErr !== null && caughtSecretErr.message.includes('[CRITICAL]'),
+        'getSessionSecret() strictly throws in production when SESSION_SECRET and server credentials are unset (fail-closed)'
+      );
 
       let caughtSaltErr = null;
-      let prodSalt = null;
       try {
-        prodSalt = getPinSalt();
+        getPinSalt();
       } catch (err) {
         caughtSaltErr = err;
       }
-      assert(caughtSaltErr === null, 'getPinSalt() does not throw in production when PIN_SALT is unset');
-      assert(typeof prodSalt === 'string' && prodSalt.length > 0, 'getPinSalt() returns non-empty salt in production');
+      assert(
+        caughtSaltErr !== null && caughtSaltErr.message.includes('[CRITICAL]'),
+        'getPinSalt() strictly throws in production when PIN_SALT and server credentials are unset (fail-closed)'
+      );
 
-      // Create session and claim tokens under production mode without explicit SESSION_SECRET
+      // Verify that candidate verification secrets in production strictly exclude static fallback secrets
+      const emptyProdSecrets = getVerificationSessionSecrets();
+      assert(
+        Array.isArray(emptyProdSecrets) && emptyProdSecrets.length === 0,
+        'getVerificationSessionSecrets() returns empty list in production when no secrets are configured'
+      );
+      assert(
+        !emptyProdSecrets.includes('z_catchers_session_secret_fox_den_fallback_2026'),
+        'getVerificationSessionSecrets() strictly excludes public fallback secret in production'
+      );
+      assert(
+        !emptyProdSecrets.includes('z_catchers_session_secret_dev_only'),
+        'getVerificationSessionSecrets() strictly excludes dev-only secret in production'
+      );
+
+      // Verify that createSessionToken fails closed in unconfigured production
+      let caughtCreateErr = null;
+      try {
+        createSessionToken({ memberId: mockMemberId });
+      } catch (err) {
+        caughtCreateErr = err;
+      }
+      assert(
+        caughtCreateErr !== null,
+        'createSessionToken() strictly fails closed (throws) in production when secrets are unset'
+      );
+
+      // Verify that forged tokens signed with the repository fallback secret are rejected
+      const forgedPayload = Buffer.from(
+        JSON.stringify({ memberId: mockMemberId, exp: Date.now() + 86400000 })
+      ).toString('base64url');
+      const forgedSig = crypto
+        .createHmac('sha256', 'z_catchers_session_secret_fox_den_fallback_2026')
+        .update(forgedPayload)
+        .digest('base64url');
+      const forgedToken = `${forgedPayload}.${forgedSig}`;
+      assert(
+        verifySessionToken(forgedToken) === null,
+        'verifySessionToken() strictly rejects forged fallback token in production when unconfigured'
+      );
+
+      // 1B.2 Production with explicit strong credentials configured
+      process.env.SESSION_SECRET = 'prod_super_secure_session_secret_key_32_chars_2026';
+      process.env.PIN_SALT = 'prod_super_secure_pin_salt_key_32_chars_2026';
+
+      assert(
+        getSessionSecret() === process.env.SESSION_SECRET,
+        'getSessionSecret() returns configured production secret'
+      );
+      assert(
+        getPinSalt() === process.env.PIN_SALT,
+        'getPinSalt() returns configured production PIN salt'
+      );
+
+      const prodCandidates = getVerificationSessionSecrets();
+      assert(
+        prodCandidates.includes(process.env.SESSION_SECRET),
+        'getVerificationSessionSecrets() includes configured production secret'
+      );
+      assert(
+        !prodCandidates.includes('z_catchers_session_secret_fox_den_fallback_2026'),
+        'getVerificationSessionSecrets() strictly excludes public fallback secret even when production secret is active'
+      );
+      assert(
+        !prodCandidates.includes('z_catchers_session_secret_dev_only'),
+        'getVerificationSessionSecrets() strictly excludes dev-only secret even when production secret is active'
+      );
+
+      // Legitimate session token creation and verification in production
       const prodSessionToken = createSessionToken({
         memberId: mockMemberId,
         discordId: mockDiscordId,
         isModerator: false,
       });
-      assert(prodSessionToken && prodSessionToken.includes('.'), 'createSessionToken works in production without SESSION_SECRET');
+      assert(
+        prodSessionToken && prodSessionToken.includes('.'),
+        'createSessionToken generates valid token with production secret'
+      );
       const prodSessionDecoded = verifySessionToken(prodSessionToken);
-      assert(prodSessionDecoded && prodSessionDecoded.memberId === mockMemberId, 'verifySessionToken decodes token created without SESSION_SECRET');
+      assert(
+        prodSessionDecoded && prodSessionDecoded.memberId === mockMemberId,
+        'verifySessionToken validates legitimate token signed with production secret'
+      );
 
+      // CRITICAL REJECTION: Public repository fallback token must STILL be rejected in production
+      assert(
+        verifySessionToken(forgedToken) === null,
+        'verifySessionToken strictly rejects token forged with public repo fallback secret in production'
+      );
+
+      // Reject token signed with dev-only secret
+      const devOnlySig = crypto
+        .createHmac('sha256', 'z_catchers_session_secret_dev_only')
+        .update(forgedPayload)
+        .digest('base64url');
+      const devOnlyToken = `${forgedPayload}.${devOnlySig}`;
+      assert(
+        verifySessionToken(devOnlyToken) === null,
+        'verifySessionToken strictly rejects token signed with dev-only fallback in production'
+      );
+
+      // Legitimate claim token in production
       const prodClaimToken = createClaimToken({
         discordId: mockDiscordId,
         discordUsername: 'ProdFox',
         avatarUrl: null,
         isModerator: false,
       });
-      assert(prodClaimToken && prodClaimToken.includes('.'), 'createClaimToken works in production without SESSION_SECRET');
+      assert(
+        prodClaimToken && prodClaimToken.includes('.'),
+        'createClaimToken generates valid claim token with production secret'
+      );
       const prodClaimDecoded = verifyClaimToken(prodClaimToken);
-      assert(prodClaimDecoded && prodClaimDecoded.discordUsername === 'ProdFox', 'verifyClaimToken decodes token created without SESSION_SECRET');
+      assert(
+        prodClaimDecoded && prodClaimDecoded.discordUsername === 'ProdFox',
+        'verifyClaimToken validates legitimate claim token in production'
+      );
 
-      // Secret rotation / transition test: verify that when SESSION_SECRET is later added,
-      // tokens signed under fallback still verify cleanly
-      process.env.SESSION_SECRET = 'new-explicit-rotated-secret-32-chars-long';
-      const crossVerifiedSession = verifySessionToken(prodSessionToken);
-      assert(crossVerifiedSession && crossVerifiedSession.memberId === mockMemberId, 'verifySessionToken validates fallback token even after explicit SESSION_SECRET is configured');
+      // Reject forged claim token in production
+      const forgedClaimPayload = Buffer.from(
+        JSON.stringify({ discordId: mockDiscordId, discordUsername: 'HackerFox', exp: Date.now() + 86400000 })
+      ).toString('base64url');
+      const forgedClaimSig = crypto
+        .createHmac('sha256', 'z_catchers_session_secret_fox_den_fallback_2026')
+        .update(forgedClaimPayload)
+        .digest('base64url');
+      const forgedClaimToken = `${forgedClaimPayload}.${forgedClaimSig}`;
+      assert(
+        verifyClaimToken(forgedClaimToken) === null,
+        'verifyClaimToken strictly rejects claim token forged with public fallback secret in production'
+      );
 
-      const crossVerifiedClaim = verifyClaimToken(prodClaimToken);
-      assert(crossVerifiedClaim && crossVerifiedClaim.discordUsername === 'ProdFox', 'verifyClaimToken validates fallback claim token even after explicit SESSION_SECRET is configured');
+      // 1B.3 Development Environment Fallback Verification
+      process.env.NODE_ENV = 'development';
+      delete process.env.SESSION_SECRET;
+      delete process.env.PIN_SALT;
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+      delete process.env.DISCORD_CLIENT_SECRET;
+
+      assert(
+        getSessionSecret() === 'z_catchers_session_secret_fox_den_fallback_2026',
+        'getSessionSecret() provides default fallback secret in development'
+      );
+      assert(
+        getPinSalt() === 'z_catchers_salt_dev_only',
+        'getPinSalt() provides default dev salt in development'
+      );
+      const devCandidates = getVerificationSessionSecrets();
+      assert(
+        devCandidates.includes('z_catchers_session_secret_fox_den_fallback_2026'),
+        'getVerificationSessionSecrets() includes fallback secret in development'
+      );
+      assert(
+        devCandidates.includes('z_catchers_session_secret_dev_only'),
+        'getVerificationSessionSecrets() includes dev-only secret in development'
+      );
+      assert(
+        verifySessionToken(forgedToken) !== null,
+        'verifySessionToken accepts fallback token in development mode for developer ease'
+      );
+
+      // 1B.4 Unset & Non-Dev/Test Environment Fallback Gate Verification
+      delete process.env.NODE_ENV;
+      let caughtUnsetSecret = false;
+      try {
+        getSessionSecret();
+      } catch (e) {
+        caughtUnsetSecret = Boolean(e?.message?.includes('[CRITICAL]'));
+      }
+      assert(caughtUnsetSecret, 'getSessionSecret() fails closed when NODE_ENV is unset');
+
+      let caughtUnsetSalt = false;
+      try {
+        getPinSalt();
+      } catch (e) {
+        caughtUnsetSalt = Boolean(e?.message?.includes('[CRITICAL]'));
+      }
+      assert(caughtUnsetSalt, 'getPinSalt() fails closed when NODE_ENV is unset');
+
+      assert(
+        !getVerificationSessionSecrets().includes('z_catchers_session_secret_fox_den_fallback_2026'),
+        'getVerificationSessionSecrets() excludes fallback secret when NODE_ENV is unset'
+      );
+
+      process.env.NODE_ENV = 'staging';
+      let caughtStagingSecret = false;
+      try {
+        getSessionSecret();
+      } catch (e) {
+        caughtStagingSecret = Boolean(e?.message?.includes('[CRITICAL]'));
+      }
+      assert(caughtStagingSecret, 'getSessionSecret() fails closed when NODE_ENV is staging');
+
+      let caughtStagingSalt = false;
+      try {
+        getPinSalt();
+      } catch (e) {
+        caughtStagingSalt = Boolean(e?.message?.includes('[CRITICAL]'));
+      }
+      assert(caughtStagingSalt, 'getPinSalt() fails closed when NODE_ENV is staging');
+
+      assert(
+        !getVerificationSessionSecrets().includes('z_catchers_session_secret_fox_den_fallback_2026'),
+        'getVerificationSessionSecrets() excludes fallback secret when NODE_ENV is staging'
+      );
+
+      process.env.NODE_ENV = 'test';
+      assert(
+        getSessionSecret() === 'z_catchers_session_secret_fox_den_fallback_2026',
+        'getSessionSecret() provides default fallback secret when NODE_ENV is test'
+      );
+      assert(
+        getPinSalt() === 'z_catchers_salt_dev_only',
+        'getPinSalt() provides default dev salt when NODE_ENV is test'
+      );
     } finally {
-      process.env.NODE_ENV = origNodeEnv;
+      process.env.NODE_ENV = origNodeEnv || 'test';
       if (origSessionSecret !== undefined) process.env.SESSION_SECRET = origSessionSecret;
       else delete process.env.SESSION_SECRET;
       if (origPinSalt !== undefined) process.env.PIN_SALT = origPinSalt;
       else delete process.env.PIN_SALT;
+      if (origSupabaseKey !== undefined) process.env.SUPABASE_SERVICE_ROLE_KEY = origSupabaseKey;
+      else delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (origDiscordSecret !== undefined) process.env.DISCORD_CLIENT_SECRET = origDiscordSecret;
+      else delete process.env.DISCORD_CLIENT_SECRET;
     }
 
     // 2. Claim Token Tests
