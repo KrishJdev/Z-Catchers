@@ -55,7 +55,8 @@ export function getPinSalt(): string {
     return crypto.createHmac('sha256', serverSecret).update('zcatchers_pin_salt_v1').digest('hex');
   }
 
-  if (process.env.NODE_ENV === 'production') {
+  const isDevOrTest = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+  if (!isDevOrTest) {
     throw new Error(
       '[CRITICAL] Production deployment requires PIN_SALT or server credentials (SUPABASE_SERVICE_ROLE_KEY, DISCORD_CLIENT_SECRET). Fallback dev salt is forbidden in production.'
     );
@@ -93,7 +94,8 @@ export function getSessionSecret(): string {
       .digest('hex');
   }
 
-  if (process.env.NODE_ENV === 'production') {
+  const isDevOrTest = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+  if (!isDevOrTest) {
     throw new Error(
       '[CRITICAL] Production deployment requires SESSION_SECRET or server credentials (SUPABASE_SERVICE_ROLE_KEY, DISCORD_CLIENT_SECRET). Hardcoded fallback session secrets are forbidden in production.'
     );
@@ -128,9 +130,10 @@ export function getVerificationSessionSecrets(): string[] {
     }
   }
 
-  // Strictly gate hardcoded fallback candidate secrets to non-production environments only.
-  // In production, fallback dev secrets MUST NOT be included to prevent forging tokens using known repository fallbacks.
-  if (process.env.NODE_ENV !== 'production') {
+  // Strictly gate hardcoded fallback candidate secrets to development/test environments only.
+  // In production or unset environments, fallback dev secrets MUST NOT be included to prevent forging tokens using known repository fallbacks.
+  const isDevOrTest = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+  if (isDevOrTest) {
     const staticFallback = 'z_catchers_session_secret_fox_den_fallback_2026';
     if (!secrets.includes(staticFallback)) {
       secrets.push(staticFallback);

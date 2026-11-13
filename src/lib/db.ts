@@ -666,10 +666,10 @@ export async function upsertSleepLog(
       if (readErr) {
         if (readErr.code === 'PGRST205' || readErr.message?.includes('schema cache')) {
           console.warn('[db] sleep_logs table not found in Supabase schema cache; using in-memory fallback.');
-          supabaseTableAvailable = false;
         } else {
-          console.warn('[db] upsertSleepLog pre-read warning; proceeding with memory fallback:', readErr.message);
+          console.warn('[db] upsertSleepLog pre-read error; proceeding with non-durable memory fallback:', readErr.message);
         }
+        supabaseTableAvailable = false;
       } else if (dbRow) {
         existing = { ...(existing || {}), ...(dbRow as SleepLog) };
       }

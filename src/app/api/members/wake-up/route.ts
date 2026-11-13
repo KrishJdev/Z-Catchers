@@ -124,7 +124,52 @@ export async function POST(request: Request) {
     const sleeperZone = toValidLuxonZone(member.timezone);
     const sleeperNow = nowUtc.setZone(sleeperZone);
 
-    // Resolve target cycle date
+    // 1. Resolve canonical active cycle date for the member
+    const canonicalCycleDate = getSleepCycleDate(member, nowUtc);
+    let activeCycleDate = canonicalCycleDate;
+
+    // Check if member has an active IN_BED_EARLY check-in without a corresponding WOKE_UP log
+    if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+      try {
+        const { data: recentInBed } = await supabaseAdmin
+          .from('notification_logs')
+          .select('local_date')
+          .eq('member_id', member.id)
+          .eq('notification_type', 'IN_BED_EARLY')
+          .order('dispatched_at', { ascending: false })
+          .limit(1);
+
+        if (recentInBed && recentInBed.length > 0 && recentInBed[0].local_date) {
+          const candidateCycle = recentInBed[0].local_date;
+          // Validate recovered cycle against active-cycle window (within past 1-2 days / not future)
+          const candidateDt = DateTime.fromISO(candidateCycle, { zone: sleeperZone });
+          const daysDiff = sleeperNow.startOf('day').diff(candidateDt.startOf('day'), 'days').days;
+          if (daysDiff >= 0 && daysDiff <= 1) {
+            const { data: wokeCheck } = await supabaseAdmin
+              .from('notification_logs')
+              .select('id')
+              .eq('member_id', member.id)
+              .eq('notification_type', 'WOKE_UP')
+              .eq('local_date', candidateCycle)
+              .limit(1);
+
+            if (!wokeCheck || wokeCheck.length === 0) {
+              activeCycleDate = candidateCycle;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[wake-up] Error querying recent check-in:', err);
+      }
+    } else if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date) {
+      const candidateDt = DateTime.fromISO(member.last_notified_cycle_date, { zone: sleeperZone });
+      const daysDiff = sleeperNow.startOf('day').diff(candidateDt.startOf('day'), 'days').days;
+      if (daysDiff >= 0 && daysDiff <= 1) {
+        activeCycleDate = member.last_notified_cycle_date;
+      }
+    }
+
+    // 2. Resolve target cycle date
     let targetCycleDate: string;
 
     if (cycleDate) {
@@ -146,45 +191,7 @@ export async function POST(request: Request) {
       }
       targetCycleDate = cycleDate;
     } else {
-      // Determine the active or most recent sleep cycle for the sleeper:
-      // First check if member has an active IN_BED_EARLY check-in without a corresponding WOKE_UP log
-      let activeCheckinCycleDate: string | null = null;
-      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
-        try {
-          const { data: recentInBed } = await supabaseAdmin
-            .from('notification_logs')
-            .select('local_date')
-            .eq('member_id', member.id)
-            .eq('notification_type', 'IN_BED_EARLY')
-            .order('dispatched_at', { ascending: false })
-            .limit(1);
-
-          if (recentInBed && recentInBed.length > 0 && recentInBed[0].local_date) {
-            const candidateCycle = recentInBed[0].local_date;
-            const { data: wokeCheck } = await supabaseAdmin
-              .from('notification_logs')
-              .select('id')
-              .eq('member_id', member.id)
-              .eq('notification_type', 'WOKE_UP')
-              .eq('local_date', candidateCycle)
-              .limit(1);
-
-            if (!wokeCheck || wokeCheck.length === 0) {
-              activeCheckinCycleDate = candidateCycle;
-            }
-          }
-        } catch (err) {
-          console.warn('[wake-up] Error querying recent check-in:', err);
-        }
-      }
-
-      if (activeCheckinCycleDate) {
-        targetCycleDate = activeCheckinCycleDate;
-      } else if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date) {
-        targetCycleDate = member.last_notified_cycle_date;
-      } else {
-        targetCycleDate = getSleepCycleDate(member, nowUtc);
-      }
+      targetCycleDate = activeCycleDate;
     }
 
     // Retrieve any existing sleep log for this member + cycleDate
@@ -246,7 +253,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid wake-up mode.' }, { status: 400 });
     }
 
-    if (mode === 'button' && cycleDate && cycleDate !== targetCycleDate) {
+    if (mode === 'button' && cycleDate && cycleDate !== activeCycleDate) {
       return NextResponse.json(
         { error: 'Historical wake-up entries require manual mode with a specified wake time.' },
         { status: 400 }
@@ -272,7 +279,7 @@ export async function POST(request: Request) {
       const candDayAfter = cycleDt.plus({ days: 2 }).set({ hour: wH, minute: wM, second: 0, millisecond: 0 });
 
       const refBedtime = inBedReferenceDt || nightSchedule.bedtimeDateTime;
-      const candidates = [candNextDay, candSameDay, candDayAfter];
+      const candidates = [candSameDay, candNextDay, candDayAfter];
 
       // Pick the first candidate chronologically after bedtime reference and not in the future
       const validCandidate = candidates.find((c) => refBedtime ? (c > refBedtime && c <= sleeperNow) : c <= sleeperNow);

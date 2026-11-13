@@ -3,6 +3,10 @@ import { spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'test';
+}
+
 const args = process.argv.slice(2);
 const mode = args.includes('--all') ? 'all' : 'unit';
 
@@ -73,7 +77,7 @@ for (const file of testFiles) {
 
   const result = spawnSync(process.execPath, childArgs, {
     stdio: 'pipe',
-    env: { ...process.env, RUNNER_MODE: mode },
+    env: { ...process.env, NODE_ENV: process.env.NODE_ENV || 'test', RUNNER_MODE: mode },
     encoding: 'utf8',
   });
 

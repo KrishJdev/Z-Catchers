@@ -1,3 +1,7 @@
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'test';
+}
+
 import { hashPin, verifyPin } from '../src/lib/auth.ts';
 import { checkCooldownPromotion, computeMemberState } from '../src/lib/sleepEngine.ts';
 import { DateTime } from 'luxon';

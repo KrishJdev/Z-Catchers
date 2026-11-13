@@ -301,8 +301,63 @@ async function run() {
         verifySessionToken(forgedToken) !== null,
         'verifySessionToken accepts fallback token in development mode for developer ease'
       );
+
+      // 1B.4 Unset & Non-Dev/Test Environment Fallback Gate Verification
+      delete process.env.NODE_ENV;
+      let caughtUnsetSecret = false;
+      try {
+        getSessionSecret();
+      } catch (e) {
+        caughtUnsetSecret = Boolean(e?.message?.includes('[CRITICAL]'));
+      }
+      assert(caughtUnsetSecret, 'getSessionSecret() fails closed when NODE_ENV is unset');
+
+      let caughtUnsetSalt = false;
+      try {
+        getPinSalt();
+      } catch (e) {
+        caughtUnsetSalt = Boolean(e?.message?.includes('[CRITICAL]'));
+      }
+      assert(caughtUnsetSalt, 'getPinSalt() fails closed when NODE_ENV is unset');
+
+      assert(
+        !getVerificationSessionSecrets().includes('z_catchers_session_secret_fox_den_fallback_2026'),
+        'getVerificationSessionSecrets() excludes fallback secret when NODE_ENV is unset'
+      );
+
+      process.env.NODE_ENV = 'staging';
+      let caughtStagingSecret = false;
+      try {
+        getSessionSecret();
+      } catch (e) {
+        caughtStagingSecret = Boolean(e?.message?.includes('[CRITICAL]'));
+      }
+      assert(caughtStagingSecret, 'getSessionSecret() fails closed when NODE_ENV is staging');
+
+      let caughtStagingSalt = false;
+      try {
+        getPinSalt();
+      } catch (e) {
+        caughtStagingSalt = Boolean(e?.message?.includes('[CRITICAL]'));
+      }
+      assert(caughtStagingSalt, 'getPinSalt() fails closed when NODE_ENV is staging');
+
+      assert(
+        !getVerificationSessionSecrets().includes('z_catchers_session_secret_fox_den_fallback_2026'),
+        'getVerificationSessionSecrets() excludes fallback secret when NODE_ENV is staging'
+      );
+
+      process.env.NODE_ENV = 'test';
+      assert(
+        getSessionSecret() === 'z_catchers_session_secret_fox_den_fallback_2026',
+        'getSessionSecret() provides default fallback secret when NODE_ENV is test'
+      );
+      assert(
+        getPinSalt() === 'z_catchers_salt_dev_only',
+        'getPinSalt() provides default dev salt when NODE_ENV is test'
+      );
     } finally {
-      process.env.NODE_ENV = origNodeEnv;
+      process.env.NODE_ENV = origNodeEnv || 'test';
       if (origSessionSecret !== undefined) process.env.SESSION_SECRET = origSessionSecret;
       else delete process.env.SESSION_SECRET;
       if (origPinSalt !== undefined) process.env.PIN_SALT = origPinSalt;
