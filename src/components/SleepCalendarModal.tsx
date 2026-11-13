@@ -222,22 +222,30 @@ export function SleepCalendarModal({
     []
   );
 
-  const prevInitialMemberRef = useRef(initialMember);
-  useEffect(() => {
-    if (prevInitialMemberRef.current !== initialMember) {
-      prevInitialMemberRef.current = initialMember;
-      setData(null);
-      if (isOpen && (memberId || initialMember?.id)) {
-        fetchHistory(memberId || initialMember?.id || '', currentMonth);
-      }
-    }
-  }, [initialMember, isOpen, memberId, currentMonth, fetchHistory]);
+  const activeTargetId = memberId || initialMember?.id || null;
+  const initialFingerprint = initialMember
+    ? `${initialMember.id}_${initialMember.strikes_used}_${initialMember.strikes_count}_${initialMember.metastrikes_used}_${initialMember.metastrikes_count}_${initialMember.strike_cycle_month}`
+    : null;
+
+  const prevTargetIdRef = useRef<string | null>(null);
+  const prevFingerprintRef = useRef<string | null>(null);
+  const prevMonthRef = useRef<string>(currentMonth);
 
   useEffect(() => {
-    if (isOpen && memberId) {
-      fetchHistory(memberId, currentMonth);
+    if (!isOpen || !activeTargetId) return;
+
+    const idChanged = prevTargetIdRef.current !== activeTargetId;
+    const fingerprintChanged = prevFingerprintRef.current !== initialFingerprint;
+    const monthChanged = prevMonthRef.current !== currentMonth;
+
+    if (idChanged || fingerprintChanged || monthChanged) {
+      prevTargetIdRef.current = activeTargetId;
+      prevFingerprintRef.current = initialFingerprint;
+      prevMonthRef.current = currentMonth;
+      setData(null);
+      fetchHistory(activeTargetId, currentMonth);
     }
-  }, [isOpen, memberId, currentMonth, fetchHistory]);
+  }, [isOpen, activeTargetId, initialFingerprint, currentMonth, fetchHistory]);
 
   // Set default selected date when data changes or month loads
   useEffect(() => {

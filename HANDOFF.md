@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T01:55:00+05:30  
+> **Last Updated:** 2026-11-14T03:05:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `5dcddbb`  
+> **Latest Commit:** `295080c`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56)  
 > **Active Integration Pull Requests:** [#57 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/57) (krish -> dev)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
@@ -118,6 +118,12 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
     7. **`src/lib/strikes.ts` (Missing Month Persistence):** Added `needsMonthPersist` condition so members with missing `strike_cycle_month` have their active cycle month persisted to Supabase even if strike counts are 0.
     8. **`src/lib/db.ts` (`syncInMemoryMemberCache` & `SafeUpdateOptions.conditions`):** Created `syncInMemoryMemberCache` that updates in-memory members without registering them into `testFixtures`, preventing production member reads from bypassing live Supabase in `getMemberByIdSafe`. Supported arbitrary column conditions in `SafeUpdateOptions.conditions`.
     9. **Automated Unit Tests:** Expanded `scripts/test-strike-persistence-and-alias-reconciliation.mjs` to assert cache cycle isolation, non-fixture cache synchronization, and conditional updates (all 32 test suites passing cleanly).
+    10. **Comprehensive PR Review & Second-Pass Hardening:**
+        - **`src/lib/db.ts` (`activeConditions` Sanitization):** Sanitized `activeConditions` in `updateMemberSafe` against `existingCols` and auto-recovered missing condition columns in the schema cache mismatch loop to prevent PostgREST errors on unmigrated schemas.
+        - **`src/lib/strikes.ts` (Luxon Month Boundaries):** Computed `startDate` and `endDate` in `getMonthlyStrikeCountsBatch` strictly via `DateTime.fromISO` using `startOf('month')` and `endOf('month')`, guaranteeing leap-year and 30-day month accuracy.
+        - **`src/lib/strikes.ts` (Optimistic Concurrency on Conditional Updates):** Updated `updateMemberStrikeCounts` so that when `conditions` are specified, in-memory cache is committed only when the conditional database update succeeds, preventing stale cache poisoning on concurrent collision. Also included fallback alias column checks and `strike_cycle_month: null` in `repairConditions`.
+        - **`src/components/SleepCalendarModal.tsx` (Flicker-Free Fingerprinting):** Replaced reference comparison with data fingerprinting (`initialFingerprint` over ID, strikes, metastrikes, and cycle month), eliminating unnecessary API refetches and data clearing on simple parent re-renders.
+        - **Line Ending Normalization:** Normalized `src/lib/strikes.ts` to pure LF, eliminating 2,160 lines of CRLF whitespace noise in GitHub PR #57.
 
 ### Phase 84: UI Normalization, Button Touch-Target Sizing & Anti-Wrapping Standardization
 * **Root Cause & Visual Bug Identification (`ModDrawer.tsx`):**

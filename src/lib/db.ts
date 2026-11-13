@@ -445,6 +445,15 @@ export async function updateMemberSafe(
   }
 
   let cleanUpdates = await sanitizeMemberPayload(updates);
+  const activeConditions = options.conditions ? { ...options.conditions } : undefined;
+  if (activeConditions && isSupabaseConfigured) {
+    const existingCols = await getExistingMemberColumns();
+    for (const key of Object.keys(activeConditions)) {
+      if (!existingCols.has(key)) {
+        delete activeConditions[key];
+      }
+    }
+  }
 
   const performUpdate = async (fields: Record<string, any>) => {
     let query = supabaseAdmin.from('members').update(fields).eq('id', memberId);
@@ -454,8 +463,8 @@ export async function updateMemberSafe(
     if (options.requireUnlinkedDiscord) {
       query = query.is('discord_id', null);
     }
-    if (options.conditions) {
-      for (const [col, val] of Object.entries(options.conditions)) {
+    if (activeConditions) {
+      for (const [col, val] of Object.entries(activeConditions)) {
         if (val === null || val === undefined) {
           query = query.is(col, null);
         } else {
@@ -471,13 +480,18 @@ export async function updateMemberSafe(
   // Auto-recovery: If PostgREST fails due to a missing column, strip it and retry immediately
   while (error && error.message && error.message.includes('column of \'members\' in the schema cache')) {
     const match = error.message.match(/Could not find the '([^']+)' column/);
-    if (match && match[1] && match[1] in cleanUpdates) {
+    if (match && match[1] && (match[1] in cleanUpdates || (activeConditions && match[1] in activeConditions))) {
       const missingCol = match[1];
       console.warn(`[Supabase Safe Update] Column '${missingCol}' not found in Supabase schema cache; caching in memory, stripping and retrying.`);
       if (knownMemberColumns) {
         knownMemberColumns.delete(missingCol);
       }
-      delete cleanUpdates[missingCol];
+      if (cleanUpdates[missingCol]) {
+        delete cleanUpdates[missingCol];
+      }
+      if (activeConditions && activeConditions[missingCol]) {
+        delete activeConditions[missingCol];
+      }
       const retry = await performUpdate(cleanUpdates);
       data = retry.data;
       error = retry.error;
