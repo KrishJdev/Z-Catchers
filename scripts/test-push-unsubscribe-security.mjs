@@ -229,6 +229,32 @@ async function run() {
     testAssert(nonStringRes.status === 400, 'Numeric endpoint rejected with HTTP 400');
     testAssert(queries.length === 0, 'No query executed for numeric endpoint');
 
+    // Malformed JSON payload -> HTTP 400 (Must NOT fall through to member-wide delete)
+    const malformedJsonReq = new Request('http://localhost:3000/api/push/unsubscribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${aliceToken}`,
+      },
+      body: '{"endpoint": "incomplete_json_payload...',
+    });
+    const malformedJsonRes = await handleUnsubscribePost(malformedJsonReq);
+    testAssert(malformedJsonRes.status === 400, 'Malformed JSON rejected with HTTP 400 before database execution');
+    testAssert(queries.length === 0, 'No query executed for malformed JSON request');
+
+    // Non-object JSON payload (array) -> HTTP 400
+    const arrayJsonReq = new Request('http://localhost:3000/api/push/unsubscribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${aliceToken}`,
+      },
+      body: JSON.stringify(['malicious', 'array']),
+    });
+    const arrayJsonRes = await handleUnsubscribePost(arrayJsonReq);
+    testAssert(arrayJsonRes.status === 400, 'Array JSON body rejected with HTTP 400');
+    testAssert(queries.length === 0, 'No query executed for array JSON body');
+
     // -------------------------------------------------------------
     // 5. Member-Wide Push Subscription Removal
     // -------------------------------------------------------------
@@ -309,6 +335,12 @@ async function run() {
     testAssert(
       pushClientContent.includes('Server unregister endpoint returned HTTP'),
       'pushClient.ts logs diagnostic warnings when server unsubscription returns non-2xx status'
+    );
+    testAssert(
+      pushClientContent.includes('STORAGE_KEY_PENDING_UNSUBSCRIBE') &&
+      pushClientContent.includes('setStoredPendingUnsubscribeEndpoint(endpoint)') &&
+      pushClientContent.includes('retryPendingUnsubscribe'),
+      'pushClient.ts preserves unregister endpoint for retry upon server failure'
     );
 
     const pushModalContent = fs.readFileSync(path.resolve('src/components/PushModal.tsx'), 'utf8');
