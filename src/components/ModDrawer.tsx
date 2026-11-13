@@ -584,8 +584,8 @@ export function ModDrawer({
 
   // Action: Moderator Adjust Strikes & Metastrikes
   const handleAdjustStrikes = async (member: Member, deltaStrikes: number, deltaMetas: number) => {
-    const currentStrikes = member.strikes_used ?? 0;
-    const currentMetas = member.metastrikes_used ?? 0;
+    const currentStrikes = Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0);
+    const currentMetas = Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0);
     const nextStrikes = Math.max(0, Math.min(3, currentStrikes + deltaStrikes));
     const nextMetas = Math.max(0, Math.min(3, currentMetas + deltaMetas));
 
@@ -1765,13 +1765,13 @@ export function ModDrawer({
                               <span className="font-semibold text-fox-rust flex items-center gap-1">
                                 <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
                                 <span>Strikes:</span>
-                                <strong className="tabular-nums font-bold">{member.strikes_used ?? 0}/3</strong>
+                                <strong className="tabular-nums font-bold">{Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0)}/3</strong>
                               </span>
                               <div className="flex items-center gap-0.5 ml-1">
                                 <button
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, -1, 0)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.strikes_used ?? 0) <= 0}
+                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) <= 0}
                                   className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Decrement strikes"
                                 >
@@ -1780,7 +1780,7 @@ export function ModDrawer({
                                 <button
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, 1, 0)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.strikes_used ?? 0) >= 3}
+                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) >= 3}
                                   className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Increment strikes"
                                 >
@@ -1796,13 +1796,13 @@ export function ModDrawer({
                               <span className="font-semibold text-fox-amber flex items-center gap-1">
                                 <Shield className="h-3 w-3 fill-fox-amber/20 text-fox-amber" />
                                 <span>Meta:</span>
-                                <strong className="tabular-nums font-bold">{member.metastrikes_used ?? 0}/3</strong>
+                                <strong className="tabular-nums font-bold">{Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0)}/3</strong>
                               </span>
                               <div className="flex items-center gap-0.5 ml-1">
                                 <button
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, 0, -1)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.metastrikes_used ?? 0) <= 0}
+                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) <= 0}
                                   className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Decrement metastrikes"
                                 >
@@ -1811,7 +1811,7 @@ export function ModDrawer({
                                 <button
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, 0, 1)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || (member.metastrikes_used ?? 0) >= 3}
+                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) >= 3}
                                   className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Increment metastrikes"
                                 >

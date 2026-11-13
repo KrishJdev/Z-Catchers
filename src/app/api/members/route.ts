@@ -15,6 +15,7 @@ import {
   getNightlyStrikeLogsBatch,
   getStrikeLogKey,
   getRecentEligibleStrikeLogsBatch,
+  getMonthlyStrikeCountsBatch,
 } from '@/lib/strikes';
 import { DateTime } from 'luxon';
 
@@ -31,7 +32,7 @@ const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 export async function GET(request: Request) {
   try {
     const sessionMemberId = getRequestSessionMemberId(request);
-    const { data: members, error } = await supabase
+    const { data: members, error } = await supabaseAdmin
       .from('members')
       .select('*')
       .eq('is_active', true)
@@ -134,9 +135,13 @@ export async function GET(request: Request) {
       });
     }
 
-    // Batched resolution: resolve member strike counts in parallel and batch query nightly & recent strike logs
-    const [strikeInfos, strikeLogsMap, recentStrikesMap] = await Promise.all([
-      Promise.all(memberItems.map((item) => resolveMemberStrikeCounts(item.hydratedMember, nowUtc))),
+    // Batched resolution: query monthly logged strikes, nightly strike logs for tonight, and recent strikes
+    const currentMonth = nowUtc.toFormat('yyyy-MM');
+    const [monthlyStrikeCountsMap, strikeLogsMap, recentStrikesMap] = await Promise.all([
+      getMonthlyStrikeCountsBatch(
+        memberItems.map((item) => item.hydratedMember.id),
+        currentMonth
+      ),
       getNightlyStrikeLogsBatch(
         memberItems.map((item) => ({
           targetMemberId: item.hydratedMember.id,
@@ -148,6 +153,16 @@ export async function GET(request: Request) {
         nowUtc
       ),
     ]);
+
+    const strikeInfos = await Promise.all(
+      memberItems.map((item) => {
+        const monthly = monthlyStrikeCountsMap.get(item.hydratedMember.id);
+        return resolveMemberStrikeCounts(item.hydratedMember, nowUtc, {
+          loggedStrikes: monthly?.strikes,
+          loggedMetas: monthly?.metastrikes,
+        });
+      })
+    );
 
     const processedMembers: Member[] = memberItems.map((item, index) => {
       const strikeInfo = strikeInfos[index];

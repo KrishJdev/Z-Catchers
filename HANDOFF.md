@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T18:42:00+05:30  
+> **Last Updated:** 2026-11-14T01:32:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `f07a2cf`  
+> **Latest Commit:** `5ebea92`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56)  
 > **Active Integration Pull Requests:** None (All merged into `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
 > **Active Production Release Pull Request:** [#52 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/52) (dev -> main)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 31/31 suites passed | `npm run build` clean)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 32/32 suites passed | `npm run build` clean)
 
 ---
 
@@ -69,6 +69,41 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 85: Strike Counts Durability, Alias Synchronization & Ground-Truth Reconciliation
+* **Root Cause & Vulnerability Analysis:**
+  1. **Disjoint In-Memory Stores Across Route Handlers (`src/lib/strikes.ts`):** `memoryStore` was declared as an unanchored module-scoped variable. In Next.js route chunks and HMR/serverless runtimes, API routes (`/api/members/strikes` vs `/api/members`) accessed disparate memory store instances, causing in-memory strike votes and updated counters to be dropped across requests.
+  2. **Stale Memory Cache in `db.ts`:** `updateMemberStrikeCounts` only updated `memoryStore.memberCounts` without synchronizing `memoryMembers` in `src/lib/db.ts`. Calls to `getMemberByIdSafe` returned stale 0-strike records.
+  3. **Direct SQL Column Mismatch & Schema Cache Failure:** `updateMemberStrikeCounts` bypassed `updateMemberSafe` and executed direct SQL updates using alias columns (`strikes_count`, `metastrikes_count`). When the PostgREST schema cache lacked these columns, updates failed silently without updating `members.strikes_used` in Supabase.
+  4. **Alias Asymmetry Clobbering in `resolveMemberStrikeCounts`:** `typeof member.strikes_count === 'number'` checked `strikes_count` first. When database rows were initialized with `strikes_count DEFAULT 0` and `strikes_used = 1`, the default 0 clobbered the active strike.
+  5. **False Monthly Reset on Every Read (`src/lib/sleepEngine.ts` & `src/lib/strikes.ts`):** In `checkMonthlyStrikeReset` and `resolveMemberStrikeCounts`, uninitialized `strike_cycle_month` defaulted to hardcoded `'2026-01'`. In November 2026, `'2026-01' !== '2026-11'` triggered a false monthly reset on every single read, zeroing out `strikes_used` and `metastrikes_used`.
+  6. **Optimistic Locking Failure in `recordStrikeVote`:** `.eq('updated_at', existingLog.updated_at || existingLog.created_at)` failed because Postgres `timestamptz` string formats differed from JS ISO strings, causing second-vote strike logs to match 0 rows and exhaust retries.
+  7. **Lack of Monthly Ground-Truth Reconciliation:** There was no verification of `strikes_used` against the actual count of confirmed records in `nightly_strike_logs`.
+* **Backend & State Synchronization Hardening:**
+  - **Global In-Memory Store (`src/lib/strikes.ts`):** Preserved `memoryStore` on `globalThis.__memoryStrikeStore` so in-memory votes and strike counts survive across Next.js route modules and API chunks. Added `clearInMemoryStrikeStore()` for test isolation.
+  - **Cycle Month Default Fix (`src/lib/sleepEngine.ts`):** In `checkMonthlyStrikeReset`, updated `cycleMonth` default from `'2026-01'` to `currentMonth` (`member.strike_cycle_month || currentMonth`), preventing uninitialized members from suffering false monthly zero-outs.
+  - **Schema-Safe Member Persistence (`src/lib/strikes.ts`):** Updated `updateMemberStrikeCounts` to synchronize `memoryMembers` in `db.ts` and use `updateMemberSafe` with column-stripping and PostgREST schema-cache retry.
+  - **Alias Reconciliation & Maximum Invariant (`src/lib/strikes.ts`):** Updated `resolveMemberStrikeCounts` to take `Math.max` across alias columns (`strikes_used`, `strikes_count`, `metastrikes_used`, `metastrikes_count`) so neither alias clobbers the other with an uninitialized or stale 0.
+  - **Nightly Strike Log Ground-Truth Reconciliation (`src/lib/strikes.ts` & `src/app/api/members/route.ts`):** Added `getMonthlyStrikeCountsBatch(memberIds, targetMonth)` to query confirmed monthly strikes/metastrikes in a single query. Reconciles `strikes_used` to never drop below the active logged strike count, making the system self-healing against lost writes.
+  - **Optimistic Concurrency Fix (`src/lib/strikes.ts`):** Removed fragile `.eq('updated_at', ...)` from `recordStrikeVote` and sanitized payload in `useProactiveMetastrike`.
+  - **API Route Alias Synchronization:**
+    - `src/app/api/members/route.ts`: Switched `members` query to `supabaseAdmin` and added batched log reconciliation into `resolveMemberStrikeCounts`.
+    - `src/app/api/members/sleep-history/route.ts`: Resolved strikes via `resolveMemberStrikeCounts(member, nowUtc)` and returned both `strikes_used` and `strikes_count`, `metastrikes_used` and `metastrikes_count`.
+    - `src/app/api/mod/route.ts`: Returned synchronized `strikes_count` and `metastrikes_count` in GET and POST `adjust_strikes`.
+* **UI Component Safety & Reconciled Rendering:**
+  - **`src/components/SleepCalendarModal.tsx`:** Added `strikes_used` and `metastrikes_used` to `MemberProfile`, and reconciled `strikesUsed` and `metastrikesUsed` using `Math.max`.
+  - **`src/components/MemberCard.tsx`:** Reconciled `strikesUsed` and `metastrikesUsed` across aliases using `Math.max`.
+  - **`src/components/ModDrawer.tsx`:** Reconciled `currentStrikes` and `currentMetas` and display labels across aliases.
+* **Automated Unit Tests & Verification:**
+  - Created `scripts/test-strike-persistence-and-alias-reconciliation.mjs` verifying:
+    1. Alias asymmetry safety where `strikes_count: 0` does not clobber `strikes_used: 1`.
+    2. Uninitialized `strike_cycle_month` resilience (does not falsely reset strikes in current month).
+    3. Global in-memory strike persistence across distinct imports/re-evaluations.
+    4. Nightly strike log reconciliation against active monthly records.
+  - Registered test suite in `scripts/run-tests.mjs`.
+  - Verified `npm run test:unit` clean with all 32/32 test suites passing.
+  - Verified `npx tsc --noEmit` clean with 0 errors.
+  - Verified `npm run build` clean with all 28 Next.js routes compiling and prerendering.
 
 ### Phase 84: UI Normalization, Button Touch-Target Sizing & Anti-Wrapping Standardization
 * **Root Cause & Visual Bug Identification (`ModDrawer.tsx`):**
