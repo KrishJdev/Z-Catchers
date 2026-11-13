@@ -402,6 +402,31 @@ async function run() {
     testAssert(jsonSuccess.success === true, 'Response confirms pending schedule change cancelled');
     testAssert(currentMemberRow.pending_bedtime_local === null, 'Pending schedule fields successfully cleared');
 
+    // 2.4 Scenario: Successful authentication with prior non-lockout failures resets rateLimitsDb automatically
+    // Seed 2 prior failures without pre-calling resetPinFailurePersistent
+    await recordPinFailurePersistent(clientIp, memberId);
+    await recordPinFailurePersistent(clientIp, memberId);
+    testAssert(rateLimitsDb.has(`target:${memberId}`), 'target:memberId has active failure entries prior to valid submission');
+
+    // Re-seed pending fields for second cancellation assertion
+    currentMemberRow.pending_bedtime_local = '02:00';
+    currentMemberRow.pending_wake_time_local = '10:00';
+
+    const reqAutoReset = new Request('http://localhost:3000/api/members/cancel-pending', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-forwarded-for': '203.0.113.60',
+      },
+      body: JSON.stringify({
+        member_id: memberId,
+        pin: testPin,
+      }),
+    });
+    const resAutoReset = await handleCancelPending(reqAutoReset);
+    testAssert(resAutoReset.status === 200, 'Valid PIN through route succeeds with fewer than 5 prior failures');
+    testAssert(!rateLimitsDb.has(`target:${memberId}`), 'Route automatically resets rateLimitsDb target entry upon successful authentication');
+
     // -------------------------------------------------------------
     // 3. Cancel-Pending: Moderator Passcode Rate Limiting
     // -------------------------------------------------------------
@@ -434,6 +459,17 @@ async function run() {
       );
     }
 
+    // Verify expected persisted rows in rateLimitsDb for moderator gate
+    const modIpRow = rateLimitsDb.get(`ip:${modClientIp}`);
+    const modTargetRow = rateLimitsDb.get(`target:mod_gate_ip:${modClientIp}`);
+    testAssert(
+      (modTargetRow && modTargetRow.count >= 5) || (modIpRow && modIpRow.count >= 5),
+      'rateLimitsDb contains persisted row with count>=5 for moderator attempt'
+    );
+
+    // Clear ONLY in-memory state before 6th attempt to verify persistent lockout lookup
+    clearInMemoryPinRateLimits();
+
     // 3.2 6th attempt with mod_passcode must return HTTP 429
     const reqModBlocked = new Request('http://localhost:3000/api/members/cancel-pending', {
       method: 'POST',
@@ -449,7 +485,7 @@ async function run() {
 
     const resModBlocked = await handleCancelPending(reqModBlocked);
     const jsonModBlocked = await resModBlocked.json();
-    testAssert(resModBlocked.status === 429, '6th moderator passcode attempt is blocked with HTTP 429');
+    testAssert(resModBlocked.status === 429, '6th moderator passcode attempt is blocked with HTTP 429 (persisted)');
     testAssert(
       jsonModBlocked.error && jsonModBlocked.error.includes('Too many failed moderator passcode attempts'),
       'Returns moderator lockout message'
@@ -458,6 +494,29 @@ async function run() {
       resModBlocked.headers.get('Retry-After') !== null,
       'Response includes Retry-After header'
     );
+
+    // 3.2b Cold instance test: Seed persisted moderator lockout directly without prior local memory
+    clearInMemoryPinRateLimits();
+    const coldModIp = '198.51.100.111';
+    rateLimitsDb.set(`target:mod_gate_ip:${coldModIp}`, {
+      key: `target:mod_gate_ip:${coldModIp}`,
+      count: 5,
+      window_start: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    });
+    const reqColdMod = new Request('http://localhost:3000/api/members/cancel-pending', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-forwarded-for': coldModIp,
+      },
+      body: JSON.stringify({
+        member_id: memberId,
+        mod_passcode: process.env.MOD_SECRET_PASSCODE,
+      }),
+    });
+    const resColdMod = await handleCancelPending(reqColdMod);
+    testAssert(resColdMod.status === 429, 'Cold instance moderator request blocked with HTTP 429 from persisted row');
 
     // -------------------------------------------------------------
     // 4. Push/Subscribe: Member PIN Rate Limit Enforcement
@@ -509,7 +568,16 @@ async function run() {
       testAssert(res.status === 401, `Subscribe attempt ${i}: Invalid PIN returns HTTP 401 Unauthorized`);
     }
 
-    // 4.2 6th attempt should be blocked with HTTP 429
+    // Verify expected persisted rows in rateLimitsDb
+    const subIpRow = rateLimitsDb.get(`ip:${subClientIp}`);
+    const subTargetRow = rateLimitsDb.get(`target:${subMemberId}`);
+    testAssert(subIpRow && subIpRow.count === 5, 'rateLimitsDb contains persisted row with count=5 for subscribe IP');
+    testAssert(subTargetRow && subTargetRow.count === 5, 'rateLimitsDb contains persisted row with count=5 for subscribe target');
+
+    // Clear ONLY in-memory state before 6th attempt to verify persistent lockout lookup
+    clearInMemoryPinRateLimits();
+
+    // 4.2 6th attempt should be blocked with HTTP 429 (persisted)
     const reqSubBlocked = new Request('http://localhost:3000/api/push/subscribe', {
       method: 'POST',
       headers: {
@@ -525,7 +593,7 @@ async function run() {
 
     const resSubBlocked = await handlePushSubscribe(reqSubBlocked);
     const jsonSubBlocked = await resSubBlocked.json();
-    testAssert(resSubBlocked.status === 429, '6th subscribe attempt is blocked with HTTP 429 Too Many Requests');
+    testAssert(resSubBlocked.status === 429, '6th subscribe attempt is blocked with HTTP 429 Too Many Requests (persisted)');
     testAssert(
       jsonSubBlocked.error && jsonSubBlocked.error.includes('Too many failed attempts'),
       'Returns rate limit exceeded error message for subscribe'
@@ -534,6 +602,38 @@ async function run() {
       resSubBlocked.headers.get('Retry-After') !== null && Number(resSubBlocked.headers.get('Retry-After')) > 0,
       'Subscribe 429 response includes valid Retry-After header'
     );
+
+    // 4.2b Cold instance test for subscribe: Seed persisted lockout directly with zero in-memory entries
+    clearInMemoryPinRateLimits();
+    const coldSubMemberId = 'mem_cold_sub_99';
+    rateLimitsDb.set(`target:${coldSubMemberId}`, {
+      key: `target:${coldSubMemberId}`,
+      count: 5,
+      window_start: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    });
+    const savedSubMember = currentMemberRow;
+    currentMemberRow = {
+      id: coldSubMemberId,
+      discord_username: 'ColdSubFox',
+      passcode_hash: hashPin('9876'),
+      is_active: true,
+    };
+    const reqColdSub = new Request('http://localhost:3000/api/push/subscribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-forwarded-for': '198.51.100.88',
+      },
+      body: JSON.stringify({
+        member_id: coldSubMemberId,
+        pin: '9876',
+        subscription: validSubscriptionPayload,
+      }),
+    });
+    const resColdSub = await handlePushSubscribe(reqColdSub);
+    testAssert(resColdSub.status === 429, 'Cold instance subscribe request blocked with HTTP 429 from persisted row');
+    currentMemberRow = savedSubMember;
 
     // 4.3 Reset rate limit and verify successful subscription with correct PIN
     await resetPinFailurePersistent(subClientIp, subMemberId);
@@ -554,6 +654,27 @@ async function run() {
 
     const resSubSuccess = await handlePushSubscribe(reqSubSuccess);
     testAssert(resSubSuccess.status === 200, 'Valid PIN returns HTTP 200 OK after rate reset');
+
+    // 4.4 Scenario: Successful subscribe with prior non-lockout failures resets rateLimitsDb automatically
+    await recordPinFailurePersistent('192.0.2.77', subMemberId);
+    await recordPinFailurePersistent('192.0.2.77', subMemberId);
+    testAssert(rateLimitsDb.has(`target:${subMemberId}`), 'target:subMemberId has active failure entries prior to valid submission');
+
+    const reqSubAutoReset = new Request('http://localhost:3000/api/push/subscribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-forwarded-for': '192.0.2.78',
+      },
+      body: JSON.stringify({
+        member_id: subMemberId,
+        pin: subPin,
+        subscription: validSubscriptionPayload,
+      }),
+    });
+    const resSubAutoReset = await handlePushSubscribe(reqSubAutoReset);
+    testAssert(resSubAutoReset.status === 200, 'Valid PIN returns HTTP 200 on subscribe with prior failures');
+    testAssert(!rateLimitsDb.has(`target:${subMemberId}`), 'Subscribe route resets rateLimitsDb target:subMemberId upon successful auth');
 
     console.log('\n--- 5. Cross-Route Isolation & Persistent Verification ---');
     // Verify an unrelated member from an unrelated IP is NOT rate limited
