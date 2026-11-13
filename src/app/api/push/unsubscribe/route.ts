@@ -3,9 +3,10 @@ import { supabaseAdmin } from '@/lib/db';
 import { getRequestSessionMemberId } from '@/lib/auth';
 
 /**
- * POST: Unsubscribe a specific push endpoint or all push endpoints for an authenticated member.
+ * POST / DELETE: Unsubscribe a specific push endpoint or all push endpoints for an authenticated member.
  * All unsubscription operations strictly require an authenticated member session to prevent
  * unauthenticated subscription deletion / denial of service.
+ * Supports endpoint specification in request body or URL query parameter (e.g. ?endpoint=...).
  *
  * @param request - Incoming HTTP request containing endpoint or session credentials
  * @returns JSON response with unsubscription status
@@ -21,7 +22,20 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { endpoint } = body;
+    let endpoint: unknown = body?.endpoint;
+
+    // Check URL query parameters if endpoint was not supplied in the request body (e.g. RESTful DELETE without a body)
+    if (endpoint === undefined || endpoint === null) {
+      try {
+        const url = new URL(request.url);
+        const queryEndpoint = url.searchParams.get('endpoint');
+        if (queryEndpoint !== null) {
+          endpoint = queryEndpoint;
+        }
+      } catch {
+        // Fall back to body evaluation if URL parsing fails
+      }
+    }
 
     // 1. Specific endpoint provided: delete only that specific device's endpoint for the authenticated member
     if (endpoint !== undefined && endpoint !== null) {

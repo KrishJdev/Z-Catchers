@@ -370,11 +370,18 @@ export async function unsubscribeFromPush(): Promise<{ success: boolean; error?:
       }
 
       // Notify backend to remove from push_subscriptions
-      await fetch('/api/push/unsubscribe', {
+      const res = await fetch('/api/push/unsubscribe', {
         method: 'POST',
         headers,
         body: JSON.stringify({ endpoint }),
-      }).catch((err) => console.warn('Failed to unregister endpoint on server:', err));
+      }).catch((err) => {
+        console.warn('Network error unregistering endpoint on server:', err);
+        return null;
+      });
+
+      if (res && !res.ok) {
+        console.warn(`Server unregister endpoint returned HTTP ${res.status}`);
+      }
     }
 
     if (typeof localStorage !== 'undefined') {

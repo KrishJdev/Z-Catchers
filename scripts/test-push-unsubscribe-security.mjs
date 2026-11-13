@@ -260,6 +260,7 @@ async function run() {
     console.log('\n--- 6. HTTP DELETE Method Support ---');
     installQueryStub();
 
+    // 6.1 DELETE with JSON body
     const deleteReq = new Request('http://localhost:3000/api/push/unsubscribe', {
       method: 'DELETE',
       headers: {
@@ -269,8 +270,30 @@ async function run() {
       body: JSON.stringify({ endpoint: aliceEndpoint }),
     });
     const deleteRes = await handleUnsubscribeDelete(deleteReq);
-    testAssert(deleteRes.status === 200, 'DELETE /api/push/unsubscribe returns HTTP 200 OK');
+    testAssert(deleteRes.status === 200, 'DELETE /api/push/unsubscribe with body returns HTTP 200 OK');
     testAssert(queries.length === 1 && queries[0].op === 'delete', 'DELETE method executes database delete');
+
+    // 6.2 DELETE with URL query parameter (?endpoint=...) and no body
+    installQueryStub();
+    const queryDeleteReq = new Request(`http://localhost:3000/api/push/unsubscribe?endpoint=${encodeURIComponent(aliceEndpoint)}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${aliceToken}`,
+      },
+    });
+    const queryDeleteRes = await handleUnsubscribeDelete(queryDeleteReq);
+    const queryDeleteJson = await queryDeleteRes.json();
+    testAssert(queryDeleteRes.status === 200, 'DELETE with URL query parameter ?endpoint=... returns HTTP 200 OK');
+    testAssert(queryDeleteJson.endpoint === aliceEndpoint, 'Response echoes query parameter endpoint');
+    testAssert(queries.length === 1 && queries[0].op === 'delete', 'Query param DELETE executes database delete');
+    const hasQueryEndpointFilter = queries[0]?.filters.some(
+      (f) => f.col === 'endpoint' && f.val === aliceEndpoint
+    );
+    const hasQueryMemberFilter = queries[0]?.filters.some(
+      (f) => f.col === 'member_id' && f.val === memberAliceId
+    );
+    testAssert(hasQueryEndpointFilter, 'Query param DELETE enforces .eq("endpoint", endpoint)');
+    testAssert(hasQueryMemberFilter, 'Query param DELETE strictly enforces .eq("member_id", sessionMemberId) without accidental member-wide deletion');
 
     // -------------------------------------------------------------
     // 7. Client-Side Authorization Injection Verification (GH #36)
@@ -282,6 +305,10 @@ async function run() {
       pushClientContent.includes('const token = getStoredAuthToken();') &&
       pushClientContent.includes("headers['Authorization'] = `Bearer ${token}`;"),
       'pushClient.ts injects Authorization Bearer header into /api/push/unsubscribe'
+    );
+    testAssert(
+      pushClientContent.includes('Server unregister endpoint returned HTTP'),
+      'pushClient.ts logs diagnostic warnings when server unsubscription returns non-2xx status'
     );
 
     const pushModalContent = fs.readFileSync(path.resolve('src/components/PushModal.tsx'), 'utf8');
