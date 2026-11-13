@@ -4,7 +4,8 @@ import { getRequestSessionMemberId } from '@/lib/auth';
 
 /**
  * POST: Unsubscribe a specific push endpoint or all push endpoints for an authenticated member.
- * Member-wide unsubscription strictly requires an authenticated session.
+ * All unsubscription operations strictly require an authenticated member session to prevent
+ * unauthenticated subscription deletion / denial of service.
  *
  * @param request - Incoming HTTP request containing endpoint or session credentials
  * @returns JSON response with unsubscription status
@@ -12,23 +13,31 @@ import { getRequestSessionMemberId } from '@/lib/auth';
 export async function POST(request: Request) {
   try {
     const sessionMemberId = getRequestSessionMemberId(request);
+    if (!sessionMemberId) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Active member session required to unsubscribe from push notifications.' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const { endpoint } = body;
 
-    const targetMemberId = sessionMemberId;
-
-    // 1. Specific endpoint provided: delete only that specific device's endpoint
-    if (endpoint && typeof endpoint === 'string') {
-      const query = supabaseAdmin
-        .from('push_subscriptions')
-        .delete()
-        .eq('endpoint', endpoint);
-
-      if (sessionMemberId) {
-        query.eq('member_id', sessionMemberId);
+    // 1. Specific endpoint provided: delete only that specific device's endpoint for the authenticated member
+    if (endpoint !== undefined && endpoint !== null) {
+      if (typeof endpoint !== 'string' || !endpoint.trim()) {
+        return NextResponse.json(
+          { error: 'Invalid push endpoint format. Expected non-empty string.' },
+          { status: 400 }
+        );
       }
 
-      const { error } = await query;
+      const trimmedEndpoint = endpoint.trim();
+      const { error } = await supabaseAdmin
+        .from('push_subscriptions')
+        .delete()
+        .eq('endpoint', trimmedEndpoint)
+        .eq('member_id', sessionMemberId);
 
       if (error) {
         console.error('Failed to remove push subscription for endpoint:', error);
@@ -38,35 +47,31 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message: 'Endpoint unsubscribed successfully',
-        endpoint,
+        endpoint: trimmedEndpoint,
+        member_id: sessionMemberId,
       });
     }
 
-    // 2. No specific endpoint provided: require authenticated session for member-wide subscription removal
-    if (targetMemberId && typeof targetMemberId === 'string') {
-      const { error } = await supabaseAdmin
-        .from('push_subscriptions')
-        .delete()
-        .eq('member_id', targetMemberId);
+    // 2. No specific endpoint provided: member-wide subscription removal for authenticated session
+    const { error } = await supabaseAdmin
+      .from('push_subscriptions')
+      .delete()
+      .eq('member_id', sessionMemberId);
 
-      if (error) {
-        console.error('Failed to remove all push subscriptions for member:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: 'All push subscription endpoints for member unsubscribed successfully',
-        member_id: targetMemberId,
-      });
+    if (error) {
+      console.error('Failed to remove all push subscriptions for member:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(
-      { error: 'Missing endpoint or authenticated session for unsubscription' },
-      { status: 400 }
-    );
+    return NextResponse.json({
+      success: true,
+      message: 'All push subscription endpoints for member unsubscribed successfully',
+      member_id: sessionMemberId,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown server error';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const DELETE = POST;

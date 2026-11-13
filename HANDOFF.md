@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T11:37:00+05:30  
+> **Last Updated:** 2026-11-13T11:45:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `66fd444`  
+> **Latest Commit:** `1976687`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51)  
 > **Active Integration Pull Request:** None  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
 > **Active Production Release Pull Request:** [#52 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/52) (dev -> main)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 26/26 suites passed | `npm run build` clean)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 27/27 suites passed | `npm run build` clean, 28/28 routes)
 
 ---
 
@@ -69,6 +69,34 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 80: Security Hardening - Fix Unauthenticated Push Endpoint Deletion in `/api/push/unsubscribe` & Authorize Client Push Requests (GH #31, #46, #36, ZC-17, ZC-22)
+* **Unauthenticated Push Subscription Deletion Prevention (`src/app/api/push/unsubscribe/route.ts`):**
+  - Resolved critical security vulnerability (GH #31 / #46, ZC-17) where anonymous callers could delete arbitrary push subscriptions by sending `{ endpoint }`.
+  - Added strict session authentication guard: verifies `getRequestSessionMemberId(request)`. Rejects unauthenticated or invalid session requests immediately with HTTP 401 Unauthorized (`Unauthorized: Active member session required to unsubscribe from push notifications.`).
+  - Added input validation for `endpoint`: rejects empty/whitespace strings and non-string types with HTTP 400 Bad Request.
+  - Enforced member ownership filter: chained `.eq('endpoint', trimmedEndpoint).eq('member_id', sessionMemberId)` on database deletion, ensuring even authenticated actors cannot delete push subscriptions belonging to another user.
+  - Retained member-wide unsubscription when `endpoint` is omitted, strictly scoped to `.eq('member_id', sessionMemberId)`.
+  - Added `export const DELETE = POST;` to support RESTful HTTP `DELETE` calls alongside `POST`.
+* **Client-Side Authorization Header Injection (`src/lib/pushClient.ts`, `src/components/PushModal.tsx`):**
+  - Updated `unsubscribeFromPush` in `src/lib/pushClient.ts` to retrieve `getStoredAuthToken()` and include `Authorization: Bearer <token>` in the fetch request to `/api/push/unsubscribe`.
+  - Updated `handleSendTestPush` in `src/components/PushModal.tsx` to retrieve `getStoredAuthToken()` and include `Authorization: Bearer <token>` in the fetch request to `/api/push/test` (GH #36, ZC-22).
+* **Automated Unit Testing & Verification (`scripts/test-push-unsubscribe-security.mjs`, `scripts/run-tests.mjs`):**
+  - Created comprehensive standalone test suite `scripts/test-push-unsubscribe-security.mjs` covering:
+    1. Anonymous request rejection with HTTP 401 and zero database calls.
+    2. Tampered/invalid Bearer token rejection with HTTP 401.
+    3. Authenticated owner unsubscription via Bearer token and Cookie with `.eq('endpoint', ...).eq('member_id', ...)` verification.
+    4. Cross-member IDOR attack prevention (attacker session cannot delete victim endpoint).
+    5. Invalid whitespace and numeric endpoint format rejection with HTTP 400.
+    6. Member-wide subscription removal scoped strictly to caller's `member_id`.
+    7. HTTP `DELETE` method parity with `POST`.
+    8. Client-side authorization header presence checks in `pushClient.ts` and `PushModal.tsx`.
+    9. Database error resilience and HTTP 500 handling.
+  - Wired into `scripts/run-tests.mjs` (all 27/27 test suites passing cleanly in 43.39s).
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 27/27 test suites passing (43.39s).
+  - `npm run build` verified clean with all 28 routes compiled successfully.
 
 ### Phase 79: Production Release PR #52 Opened (`dev` -> `main`)
 * **Production Release Pull Request Created:**
@@ -1521,12 +1549,12 @@ d:\Projects\Z Catchers\
 | Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
 |---|---|---|---|---|---|
 | **ZC-16** | **High (P1)** | Security: Remove hardcoded fallback session secrets & dev PIN salt in production | `src/lib/auth.ts` | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | **DONE** |
-| **ZC-17** | **High (P1)** | Security: Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` | `src/app/api/push/unsubscribe/route.ts` | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) | **TODO** |
+| **ZC-17** | **High (P1)** | Security: Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` | `src/app/api/push/unsubscribe/route.ts` | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) / [#46](https://github.com/KrishJdev/Z-Catchers/issues/46) | **DONE** |
 | **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | **TODO** |
 | **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) | **TODO** |
 | **ZC-20** | **High (P1)** | Security: Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded | `src/app/api/members/update-schedule/route.ts` | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | **TODO** |
 | **ZC-21** | **Medium (P2)** | PWA / Notifications: Prevent race condition by recording nag deduplication before sending push | `src/app/api/members/nag-notif/route.ts` | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | **TODO** |
-| **ZC-22** | **Medium (P2)** | PWA / Push: Add Authorization Bearer header to push test and unsubscribe requests | `src/components/PushModal.tsx`, `src/lib/pushClient.ts` | [#36](https://github.com/KrishJdev/Z-Catchers/issues/36) | **TODO** |
+| **ZC-22** | **Medium (P2)** | PWA / Push: Add Authorization Bearer header to push test and unsubscribe requests | `src/components/PushModal.tsx`, `src/lib/pushClient.ts` | [#36](https://github.com/KrishJdev/Z-Catchers/issues/36) | **DONE** |
 | **ZC-23** | **Medium (P2)** | Backend: Align nag-assist date calculation with `getSleepCycleDate()` | `src/app/api/members/nag-assist/route.ts` | [#37](https://github.com/KrishJdev/Z-Catchers/issues/37) | **TODO** |
 | **ZC-24** | **Medium (P2)** | PWA / Service Worker: Resolve `notificationclick` message dropping during tab navigation | `public/sw.js` | [#38](https://github.com/KrishJdev/Z-Catchers/issues/38) | **TODO** |
 | **ZC-25** | **Medium (P2)** | Backend: Remove `wake_time_local` default destructuring to prevent schedule overwrites | `src/app/api/members/update-schedule/route.ts` | [#39](https://github.com/KrishJdev/Z-Catchers/issues/39) | **TODO** |
@@ -1559,14 +1587,14 @@ d:\Projects\Z Catchers\
 
 1. **Sprint 1 — P1 (High Priority) Security & Auth Hardening:**
    * **ZC-16 / GH #30 (`src/lib/auth.ts`):** **[DONE in Phase 76]** Failed closed in production for `SESSION_SECRET` and `PIN_SALT`. Strictly stripped fallback secrets when `NODE_ENV === 'production'`.
-   * **ZC-17 / GH #31 (`src/app/api/push/unsubscribe/route.ts`):** **[NEXT UP]** Require active authenticated session for unsubscriptions; scope deletion to `sessionMemberId`.
-   * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** Replace in-memory rate limiting with `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
+   * **ZC-17 / GH #31 & #46 (`src/app/api/push/unsubscribe/route.ts`):** **[DONE in Phase 80]** Strictly enforced authenticated member session for all unsubscriptions; chained `.eq('member_id', sessionMemberId)` on endpoint deletions to prevent IDOR and DoS subscription wiping.
+   * **ZC-22 / GH #36 (`src/components/PushModal.tsx`, `src/lib/pushClient.ts`):** **[DONE in Phase 80]** Injected `Authorization: Bearer <token>` into `/api/push/unsubscribe` and `/api/push/test` requests to survive cookie-restricted PWA runtimes.
+   * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** **[NEXT UP]** Replace in-memory rate limiting with `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
    * **ZC-19 / GH #33 (`src/lib/auth.ts`):** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
    * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles.
 
 2. **Sprint 2 — P2 (Medium Priority) PWA, Push & Concurrency Fixes:**
    * **ZC-21 / GH #35 (`src/app/api/members/nag-notif/route.ts`):** Commit notification log deduplication record before dispatching push notifications.
-   * **ZC-22 / GH #36 (`src/components/PushModal.tsx`, `src/lib/pushClient.ts`):** Attach `Authorization: Bearer <token>` header to `/api/push/test` and `/api/push/unsubscribe`.
    * **ZC-23 / GH #37 (`src/app/api/members/nag-assist/route.ts`):** Calculate local date using `getSleepCycleDate()` instead of standard calendar day.
    * **ZC-24 / GH #38 (`public/sw.js`):** Clean up `postMessage` during `client.navigate()` in service worker `notificationclick` handler to avoid dropped deep link actions.
    * **ZC-25 / GH #39 (`src/app/api/members/update-schedule/route.ts`):** Remove default `= '07:00'` destructuring to prevent unintentional overwriting of custom wake times.
