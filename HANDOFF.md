@@ -1,15 +1,13 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T01:55:00+05:30  
-> **Active Working Branch:** `krish`  
+> **Last Updated:** 2026-11-14T03:12:00+05:30  
+> **Active Working Branch:** `feat/zc-20-update-schedule-mod-rate-limit`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `5dcddbb`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56)  
-> **Active Integration Pull Requests:** [#57 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/57) (krish -> dev)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
-> **Active Production Release Pull Request:** [#52 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/52) (dev -> main)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 32/32 suites passed | `npm run build` clean)
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57)  
+> **Active Integration Pull Requests:** [#58 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/58) (`feat/zc-20-update-schedule-mod-rate-limit` -> `dev`)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52)  
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 33/33 suites passed | `npm run build` clean)
 
 ---
 
@@ -69,6 +67,32 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 86: Security Hardening - Prevent IDOR & Unauthenticated Claim in update-schedule When Moderator Rate Limit is Exceeded (GH #34, Jira ZC-20)
+* **Root Cause & Vulnerability Analysis:**
+  - In `src/app/api/members/update-schedule/route.ts#L67-L78`, when `mod_passcode` was provided and triggered the persistent rate limiter (`modRate.allowed === false`), the endpoint simply bypassed `isModeratorOverride = verifyModPasscode(mod_passcode)` without rejecting the request.
+  - `isModeratorOverride` remained `false`, and execution continued down into `isFirstTimeClaim = !isModeratorOverride && !isSessionOwner && !currentMember.passcode_hash`.
+  - For unlinked, unclaimed profiles (`!currentMember.passcode_hash`), this evaluated to `true`, allowing attackers who triggered moderator rate limits to fall through to line 120 and claim the unlinked profile by setting a PIN (`pin: "9999"`), bypassing moderator authentication entirely and leading to IDOR and unauthorized profile takeover.
+  - Additionally, supplying an invalid `mod_passcode` recorded a failure but did not reject the request, allowing an attacker to submit guessed moderator passcodes alongside a claim attempt.
+* **Remediation & Security Hardening:**
+  - **Fail-Fast Moderator Rate Limiting:** When `mod_passcode` is provided and persistent rate limits are exhausted (`!modRate.allowed`), immediately returns HTTP 429 Too Many Requests with a `Retry-After` header and informative error message, aborting execution before evaluating any profile claims or schedule mutations.
+  - **Immediate Invalid Moderator Passcode Rejection:** When `mod_passcode` is supplied but fails validation (`!verifyModPasscode(trimmedPasscode)`), records the failure in the persistent rate limiter and immediately returns HTTP 401 Unauthorized with `{ error: 'Invalid moderator passcode.' }`, eliminating any fallthrough to profile claims or PIN checks.
+  - **Clean Empty/Whitespace Passcode Guarding:** `hasModPasscode` safely treats `undefined`, `null`, and empty/whitespace strings as unsupplied, preserving normal member self-service profile updates and claims.
+  - **Moderator PIN Candidate Support:** When `isModeratorOverride` is true and `new_pin` or initial `pin` is supplied, validates 4-6 digit format and updates `passcode_hash` securely.
+* **Automated Unit Testing & Verification:**
+  - Created standalone test suite `scripts/test-update-schedule-mod-rate-limit.mjs` verifying:
+    1. 5 failed moderator passcode attempts return HTTP 401 and keep `passcode_hash` null.
+    2. 6th attempt returns HTTP 429 Too Many Requests with `Retry-After: 900s`, leaving `passcode_hash` null and schedule unmutated.
+    3. Invalid moderator passcodes reject immediately with HTTP 401.
+    4. Legitimate first-time profile claims with 4-to-6 digit PINs (and no `mod_passcode`) succeed with HTTP 200.
+    5. Valid moderator override bypasses the 48-hour cooldown and updates active schedule immediately.
+    6. Authenticated session owner attempting invalid moderator passcodes is rate-limited on `mod_gate_member:${sessionMemberId}` and returns HTTP 429, but legitimate owner updates without `mod_passcode` succeed with the 48-hour cooldown.
+    7. Moderator initial PIN assignment on unclaimed profiles verifies `passcode_hash` is securely set to the hashed PIN.
+    8. Moderator `new_pin` replacement on claimed profiles verifies `passcode_hash` is updated to the hashed new PIN.
+    9. Moderator invalid PIN candidate returns HTTP 400 and guarantees member `passcode_hash` and schedule remain completely unchanged.
+  - Registered in `scripts/run-tests.mjs` (all 33/33 unit test suites passing cleanly).
+  - Verified `npx tsc --noEmit` clean with 0 errors.
+  - Verified `npm run build` clean with all 28 Next.js routes compiled and prerendered.
 
 ### Phase 85: Strike Counts Durability, Alias Synchronization & Ground-Truth Reconciliation
 * **Root Cause & Vulnerability Analysis:**
@@ -1716,9 +1740,9 @@ d:\Projects\Z Catchers\
 |---|---|---|---|---|---|
 | **ZC-16** | **High (P1)** | Security: Remove hardcoded fallback session secrets & dev PIN salt in production | `src/lib/auth.ts` | [#30](https://github.com/KrishJdev/Z-Catchers/issues/30) | **DONE** |
 | **ZC-17** | **High (P1)** | Security: Fix unauthenticated push endpoint deletion in `/api/push/unsubscribe` | `src/app/api/push/unsubscribe/route.ts` | [#31](https://github.com/KrishJdev/Z-Catchers/issues/31) / [#46](https://github.com/KrishJdev/Z-Catchers/issues/46) | **DONE** |
-| **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) | **TODO** |
-| **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) | **TODO** |
-| **ZC-20** | **High (P1)** | Security: Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded | `src/app/api/members/update-schedule/route.ts` | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | **TODO** |
+| **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) / [#47](https://github.com/KrishJdev/Z-Catchers/issues/47) | **DONE** |
+| **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) / [#48](https://github.com/KrishJdev/Z-Catchers/issues/48) | **DONE** |
+| **ZC-20** | **High (P1)** | Security: Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded | `src/app/api/members/update-schedule/route.ts` | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | **DONE** |
 | **ZC-21** | **Medium (P2)** | PWA / Notifications: Prevent race condition by recording nag deduplication before sending push | `src/app/api/members/nag-notif/route.ts` | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | **TODO** |
 | **ZC-22** | **Medium (P2)** | PWA / Push: Add Authorization Bearer header to push test and unsubscribe requests | `src/components/PushModal.tsx`, `src/lib/pushClient.ts` | [#36](https://github.com/KrishJdev/Z-Catchers/issues/36) | **DONE** |
 | **ZC-23** | **Medium (P2)** | Backend: Align nag-assist date calculation with `getSleepCycleDate()` | `src/app/api/members/nag-assist/route.ts` | [#37](https://github.com/KrishJdev/Z-Catchers/issues/37) | **TODO** |
@@ -1755,9 +1779,15 @@ d:\Projects\Z Catchers\
    * **ZC-16 / GH #30 (`src/lib/auth.ts`):** **[DONE in Phase 76]** Failed closed in production for `SESSION_SECRET` and `PIN_SALT`. Strictly stripped fallback secrets when `NODE_ENV === 'production'`.
    * **ZC-17 / GH #31 & #46 (`src/app/api/push/unsubscribe/route.ts`):** **[DONE in Phase 80]** Strictly enforced authenticated member session for all unsubscriptions; chained `.eq('member_id', sessionMemberId)` on endpoint deletions to prevent IDOR and DoS subscription wiping.
    * **ZC-22 / GH #36 (`src/components/PushModal.tsx`, `src/lib/pushClient.ts`):** **[DONE in Phase 80]** Injected `Authorization: Bearer <token>` into `/api/push/unsubscribe` and `/api/push/test` requests to survive cookie-restricted PWA runtimes.
-   * **ZC-18 / GH #32 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** **[NEXT UP]** Replace in-memory rate limiting with `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
-   * **ZC-19 / GH #33 (`src/lib/auth.ts`):** Validate `x-forwarded-host` against trusted origins or prioritize `NEXT_PUBLIC_APP_URL` to prevent OAuth redirect poisoning.
-   * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles.
+   * **ZC-18 / GH #32 & #47 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** **[DONE in Phase 81 / PR #54]** Enforced persistent rate limiting via `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
+   * **ZC-19 / GH #33 & #48 (`src/lib/auth.ts`):** **[DONE in Phase 81 / PR #55]** Sanitized and validated `x-forwarded-host` in OAuth redirect base URL.
+   * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** **[DONE in Phase 86]** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles, and reject invalid moderator passcodes immediately with HTTP 401.
+
+2. **Sprint 2 — P2 (Medium Priority) PWA, Push & Concurrency Fixes:**
+   * **ZC-21 / GH #35 (`src/app/api/members/nag-notif/route.ts`):** **[NEXT UP]** Commit notification log deduplication record before dispatching push notifications.
+   * **ZC-23 / GH #37 (`src/app/api/members/nag-assist/route.ts`):** Calculate local date using `getSleepCycleDate()` instead of standard calendar day.
+   * **ZC-24 / GH #38 (`public/sw.js`):** Clean up `postMessage` during `client.navigate()` in service worker `notificationclick` handler to avoid dropped deep link actions.
+   * **ZC-25 / GH #39 (`src/app/api/members/update-schedule/route.ts`):** Remove default `= '07:00'` destructuring to prevent unintentional overwriting of custom wake times.
 
 2. **Sprint 2 — P2 (Medium Priority) PWA, Push & Concurrency Fixes:**
    * **ZC-21 / GH #35 (`src/app/api/members/nag-notif/route.ts`):** Commit notification log deduplication record before dispatching push notifications.
