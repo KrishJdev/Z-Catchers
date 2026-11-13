@@ -43,6 +43,7 @@ const UNIT_TESTS = [
   'test-weekly-schedule-resilience.mjs',
   'test-wind-down-awake-fix.mjs',
   'test-ui-normalization-and-button-wrapping.mjs',
+  'test-update-schedule-mod-rate-limit.mjs',
 ];
 
 // E2E tests: require live Supabase database or running network services
