@@ -1,12 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T13:38:00+05:30  
+> **Last Updated:** 2026-11-13T15:15:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `60bf05f`  
+> **Latest Commit:** `dec863d`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51)  
-> **Active Integration Pull Request:** [#53 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/53)  
+> **Active Integration Pull Requests:**  
+>   - [#53 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/53) (`krish` -> `dev`: unauthenticated push deletion fix & authorized client requests)  
+>   - [#54 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/54) (`feat/zc-18-persistent-rate-limiting` -> `dev`: persistent rate limiting in cancel-pending & push/subscribe)  
+>   - [#55 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/55) (`feat/zc-19-sanitize-oauth-redirect` -> `dev`: sanitize & validate x-forwarded-host in OAuth redirect)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
 > **Active Production Release Pull Request:** [#52 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/52) (dev -> main)  
 > **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 27/27 suites passed | `npm run build` clean, 28/28 routes)
@@ -69,6 +72,29 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 81: CodeRabbit PR Review Resolutions & Multi-PR Synchronizations (PR #53, PR #54, PR #55)
+* **PR #53 (`krish` -> `dev`) - Unauthenticated Push Deletion & Client Authorization Review Hardening:**
+  - **Malformed Body Rejection (`src/app/api/push/unsubscribe/route.ts`):** Resolved CodeRabbit review finding regarding destructive fallback on malformed JSON. Validates request body structure; returns HTTP 400 Bad Request for malformed JSON or non-object payloads before any database operations, eliminating accidental member-wide deletion.
+  - **Client Endpoint Retention on Server Error (`src/lib/pushClient.ts`):** Retains subscription endpoint in `STORAGE_KEY_PENDING_UNSUBSCRIBE = 'zcatchers_pending_unsubscribe_endpoint'` when server unregister returns non-OK status (e.g. 401 token expiration). Implemented `retryPendingUnsubscribe()` which automatically retries unregistering with the fresh session token upon login/token refresh.
+  - **Line-Ending Normalization:** Normalized CRLF line endings to LF across `src/lib/pushClient.ts`, `src/app/api/push/unsubscribe/route.ts`, and `HANDOFF.md`, eliminating over 3,500 lines of spurious whitespace diff churn.
+  - **Automated Tests (`scripts/test-push-unsubscribe-security.mjs`):** Added tests verifying HTTP 400 rejection for malformed JSON, array payloads, and pending unsubscribe retry state preservation.
+* **PR #54 (`feat/zc-18-persistent-rate-limiting` -> `dev`) - CodeRabbit Review Hardening & Scope Isolation:**
+  - **Pre-Merge Check & Scope Isolation:** Reverted line-ending-only changes in `src/app/api/push/unsubscribe/route.ts`, `src/components/PushModal.tsx`, and `src/lib/pushClient.ts` so they match merge base `dev` with zero diff (0 lines changed), satisfying CodeRabbit Out-of-Scope Pre-Merge check.
+  - **Moderator Passcode Double-Count Prevention (`src/app/api/members/cancel-pending/route.ts`):** Added guard rejecting invalid moderator passcode requests with HTTP 401 immediately when no PIN is supplied, preventing double counting of failures against shared client IP.
+  - **Rate Limiting Suite Hardening (`scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs`):**
+    1. Verified lockouts after explicitly clearing in-memory cache mirrors before 6th attempt, confirming routes return HTTP 429 from persistent database rows.
+    2. Added cold-instance test cases for both cancel-pending and push-subscribe with seeded persistent lockouts.
+    3. Added scenarios verifying route automatically resets rate-limit counters upon successful authentication with fewer than 5 failures without manual pre-clearing.
+    4. Ensured `clearAllPinRateLimitsPersistent()` runs inside mock adapter boundary before restoring `supabaseAdmin.from = origFrom`.
+* **PR #55 (`feat/zc-19-sanitize-oauth-redirect` -> `dev`) - OAuth Redirect Host Validation Review Hardening:**
+  - **Strict Preview Host Matching (`src/lib/auth.ts`):** Replaced loose prefix match `z-catchers-*.vercel.app` with strict regex requiring verified branch preview (`z-catchers-git-*.vercel.app`) or team-scoped deployment (`*-projects.vercel.app`), preventing prefix collisions from unrelated Vercel projects.
+  - **Structural URL Validation (`src/lib/auth.ts`):** In `getAppBaseUrl()`, validates `NEXT_PUBLIC_APP_URL` structurally via `new URL()` and checks `hostname` against exact known placeholder domains rather than loose substring matching, preserving valid domains such as `https://notexample.com`.
+  - **Production HTTPS Policy on `request.url` Fallback (`src/lib/auth.ts`):** Enforces HTTPS scheme in production for non-loopback hosts on `request.url` fallback.
+  - **Test Environment Isolation (`scripts/test-oauth-redirect-host-validation.mjs`):** Isolated `VERCEL_*` and `TRUSTED_HOSTS` environment variables around the production fallback test.
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors across all three branches.
+  - `npm run test:unit` verified clean with all 27/27 test suites passing (56.32s).
 
 ### Phase 80: Security Hardening & CodeRabbit Enhancements - Fix Unauthenticated Push Endpoint Deletion in `/api/push/unsubscribe` & Authorize Client Push Requests (GH #31, #46, #36, ZC-17, ZC-22)
 * **Unauthenticated Push Subscription Deletion Prevention (`src/app/api/push/unsubscribe/route.ts`):**
