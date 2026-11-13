@@ -1,15 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T15:15:00+05:30  
+> **Last Updated:** 2026-11-13T16:20:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `dec863d`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51)  
+> **Latest Commit:** `54924d2`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53)  
 > **Active Integration Pull Requests:**  
->   - [#53 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/53) (`krish` -> `dev`: unauthenticated push deletion fix & authorized client requests)  
->   - [#54 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/54) (`feat/zc-18-persistent-rate-limiting` -> `dev`: persistent rate limiting in cancel-pending & push/subscribe)  
->   - [#55 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/55) (`feat/zc-19-sanitize-oauth-redirect` -> `dev`: sanitize & validate x-forwarded-host in OAuth redirect)  
+>   - [#54 [OPEN - MERGEABLE]](https://github.com/KrishJdev/Z-Catchers/pull/54) (`feat/zc-18-persistent-rate-limiting` -> `dev`: persistent rate limiting in cancel-pending & push/subscribe)  
+>   - [#55 [OPEN - MERGEABLE]](https://github.com/KrishJdev/Z-Catchers/pull/55) (`feat/zc-19-sanitize-oauth-redirect` -> `dev`: sanitize & validate x-forwarded-host in OAuth redirect)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50)  
 > **Active Production Release Pull Request:** [#52 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/52) (dev -> main)  
 > **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 27/27 suites passed | `npm run build` clean, 28/28 routes)
@@ -72,6 +71,24 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 82: Merge Conflict Resolution & Scope Isolation Across Open PRs (PR #54 & PR #55)
+* **PR #54 (`feat/zc-18-persistent-rate-limiting` -> `dev`) Conflict Resolution & Pre-Merge Compliance:**
+  - Integrated latest `origin/dev` (`54924d2`) into `feat/zc-18-persistent-rate-limiting`.
+  - Resolved merge conflicts across `HANDOFF.md`, `scripts/test-push-unsubscribe-security.mjs`, `src/app/api/push/unsubscribe/route.ts`, and `src/components/PushModal.tsx` by synchronizing them directly with `origin/dev`.
+  - Verified exact file isolation: only 5 intended files modified against `origin/dev` (`scripts/run-tests.mjs`, `scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs`, `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`, `src/lib/rateLimit.ts`).
+  - Executed all 28 unit test suites (`npm run test:unit`) and type checking (`npx tsc --noEmit`), passing with 0 errors.
+  - Pushed merge commit `46bb0d7` to origin. Verified PR #54 status transitioned to `MERGEABLE`.
+* **PR #55 (`feat/zc-19-sanitize-oauth-redirect` -> `dev`) Conflict Resolution & Out-of-Scope Cleanup:**
+  - Integrated latest `origin/dev` (`54924d2`) into `feat/zc-19-sanitize-oauth-redirect`.
+  - Addressed CodeRabbit Pre-Merge Out-of-Scope Check by removing unrelated rate-limiting files (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`, `scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs`) and restoring `HANDOFF.md` from `origin/dev`.
+  - Verified exact file isolation: only 6 intended files modified against `origin/dev` (`src/lib/auth.ts`, `src/app/api/auth/login/route.ts`, `src/app/api/auth/register/route.ts`, `scripts/test-oauth-redirect-host-validation.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/run-tests.mjs`).
+  - Executed all 28 unit test suites (`npm run test:unit`) and type checking (`npx tsc --noEmit`), passing with 0 errors.
+  - Pushed merge commit `e4e0345` to origin. Verified PR #55 status transitioned to `MERGEABLE`.
+* **Active Working Branch (`krish`) Synchronization:**
+  - Switched back to canonical working branch `krish`.
+  - Fast-forward merged `origin/dev` containing PR #53 into `krish`.
+  - Verified both open PRs #54 and #55 are healthy, green, and fully mergeable without conflicts.
 
 ### Phase 81: CodeRabbit PR Review Resolutions & Multi-PR Synchronizations (PR #53, PR #54, PR #55)
 * **PR #53 (`krish` -> `dev`) - Unauthenticated Push Deletion & Client Authorization Review Hardening:**
