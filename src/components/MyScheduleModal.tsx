@@ -486,7 +486,7 @@ export function MyScheduleModal({
               setTab('claim');
               setErrorMessage(null);
             }}
-            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all min-h-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all min-h-[44px] ${
               tab === 'claim'
                 ? 'bg-status-amber text-night-bg font-bold shadow'
                 : 'text-cream-muted hover:text-cream-secondary'
@@ -507,7 +507,7 @@ export function MyScheduleModal({
               setWakeTime('07:00');
               setTimezone(formatGmtOffset(viewerTimezone));
             }}
-            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all min-h-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all min-h-[44px] ${
               tab === 'new'
                 ? 'bg-status-amber text-night-bg font-bold shadow'
                 : 'text-cream-muted hover:text-cream-secondary'
@@ -583,7 +583,7 @@ export function MyScheduleModal({
                     type="button"
                     onClick={handleCancelPending}
                     disabled={cancelLoading}
-                    className="shrink-0 min-h-[36px] rounded-lg border border-night-border bg-night-surface px-3 py-1.5 text-[11px] font-semibold text-cream-muted hover:text-status-coral hover:border-status-coral/40 transition-colors whitespace-nowrap"
+                    className="shrink-0 min-h-[44px] rounded-lg border border-night-border bg-night-surface px-3 py-1.5 text-[11px] font-semibold text-cream-muted hover:text-status-coral hover:border-status-coral/40 transition-colors whitespace-nowrap"
                   >
                     {cancelLoading ? 'Cancelling...' : 'Cancel Shift'}
                   </button>

@@ -317,6 +317,106 @@ async function run() {
       'PostgREST payload includes weekly_schedule now that column is detected in DB'
     );
 
+    // --------------------------------------------------------------------------
+    // 6. Pending Weekend Hydration Fallbacks (Preserve null and undefined)
+    // --------------------------------------------------------------------------
+    console.log('\n--- 6. Pending Weekend Hydration Fallbacks ---');
+
+    clearInMemoryWeekendHours();
+    const targetMember = {
+      id: 'mem_hydration_test_01',
+      discord_username: 'HydrationTester',
+      discord_handle: 'hydrationtester',
+      avatar_url: null,
+      journal_url: 'https://discord.com/channels/123/456',
+      bedtime_local: '23:00',
+      wake_time_local: '07:00',
+      timezone: 'UTC',
+      role: 'member',
+      passcode_hash: null,
+      is_active: true,
+      pending_bedtime_local: null,
+      pending_wake_time_local: null,
+      pending_timezone: null,
+      pending_effective_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Case A: Absent from both sources -> preserves undefined
+    setInMemoryWeekendHours('mem_hydration_test_01', {});
+    const hydratedAbsent = hydrateMemberWeekendHours({ ...targetMember });
+    testAssert(
+      hydratedAbsent.pending_weekend_bedtime_local === undefined,
+      'Absent from both sources preserves undefined for pending_weekend_bedtime_local'
+    );
+    testAssert(
+      hydratedAbsent.pending_weekend_wake_time_local === undefined,
+      'Absent from both sources preserves undefined for pending_weekend_wake_time_local'
+    );
+
+    // Case B: Explicit null on member -> preserves explicit null over fallback
+    setInMemoryWeekendHours('mem_hydration_test_01', {
+      pending_weekend_bedtime_local: '00:00',
+      pending_weekend_wake_time_local: '08:00',
+    });
+    const hydratedExplicitNull = hydrateMemberWeekendHours({
+      ...targetMember,
+      pending_weekend_bedtime_local: null,
+      pending_weekend_wake_time_local: null,
+    });
+    testAssert(
+      hydratedExplicitNull.pending_weekend_bedtime_local === null,
+      'Explicit null on member is preserved over fallback value'
+    );
+    testAssert(
+      hydratedExplicitNull.pending_weekend_wake_time_local === null,
+      'Explicit null on member is preserved over fallback value for wake time'
+    );
+
+    // Case C: Member undefined, fallback has value -> fallback used
+    const hydratedFallback = hydrateMemberWeekendHours({ ...targetMember });
+    testAssert(
+      hydratedFallback.pending_weekend_bedtime_local === '00:00',
+      'Fallback value is used when member has undefined'
+    );
+
+    // --------------------------------------------------------------------------
+    // 7. Failed or Unmatched DB Updates Do NOT Mutate in-memory cache
+    // --------------------------------------------------------------------------
+    console.log('\n--- 7. Isolated Cache State on Failed / Zero-Row Updates ---');
+
+    clearInMemoryWeekendHours();
+    const nonExistentId = 'mem_ghost_non_existent';
+
+    // Mock an update that returns null data (e.g. matching no rows)
+    const prevUpdateMock = supabaseAdmin.from;
+    supabaseAdmin.from = () => ({
+      update: () => ({
+        eq: () => ({
+          select: () => ({
+            maybeSingle: async () => ({
+              data: null,
+              error: null,
+            }),
+          }),
+        }),
+      }),
+    });
+
+    const failedResult = await updateMemberSafe(nonExistentId, {
+      weekly_schedule: sampleWeeklySchedule,
+    });
+
+    testAssert(failedResult.data === null, 'Update for non-existent row returns data: null');
+    const ghostFallback = getInMemoryWeekendHours(nonExistentId);
+    testAssert(
+      !ghostFallback || Object.keys(ghostFallback).length === 0,
+      'Failed or 0-row DB update does NOT populate in-memory schedule cache'
+    );
+
+    supabaseAdmin.from = prevUpdateMock;
+
     // Restore original supabaseAdmin.from
     supabaseAdmin.from = originalFrom;
 

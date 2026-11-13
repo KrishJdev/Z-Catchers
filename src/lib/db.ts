@@ -286,13 +286,13 @@ export function hydrateMemberWeekendHours(member: Member): Member {
         ? member.weekend_wake_time_local
         : fallback.weekend_wake_time_local ?? null,
     pending_weekend_bedtime_local:
-      member.pending_weekend_bedtime_local !== undefined && member.pending_weekend_bedtime_local !== null
+      member.pending_weekend_bedtime_local !== undefined
         ? member.pending_weekend_bedtime_local
-        : fallback.pending_weekend_bedtime_local ?? null,
+        : fallback.pending_weekend_bedtime_local,
     pending_weekend_wake_time_local:
-      member.pending_weekend_wake_time_local !== undefined && member.pending_weekend_wake_time_local !== null
+      member.pending_weekend_wake_time_local !== undefined
         ? member.pending_weekend_wake_time_local
-        : fallback.pending_weekend_wake_time_local ?? null,
+        : fallback.pending_weekend_wake_time_local,
     weekly_schedule:
       member.weekly_schedule !== undefined && member.weekly_schedule !== null
         ? member.weekly_schedule
@@ -421,7 +421,7 @@ export async function updateMemberSafe(
     updates.metastrikes_used = updates.metastrikes_count;
   }
 
-  // Store weekend hours & weekly schedule in memory cache in case columns do not exist in PostgreSQL.
+  // Store weekend hours & weekly schedule updates locally to commit after successful DB update
   const scheduleUpdates: InMemoryScheduleData = {};
   if ('weekend_bedtime_local' in updates) scheduleUpdates.weekend_bedtime_local = updates.weekend_bedtime_local;
   if ('weekend_wake_time_local' in updates) scheduleUpdates.weekend_wake_time_local = updates.weekend_wake_time_local;
@@ -429,9 +429,6 @@ export async function updateMemberSafe(
   if ('pending_weekend_wake_time_local' in updates) scheduleUpdates.pending_weekend_wake_time_local = updates.pending_weekend_wake_time_local;
   if ('weekly_schedule' in updates) scheduleUpdates.weekly_schedule = updates.weekly_schedule;
   if ('pending_weekly_schedule' in updates) scheduleUpdates.pending_weekly_schedule = updates.pending_weekly_schedule;
-  if (Object.keys(scheduleUpdates).length > 0) {
-    setInMemoryWeekendHours(memberId, scheduleUpdates);
-  }
 
   // Warn if weekly schedule columns are not yet migrated in Supabase (fallback to in-memory)
   if (isSupabaseConfigured) {
@@ -470,9 +467,6 @@ export async function updateMemberSafe(
       if (knownMemberColumns) {
         knownMemberColumns.delete(missingCol);
       }
-      if (missingCol in updates) {
-        setInMemoryWeekendHours(memberId, { [missingCol]: updates[missingCol] });
-      }
       delete cleanUpdates[missingCol];
       const retry = await performUpdate(cleanUpdates);
       data = retry.data;
@@ -482,18 +476,25 @@ export async function updateMemberSafe(
     }
   }
 
-  const hydrated = data ? hydrateMemberWeekendHours(data as unknown as Member) : null;
-  if (hydrated) {
+  if (data) {
+    if (Object.keys(scheduleUpdates).length > 0) {
+      setInMemoryWeekendHours(memberId, scheduleUpdates);
+    }
+    const hydrated = hydrateMemberWeekendHours(data as unknown as Member);
     memoryMembers.set(memberId, hydrated);
+    return { data: hydrated, error };
   } else if (!isSupabaseConfigured) {
     const existing = memoryMembers.get(memberId);
     if (existing) {
+      if (Object.keys(scheduleUpdates).length > 0) {
+        setInMemoryWeekendHours(memberId, scheduleUpdates);
+      }
       const merged = hydrateMemberWeekendHours({ ...existing, ...cleanUpdates, id: memberId });
       memoryMembers.set(memberId, merged);
       return { data: merged, error: null };
     }
   }
-  return { data: hydrated, error };
+  return { data: null, error };
 }
 
 /**

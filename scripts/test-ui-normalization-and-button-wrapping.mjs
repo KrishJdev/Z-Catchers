@@ -55,8 +55,8 @@ assert(
 // 4. ModDrawer: 7-day routine diff chips must have whitespace-nowrap and tabular-nums
 assert(
   modDrawerContent.includes('flex flex-wrap gap-1.5 text-xs') &&
-  modDrawerContent.includes('tabular-nums line-through') ||
-  modDrawerContent.includes('line-through tabular-nums'),
+  modDrawerContent.includes('whitespace-nowrap') &&
+  (modDrawerContent.includes('tabular-nums line-through') || modDrawerContent.includes('line-through tabular-nums')),
   '7-Day routine schedule diff chips must be a flex-wrap container with tabular-nums and whitespace-nowrap'
 );
 
@@ -82,10 +82,16 @@ assert(
   'MyScheduleModal must have clean <span>View My Sleep & Wake Calendar</span>'
 );
 
-// 8. MyScheduleModal: Active tab styling must use bg-status-amber text-night-bg font-bold shadow
+// 8. MyScheduleModal: Active tab styling must use bg-status-amber text-night-bg font-bold shadow and min-h-[44px]
 assert(
-  myScheduleModalContent.includes('bg-status-amber text-night-bg font-bold shadow'),
-  'MyScheduleModal active tab must use the normalized bg-status-amber text-night-bg font-bold shadow design token'
+  myScheduleModalContent.includes('bg-status-amber text-night-bg font-bold shadow') &&
+  myScheduleModalContent.includes('min-h-[44px]'),
+  'MyScheduleModal active tab must use the normalized bg-status-amber text-night-bg font-bold shadow and min-h-[44px]'
+);
+assert(
+  myScheduleModalContent.includes('min-h-[44px]') &&
+  myScheduleModalContent.includes('Cancel Shift'),
+  'MyScheduleModal Cancel Shift button must have min-h-[44px]'
 );
 
 // 9. MetastrikeModal: Close button must be normalized with min-h-[44px] min-w-[44px]
@@ -103,14 +109,23 @@ assert(
   modDrawerContent.includes('min-h-[44px] items-center justify-center gap-2 rounded-xl border border-status-sage/40 bg-status-sage/15 px-3.5 text-xs font-bold text-status-sage transition-colors hover:bg-status-sage/25 disabled:opacity-50 whitespace-nowrap shadow-sm'),
   'Webhook digest button must have min-h-[44px] and whitespace-nowrap'
 );
+assert(
+  modDrawerContent.includes('min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary'),
+  'ModDrawer strike adjusters must have min-h-[44px] min-w-[44px]'
+);
+assert(
+  modDrawerContent.includes('min-h-[44px] whitespace-nowrap') &&
+  modDrawerContent.includes('Pending Approvals'),
+  'ModDrawer tabs must have min-h-[44px] and whitespace-nowrap'
+);
 
-// 11. SleepCalendarModal: Edit Schedule button normalized with min-h-[40px] and whitespace-nowrap shrink-0
+// 11. SleepCalendarModal: Edit Schedule button normalized with min-h-[44px] and whitespace-nowrap shrink-0
 const sleepCalendarModalPath = path.resolve('src/components/SleepCalendarModal.tsx');
 const sleepCalendarContent = fs.readFileSync(sleepCalendarModalPath, 'utf8');
 assert(
-  sleepCalendarContent.includes('min-h-[40px] whitespace-nowrap shrink-0') &&
+  sleepCalendarContent.includes('min-h-[44px] whitespace-nowrap shrink-0') &&
   sleepCalendarContent.includes('Edit Schedule'),
-  'SleepCalendarModal Edit Schedule button must have min-h-[40px] and whitespace-nowrap shrink-0'
+  'SleepCalendarModal Edit Schedule button must have min-h-[44px] and whitespace-nowrap shrink-0'
 );
 
 // 12. SleepCalendarModal: Log/Edit wake-up button normalized with min-h-[44px] and whitespace-nowrap shrink-0
@@ -119,12 +134,12 @@ assert(
   'SleepCalendarModal wake-up log/edit button must have min-h-[44px] and whitespace-nowrap shrink-0'
 );
 
-// 13. PwaBanner: Dismiss button must meet min-h-[36px] min-w-[36px] touch target
+// 13. PwaBanner: Dismiss button must meet min-h-[44px] min-w-[44px] touch target
 const pwaBannerPath = path.resolve('src/components/PwaBanner.tsx');
 const pwaBannerContent = fs.readFileSync(pwaBannerPath, 'utf8');
 assert(
-  pwaBannerContent.includes('min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg'),
-  'PwaBanner dismiss buttons must meet min-h-[36px] min-w-[36px] touch target'
+  pwaBannerContent.includes('min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg'),
+  'PwaBanner dismiss buttons must meet min-h-[44px] min-w-[44px] touch target'
 );
 
 // 14. HomePage: Hero manual wake form buttons have whitespace-nowrap and shrink-0

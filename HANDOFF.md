@@ -117,7 +117,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   - Bound `memoryScheduleData` and `memoryMembers` to `globalThis` to prevent Next.js development hot-module reloads from clearing cached schedules.
   - Added cache TTL (30s) and `clearKnownMemberColumns()` so freshly added database columns are picked up automatically without requiring a server restart.
 * **Cron Dispatcher Member Hydration (`src/lib/cronDispatcher.ts`):**
-  - Integrated `hydrateMemberWeekendHours` into the member evaluation and self-healing cooldown promotion loop so active routines persist across background runs even on legacy database schemas.
+  - Integrated `hydrateMemberWeekendHours` into the member evaluation and self-healing cooldown promotion loop so active routines persist across background runs even on legacy database schemas. Note: on legacy schemas lacking `weekly_schedule` or `pending_weekly_schedule` columns, these schedules are cached in process-local memory (`globalThis.memoryScheduleData`), which may be lost upon server process restart or unavailable across multi-process deployments. Applying the database migration (`supabase/migrations/20261113_add_weekly_schedule.sql`) is required for durable, cross-process persistence.
 * **Standalone PostgreSQL Migration Script (`supabase/migrations/20261113_add_weekly_schedule.sql`):**
   - Created a dedicated, one-click migration file containing idempotent `ALTER TABLE public.members ADD COLUMN IF NOT EXISTS ...` statements for `weekly_schedule`, `pending_weekly_schedule`, `weekend_*`, `strikes_*`, and notification tracking columns.
   - Added backfill routines to generate 7-day variable schedules from existing weekday/weekend columns for legacy records.

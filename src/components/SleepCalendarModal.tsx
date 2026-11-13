@@ -916,7 +916,7 @@ export function SleepCalendarModal({
                     triggerHaptic(10);
                     onOpenScheduleModal();
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-1.5 text-xs font-semibold text-status-amber hover:bg-status-amber/25 transition-all min-h-[40px] whitespace-nowrap shrink-0"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-1.5 text-xs font-semibold text-status-amber hover:bg-status-amber/25 transition-all min-h-[44px] whitespace-nowrap shrink-0"
                 >
                   <Edit3 className="h-3.5 w-3.5" />
                   <span>Edit Schedule</span>

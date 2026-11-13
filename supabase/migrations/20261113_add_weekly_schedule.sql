@@ -24,7 +24,20 @@ ALTER TABLE public.members ADD COLUMN IF NOT EXISTS last_notified_cycle_date TEX
 ALTER TABLE public.members ADD COLUMN IF NOT EXISTS last_woke_up_at TIMESTAMPTZ;
 ALTER TABLE public.members ADD COLUMN IF NOT EXISTS last_wake_cycle_date TEXT;
 
--- 4. Backfill existing members from their current weekday and weekend columns
+-- 4. Backfill pending schedules for members with active cooldown but no preexisting schedule
+UPDATE public.members
+SET pending_weekly_schedule = jsonb_build_object(
+  'mon', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'tue', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'wed', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'thu', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
+  'fri', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
+  'sat', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
+  'sun', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local))
+)
+WHERE pending_effective_at IS NOT NULL AND pending_weekly_schedule IS NULL AND weekly_schedule IS NULL;
+
+-- 5. Backfill existing members from their current weekday and weekend columns
 UPDATE public.members
 SET weekly_schedule = jsonb_build_object(
   'mon', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local),
@@ -36,19 +49,6 @@ SET weekly_schedule = jsonb_build_object(
   'sun', jsonb_build_object('bedtime', bedtime_local, 'wake_time', wake_time_local)
 )
 WHERE weekly_schedule IS NULL;
-
--- 5. Backfill pending schedules for members with active cooldown
-UPDATE public.members
-SET pending_weekly_schedule = jsonb_build_object(
-  'mon', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
-  'tue', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
-  'wed', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
-  'thu', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local)),
-  'fri', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
-  'sat', jsonb_build_object('bedtime', COALESCE(pending_weekend_bedtime_local, pending_bedtime_local, weekend_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_weekend_wake_time_local, pending_wake_time_local, weekend_wake_time_local, wake_time_local)),
-  'sun', jsonb_build_object('bedtime', COALESCE(pending_bedtime_local, bedtime_local), 'wake_time', COALESCE(pending_wake_time_local, wake_time_local))
-)
-WHERE pending_effective_at IS NOT NULL AND pending_weekly_schedule IS NULL;
 
 -- 6. Reload Supabase PostgREST schema cache
 NOTIFY pgrst, 'reload schema';

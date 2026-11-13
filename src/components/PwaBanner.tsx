@@ -113,18 +113,11 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
   if (installPrompt) {
     return (
       <div className="relative mb-3 flex items-center justify-between gap-3 rounded-2xl border border-status-amber/40 bg-night-surface p-3.5 shadow-sm">
-        <button
-          onClick={handleDismiss}
-          className="absolute right-2 top-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
-          aria-label="Dismiss banner"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-status-amber/20 text-status-amber">
             <Download className="h-4 w-4" />
           </div>
-          <div className="pr-4">
+          <div className="min-w-0">
             <p className="text-xs font-semibold text-cream-primary">Install Z Catchers App</p>
             <p className="text-[11px] text-cream-secondary">
               Add to your home screen for instant bedtime alarms & full PWA experience.
@@ -132,12 +125,21 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
           </div>
         </div>
 
-        <button
-          onClick={handleInstallClick}
-          className="shrink-0 h-10 min-h-[40px] flex items-center justify-center rounded-xl bg-status-amber px-3.5 text-xs font-semibold text-night-bg transition-opacity hover:opacity-90 active:scale-95 whitespace-nowrap"
-        >
-          Install App
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleInstallClick}
+            className="h-10 min-h-[40px] flex items-center justify-center rounded-xl bg-status-amber px-3.5 text-xs font-semibold text-night-bg transition-opacity hover:opacity-90 active:scale-95 whitespace-nowrap"
+          >
+            Install App
+          </button>
+          <button
+            onClick={handleDismiss}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
+            aria-label="Dismiss banner"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     );
   }
@@ -145,10 +147,10 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
   // 2. iOS / iPadOS Safari Instructions (Add to Home Screen)
   if (isIosPrompt && !isPushGranted) {
     return (
-      <div className="relative mb-3 rounded-2xl border border-status-amber/40 bg-status-amber/10 p-3.5 text-xs text-cream-secondary">
+      <div className="relative mb-3 rounded-2xl border border-status-amber/40 bg-status-amber/10 p-3.5 pr-12 text-xs text-cream-secondary">
         <button
           onClick={handleDismiss}
-          className="absolute right-2 top-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
+          className="absolute right-2 top-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
           aria-label="Dismiss banner"
         >
           <X className="h-4 w-4" />
@@ -170,29 +172,31 @@ export function PwaBanner({ onEnablePush, isPushGranted }: PwaBannerProps) {
   // 3. Push Alert Gate Prompt (When push not granted)
   return (
     <div className="relative mb-3 flex items-center justify-between gap-3 rounded-2xl border border-status-amber/40 bg-night-surface p-3.5 shadow-sm">
-      <button
-        onClick={handleDismiss}
-        className="absolute right-2 top-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
-        aria-label="Dismiss banner"
-      >
-        <X className="h-4 w-4" />
-      </button>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-status-amber/20 text-status-amber">
           <Bell className="h-4 w-4" />
         </div>
-        <div className="pr-4">
+        <div className="min-w-0">
           <p className="text-xs font-semibold text-cream-primary">Never miss a friend&apos;s bedtime</p>
           <p className="text-[11px] text-cream-secondary">Get notified when it&apos;s time to nag awake friends.</p>
         </div>
       </div>
 
-      <button
-        onClick={onEnablePush}
-        className="shrink-0 h-10 min-h-[40px] flex items-center justify-center rounded-xl bg-status-amber px-3.5 text-xs font-semibold text-night-bg transition-opacity hover:opacity-90 active:scale-95 whitespace-nowrap"
-      >
-        Turn On
-      </button>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={onEnablePush}
+          className="h-10 min-h-[40px] flex items-center justify-center rounded-xl bg-status-amber px-3.5 text-xs font-semibold text-night-bg transition-opacity hover:opacity-90 active:scale-95 whitespace-nowrap"
+        >
+          Turn On
+        </button>
+        <button
+          onClick={handleDismiss}
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-cream-muted hover:text-cream-primary hover:bg-night-elevated transition-colors"
+          aria-label="Dismiss banner"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }

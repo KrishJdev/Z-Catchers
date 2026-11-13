@@ -952,7 +952,7 @@ export function ModDrawer({
               <button
                 type="submit"
                 disabled={verifying || !passcode}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-4 py-2.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50"
+                className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl bg-status-amber px-4 py-2.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50"
               >
                 {verifying ? (
                   <>
@@ -993,7 +993,7 @@ export function ModDrawer({
                   setEditingMember(null);
                   setPinResetMember(null);
                 }}
-                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-2 rounded-lg py-2 px-3 font-semibold transition-all min-h-[40px] whitespace-nowrap ${
+                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-2 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'pending'
                     ? 'bg-status-amber text-night-bg shadow-sm'
                     : 'text-cream-muted hover:text-cream-primary'
@@ -1021,7 +1021,7 @@ export function ModDrawer({
                   setEditingMember(null);
                   setPinResetMember(null);
                 }}
-                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[40px] whitespace-nowrap ${
+                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'roster'
                     ? 'bg-status-amber text-night-bg shadow-sm'
                     : 'text-cream-muted hover:text-cream-primary'
@@ -1047,7 +1047,7 @@ export function ModDrawer({
                   setEditingMember(null);
                   setPinResetMember(null);
                 }}
-                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[40px] whitespace-nowrap ${
+                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'add'
                     ? 'bg-status-amber text-night-bg shadow-sm'
                     : 'text-cream-muted hover:text-cream-primary'
@@ -1065,7 +1065,7 @@ export function ModDrawer({
                   setPinResetMember(null);
                   if (passcode) fetchWebhookStatus(passcode);
                 }}
-                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[40px] whitespace-nowrap ${
+                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'webhook'
                     ? 'bg-status-amber text-night-bg shadow-sm'
                     : 'text-cream-muted hover:text-cream-primary'
@@ -1412,14 +1412,14 @@ export function ModDrawer({
                     <button
                       type="button"
                       onClick={() => setEditingMember(null)}
-                      className="min-h-[40px] rounded-xl border border-night-border bg-night-bg px-4 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary whitespace-nowrap transition-colors"
+                      className="min-h-[44px] rounded-xl border border-night-border bg-night-bg px-4 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary whitespace-nowrap transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={actionLoadingId === 'save-edit'}
-                      className="min-h-[40px] flex items-center justify-center gap-1.5 rounded-xl bg-status-amber px-4 py-2 text-xs font-bold text-night-bg hover:opacity-95 disabled:opacity-50 whitespace-nowrap shadow-sm transition-opacity"
+                      className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl bg-status-amber px-4 py-2 text-xs font-bold text-night-bg hover:opacity-95 disabled:opacity-50 whitespace-nowrap shadow-sm transition-opacity"
                     >
                       {actionLoadingId === 'save-edit' ? (
                         <>
@@ -1482,14 +1482,14 @@ export function ModDrawer({
                     <button
                       type="button"
                       onClick={() => setPinResetMember(null)}
-                      className="min-h-[40px] rounded-xl border border-night-border bg-night-bg px-4 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary whitespace-nowrap transition-colors"
+                      className="min-h-[44px] rounded-xl border border-night-border bg-night-bg px-4 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary whitespace-nowrap transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={actionLoadingId === 'reset-pin'}
-                      className="min-h-[40px] flex items-center justify-center gap-1.5 rounded-xl bg-status-coral px-4 py-2 text-xs font-bold text-cream-primary hover:opacity-95 disabled:opacity-50 whitespace-nowrap shadow-sm transition-opacity"
+                      className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl bg-status-coral px-4 py-2 text-xs font-bold text-cream-primary hover:opacity-95 disabled:opacity-50 whitespace-nowrap shadow-sm transition-opacity"
                     >
                       {actionLoadingId === 'reset-pin' ? (
                         <>
@@ -1772,7 +1772,7 @@ export function ModDrawer({
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, -1, 0)}
                                   disabled={actionLoadingId === `strikes_${member.id}` || (member.strikes_used ?? 0) <= 0}
-                                  className="h-6 w-6 rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
+                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Decrement strikes"
                                 >
                                   -
@@ -1781,7 +1781,7 @@ export function ModDrawer({
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, 1, 0)}
                                   disabled={actionLoadingId === `strikes_${member.id}` || (member.strikes_used ?? 0) >= 3}
-                                  className="h-6 w-6 rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
+                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Increment strikes"
                                 >
                                   +
@@ -1803,7 +1803,7 @@ export function ModDrawer({
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, 0, -1)}
                                   disabled={actionLoadingId === `strikes_${member.id}` || (member.metastrikes_used ?? 0) <= 0}
-                                  className="h-6 w-6 rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
+                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Decrement metastrikes"
                                 >
                                   -
@@ -1812,7 +1812,7 @@ export function ModDrawer({
                                   type="button"
                                   onClick={() => handleAdjustStrikes(member, 0, 1)}
                                   disabled={actionLoadingId === `strikes_${member.id}` || (member.metastrikes_used ?? 0) >= 3}
-                                  className="h-6 w-6 rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
+                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                   title="Increment metastrikes"
                                 >
                                   +
