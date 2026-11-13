@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-13T11:06:30+05:30  
+> **Last Updated:** 2026-11-13T11:30:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `8a305f6`  
+> **Latest Commit:** `42d3a43`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49)  
 > **Active Integration Pull Request:** [#51 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/51)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28)  
@@ -69,6 +69,28 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 78: CodeRabbit PR #51 Review Hardening - Auth Fallback Gates, DB Pre-Read Fallback, Cycle Selection & Clock Freezing
+* **Fallback-Key Gating Hardening (`src/lib/auth.ts`):**
+  - Updated fallback gates in `getPinSalt()`, `getSessionSecret()`, and `getVerificationSessionSecrets()` so default dev secrets and salts are enabled only when `process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'`.
+  - All unset, staging, or unknown environments now fail closed by throwing `[CRITICAL]` errors or omitting public candidate keys, eliminating any risk of token forgery outside dev/test.
+* **Graceful Non-Durable Pre-Read DB Fallback (`src/lib/db.ts`):**
+  - Updated `upsertSleepLog` pre-read error handling: If the pre-read query encounters any error (including `PGRST205` or non-schema-cache read failure), sets `supabaseTableAvailable = false` and cleanly falls back to the in-memory store without attempting a durable upsert that could overwrite existing persisted columns with missing data.
+* **Active Sleep Cycle Recovery Window Validation (`src/app/api/members/wake-up/route.ts`):**
+  - Updated automatic cycle selection around `recentInBed` / check-in logs to validate the recovered cycle against the active-cycle window (`daysDiff >= 0 && daysDiff <= 1`) before assigning to `activeCycleDate`. Stale historical check-ins are ignored and default to the canonical current cycle.
+* **Independent Active Cycle Button-Mode Guard (`src/app/api/members/wake-up/route.ts`):**
+  - Updated button-mode validation to compare requested `cycleDate` against `activeCycleDate` (`if (mode === 'button' && cycleDate && cycleDate !== activeCycleDate)`), preventing historical button check-in requests before any sleep log write.
+* **Chronological Manual Candidate Ordering (`src/app/api/members/wake-up/route.ts`):**
+  - Updated candidate order in manual mode to evaluate `[candSameDay, candNextDay, candDayAfter]` in strict chronological order before filtering by bedtime reference and current time.
+* **Deterministic Test Clock Freezing & Non-Fixture DB Stubbing (`scripts/test-wake-up-durability-and-times.mjs`):**
+  - Freezes Luxon clock via `Settings.now = () => fixedNowMillis` and restores in `finally`, making route tests, 7-day guards, and candidate ordering completely independent of calendar execution date.
+  - Added Section 1B testing `upsertSleepLog` on a non-fixture member ID (`usr_prod_krish_non_fixture`) with stubbed `supabaseAdmin.from` returning `PGRST205`. Asserts null error, non-null fallback data, `isDurable: false`, and `stubUpsertAttempted: false` without triggering live database queries.
+* **Test Runner & Auth Pipeline Isolation (`scripts/run-tests.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/test-schedule-cooldown.mjs`):**
+  - Configured `scripts/run-tests.mjs` and `test-schedule-cooldown.mjs` to set `NODE_ENV = 'test'` if unset so all unit tests execute under explicit test mode.
+  - Added test section 1B.4 to `scripts/test-login-and-auth.mjs` asserting fail-closed behavior when `NODE_ENV` is unset or `'staging'`.
+* **Verification & Checks:**
+  - `npx tsc --noEmit` verified clean with 0 errors.
+  - `npm run test:unit` verified clean with all 26/26 test suites passing (42.62s).
 
 ### Phase 77: Wake-Up Durability, Sleep Log Persistence Fallback & State Machine Hardening
 * **In-Memory Fallback & Missing Schema Cache Resilience (`src/lib/db.ts`):**
