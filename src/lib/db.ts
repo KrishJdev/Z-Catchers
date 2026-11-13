@@ -398,6 +398,7 @@ export interface SafeUpdateOptions {
   select?: string;
   isFirstTimeClaim?: boolean;
   requireUnlinkedDiscord?: boolean;
+  conditions?: Record<string, any>;
 }
 
 /**
@@ -452,6 +453,15 @@ export async function updateMemberSafe(
     }
     if (options.requireUnlinkedDiscord) {
       query = query.is('discord_id', null);
+    }
+    if (options.conditions) {
+      for (const [col, val] of Object.entries(options.conditions)) {
+        if (val === null || val === undefined) {
+          query = query.is(col, null);
+        } else {
+          query = query.eq(col, val);
+        }
+      }
     }
     return options.select ? query.select(options.select).maybeSingle() : query.select('*').maybeSingle();
   };
@@ -594,6 +604,14 @@ export function isTestMemberFixture(memberId: string): boolean {
 
 export function getInMemoryMember(memberId: string): Member | undefined {
   return memoryMembers.get(memberId);
+}
+
+/**
+ * Updates the in-memory member cache WITHOUT registering its ID as a test fixture.
+ * Used for production strike and schedule synchronization without masking Supabase DB reads.
+ */
+export function syncInMemoryMemberCache(member: Member): void {
+  memoryMembers.set(member.id, hydrateMemberWeekendHours(member));
 }
 
 export function setInMemoryMember(member: Member): void {

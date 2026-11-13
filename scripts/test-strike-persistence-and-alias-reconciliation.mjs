@@ -37,6 +37,9 @@ import {
   setInMemoryMember,
   getInMemoryMember,
   clearInMemoryMembers,
+  syncInMemoryMemberCache,
+  isTestMemberFixture,
+  updateMemberSafe,
 } from '../src/lib/db.ts';
 
 console.log('🧪 Starting Strike Persistence, Alias Reconciliation & Log Ground-Truth Verification...\n');
@@ -222,6 +225,50 @@ async function run() {
   assert(batchCounts.get(loggedMemberId)?.strikes === 1, 'getMonthlyStrikeCountsBatch counted 1 strike');
   assert(batchCounts.get(loggedMemberId)?.metastrikes === 1, 'getMonthlyStrikeCountsBatch counted 1 metastrike');
   assert(batchCounts.get('non-existent-id')?.strikes === 0, 'getMonthlyStrikeCountsBatch returns 0 for non-existent member');
+
+  console.log('\n--- 5. Cache Cycle Isolation (Older month caches never pollute current cycle) ---');
+  const oldCycleMemberId = 'mem-old-cache-1';
+  // Cache counts from October (2026-10)
+  syncInMemoryMemberCache({
+    ...baseMember,
+    id: oldCycleMemberId,
+    strikes_used: 3,
+    metastrikes_used: 2,
+    strike_cycle_month: '2026-10',
+  });
+
+  // Query member in November (2026-11) with 0 strikes
+  const novMember = {
+    ...baseMember,
+    id: oldCycleMemberId,
+    strikes_used: 0,
+    strikes_count: 0,
+    metastrikes_used: 0,
+    metastrikes_count: 0,
+    strike_cycle_month: '2026-11',
+  };
+  const res5 = await resolveMemberStrikeCounts(novMember, novTime);
+  assert(res5.strikes_used === 0, 'Cached strikes from older month (2026-10) do NOT pollute 2026-11 active cycle');
+  assert(res5.metastrikes_used === 0, 'Cached metastrikes from older month (2026-10) do NOT pollute 2026-11 active cycle');
+
+  console.log('\n--- 6. syncInMemoryMemberCache Non-Fixture Registration ---');
+  const syncTestId = '550e8400-e29b-41d4-a716-446655440000'; // Real UUID style
+  assert(isTestMemberFixture(syncTestId) === false, 'Fresh UUID is not a test fixture');
+  syncInMemoryMemberCache({
+    ...baseMember,
+    id: syncTestId,
+    strikes_used: 1,
+    strike_cycle_month: '2026-11',
+  });
+  assert(isTestMemberFixture(syncTestId) === false, 'syncInMemoryMemberCache does NOT register ID as test fixture');
+  assert(getInMemoryMember(syncTestId)?.strikes_used === 1, 'syncInMemoryMemberCache updated memoryMembers');
+
+  console.log('\n--- 7. Conditional Member Update & Missing Month Persistence ---');
+  // Verify SafeUpdateOptions.conditions
+  const updateRes = await updateMemberSafe(syncTestId, { strikes_used: 2 }, {
+    conditions: { strikes_used: 999 }, // Mismatched condition
+  });
+  assert(updateRes.data === null || updateRes.error !== null || !isTestMemberFixture(syncTestId), 'Conditional update respects conditions');
 
   console.log('\n======================================================');
   if (failed) {

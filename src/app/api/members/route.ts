@@ -7,7 +7,7 @@ import {
   updateMemberSafe,
   hydrateMemberWeekendHours,
 } from '@/lib/db';
-import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate } from '@/lib/sleepEngine';
+import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate, getCurrentStrikeMonth } from '@/lib/sleepEngine';
 import { sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
 import { toValidLuxonZone, isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import {
@@ -135,13 +135,21 @@ export async function GET(request: Request) {
       });
     }
 
-    // Batched resolution: query monthly logged strikes, nightly strike logs for tonight, and recent strikes
-    const currentMonth = nowUtc.toFormat('yyyy-MM');
-    const [monthlyStrikeCountsMap, strikeLogsMap, recentStrikesMap] = await Promise.all([
-      getMonthlyStrikeCountsBatch(
-        memberItems.map((item) => item.hydratedMember.id),
-        currentMonth
-      ),
+    // Batched resolution: query monthly logged strikes grouped by local member strike month, nightly logs for tonight, and recent strikes
+    const membersByMonth = new Map<string, string[]>();
+    for (const item of memberItems) {
+      const localMonth = getCurrentStrikeMonth(item.hydratedMember, nowUtc);
+      const list = membersByMonth.get(localMonth) || [];
+      list.push(item.hydratedMember.id);
+      membersByMonth.set(localMonth, list);
+    }
+
+    const monthlyStrikePromises = Array.from(membersByMonth.entries()).map(([month, ids]) =>
+      getMonthlyStrikeCountsBatch(ids, month)
+    );
+
+    const [monthlyResults, strikeLogsMap, recentStrikesMap] = await Promise.all([
+      Promise.all(monthlyStrikePromises),
       getNightlyStrikeLogsBatch(
         memberItems.map((item) => ({
           targetMemberId: item.hydratedMember.id,
@@ -153,6 +161,13 @@ export async function GET(request: Request) {
         nowUtc
       ),
     ]);
+
+    const monthlyStrikeCountsMap = new Map<string, { strikes: number; metastrikes: number }>();
+    for (const batchMap of monthlyResults) {
+      for (const [id, counts] of batchMap.entries()) {
+        monthlyStrikeCountsMap.set(id, counts);
+      }
+    }
 
     const strikeInfos = await Promise.all(
       memberItems.map((item) => {

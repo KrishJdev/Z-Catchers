@@ -4,7 +4,7 @@ import {
   isSupabaseConfigured,
   updateMemberSafe,
   getInMemoryMember,
-  setInMemoryMember,
+  syncInMemoryMemberCache,
   sanitizeMemberPayload,
 } from './db.ts';
 import type { Member, NightlyStrikeLog, StrikeRecordType } from './db.ts';
@@ -68,7 +68,7 @@ export async function resolveMemberStrikeCounts(
   const fallback = memoryStore.memberCounts.get(member.id);
   const inMem = getInMemoryMember(member.id);
 
-  // Safely reconcile alias columns: never let a default 0 in one alias clobber an active strike in another
+  // Safely reconcile alias columns on the member record itself
   const memberStrikes = Math.max(
     typeof member.strikes_used === 'number' ? member.strikes_used : 0,
     typeof member.strikes_count === 'number' ? member.strikes_count : 0
@@ -78,28 +78,45 @@ export async function resolveMemberStrikeCounts(
     typeof member.metastrikes_count === 'number' ? member.metastrikes_count : 0
   );
 
-  const fallbackStrikes = Math.max(
-    typeof fallback?.strikes_used === 'number' ? fallback.strikes_used : 0,
-    typeof fallback?.strikes_count === 'number' ? fallback.strikes_count : 0,
-    typeof inMem?.strikes_used === 'number' ? inMem.strikes_used : 0,
-    typeof inMem?.strikes_count === 'number' ? inMem.strikes_count : 0
-  );
-  const fallbackMetas = Math.max(
-    typeof fallback?.metastrikes_used === 'number' ? fallback.metastrikes_used : 0,
-    typeof fallback?.metastrikes_count === 'number' ? fallback.metastrikes_count : 0,
-    typeof inMem?.metastrikes_used === 'number' ? inMem.metastrikes_used : 0,
-    typeof inMem?.metastrikes_count === 'number' ? inMem.metastrikes_count : 0
-  );
-
-  let strikes_used = Math.max(memberStrikes, fallbackStrikes);
-  let metastrikes_used = Math.max(memberMetas, fallbackMetas);
-
   // Default uninitialized cycle month to current month rather than January 2026 to prevent false reset wiping
   const strike_cycle_month =
     member.strike_cycle_month ||
-    fallback?.strike_cycle_month ||
-    inMem?.strike_cycle_month ||
+    (fallback?.strike_cycle_month === currentMonth ? fallback.strike_cycle_month : undefined) ||
+    (inMem?.strike_cycle_month === currentMonth ? inMem.strike_cycle_month : undefined) ||
     currentMonth;
+
+  // Use cached counts only when each cache source's strike_cycle_month matches the active member cycle
+  const fallbackMatchesCycle = Boolean(fallback?.strike_cycle_month && fallback.strike_cycle_month === strike_cycle_month);
+  const inMemMatchesCycle = Boolean(inMem?.strike_cycle_month && inMem.strike_cycle_month === strike_cycle_month);
+
+  const fallbackStrikes = Math.max(
+    fallbackMatchesCycle && typeof fallback?.strikes_used === 'number' ? fallback.strikes_used : 0,
+    fallbackMatchesCycle && typeof fallback?.strikes_count === 'number' ? fallback.strikes_count : 0,
+    inMemMatchesCycle && typeof inMem?.strikes_used === 'number' ? inMem.strikes_used : 0,
+    inMemMatchesCycle && typeof inMem?.strikes_count === 'number' ? inMem.strikes_count : 0
+  );
+  const fallbackMetas = Math.max(
+    fallbackMatchesCycle && typeof fallback?.metastrikes_used === 'number' ? fallback.metastrikes_used : 0,
+    fallbackMatchesCycle && typeof fallback?.metastrikes_count === 'number' ? fallback.metastrikes_count : 0,
+    inMemMatchesCycle && typeof inMem?.metastrikes_used === 'number' ? inMem.metastrikes_used : 0,
+    inMemMatchesCycle && typeof inMem?.metastrikes_count === 'number' ? inMem.metastrikes_count : 0
+  );
+
+  const hasMemberCounts =
+    typeof member.strikes_count === 'number' || typeof member.strikes_used === 'number';
+
+  let strikes_used: number;
+  let metastrikes_used: number;
+
+  if (isSupabaseConfigured && hasMemberCounts) {
+    // A successful database read takes precedence over stale cached counts or logs
+    strikes_used = memberStrikes;
+    metastrikes_used = memberMetas;
+  } else {
+    // When database read fails or is unconfigured, fall back to matching cached member counts
+    strikes_used = Math.max(memberStrikes, fallbackStrikes);
+    metastrikes_used = Math.max(memberMetas, fallbackMetas);
+  }
 
   const dummyMember: Member = {
     ...member,
@@ -126,62 +143,52 @@ export async function resolveMemberStrikeCounts(
     };
   }
 
-  // Reconcile with verified strike logs from nightly_strike_logs for the active cycle month
-  let effectiveLoggedStrikes = 0;
-  let effectiveLoggedMetas = 0;
+  // When DB read failed or DB is not configured, reconcile with verified strike logs from nightly_strike_logs
+  if (!(isSupabaseConfigured && hasMemberCounts)) {
+    let effectiveLoggedStrikes = 0;
+    let effectiveLoggedMetas = 0;
 
-  if (loggedCounts) {
-    effectiveLoggedStrikes = loggedCounts.loggedStrikes ?? 0;
-    effectiveLoggedMetas = loggedCounts.loggedMetas ?? 0;
-  } else {
-    // If not provided in batch, check memoryStore and (if single check) query monthly logs
-    for (const log of memoryStore.logs.values()) {
-      if (
-        log.target_member_id === member.id &&
-        log.sleep_cycle_date.startsWith(strike_cycle_month)
-      ) {
-        if (log.record_type === 'strike') effectiveLoggedStrikes++;
-        else if (log.record_type === 'metastrike') effectiveLoggedMetas++;
-      }
-    }
-
-    if (isSupabaseConfigured && member.id) {
-      try {
-        const { data: dbLogs } = await supabaseAdmin
-          .from('nightly_strike_logs')
-          .select('record_type, sleep_cycle_date')
-          .eq('target_member_id', member.id)
-          .gte('sleep_cycle_date', `${strike_cycle_month}-01`)
-          .lte('sleep_cycle_date', `${strike_cycle_month}-31`)
-          .in('record_type', ['strike', 'metastrike']);
-
-        if (Array.isArray(dbLogs)) {
-          const countedStrikeDates = new Set<string>();
-          const countedMetaDates = new Set<string>();
-          for (const row of dbLogs) {
-            if (row.record_type === 'strike') countedStrikeDates.add(row.sleep_cycle_date);
-            else if (row.record_type === 'metastrike') countedMetaDates.add(row.sleep_cycle_date);
-          }
-          effectiveLoggedStrikes = Math.max(effectiveLoggedStrikes, countedStrikeDates.size);
-          effectiveLoggedMetas = Math.max(effectiveLoggedMetas, countedMetaDates.size);
+    if (loggedCounts) {
+      effectiveLoggedStrikes = loggedCounts.loggedStrikes ?? 0;
+      effectiveLoggedMetas = loggedCounts.loggedMetas ?? 0;
+    } else {
+      for (const log of memoryStore.logs.values()) {
+        if (
+          log.target_member_id === member.id &&
+          log.sleep_cycle_date.startsWith(strike_cycle_month)
+        ) {
+          if (log.record_type === 'strike') effectiveLoggedStrikes++;
+          else if (log.record_type === 'metastrike') effectiveLoggedMetas++;
         }
-      } catch {
-        // Fall back gracefully
       }
+    }
+
+    if (effectiveLoggedStrikes > strikes_used) {
+      strikes_used = Math.min(3, effectiveLoggedStrikes);
+    }
+    if (effectiveLoggedMetas > metastrikes_used) {
+      metastrikes_used = Math.min(3, effectiveLoggedMetas);
     }
   }
 
-  // Reconcile: strike counts can never drop below the active logged community records for this month
-  if (effectiveLoggedStrikes > strikes_used) {
-    strikes_used = Math.min(3, effectiveLoggedStrikes);
-  }
-  if (effectiveLoggedMetas > metastrikes_used) {
-    metastrikes_used = Math.min(3, effectiveLoggedMetas);
-  }
-
-  // Auto-heal member row asynchronously if stored counts were lagging behind verified strike records
-  if (strikes_used > memberStrikes || metastrikes_used > memberMetas) {
-    updateMemberStrikeCounts(member.id, strikes_used, metastrikes_used, strike_cycle_month).catch(() => {});
+  // Auto-heal member row if stored counts were lagging behind verified strike records or if stored month is missing
+  const needsMonthPersist = !member.strike_cycle_month && Boolean(strike_cycle_month);
+  if (member.id && (strikes_used > memberStrikes || metastrikes_used > memberMetas || needsMonthPersist)) {
+    const repairConditions: Record<string, any> = {};
+    if (typeof member.strikes_used === 'number') {
+      repairConditions.strikes_used = member.strikes_used;
+    }
+    if (typeof member.metastrikes_used === 'number') {
+      repairConditions.metastrikes_used = member.metastrikes_used;
+    }
+    // Wait for the repair to settle before returning so subsequent strike mutations cannot be overwritten by a late repair
+    await updateMemberStrikeCounts(
+      member.id,
+      strikes_used,
+      metastrikes_used,
+      strike_cycle_month,
+      Object.keys(repairConditions).length > 0 ? repairConditions : undefined
+    );
   }
 
   return {
@@ -199,7 +206,8 @@ export async function updateMemberStrikeCounts(
   memberId: string,
   strikesUsed: number,
   metastrikesUsed: number,
-  cycleMonth: string
+  cycleMonth: string,
+  conditions?: Record<string, any>
 ): Promise<void> {
   const clampedStrikes = Math.max(0, Math.min(3, strikesUsed));
   const clampedMetastrikes = Math.max(0, Math.min(3, metastrikesUsed));
@@ -212,10 +220,10 @@ export async function updateMemberStrikeCounts(
     strike_cycle_month: cycleMonth,
   });
 
-  // Keep in-memory member synchronized if present
+  // Keep in-memory member synchronized if present (cache-only setter without registering as test fixture)
   const inMem = getInMemoryMember(memberId);
   if (inMem) {
-    setInMemoryMember({
+    syncInMemoryMemberCache({
       ...inMem,
       strikes_used: clampedStrikes,
       strikes_count: clampedStrikes,
@@ -227,14 +235,18 @@ export async function updateMemberStrikeCounts(
 
   // Use updateMemberSafe for resilient Supabase update with auto-column stripping and schema cache mismatch recovery
   try {
-    await updateMemberSafe(memberId, {
-      strikes_used: clampedStrikes,
-      strikes_count: clampedStrikes,
-      metastrikes_used: clampedMetastrikes,
-      metastrikes_count: clampedMetastrikes,
-      strike_cycle_month: cycleMonth,
-      updated_at: DateTime.utc().toISO(),
-    });
+    await updateMemberSafe(
+      memberId,
+      {
+        strikes_used: clampedStrikes,
+        strikes_count: clampedStrikes,
+        metastrikes_used: clampedMetastrikes,
+        metastrikes_count: clampedMetastrikes,
+        strike_cycle_month: cycleMonth,
+        updated_at: DateTime.utc().toISO(),
+      },
+      conditions ? { conditions } : {}
+    );
   } catch (e) {
     console.warn('Could not update member strike counts in DB:', e);
   }
@@ -805,6 +817,7 @@ export async function recordStrikeVote(
                 updated_at: nowUtc.toISO(),
               })
               .eq('id', existingLog.id)
+              .eq('record_type', 'pending_vote')
               .select('*')
               .maybeSingle();
 
