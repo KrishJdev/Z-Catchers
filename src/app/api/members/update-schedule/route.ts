@@ -64,23 +64,54 @@ export async function POST(request: Request) {
     const sessionMemberId = getRequestSessionMemberId(request);
     const isSessionOwner = Boolean(sessionMemberId && sessionMemberId === currentMember.id);
     let isModeratorOverride = false;
-    if (mod_passcode) {
+    const hasModPasscode =
+      mod_passcode !== undefined &&
+      mod_passcode !== null &&
+      (typeof mod_passcode !== 'string' || mod_passcode.trim().length > 0);
+
+    if (hasModPasscode) {
       const modGateTarget = sessionMemberId ? `mod_gate_member:${sessionMemberId}` : `mod_gate_ip:${clientIp}`;
       const modRate = await checkPinRateLimitPersistent(clientIp, modGateTarget);
-      if (modRate.allowed) {
-        isModeratorOverride = verifyModPasscode(mod_passcode);
-        if (!isModeratorOverride) {
-          await recordPinFailurePersistent(clientIp, modGateTarget);
-        } else {
-          await resetPinFailurePersistent(clientIp, modGateTarget);
-        }
+      if (!modRate.allowed) {
+        return NextResponse.json(
+          {
+            error: `Too many failed moderator passcode attempts. Please wait ${modRate.retryAfterSeconds} seconds before trying again.`,
+          },
+          {
+            status: 429,
+            headers: { 'Retry-After': String(modRate.retryAfterSeconds) },
+          }
+        );
+      }
+
+      const trimmedPasscode = typeof mod_passcode === 'string' ? mod_passcode.trim() : String(mod_passcode);
+      isModeratorOverride = verifyModPasscode(trimmedPasscode);
+      if (!isModeratorOverride) {
+        await recordPinFailurePersistent(clientIp, modGateTarget);
+        return NextResponse.json(
+          { error: 'Invalid moderator passcode.' },
+          { status: 401 }
+        );
+      } else {
+        await resetPinFailurePersistent(clientIp, modGateTarget);
       }
     }
     const isFirstTimeClaim = !isModeratorOverride && !isSessionOwner && !currentMember.passcode_hash;
 
     let updatedPasscodeHash = currentMember.passcode_hash;
 
-    if (!isModeratorOverride) {
+    if (isModeratorOverride) {
+      const pinCandidate = new_pin || (!currentMember.passcode_hash ? pin : undefined);
+      if (pinCandidate) {
+        if (typeof pinCandidate !== 'string' || !/^\d{4,6}$/.test(pinCandidate.trim())) {
+          return NextResponse.json(
+            { error: 'PIN must be 4 to 6 digits.' },
+            { status: 400 }
+          );
+        }
+        updatedPasscodeHash = hashPin(pinCandidate.trim());
+      }
+    } else {
       if (isSessionOwner) {
         if (!currentMember.is_active) {
           return NextResponse.json({ error: 'Member is inactive.' }, { status: 403 });
