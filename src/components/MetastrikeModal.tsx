@@ -92,9 +92,11 @@ export function MetastrikeModal({
       <div className="relative w-full max-w-md rounded-2xl border border-night-border bg-night-surface p-5 sm:p-6 shadow-2xl max-h-[90dvh] overflow-y-auto">
         {/* Close Button */}
         <button
+          type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 p-1.5 text-cream-muted hover:text-cream-primary rounded-lg hover:bg-night-elevated transition-colors"
+          className="absolute right-4 top-4 min-h-[44px] min-w-[44px] flex items-center justify-center p-1.5 text-cream-muted hover:text-cream-primary rounded-xl border border-night-border hover:bg-night-elevated transition-colors"
           title="Close"
+          aria-label="Close modal"
         >
           <X className="h-4 w-4" />
         </button>
