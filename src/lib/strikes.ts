@@ -177,9 +177,16 @@ export async function resolveMemberStrikeCounts(
     const repairConditions: Record<string, any> = {};
     if (typeof member.strikes_used === 'number') {
       repairConditions.strikes_used = member.strikes_used;
+    } else if (typeof member.strikes_count === 'number') {
+      repairConditions.strikes_count = member.strikes_count;
     }
     if (typeof member.metastrikes_used === 'number') {
       repairConditions.metastrikes_used = member.metastrikes_used;
+    } else if (typeof member.metastrikes_count === 'number') {
+      repairConditions.metastrikes_count = member.metastrikes_count;
+    }
+    if (member.strike_cycle_month === null || member.strike_cycle_month === undefined) {
+      repairConditions.strike_cycle_month = null;
     }
     // Wait for the repair to settle before returning so subsequent strike mutations cannot be overwritten by a late repair
     await updateMemberStrikeCounts(
@@ -212,30 +219,32 @@ export async function updateMemberStrikeCounts(
   const clampedStrikes = Math.max(0, Math.min(3, strikesUsed));
   const clampedMetastrikes = Math.max(0, Math.min(3, metastrikesUsed));
 
-  memoryStore.memberCounts.set(memberId, {
-    strikes_used: clampedStrikes,
-    strikes_count: clampedStrikes,
-    metastrikes_used: clampedMetastrikes,
-    metastrikes_count: clampedMetastrikes,
-    strike_cycle_month: cycleMonth,
-  });
-
-  // Keep in-memory member synchronized if present (cache-only setter without registering as test fixture)
-  const inMem = getInMemoryMember(memberId);
-  if (inMem) {
-    syncInMemoryMemberCache({
-      ...inMem,
+  // If no conditions required, update in-memory cache optimistically
+  if (!conditions) {
+    memoryStore.memberCounts.set(memberId, {
       strikes_used: clampedStrikes,
       strikes_count: clampedStrikes,
       metastrikes_used: clampedMetastrikes,
       metastrikes_count: clampedMetastrikes,
       strike_cycle_month: cycleMonth,
     });
+
+    const inMem = getInMemoryMember(memberId);
+    if (inMem) {
+      syncInMemoryMemberCache({
+        ...inMem,
+        strikes_used: clampedStrikes,
+        strikes_count: clampedStrikes,
+        metastrikes_used: clampedMetastrikes,
+        metastrikes_count: clampedMetastrikes,
+        strike_cycle_month: cycleMonth,
+      });
+    }
   }
 
   // Use updateMemberSafe for resilient Supabase update with auto-column stripping and schema cache mismatch recovery
   try {
-    await updateMemberSafe(
+    const { data } = await updateMemberSafe(
       memberId,
       {
         strikes_used: clampedStrikes,
@@ -247,6 +256,29 @@ export async function updateMemberStrikeCounts(
       },
       conditions ? { conditions } : {}
     );
+
+    // If conditions were passed, only commit to memory if conditional DB write succeeded (or running offline)
+    if (conditions && (data || !isSupabaseConfigured)) {
+      memoryStore.memberCounts.set(memberId, {
+        strikes_used: clampedStrikes,
+        strikes_count: clampedStrikes,
+        metastrikes_used: clampedMetastrikes,
+        metastrikes_count: clampedMetastrikes,
+        strike_cycle_month: cycleMonth,
+      });
+
+      const inMem = getInMemoryMember(memberId);
+      if (inMem) {
+        syncInMemoryMemberCache({
+          ...inMem,
+          strikes_used: clampedStrikes,
+          strikes_count: clampedStrikes,
+          metastrikes_used: clampedMetastrikes,
+          metastrikes_count: clampedMetastrikes,
+          strike_cycle_month: cycleMonth,
+        });
+      }
+    }
   } catch (e) {
     console.warn('Could not update member strike counts in DB:', e);
   }
@@ -316,8 +348,9 @@ export async function getMonthlyStrikeCountsBatch(
     result.set(id, { strikes: 0, metastrikes: 0 });
   }
 
-  const startDate = `${targetMonth}-01`;
-  const endDate = `${targetMonth}-31`;
+  const dt = DateTime.fromISO(`${targetMonth}-01`, { zone: 'utc' });
+  const startDate = dt.isValid ? dt.startOf('month').toISODate()! : `${targetMonth}-01`;
+  const endDate = dt.isValid ? dt.endOf('month').toISODate()! : `${targetMonth}-31`;
 
   if (isSupabaseConfigured) {
     try {
