@@ -1,6 +1,7 @@
-import { DateTime, IANAZone } from 'luxon';
+import { DateTime, IANAZone, Settings } from 'luxon';
 import type { Member, DayKey, DailySchedule, WeeklySchedule } from './db';
 
+export { Settings };
 export type { DayKey, DailySchedule, WeeklySchedule };
 
 export const DAY_KEYS: readonly DayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;

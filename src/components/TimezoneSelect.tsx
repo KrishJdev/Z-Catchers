@@ -117,7 +117,7 @@ export function TimezoneSelect({
               setIsOverriding(false);
               onOverrideToggle?.(false);
             }}
-            className="text-[11px] text-status-amber hover:underline hover:text-status-amber/90 transition-colors min-h-[32px] px-2 flex items-center"
+            className="text-[11px] text-status-amber hover:underline hover:text-status-amber/90 transition-colors min-h-[44px] min-w-[44px] px-2 flex items-center justify-center"
             aria-label="Keep current timezone"
           >
             Done

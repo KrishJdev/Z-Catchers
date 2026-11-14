@@ -18,15 +18,17 @@
 import fs from 'fs';
 import path from 'path';
 import assert from 'assert';
+import { createRequire } from 'module';
 import React from 'react';
 import ReactDOMServer from 'react-dom/server';
-import { IANAZone } from 'luxon';
+import { IANAZone, Settings } from 'luxon';
 import {
   detectUserTimezone,
   isValidTimezone,
   formatGmtOffset,
   formatTimezoneDisplay,
   formatTimezonePill,
+  Settings as TimezoneSettings,
 } from '../src/lib/timezone.ts';
 import { TimezoneSelect } from '../src/components/TimezoneSelect.tsx';
 
@@ -137,9 +139,42 @@ assert.strictEqual(formatTimezoneDisplay(''), 'UTC (GMT+00:00)');
 assert.strictEqual(formatTimezoneDisplay(null), 'UTC (GMT+00:00)');
 
 assert.strictEqual(formatTimezonePill('Asia/Kolkata'), '📍 Asia/Kolkata (GMT+05:30)');
-assert.strictEqual(formatTimezonePill('America/New_York'), '📍 America/New_York (GMT-05:00)');
 assert.strictEqual(formatTimezonePill('UTC'), '📍 UTC (GMT+00:00)');
-console.log('   ✅ formatTimezoneDisplay and formatTimezonePill produce correct formatted strings');
+
+// Test New York offsets with separate fixed winter (EST, GMT-05:00) and summer (EDT, GMT-04:00) instants
+const origLuxonNow = Settings.now;
+const origTzNow = TimezoneSettings.now;
+let cjsLuxon;
+let origCjsNow;
+try {
+  const require = createRequire(import.meta.url);
+  cjsLuxon = require('luxon');
+  origCjsNow = cjsLuxon.Settings.now;
+} catch {}
+
+try {
+  const setFrozenNow = (dateStr) => {
+    const ts = new Date(dateStr).getTime();
+    Settings.now = () => ts;
+    TimezoneSettings.now = () => ts;
+    if (cjsLuxon) cjsLuxon.Settings.now = () => ts;
+  };
+
+  // Winter instant (Standard Time: GMT-05:00)
+  setFrozenNow('2026-01-15T12:00:00Z');
+  assert.strictEqual(formatTimezonePill('America/New_York'), '📍 America/New_York (GMT-05:00)');
+
+  // Summer instant (Daylight Saving Time: GMT-04:00)
+  setFrozenNow('2026-07-15T12:00:00Z');
+  assert.strictEqual(formatTimezonePill('America/New_York'), '📍 America/New_York (GMT-04:00)');
+} finally {
+  Settings.now = origLuxonNow;
+  TimezoneSettings.now = origTzNow;
+  if (cjsLuxon && origCjsNow) {
+    cjsLuxon.Settings.now = origCjsNow;
+  }
+}
+console.log('   ✅ formatTimezoneDisplay and formatTimezonePill produce correct formatted strings across winter/summer instants');
 
 // -------------------------------------------------------------
 // 4. TimezoneSelect Compact Mode & Manual Override Toggle
@@ -206,9 +241,14 @@ assert(
   timezoneSelectSource.includes('isOverriding') && timezoneSelectSource.includes('setIsOverriding'),
   'TimezoneSelect must manage isOverriding state for manual override toggle'
 );
+const minHeightMatches = timezoneSelectSource.match(/min-h-\[44px\]/g) || [];
 assert(
-  timezoneSelectSource.includes('min-h-[44px]'),
-  'TimezoneSelect "Change" button must enforce min-h-[44px] mobile touch target'
+  minHeightMatches.length >= 2,
+  `TimezoneSelect must enforce min-h-[44px] on both Change and Done controls (found ${minHeightMatches.length})`
+);
+assert(
+  timezoneSelectSource.includes('min-w-[44px]'),
+  'TimezoneSelect Done control must enforce min-w-[44px] touch target'
 );
 assert(
   timezoneSelectSource.includes('bg-night-elevated') &&
