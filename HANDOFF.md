@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-15T05:07:00+05:30  
+> **Last Updated:** 2026-11-15T05:23:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `754b9ae`  
+> **Latest Commit:** `ca02a34`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75)  
-> **Active Integration Pull Requests:** None (All merged into `dev`)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61)  
-> **Active Production Release Pull Request:** [#76 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/76) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 38/38 suites passed, 100% | `npm run build` clean, 28/28 routes prerendered)
+> **Active Integration Pull Requests:** [#77 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/77) (`feat/issue-66-unified-pwa-push-onboarding` -> `dev`)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76)  
+> **Active Production Release Pull Request:** None  
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 39/39 suites passed, 100% | `npm run build` clean, 28/28 routes prerendered)
 
 ---
 
@@ -69,6 +69,42 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 99: Unified PWA Install & Push Onboarding Card (GitHub #66, Jira ZC-32)
+* **Objective & Context:**
+  - Resolved GitHub Issue [#66](https://github.com/KrishJdev/Z-Catchers/issues/66) and implemented Jira Task [ZC-32](https://krishjaiswal2182003.atlassian.net/browse/ZC-32) [Priority: P1 - High] on feature branch `feat/issue-66-unified-pwa-push-onboarding`.
+  - Replaced competing top banners and popups with a single contextual 2-step setup card on `src/app/page.tsx`, eliminating cognitive overload for new visitors.
+* **Key Architecture & Implementation Details:**
+  1. **Unified Setup Card Component (`src/components/UnifiedOnboardingCard.tsx`, `src/components/PwaBanner.tsx`):**
+     - Merged separate install banner and push notification prompts into a single 2-step setup card:
+       - **Step 1:** Add Z-Catchers to Home Screen (handles Chromium/Android `beforeinstallprompt`, iOS Safari Share & "Add to Home Screen" instructions, and shows 'Installed ✓' badge in standalone mode).
+       - **Step 2:** Enable Push Notifications (clearly explains the Sleep Shield guarantee that users are never nagged during their 8-hour sleep window, with inline subscribe for logged-in members or fallback to detailed `PushModal`).
+     - Preserves full backwards-compatibility for existing imports and tests via `PwaBanner` alias export.
+  2. **Auto-Dismiss & State Detection (`src/lib/pushClient.ts`):**
+     - Exported `isStandaloneMode()`, `hasActivePushSubscription()`, and `shouldAutoDismissOnboarding()`.
+     - Detects standalone execution mode via `window.matchMedia('(display-mode: standalone)')` and `window.navigator.standalone`.
+     - Inspects active push subscriptions asynchronously via `getExistingSubscription()`.
+     - Automatically and permanently hides the setup card once both standalone mode and push notifications are active.
+     - Preserves user dismissal with 7-day cooldown in `localStorage` (`zcatchers_unified_onboarding_dismissed_at` and `zcatchers_pwa_banner_dismissed_at`).
+  3. **Dashboard Integration (`src/app/page.tsx`):**
+     - Renders `<UnifiedOnboardingCard />` in place of the old `PwaBanner` top prompt.
+     - Passes `currentUser`, `isPushGranted`, `onEnablePush`, and `onPushStateChanged`.
+  4. **Design System & Touch Target Compliance:**
+     - Adheres strictly to Warm Dark palette (`bg-night-surface`, `bg-night-elevated`, `text-cream-primary`, `text-cream-secondary`, `text-status-amber`).
+     - All interactive controls enforce mobile touch targets $\ge 44\text{px}$ (`min-h-[44px]`, `min-w-[44px]`).
+     - Integrates Sleepy Fox mascot with lantern branding.
+  5. **Automated Regression Testing (`scripts/test-unified-pwa-push-onboarding.mjs`):**
+     - Asserts standalone display check, push subscription state resolution, and auto-dismiss decision matrix.
+     - Asserts 2-step setup architecture, Sleep Shield guarantee text, touch targets $\ge 44\text{px}$, and localStorage cooldown math.
+     - Integrated as test suite #39 in `scripts/run-tests.mjs` and verified clean via `npm run test:unit`.
+* **Pull Request & Code Review:**
+  - Feature branch `feat/issue-66-unified-pwa-push-onboarding` pushed to origin.
+  - Pull Request opened: [#77: feat(pwa): unified PWA install & push onboarding card (#66)](https://github.com/KrishJdev/Z-Catchers/pull/77) targeting `dev`.
+  - CodeRabbit review requested via comment `@coderabbitai review` on PR #77.
+* **Verification & QA Status:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 39/39 test suites passed cleanly (100%).
+  - `npm run build`: Production Next.js build succeeded (28/28 routes prerendered).
 
 ### Phase 98: Production Release Promotion from `dev` to `main` (Pull Request #76)
 * **Objective & Context:**
@@ -2109,7 +2145,7 @@ d:\Projects\Z Catchers\
 | **ZC-29** | **Critical (P0)** | Compact Member Cards with Progressive Disclosure | `src/components/MemberCard.tsx`, `src/lib/timezone.ts`, `src/components/SleepCalendarModal.tsx` | [#63](https://github.com/KrishJdev/Z-Catchers/issues/63) | **DONE** (PR #74 merged into `dev`, included in PR #76 to `main`) |
 | **ZC-30** | **Critical (P0)** | Smart Status Bucket Folding by Default | `src/components/StatusBucket.tsx`, `src/lib/sleepEngine.ts`, `src/app/page.tsx` | [#64](https://github.com/KrishJdev/Z-Catchers/issues/64) | **DONE** (PR #73 merged into `dev`, included in PR #76 to `main`) |
 | **ZC-31** | **High (P1)** | Consolidated Profile & Settings Drawer | `src/components/Header.tsx`, `src/components/BottomNav.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/PushModal.tsx` | [#65](https://github.com/KrishJdev/Z-Catchers/issues/65) | **TODO** |
-| **ZC-32** | **High (P1)** | Unified PWA Install & Push Onboarding Card | `src/components/PwaBanner.tsx`, `src/components/PushModal.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts` | [#66](https://github.com/KrishJdev/Z-Catchers/issues/66) | **TODO** |
+| **ZC-32** | **High (P1)** | Unified PWA Install & Push Onboarding Card | `src/components/PwaBanner.tsx`, `src/components/PushModal.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts` | [#66](https://github.com/KrishJdev/Z-Catchers/issues/66) | **DONE** (PR [#77](https://github.com/KrishJdev/Z-Catchers/pull/77) open targeting `dev`, CodeRabbit review requested) |
 | **ZC-33** | **High (P1)** | Silent Timezone Auto-Detection | `src/lib/timezone.ts`, `src/app/join/page.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/TimezoneSelect.tsx` | [#67](https://github.com/KrishJdev/Z-Catchers/issues/67) | **DONE** (PR #75 merged into `dev`, included in PR #76 to `main`) |
 | **ZC-34** | **Medium (P2)** | Interactive Lock-Screen Push Notification Actions | `src/lib/pushServer.ts`, `src/lib/cronDispatcher.ts`, `public/sw.js` | [#68](https://github.com/KrishJdev/Z-Catchers/issues/68) | **TODO** |
 | **ZC-35** | **Medium (P2)** | Home Screen App Icon Shortcuts | `public/manifest.json`, `public/icons/`, `src/app/page.tsx` | [#69](https://github.com/KrishJdev/Z-Catchers/issues/69) | **TODO** |
@@ -2168,9 +2204,9 @@ d:\Projects\Z Catchers\
 
 3. **Sprint 2 — Phase 2 (P1) Navigation Consolidation & Onboarding Streamlining:**
    * **ZC-33 / GH #67 (`src/lib/timezone.ts`, `src/app/join/page.tsx`):** **COMPLETED** (PR [#75](https://github.com/KrishJdev/Z-Catchers/pull/75) merged into `dev`).
+   * **ZC-32 / GH #66 (`src/components/UnifiedOnboardingCard.tsx`, `src/components/PwaBanner.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts`):** **COMPLETED** (PR [#77](https://github.com/KrishJdev/Z-Catchers/pull/77) open targeting `dev`, CodeRabbit review requested).
    * **ZC-31 / GH #65 (`src/components/Header.tsx`, `src/components/BottomNav.tsx`):** **[START HERE]**
      - Consolidated Profile & Settings Drawer (`SettingsDrawer.tsx`), keeping `ModDrawer.tsx` strictly isolated.
-   * **ZC-32 / GH #66 (`src/components/PwaBanner.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts`):** Unified 2-step PWA install & push onboarding card with auto-dismiss in standalone mode.
 
 3. **Sprint 3 — Phase 3 (P2) Native-Grade PWA Lock-Screen & Home Screen Features:**
    * **ZC-34 / GH #68 (`src/lib/pushServer.ts`, `public/sw.js`):** Interactive lock-screen push notification action buttons (`in-bed`, `wake-up`, `nag-assist`).
