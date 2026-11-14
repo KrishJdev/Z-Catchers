@@ -144,12 +144,16 @@ export function MemberCard({
 
     previousFocusRef.current = document.activeElement as HTMLElement | null;
 
-    // Focus first interactive element inside sheet dialog
+    // Focus first interactive element inside sheet dialog (or sheet itself as fallback)
     const focusTimer = setTimeout(() => {
       const firstFocusable = sheetDialogRef.current?.querySelector<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
       );
-      firstFocusable?.focus();
+      if (firstFocusable) {
+        firstFocusable.focus();
+      } else {
+        sheetDialogRef.current?.focus();
+      }
     }, 50);
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -164,9 +168,18 @@ export function MemberCard({
         const focusables = sheetDialogRef.current.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
         );
-        if (focusables.length === 0) return;
+        if (focusables.length === 0) {
+          e.preventDefault();
+          return;
+        }
         const first = focusables[0];
         const last = focusables[focusables.length - 1];
+
+        if (!sheetDialogRef.current.contains(document.activeElement)) {
+          e.preventDefault();
+          first.focus();
+          return;
+        }
 
         if (e.shiftKey) {
           if (document.activeElement === first) {
@@ -834,8 +847,9 @@ export function MemberCard({
         >
           <div
             ref={sheetDialogRef}
+            tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg max-h-[90vh] sm:max-h-[85vh] bg-night-surface border-t sm:border border-night-border rounded-t-3xl sm:rounded-2xl flex flex-col shadow-2xl overflow-hidden animate-slide-up"
+            className="w-full max-w-lg max-h-[90vh] sm:max-h-[85vh] bg-night-surface border-t sm:border border-night-border rounded-t-3xl sm:rounded-2xl flex flex-col shadow-2xl overflow-hidden animate-slide-up outline-none"
           >
             {/* Sheet Handle (Mobile) */}
             <div className="w-12 h-1 bg-night-border rounded-full mx-auto my-2.5 shrink-0 sm:hidden" />

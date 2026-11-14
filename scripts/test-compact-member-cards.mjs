@@ -287,11 +287,34 @@ assert(
   'MemberCard and bottom sheet must strictly adhere to Warm Dark aesthetic tokens'
 );
 
-// Keyboard accessibility: Escape key listener
+// Keyboard accessibility & Focus Management
 assert(
   memberCardContent.includes("e.key === 'Escape'") &&
   memberCardContent.includes('setIsDetailsOpen(false)'),
   'Bottom sheet modal must close when pressing the Escape key'
+);
+
+// Focus management: initial focus, keyboard trap, and restoration
+assert(
+  memberCardContent.includes('sheetDialogRef = useRef') &&
+  memberCardContent.includes('previousFocusRef = useRef') &&
+  memberCardContent.includes('ref={sheetDialogRef}'),
+  'Bottom sheet modal must maintain dialog and previous focus refs'
+);
+
+assert(
+  memberCardContent.includes('previousFocusRef.current = document.activeElement') &&
+  memberCardContent.includes('firstFocusable') &&
+  memberCardContent.includes('previousFocusRef.current?.focus()'),
+  'Bottom sheet must move focus into modal on open and restore focus to trigger on close'
+);
+
+assert(
+  memberCardContent.includes("e.key === 'Tab'") &&
+  memberCardContent.includes('e.shiftKey') &&
+  memberCardContent.includes('last.focus()') &&
+  memberCardContent.includes('first.focus()'),
+  'Bottom sheet must contain keyboard focus via Tab / Shift+Tab wrapping'
 );
 
 console.log('✅ PASSED: Touch targets >= 44x44px, zero horizontal overflow, and Warm Dark tokens verified.');
