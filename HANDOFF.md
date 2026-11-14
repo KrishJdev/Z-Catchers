@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T23:00:00+05:30  
+> **Last Updated:** 2026-11-14T23:22:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `a76ba51`  
+> **Latest Commit:** `8bab0a6`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73)  
-> **Active Integration Pull Requests:** [#74 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/74) (`feat/issue-63-compact-member-cards` -> `dev`) [Verified: CI passing, CodeRabbit review requested]  
+> **Active Integration Pull Requests:** [#74 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/74) (`feat/issue-63-compact-member-cards` -> `dev`) [Verified: CI passing, CodeRabbit review addressed & re-requested]  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)  
 > **Active Production Release Pull Request:** [#61 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/61) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 36/36 suites passed | `npm run build` clean)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 37/37 suites passed, 100% | `npm run build` clean)
 
 ---
 
@@ -70,10 +70,11 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 ## 4. Comprehensive Task Changelog
 
-### Phase 96: Compact Member Cards with Progressive Disclosure (GitHub #63, Jira ZC-29)
+### Phase 96: Compact Member Cards with Progressive Disclosure & Code Review Resolution (GitHub #63, Jira ZC-29)
 * **Objective & Context:**
   - Resolved GitHub Issue [#63](https://github.com/KrishJdev/Z-Catchers/issues/63) and implemented Jira Task [ZC-29](https://krishjaiswal2182003.atlassian.net/browse/ZC-29) on feature branch `feat/issue-63-compact-member-cards`.
   - Reduced visual noise and vertical scrolling across `src/components/MemberCard.tsx` on the main dashboard by introducing a compact primary card layout with a progressive disclosure bottom sheet modal for secondary actions and accountability metrics.
+  - Addressed all 7 findings from automated CodeRabbit code review on Pull Request [#74](https://github.com/KrishJdev/Z-Catchers/pull/74) with minimal, robust fixes.
 * **Key Implementation Details:**
   1. **Compact Primary Card View (`src/components/MemberCard.tsx`):**
      - Restricted default rendering strictly to primary identifiers: Avatar (with In-Bed status indicator), Username (with >= 44x44px touch target and profile click trigger), Watchlist Star toggle (>= 44x44px touch target), Sub-header Badges (`YOU`, `MOD`, Flame streak milestone), Viewer-Local Time (`formattedViewerTime`), and Real-Time Status Badge Pill.
@@ -82,31 +83,30 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
      - Made entire card surface tap-to-expand (`onClick={() => setIsDetailsOpen(true)}`) with haptic pulse while preserving nested link/button isolation via `e.stopPropagation()`.
   2. **Progressive Disclosure Bottom Sheet Modal (`src/components/MemberCard.tsx`):**
      - Implemented accessible modal sheet (`role="dialog"`, `aria-modal="true"`) sliding up from bottom on mobile and centered on desktop, adhering strictly to Warm Dark tokens (`bg-night-surface`, `border-night-border`, `text-cream-primary`, `bg-night-elevated`).
-     - Discloses full schedule details and timezone metadata row (`formattedSleeperTime → wakeTime` with Weekend/Custom badges and `formatGmtOffset(member.timezone)`).
-     - Discloses Monthly Strikes & Metastrikes accountability bar with active status pips.
-     - Includes direct trigger button for `src/components/SleepCalendarModal.tsx` ("Sleep Calendar").
-     - Includes direct trigger button for `src/components/MetastrikeModal.tsx` ("Metastrike Passes" / "Use Metastrike").
-     - Discloses live Nag Assist counter (`👥 Nagged!`) and peer Nag Notification button with 15-minute live cooldown countdown.
-     - Full keyboard accessibility: sheet dismissal on `Escape` key and background body scroll lock while modal is open.
+     - Added robust focus management: moves focus to first interactive element upon sheet open, contains focus navigation (`Tab` / `Shift+Tab`) inside modal, dismisses on `Escape`, and restores focus to previous control on close via `previousFocusRef`.
+     - Added multi-dialog scroll lock ownership counter (`acquireScrollLock` / `releaseScrollLock`): closed cards never modify `overflow`, pre-lock overflow is preserved, and overflow is restored only when the final overlapping dialog unmounts.
+     - Warm Dark design tokens: overlay updated to `bg-night-bg/80 backdrop-blur-sm` (replacing pure black), schedule row updated to `bg-night-elevated/40 border-night-border/50 text-cream-secondary` (replacing zinc gray and white bases).
+     - Accountability pip metrics & tokens: strike and metastrike pip groups updated to `6px x 6px` (`h-1.5 w-1.5`), filled strikes use `bg-fox-rust`, filled metastrikes use `bg-fox-amber`, and caution badge updated to `border-fox-rust/50 bg-fox-rust/15 text-fox-rust`.
+     - Guarded sheet Metastrike trigger: strictly checks viewer identity, usage cap (`metastrikesUsed < 3`), and pass availability (`isStrikeConvertible || !isMetastrikeActive`).
+     - Sheet Discord journal click handler: calls `handleNagJournalClick` only when `isNagNow || bucket === 'WINDING_DOWN'` to prevent unintended assist recordings during sleep/awake states.
+     - Fixed wake-up reminder button countdown to display `wakeCooldownSeconds` rather than the bedtime `nagCooldownSeconds` alias.
   3. **Mobile Ergonomics & 40%+ Height Reduction (`scripts/test-compact-member-cards.mjs`):**
-     - Default mobile card height reduced from ~268px down to ~126px:
-       - **53.0% reduction** in Nag Now (`268px` -> `126px`)
-       - **53.0% reduction** in Winding Down (`268px` -> `126px`)
-       - **41.7% reduction** in Awake (`216px` -> `126px`)
-       - Comfortably exceeding the 40% acceptance threshold.
+     - Replaced constant calculations with a rendered mobile fixture model using the 70px minimum header implied by name control, identity-stack gap, and badge row.
+     - Confirms 51.7% height reduction on Nag Now and Winding Down cards (`294px` -> `142px`).
+     - Confirms 41.3% reduction on mobile Awake cards (`242px` -> `142px`), with explicit reporting for the Awake case.
      - Strict bounds enforcement (`w-full max-w-full overflow-hidden`) ensuring zero horizontal overflow on 375px viewports.
   4. **Pull Request & Integration:**
      - Created feature branch `feat/issue-63-compact-member-cards` from `dev` and opened Integration Pull Request [#74](https://github.com/KrishJdev/Z-Catchers/pull/74) targeting `dev`.
-     - Requested automated code review from `@coderabbitai`.
-     - Merged feature branch into active working branch `krish`.
+     - Committed and pushed review fixes to `feat/issue-63-compact-member-cards` and merged into active working branch `krish`.
+     - Requested automated code re-review from `@coderabbitai` on PR #74.
 * **Files Modified & Created:**
   - `src/components/MemberCard.tsx` (modified)
-  - `scripts/test-compact-member-cards.mjs` (created)
+  - `scripts/test-compact-member-cards.mjs` (created & updated)
   - `scripts/run-tests.mjs` (modified)
   - `HANDOFF.md` (modified)
 * **Verification & Testing:**
   - `npx tsc --noEmit`: Clean (0 errors).
-  - `npm run test:unit`: 36/36 test suites passed cleanly (100%).
+  - `npm run test:unit`: 37/37 test suites passed cleanly (100%).
   - `npm run build`: Production Next.js build succeeded (28/28 routes prerendered).
 
 ### Phase 95: PR #73 Merge Conflict Resolution with `dev` & Verification (GitHub #64, Jira ZC-30)
