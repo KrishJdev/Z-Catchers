@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-15T01:18:00+05:30  
+> **Last Updated:** 2026-11-15T05:07:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `ef24037`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74)  
-> **Active Integration Pull Requests:** [#75 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/75) (`feat/issue-67-silent-timezone-auto-detection` -> `dev`) [Verified: CI passing, CodeRabbit review addressed & re-requested]  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)  
-> **Active Production Release Pull Request:** [#61 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/61) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 37/37 suites passed, 100% | `npm run build` clean)
+> **Latest Commit:** `754b9ae`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75)  
+> **Active Integration Pull Requests:** None (All merged into `dev`)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61)  
+> **Active Production Release Pull Request:** [#76 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/76) (`dev` -> `main`)  
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 38/38 suites passed, 100% | `npm run build` clean, 28/28 routes prerendered)
 
 ---
 
@@ -69,6 +69,22 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 98: Production Release Promotion from `dev` to `main` (Pull Request #76)
+* **Objective & Context:**
+  - Verified and opened Production Release Pull Request [#76](https://github.com/KrishJdev/Z-Catchers/pull/76) targeting `main` from `dev`, promoting all verified features from Phases 90 through 97 (GitHub Issues #62, #63, #64, #67; Jira ZC-28, ZC-29, ZC-30, ZC-33).
+* **Included Features & Promotions:**
+  1. **Pinned Self-Action Bar (PR #72, Fixes #62, ZC-28):** Sticky bottom check-in and wake-up bar for authenticated users with optimistic status updates and rollback.
+  2. **Smart Status Bucket Folding by Default (PR #73, Fixes #64, ZC-30):** Collapsible status buckets with default open/fold hierarchy and pre-paint session storage persistence.
+  3. **Compact Member Cards with Progressive Disclosure (PR #74, Fixes #63, ZC-29):** High-density member tiles with bottom sheet modal for secondary actions, schedule metadata, and accountability pip metrics.
+  4. **Silent IANA Timezone Auto-Detection & Compact UI Pill (PR #75, Fixes #67, ZC-33):** Frictionless onboarding auto-detection via `Intl.DateTimeFormat` with compact UI pill and search filter override.
+* **Verification & QA Status:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 38/38 test suites passed cleanly (100%).
+  - `npm run build`: Production Next.js build succeeded (28/28 routes prerendered).
+  - `git merge-tree origin/main origin/dev`: 0 merge conflicts.
+* **Pull Request Link:**
+  - [PR #76: release: promote pinned self-action bar, smart bucket folding, compact member cards, and timezone auto-detection to main](https://github.com/KrishJdev/Z-Catchers/pull/76)
 
 ### Phase 97: Silent Timezone Auto-Detection & Compact UI Presentation (GitHub #67, Jira ZC-33)
 * **Objective & Context:**
@@ -2089,12 +2105,12 @@ d:\Projects\Z Catchers\
 
 | Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
 |---|---|---|---|---|---|
-| **ZC-28** | **Critical (P0)** | Pinned Self-Action Bar for One-Tap Check-Ins | `src/components/PinnedSelfActionBar.tsx`, `src/app/page.tsx` | [#62](https://github.com/KrishJdev/Z-Catchers/issues/62) | **DONE** (PR #72 merged) |
-| **ZC-29** | **Critical (P0)** | Compact Member Cards with Progressive Disclosure | `src/components/MemberCard.tsx`, `src/lib/timezone.ts`, `src/components/SleepCalendarModal.tsx` | [#63](https://github.com/KrishJdev/Z-Catchers/issues/63) | **DONE** (PR #74 merged) |
-| **ZC-30** | **Critical (P0)** | Smart Status Bucket Folding by Default | `src/components/StatusBucket.tsx`, `src/lib/sleepEngine.ts`, `src/app/page.tsx` | [#64](https://github.com/KrishJdev/Z-Catchers/issues/64) | **DONE** (PR #73 merged) |
+| **ZC-28** | **Critical (P0)** | Pinned Self-Action Bar for One-Tap Check-Ins | `src/components/PinnedSelfActionBar.tsx`, `src/app/page.tsx` | [#62](https://github.com/KrishJdev/Z-Catchers/issues/62) | **DONE** (PR #72 merged into `dev`, included in PR #76 to `main`) |
+| **ZC-29** | **Critical (P0)** | Compact Member Cards with Progressive Disclosure | `src/components/MemberCard.tsx`, `src/lib/timezone.ts`, `src/components/SleepCalendarModal.tsx` | [#63](https://github.com/KrishJdev/Z-Catchers/issues/63) | **DONE** (PR #74 merged into `dev`, included in PR #76 to `main`) |
+| **ZC-30** | **Critical (P0)** | Smart Status Bucket Folding by Default | `src/components/StatusBucket.tsx`, `src/lib/sleepEngine.ts`, `src/app/page.tsx` | [#64](https://github.com/KrishJdev/Z-Catchers/issues/64) | **DONE** (PR #73 merged into `dev`, included in PR #76 to `main`) |
 | **ZC-31** | **High (P1)** | Consolidated Profile & Settings Drawer | `src/components/Header.tsx`, `src/components/BottomNav.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/PushModal.tsx` | [#65](https://github.com/KrishJdev/Z-Catchers/issues/65) | **TODO** |
 | **ZC-32** | **High (P1)** | Unified PWA Install & Push Onboarding Card | `src/components/PwaBanner.tsx`, `src/components/PushModal.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts` | [#66](https://github.com/KrishJdev/Z-Catchers/issues/66) | **TODO** |
-| **ZC-33** | **High (P1)** | Silent Timezone Auto-Detection | `src/lib/timezone.ts`, `src/app/join/page.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/TimezoneSelect.tsx` | [#67](https://github.com/KrishJdev/Z-Catchers/issues/67) | **DONE** (PR #75 open) |
+| **ZC-33** | **High (P1)** | Silent Timezone Auto-Detection | `src/lib/timezone.ts`, `src/app/join/page.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/TimezoneSelect.tsx` | [#67](https://github.com/KrishJdev/Z-Catchers/issues/67) | **DONE** (PR #75 merged into `dev`, included in PR #76 to `main`) |
 | **ZC-34** | **Medium (P2)** | Interactive Lock-Screen Push Notification Actions | `src/lib/pushServer.ts`, `src/lib/cronDispatcher.ts`, `public/sw.js` | [#68](https://github.com/KrishJdev/Z-Catchers/issues/68) | **TODO** |
 | **ZC-35** | **Medium (P2)** | Home Screen App Icon Shortcuts | `public/manifest.json`, `public/icons/`, `src/app/page.tsx` | [#69](https://github.com/KrishJdev/Z-Catchers/issues/69) | **TODO** |
 | **ZC-36** | **Medium (P2)** | App Icon Badging for Unread Nags & Wind-Down Alerts | `public/sw.js`, `src/app/api/cron/dispatch-notifications/route.ts`, `src/lib/pushClient.ts` | [#70](https://github.com/KrishJdev/Z-Catchers/issues/70) | **TODO** |
@@ -2141,13 +2157,17 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Sprint 1 (Completed) — Phase 1 (P0) High-Impact UI Decluttering & Core Action Ergonomics:**
+1. **Production Release Deployment & Verification (PR #76):**
+   * Review and merge Production Release Pull Request [#76](https://github.com/KrishJdev/Z-Catchers/pull/76) (`dev` -> `main`) to deploy the latest decluttering, mobile UX optimizations, progressive disclosure, and silent timezone onboarding enhancements to production.
+   * Verify production deployment on Vercel and check that all cron dispatchers and routes execute cleanly.
+
+2. **Sprint 1 (Completed & Merged to `dev`, PR #76 to `main`):**
    * **ZC-28 / GH #62:** **COMPLETED** (PR [#72](https://github.com/KrishJdev/Z-Catchers/pull/72) merged into `dev`).
-   * **ZC-29 / GH #63 (`src/components/MemberCard.tsx`, `scripts/test-compact-member-cards.mjs`):** **COMPLETED** (PR [#74](https://github.com/KrishJdev/Z-Catchers/pull/74) open targeting `dev`, verified with 36/36 tests clean, CodeRabbit review requested).
+   * **ZC-29 / GH #63 (`src/components/MemberCard.tsx`, `scripts/test-compact-member-cards.mjs`):** **COMPLETED** (PR [#74](https://github.com/KrishJdev/Z-Catchers/pull/74) merged into `dev`).
    * **ZC-30 / GH #64:** **COMPLETED** (PR [#73](https://github.com/KrishJdev/Z-Catchers/pull/73) merged into `dev`).
 
-2. **Sprint 2 — Phase 2 (P1) Navigation Consolidation & Onboarding Streamlining:**
-   * **ZC-33 / GH #67 (`src/lib/timezone.ts`, `src/app/join/page.tsx`):** **COMPLETED** (PR [#75](https://github.com/KrishJdev/Z-Catchers/pull/75) open targeting `dev`, verified with 37/37 tests clean, CodeRabbit review requested).
+3. **Sprint 2 — Phase 2 (P1) Navigation Consolidation & Onboarding Streamlining:**
+   * **ZC-33 / GH #67 (`src/lib/timezone.ts`, `src/app/join/page.tsx`):** **COMPLETED** (PR [#75](https://github.com/KrishJdev/Z-Catchers/pull/75) merged into `dev`).
    * **ZC-31 / GH #65 (`src/components/Header.tsx`, `src/components/BottomNav.tsx`):** **[START HERE]**
      - Consolidated Profile & Settings Drawer (`SettingsDrawer.tsx`), keeping `ModDrawer.tsx` strictly isolated.
    * **ZC-32 / GH #66 (`src/components/PwaBanner.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts`):** Unified 2-step PWA install & push onboarding card with auto-dismiss in standalone mode.
