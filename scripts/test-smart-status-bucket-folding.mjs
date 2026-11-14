@@ -90,10 +90,11 @@ assert(
 console.log('  ✅ Smooth chevron transitions, count pill phrasing, and a11y verified.\n');
 
 // ---------------------------------------------------------------------------
-// Test 4: Active Session User Override Preservation
+// Test 4: Active Session User Override Preservation & Behavioral Tests
 // ---------------------------------------------------------------------------
 console.log('▶ Test 4: Verifying session persistence for accordion user overrides');
 
+// Smoke checks: Source-level inspection for architectural guardrails
 assert(
   statusBucketSource.includes('sessionStorage'),
   'StatusBucket must utilize sessionStorage to preserve user expand/collapse overrides during active session'
@@ -102,7 +103,122 @@ assert(
   statusBucketSource.includes("typeof window === 'undefined'"),
   'Must guard sessionStorage access for SSR and zero layout shift'
 );
-console.log('  ✅ Session override persistence and SSR guards verified.\n');
+assert(
+  statusBucketSource.includes('useIsomorphicLayoutEffect') ||
+    statusBucketSource.includes('useLayoutEffect'),
+  'StatusBucket must restore expansion state before paint via layout effect'
+);
+assert(
+  statusBucketSource.includes('isRestoredRef'),
+  'StatusBucket must include a restoration guard to prevent un-restored default state from overwriting saved override'
+);
+assert(
+  !statusBucketSource.match(/setIsExpanded\([^)]*sessionStorage/),
+  'setIsExpanded updater must remain pure without inline sessionStorage writes'
+);
+
+// Behavioral component & helper tests
+const { getSavedBucketExpansion, saveBucketExpansion } = await import(
+  '../src/components/StatusBucket.tsx'
+);
+
+// 4a. Behavioral test: SSR fallback when window is undefined
+assert.strictEqual(
+  getSavedBucketExpansion('nag-now', true),
+  true,
+  'Must return fallback when window is undefined during SSR (defaultExpanded=true)'
+);
+assert.strictEqual(
+  getSavedBucketExpansion('awake', false),
+  false,
+  'Must return fallback when window is undefined during SSR (defaultExpanded=false)'
+);
+assert.doesNotThrow(
+  () => saveBucketExpansion('nag-now', false),
+  'saveBucketExpansion must be safe to call during SSR'
+);
+
+// 4b. Behavioral test: Client session storage interactions (toggle, remount, fallback)
+const mockStorage = new Map();
+global.window = {};
+global.sessionStorage = {
+  getItem: (key) => mockStorage.get(key) ?? null,
+  setItem: (key, val) => mockStorage.set(key, String(val)),
+  removeItem: (key) => mockStorage.delete(key),
+  clear: () => mockStorage.clear(),
+};
+
+try {
+  // Verify default state when no saved override exists
+  assert.strictEqual(
+    getSavedBucketExpansion('nag-now', true),
+    true,
+    'Unsaved bucket should honor defaultExpanded=true'
+  );
+  assert.strictEqual(
+    getSavedBucketExpansion('awake', false),
+    false,
+    'Unsaved bucket should honor defaultExpanded=false'
+  );
+
+  // Toggle default-expanded bucket (Nag Now) from true -> false
+  saveBucketExpansion('nag-now', false);
+  assert.strictEqual(
+    mockStorage.get('zc_bucket_nag-now_expanded'),
+    'false',
+    'Toggling nag-now should persist "false" into sessionStorage'
+  );
+
+  // Remount: verify saved state overrides defaultExpanded=true
+  assert.strictEqual(
+    getSavedBucketExpansion('nag-now', true),
+    false,
+    'Remounting nag-now must restore saved "false" override over defaultExpanded=true'
+  );
+
+  // Toggle default-collapsed bucket (Awake) from false -> true
+  saveBucketExpansion('awake', true);
+  assert.strictEqual(
+    mockStorage.get('zc_bucket_awake_expanded'),
+    'true',
+    'Toggling awake should persist "true" into sessionStorage'
+  );
+
+  // Remount: verify saved state overrides defaultExpanded=false
+  assert.strictEqual(
+    getSavedBucketExpansion('awake', false),
+    true,
+    'Remounting awake must restore saved "true" override over defaultExpanded=false'
+  );
+
+  // 4c. Behavioral test: Graceful handling of sessionStorage errors (e.g. private browsing mode)
+  global.sessionStorage.getItem = () => {
+    throw new Error('QuotaExceededError: sessionStorage disabled');
+  };
+  global.sessionStorage.setItem = () => {
+    throw new Error('QuotaExceededError: sessionStorage disabled');
+  };
+
+  assert.doesNotThrow(() => {
+    const val = getSavedBucketExpansion('nag-now', true);
+    assert.strictEqual(val, true, 'Must fall back to defaultExpanded when sessionStorage throws');
+  }, 'getSavedBucketExpansion must not throw on storage access failure');
+
+  assert.doesNotThrow(() => {
+    const val = getSavedBucketExpansion('awake', false);
+    assert.strictEqual(val, false, 'Must fall back to defaultExpanded when sessionStorage throws');
+  }, 'getSavedBucketExpansion must not throw on storage access failure');
+
+  assert.doesNotThrow(() => {
+    saveBucketExpansion('nag-now', false);
+  }, 'saveBucketExpansion must not throw on storage write failure');
+
+} finally {
+  delete global.window;
+  delete global.sessionStorage;
+}
+
+console.log('  ✅ Session override persistence, behavioral remounts, and error handling verified.\n');
 
 // ---------------------------------------------------------------------------
 // Test 5: Dashboard Wiring & Passive vs Actionable Default Folding

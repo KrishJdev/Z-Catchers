@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { FoxMascot } from '@/components/FoxMascot';
 
@@ -15,6 +15,40 @@ interface StatusBucketProps {
   emptyMessage?: string;
   children: React.ReactNode;
 }
+
+/**
+ * Safely retrieves saved expansion override from sessionStorage.
+ * Falls back to default expanded state if running in SSR, in private mode, or if no key exists.
+ */
+export function getSavedBucketExpansion(bucketKey: string, fallback: boolean): boolean {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const saved = sessionStorage.getItem(`zc_bucket_${bucketKey}_expanded`);
+    if (saved !== null) {
+      return saved === 'true';
+    }
+  } catch {
+    // Ignore sessionStorage access errors (e.g. strict private browsing mode)
+  }
+  return fallback;
+}
+
+/**
+ * Safely persists bucket expansion override to sessionStorage.
+ */
+export function saveBucketExpansion(bucketKey: string, isExpanded: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(`zc_bucket_${bucketKey}_expanded`, String(isExpanded));
+  } catch {
+    // Ignore sessionStorage write errors
+  }
+}
+
+// SSR-safe layout effect: runs synchronously before browser paint on client,
+// falls back to useEffect during server-side pre-rendering to avoid warnings.
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 /**
  * Collapsible section bucket component grouping members by sleep status (Asleep, Winding Down, Nag Now, etc.).
@@ -37,34 +71,27 @@ export function StatusBucket({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const bucketKey = id || title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const contentId = `bucket-content-${bucketKey}`;
+  const isRestoredRef = useRef(false);
 
-  // Restore user session override if toggled during active browser session
-  useEffect(() => {
+  // Restore saved session override before paint to prevent visual flash / layout shift
+  useIsomorphicLayoutEffect(() => {
     if (typeof window === 'undefined') return;
-    try {
-      const saved = sessionStorage.getItem(`zc_bucket_${bucketKey}_expanded`);
-      if (saved !== null) {
-        setIsExpanded(saved === 'true');
-      }
-    } catch {
-      // Ignore sessionStorage access errors (e.g. strict private browsing mode)
-    }
-  }, [bucketKey]);
+    isRestoredRef.current = false;
+    const saved = getSavedBucketExpansion(bucketKey, defaultExpanded);
+    setIsExpanded(saved);
+    isRestoredRef.current = true;
+  }, [bucketKey, defaultExpanded]);
+
+  // Persist committed expansion state separately after restoration guard verifies initial state has settled
+  useEffect(() => {
+    if (!isRestoredRef.current || typeof window === 'undefined') return;
+    saveBucketExpansion(bucketKey, isExpanded);
+  }, [isExpanded, bucketKey]);
 
   if (count === 0 && !showEmptyState) return null;
 
   const handleToggle = () => {
-    setIsExpanded((prev) => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        try {
-          sessionStorage.setItem(`zc_bucket_${bucketKey}_expanded`, String(next));
-        } catch {
-          // Ignore
-        }
-      }
-      return next;
-    });
+    setIsExpanded((prev) => !prev);
   };
 
   return (
