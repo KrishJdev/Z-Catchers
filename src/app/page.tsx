@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
-import { PwaBanner } from '@/components/PwaBanner';
+import { PwaBanner, UnifiedOnboardingCard } from '@/components/PwaBanner';
 import { StatusBucket } from '@/components/StatusBucket';
 import { MemberCard } from '@/components/MemberCard';
 import { FoxMascot } from '@/components/FoxMascot';
@@ -953,7 +953,12 @@ export default function HomePage() {
           </div>
         )}
 
-        <PwaBanner onEnablePush={handleOpenPushModal} isPushGranted={isPushEnabled} />
+        <UnifiedOnboardingCard
+          onEnablePush={handleOpenPushModal}
+          isPushGranted={isPushEnabled}
+          currentUser={currentUser}
+          onPushStateChanged={setIsPushEnabled}
+        />
 
         {/* Contextual Sleepy Fox Status Banner */}
         <section className="mb-6 rounded-2xl border border-night-border/80 bg-night-surface/90 p-4 shadow-lg backdrop-blur-sm sm:p-5">

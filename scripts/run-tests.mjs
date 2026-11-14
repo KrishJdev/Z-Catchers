@@ -50,6 +50,7 @@ const UNIT_TESTS = [
   'test-smart-status-bucket-folding.mjs',
   'test-compact-member-cards.mjs',
   'test-silent-timezone-auto-detection.mjs',
+  'test-unified-pwa-push-onboarding.mjs',
 ];
 
 // E2E tests: require live Supabase database or running network services
