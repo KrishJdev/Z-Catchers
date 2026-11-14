@@ -1,0 +1,280 @@
+[
+  {
+    "id": 1,
+    "phase": "Phase 1 (P0): High-Impact UI Decluttering & Core Action Ergonomics",
+    "priorityTag": "P0 - Critical",
+    "jiraPriority": "Highest",
+    "issueTypeId": "10071",
+    "title": "[P0] Pinned Self-Action Bar for One-Tap Check-Ins",
+    "labels": [
+      "frontend",
+      "enhancement",
+      "priority: critical"
+    ],
+    "targetFiles": [
+      "src/components/StatusBucket.tsx",
+      "src/components/MemberCard.tsx",
+      "src/components/BottomNav.tsx",
+      "src/app/page.tsx",
+      "src/app/api/members/in-bed/route.ts",
+      "src/app/api/members/wake-up/route.ts",
+      "src/app/api/members/cancel-pending/route.ts"
+    ],
+    "testFile": "scripts/test-pinned-self-action-bar.mjs",
+    "body": "## Goal & Summary\nDecouple the logged-in user's sleep/wake controls from the scrolling member list so check-ins take one tap from anywhere on the dashboard.\n\nCurrently, self-action buttons (\"I'm in Bed\", \"I'm Awake\", \"Cancel Pending\") are embedded inside `StatusBucket.tsx` and `MemberCard.tsx`. In a community with many members, logged-in users are forced to scroll past inactive members to locate their own card before they can register their check-in or cancel a pending schedule change.\n\n## Architecture & Implementation Blueprint\n1. **Component Extraction:** Extract self-action controls from `src/components/StatusBucket.tsx` and `src/components/MemberCard.tsx` into a dedicated, pinned self-action component (e.g. `PinnedSelfActionBar.tsx`).\n2. **Dashboard Placement:** Mount the bar directly above `src/components/BottomNav.tsx` in `src/app/page.tsx` (`fixed bottom-16 md:bottom-0 left-0 right-0 z-30`).\n3. **Context-Aware Presentation:**\n   - When Awake (Daytime / Wind-Down / Bedtime Hit): Display prominent \"🛏️ I'm in Bed\" check-in button.\n   - When Asleep (Sleep Shield Active): Display \"☀️ I'm Awake\" check-in button.\n   - When 48h Schedule Cooldown Pending: Display compact \"⏳ Cancel Pending Change\" button alongside primary action.\n4. **Design System & Ergonomics:**\n   - Adhere to Warm Dark palette (`#1C1714` surface, `#F5EBE1` cream text, subtle amber border `border-amber-900/20`).\n   - Enforce mobile touch accessibility with minimum `min-h-[44px]` and `min-w-[44px]` touch targets.\n   - Only render the bar when a verified session (`sessionMember`) is active.\n\n## API Wiring & Endpoints\n- `POST /api/members/in-bed`: Early bedtime check-in activating Sleep Shield and silencing outgoing community nags.\n- `POST /api/members/wake-up`: Morning wake-up check-in transitioning member out of sleep window.\n- `POST /api/members/cancel-pending`: Rate-limited cancellation of pending 48-hour schedule cooldown.\n\n## Target Files & Key References\n- `src/components/StatusBucket.tsx`\n- `src/components/MemberCard.tsx`\n- `src/components/BottomNav.tsx`\n- `src/app/page.tsx`\n- `src/app/api/members/in-bed/route.ts`\n- `src/app/api/members/wake-up/route.ts`\n- `src/app/api/members/cancel-pending/route.ts`\n\n## Acceptance Criteria\n- Logged-in users see a persistent context-aware action bar (In Bed, Wake Up, or Cancel Pending) without scrolling through buckets.\n- Action buttons trigger instant optimistic UI updates on the dashboard while awaiting server confirmation.\n- Minimum touch target >= 44x44px across mobile viewports (375px+).\n- Unauthenticated visitors do not see the self-action bar.\n\n## Automated Regression Testing\n- **Test File:** `scripts/test-pinned-self-action-bar.mjs`\n- **Suite Integration:** Must pass via `scripts/run-tests.mjs` (and `npm run test:unit`).\n- Must assert component rendering, context-aware action switching, and 44px touch target compliance.",
+    "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/62",
+    "ghNumber": 62,
+    "jiraKey": null,
+    "jiraUrl": null,
+    "remoteLinked": false
+  },
+  {
+    "id": 2,
+    "phase": "Phase 1 (P0): High-Impact UI Decluttering & Core Action Ergonomics",
+    "priorityTag": "P0 - Critical",
+    "jiraPriority": "Highest",
+    "issueTypeId": "10071",
+    "title": "[P0] Compact Member Cards with Progressive Disclosure",
+    "labels": [
+      "frontend",
+      "enhancement",
+      "priority: critical"
+    ],
+    "targetFiles": [
+      "src/components/MemberCard.tsx",
+      "src/lib/timezone.ts",
+      "src/components/SleepCalendarModal.tsx",
+      "src/components/MetastrikeModal.tsx",
+      "src/app/api/members/nag-assist/route.ts",
+      "src/app/api/members/nag-notif/route.ts"
+    ],
+    "testFile": "scripts/test-compact-member-cards.mjs",
+    "body": "## Goal & Summary\nReduce visual noise and vertical scrolling across `src/components/MemberCard.tsx` by introducing progressive disclosure for secondary actions and accountability metrics.\n\nCurrently, each `MemberCard.tsx` renders the avatar, badges, full schedule row, GMT timezone offset, strikes/metastrikes bar, sleep calendar trigger, metastrike trigger, and nag action buttons by default. This makes cards vertically tall and forces extensive scrolling on mobile screens.\n\n## Architecture & Implementation Blueprint\n1. **Compact Primary Card View:**\n   - Restrict default rendering to primary identifiers: Avatar, Username, Status Badge, and Viewer-Local Time (computed via `src/lib/timezone.ts`).\n   - Remove permanent expanded display of calendar/strike modals and secondary actions from default card body.\n2. **Progressive Disclosure Bottom Sheet:**\n   - Tapping the card or a compact disclosure trigger expands a bottom sheet modal revealing:\n     - Full schedule details and timezone metadata row\n     - Monthly Strikes & Metastrikes accountability bar\n     - Trigger for `src/components/SleepCalendarModal.tsx`\n     - Trigger for `src/components/MetastrikeModal.tsx`\n     - Nag Assist (\"👥 Nagged!\") and Nag Notification buttons\n3. **Ergonomics & Layout:**\n   - Preserve >= 44x44px touch targets for username links, watchlist star, and tap-to-expand controls.\n   - Maintain strict Warm Dark aesthetic (`#1C1714` background, `#F5EBE1` text).\n\n## API Wiring & Endpoints\n- `POST /api/members/nag-assist`: Records community assist check-ins for sleeper's journal.\n- `POST /api/members/nag-notif`: Dispatches individual push notification nags to sleepy members.\n- `GET /api/members/sleep-history`: Fetches historical bedtime check-in calendar logs.\n\n## Target Files & Key References\n- `src/components/MemberCard.tsx`\n- `src/lib/timezone.ts`\n- `src/components/SleepCalendarModal.tsx`\n- `src/components/MetastrikeModal.tsx`\n- `src/app/api/members/nag-assist/route.ts`\n- `src/app/api/members/nag-notif/route.ts`\n\n## Acceptance Criteria\n- Default card height drops by at least 40% on mobile screens (measured in CSS pixels).\n- All secondary actions (sleep calendar, metastrike history, nag assist, nag push) remain fully accessible via progressive disclosure bottom sheet.\n- Discord journal deep links remain directly accessible.\n- Zero horizontal overflow on narrow mobile viewports (375px).\n\n## Automated Regression Testing\n- **Test File:** `scripts/test-compact-member-cards.mjs`\n- **Suite Integration:** Must pass via `scripts/run-tests.mjs` (and `npm run test:unit`).\n- Must assert 40%+ card height reduction, presence of essential primary elements, and functional disclosure triggers.",
+    "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/63",
+    "ghNumber": 63,
+    "jiraKey": null,
+    "jiraUrl": null,
+    "remoteLinked": false
+  },
+  {
+    "id": 3,
+    "phase": "Phase 1 (P0): High-Impact UI Decluttering & Core Action Ergonomics",
+    "priorityTag": "P0 - Critical",
+    "jiraPriority": "Highest",
+    "issueTypeId": "10071",
+    "title": "[P0] Smart Status Bucket Folding by Default",
+    "labels": [
+      "frontend",
+      "enhancement",
+      "priority: critical"
+    ],
+    "targetFiles": [
+      "src/components/StatusBucket.tsx",
+      "src/lib/sleepEngine.ts",
+      "src/app/page.tsx"
+    ],
+    "testFile": "scripts/test-smart-status-bucket-folding.mjs",
+    "body": "## Goal & Summary\nSurface members who need immediate accountability first on `src/app/page.tsx` by automatically folding passive buckets.\n\nCurrently, all 4 status buckets (🚨 Nag Now, 🌙 Winding Down, ☀️ Wide Awake, 💤 Asleep) render fully expanded. Users must scroll through dozens of passive awake or sleeping members before seeing who is currently hitting bedtime or winding down.\n\n## Architecture & Implementation Blueprint\n1. **Passive Bucket Auto-Collapse:**\n   - Update `src/components/StatusBucket.tsx` to accept default open/collapsed state.\n   - Auto-collapse passive buckets on initial render:\n     - 💤 **Asleep (Zzz)** bucket (default collapsed)\n     - ☀️ **Wide Awake** bucket (default collapsed)\n2. **Actionable Buckets Kept Expanded:**\n   - 🚨 **Nag Now / Bedtime Hit (Overdue)** (default expanded per `src/lib/sleepEngine.ts`)\n   - 🌙 **Winding Down** (within 60m before bedtime) (default expanded)\n3. **Collapsed Header UX:**\n   - Render clean member count pill on collapsed headers (e.g. `💤 Asleep (6 foxes)`).\n   - Include chevron icon indicating collapse/expand state with smooth CSS transitions.\n   - Allow user to toggle accordion open/close with 1 tap, preserving user overrides during the active session.\n\n## API Wiring & Endpoints\n- Pure client-side UI optimization driven by `src/lib/sleepEngine.ts` status evaluation calculations.\n\n## Target Files & Key References\n- `src/components/StatusBucket.tsx`\n- `src/lib/sleepEngine.ts`\n- `src/app/page.tsx`\n\n## Acceptance Criteria\n- Actionable members (Nag Now, Winding Down) appear above the fold without scrolling past inactive cards.\n- Passive buckets render collapsed headers displaying accurate member counts.\n- Single tap expands or collapses any bucket smoothly.\n- Zero layout shift during initial status bucket rendering.\n\n## Automated Regression Testing\n- **Test File:** `scripts/test-smart-status-bucket-folding.mjs`\n- **Suite Integration:** Must pass via `scripts/run-tests.mjs` (and `npm run test:unit`).\n- Must assert initial collapsed state for Asleep/Awake, expanded state for Nag Now/Winding Down, and member count pill accuracy.",
+    "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/64",
+    "ghNumber": 64,
+    "jiraKey": null,
+    "jiraUrl": null,
+    "remoteLinked": false
+  },
+  {
+    "id": 4,
+    "phase": "Phase 2 (P1): Navigation Consolidation & Onboarding Streamlining",
+    "priorityTag": "P1 - High",
+    "jiraPriority": "High",
+    "issueTypeId": "10071",
+    "title": "[P1] Consolidated Profile & Settings Drawer",
+    "labels": [
+      "frontend",
+      "enhancement",
+      "priority: high"
+    ],
+    "targetFiles": [
+      "src/components/Header.tsx",
+      "src/components/BottomNav.tsx",
+      "src/components/MyScheduleModal.tsx",
+      "src/components/PushModal.tsx",
+      "src/components/LoginModal.tsx",
+      "src/components/ModDrawer.tsx",
+      "src/app/api/members/update-schedule/route.ts"
+    ],
+    "testFile": "scripts/test-consolidated-profile-settings-drawer.mjs",
+    "body": "## Goal & Summary\nEliminate scattered modal triggers across `src/components/Header.tsx` and `src/components/BottomNav.tsx` by unifying settings, schedule management, and authentication into a single cohesive settings sheet.\n\nCurrently, users have separate dialogs for schedule editing (`MyScheduleModal.tsx`), Web Push notification toggles (`PushModal.tsx`), and authentication (`LoginModal.tsx`). This fragments user management and clutters mobile navigation.\n\n## Architecture & Implementation Blueprint\n1. **Unified Settings Drawer Component:**\n   - Combine `MyScheduleModal.tsx`, `PushModal.tsx`, and `LoginModal.tsx` into a unified slide-over drawer (e.g. `src/components/SettingsDrawer.tsx`).\n   - Group settings into clear sections / tabs:\n     - 🦊 **Account & Auth:** Login status, PIN change, Discord link, logout.\n     - ⏰ **Bedtime Schedule:** Bedtime/wake time picker, 48-hour cooldown notice, Discord journal thread link.\n     - 🔔 **Notifications:** Web Push toggle, permission request, test push button.\n2. **Moderator Separation:**\n   - Keep `src/components/ModDrawer.tsx` strictly isolated for moderator-only passcode workflows to maintain governance security.\n3. **Navigation Integration:**\n   - Update `Header.tsx` and `BottomNav.tsx` to route all profile/settings actions to the unified drawer.\n\n## API Wiring & Endpoints\n- `POST /api/members/update-schedule`: Enforces 48-hour cooldown on schedule updates.\n- `POST /api/push/subscribe` & `POST /api/push/unsubscribe`: Manages browser push subscriptions.\n- `POST /api/auth/login` & `POST /api/auth/logout`: Manages member session tokens.\n\n## Target Files & Key References\n- `src/components/Header.tsx`\n- `src/components/BottomNav.tsx`\n- `src/components/MyScheduleModal.tsx`\n- `src/components/PushModal.tsx`\n- `src/components/LoginModal.tsx`\n- `src/components/ModDrawer.tsx`\n- `src/app/api/members/update-schedule/route.ts`\n\n## Acceptance Criteria\n- Schedule edits, push notification settings, and authentication controls operate seamlessly from one unified drawer.\n- ModDrawer remains protected and isolated behind moderator authentication.\n- Navigation chrome in Header and BottomNav is clean and intuitive.\n\n## Automated Regression Testing\n- **Test File:** `scripts/test-consolidated-profile-settings-drawer.mjs`\n- **Suite Integration:** Must pass via `scripts/run-tests.mjs` (and `npm run test:unit`).\n- Must assert single drawer routing, tab transitions, schedule submission handling, and mod drawer isolation.",
+    "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/65",
+    "ghNumber": 65,
+    "jiraKey": null,
+    "jiraUrl": null,
+    "remoteLinked": false
+  },
+  {
+    "id": 5,
+    "phase": "Phase 2 (P1): Navigation Consolidation & Onboarding Streamlining",
+    "priorityTag": "P1 - High",
+    "jiraPriority": "High",
+    "issueTypeId": "10071",
+    "title": "[P1] Unified PWA Install & Push Onboarding Card",
+    "labels": [
+      "frontend",
+      "pwa",
+      "enhancement",
+      "priority: high"
+    ],
+    "targetFiles": [
+      "src/components/PwaBanner.tsx",
+      "src/components/PushModal.tsx",
+      "src/app/page.tsx",
+      "src/lib/pushClient.ts"
+    ],
+    "testFile": "scripts/test-unified-pwa-push-onboarding.mjs",
+    "body": "## Goal & Summary\nReplace competing top banners and popups with a single contextual setup card on `src/app/page.tsx`.\n\nCurrently, new visitors encounter multiple overlapping onboarding prompts: `PwaBanner.tsx` at the top urging PWA installation, and `PushModal.tsx` prompting for Web Push permissions. This produces cognitive overload.\n\n## Architecture & Implementation Blueprint\n1. **Unified Setup Card Component:**\n   - Merge `src/components/PwaBanner.tsx` and `src/components/PushModal.tsx` into a guided 2-step onboarding card on `src/app/page.tsx`:\n     - **Step 1:** Add Z-Catchers to Home Screen (shows iOS Safari \"Add to Home Screen\" instructions or Android Chrome install button).\n     - **Step 2:** Enable Push Notifications with Sleep Shield guarantee explanation.\n2. **Auto-Dismiss & State Detection:**\n   - Detect standalone PWA display mode via `window.matchMedia('(display-mode: standalone)').matches` or `window.navigator.standalone`.\n   - Inspect active push subscriptions via `src/lib/pushClient.ts` (`getExistingSubscription()`).\n   - Automatically and permanently hide the setup card once both standalone mode and push notifications are active.\n   - Allow user dismissal with local storage persistence.\n\n## API Wiring & Endpoints\n- Client-side PWA install prompt handler (`beforeinstallprompt` event).\n- `src/lib/pushClient.ts` for push permission queries and subscription registration.\n\n## Target Files & Key References\n- `src/components/PwaBanner.tsx`\n- `src/components/PushModal.tsx`\n- `src/app/page.tsx`\n- `src/lib/pushClient.ts`\n\n## Acceptance Criteria\n- Installed PWA users with active push permissions see zero setup banners or modals on launch.\n- Non-installed or non-subscribed users see a single, elegant, step-by-step card.\n- User dismissal is respected and persisted in localStorage.\n\n## Automated Regression Testing\n- **Test File:** `scripts/test-unified-pwa-push-onboarding.mjs`\n- **Suite Integration:** Must pass via `scripts/run-tests.mjs` (and `npm run test:unit`).\n- Must assert standalone display check, push subscription state resolution, and auto-dismiss behavior.",
+    "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/66",
+    "ghNumber": 66,
+    "jiraKey": null,
+    "jiraUrl": null,
+    "remoteLinked": false
+  },
+  {
+    "id": 6,
+    "phase": "Phase 2 (P1): Navigation Consolidation & Onboarding Streamlining",
+    "priorityTag": "P1 - High",
+    "jiraPriority": "High",
+    "issueTypeId": "10071",
+    "title": "[P1] Silent Timezone Auto-Detection",
+    "labels": [
+      "frontend",
+      "backend",
+      "enhancement",
+      "priority: high"
+    ],
+    "targetFiles": [
+      "src/lib/timezone.ts",
+      "src/app/join/page.tsx",
+      "src/components/MyScheduleModal.tsx",
+      "src/components/TimezoneSelect.tsx"
+    ],
+    "testFile": "scripts/test-silent-timezone-auto-detection.mjs",
+    "body": "## Goal & Summary\nRemove manual timezone dropdown friction during member onboarding (`/join`) and schedule updates by silently detecting the user's IANA timezone.\n\nCurrently, users must manually search through hundreds of timezones in `TimezoneSelect.tsx`, creating signup friction and occasional selection errors.\n\n## Architecture & Implementation Blueprint\n1. **Silent IANA Detection:**\n   - Utilize `Intl.DateTimeFormat().resolvedOptions().timeZone` in `src/lib/timezone.ts` to detect the client's current IANA timezone.\n   - Validate the specifier against Luxon's `IANAZone.isValidSpecifier(detectedTz)`.\n   - Fall back safely to `'UTC'` if the browser reports an invalid or unrecognized specifier.\n2. **Compact UI Presentation:**\n   - Display a compact pill on `src/app/join/page.tsx` and schedule modals: `📍 Asia/Kolkata (GMT+05:30)` alongside a subtle `\"Change\"` button.\n   - Keep the full `TimezoneSelect.tsx` dropdown hidden by default unless the user clicks `\"Change\"`.\n3. **Payload Pre-population:**\n   - Automatically assign the validated timezone into form state and submission payloads.\n\n## API Wiring & Endpoints\n- Client-side helper in `src/lib/timezone.ts` wired to `src/app/join/page.tsx` and `src/app/api/members/update-schedule/route.ts`.\n\n## Target Files & Key References\n- `src/lib/timezone.ts`\n- `src/app/join/page.tsx`\n- `src/components/MyScheduleModal.tsx`\n- `src/components/TimezoneSelect.tsx`\n\n## Acceptance Criteria\n- New users on `src/app/join/page.tsx` complete onboarding without manually touching the timezone selector unless intentionally overriding.\n- Detected timezone displays formatted IANA name and GMT offset pill.\n- Manual override picker opens cleanly upon clicking \"Change\".\n\n## Automated Regression Testing\n- **Test File:** `scripts/test-silent-timezone-auto-detection.mjs`\n- **Suite Integration:** Must pass via `scripts/run-tests.mjs` (and `npm run test:unit`).\n- Must assert IANA auto-detection, fallback handling on invalid specifiers, and manual override UI visibility toggle.",
+    "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/67",
+    "ghNumber": 67,
+    "jiraKey": null,
+    "jiraUrl": null,
+    "remoteLinked": false
+  },
+  {
+    "id": 7,
+    "phase": "Phase 3 (P2): Native-Grade PWA Lock-Screen & Home Screen Features",
+    "priorityTag": "P2 - Medium",
+    "jiraPriority": "Medium",
+    "issueTypeId": "10071",
+    "title": "[P2] Interactive Lock-Screen Push Notification Actions",
+    "labels": [
+      "pwa",
+      "backend",
+      "enhancement",
+      "priority: medium"
+    ],
+    "targetFiles": [
+      "src/lib/pushServer.ts",
+      "src/lib/cronDispatcher.ts",
+      "public/sw.js",
+      "src/app/api/members/in-bed/route.ts",
+      "src/app/api/members/wake-up/route.ts",
+      "src/app/api/members/nag-assist/route.ts"
+    ],
+    "testFile": "scripts/test-interactive-push-actions.mjs",
+    "body": "## Goal & Summary\nLet users log sleep, wake up, or send nag assists directly from OS lock-screen notifications without having to open the app in a browser tab.\n\n## Architecture & Implementation Blueprint\n1. **Push Payload Actions Definition:**\n   - In `src/lib/pushServer.ts` and `src/lib/cronDispatcher.ts`, attach `actions` arrays to push notification payloads:\n     - **Bedtime Alert:** `[{ action: 'in-bed', title: '🛏️ I\\'m in Bed' }, { action: 'snooze', title: '⏰ Snooze 10m' }]`\n     - **Nag Notification:** `[{ action: 'nag-assist', title: '👥 Nagged!' }, { action: 'open-journal', title: '📖 Open Journal' }]`\n     - **Wake-Up Alarm:** `[{ action: 'wake-up', title: '☀️ I\\'m Awake' }]`\n2. **Service Worker `notificationclick` Handler:**\n   - In `public/sw.js`, handle `event.action` values.\n   - For background actions (`in-bed`, `wake-up`, `nag-assist`), send authenticated background POST requests to the matching endpoints.\n   - Show an immediate confirmation notification (e.g. `\"🦊 Sleep Shield active. Rest well!\"`) without opening or focusing a browser window.\n   - For `open-journal`, open or focus the Discord journal URL in a new window/tab.\n\n## API Wiring & Endpoints\n- `POST /api/members/in-bed`: Sets `is_in_bed = true`, activates Sleep Shield.\n- `POST /api/members/wake-up`: Sets `is_woke_up = true`, records wake time.\n- `POST /api/members/nag-assist`: Increments nightly community assist count.\n\n## Target Files & Key References\n- `src/lib/pushServer.ts`\n- `src/lib/cronDispatcher.ts`\n- `public/sw.js`\n- `src/app/api/members/in-bed/route.ts`\n- `src/app/api/members/wake-up/route.ts`\n- `src/app/api/members/nag-assist/route.ts`\n\n## Acceptance Criteria\n- Tapping a notification action button updates member status and displays confirmation without opening a browser window.\n- Notification action clicks preserve full authentication integrity and Sleep Shield rules.\n- Fallback click opens the main application dashboard cleanly.\n\n## Automated Regression Testing\n- **Test File:** `scripts/test-interactive-push-actions.mjs`\n- **Suite Integration:** Must pass via `scripts/run-tests.mjs` (and `npm run test:unit`).\n- Must assert action schema definitions in push payloads, service worker action routing, and API endpoint integration.",
+    "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/68",
+    "ghNumber": 68,
+    "jiraKey": null,
+    "jiraUrl": null,
+    "remoteLinked": false
+  },
+  {
+    "id": 8,
+    "phase": "Phase 3 (P2): Native-Grade PWA Lock-Screen & Home Screen Features",
+    "priorityTag": "P2 - Medium",
+    "jiraPriority": "Medium",
+    "issueTypeId": "10071",
+    "title": "[P2] Home Screen App Icon Shortcuts",
+    "labels": [
+      "pwa",
+      "frontend",
+      "enhancement",
+      "priority: medium"
+    ],
+    "targetFiles": [
+      "public/manifest.json",
+      "public/icons/",
+      "src/app/page.tsx",
+      "src/app/api/members/in-bed/route.ts",
+      "src/app/api/members/wake-up/route.ts"
+    ],
+    "testFile": "scripts/test-app-icon-shortcuts.mjs",
+    "body": "## Goal & Summary\nEnable one-tap check-ins via long-press on the installed home screen icon (PWA App Shortcuts).\n\n## Architecture & Implementation Blueprint\n1. **Manifest Shortcuts Configuration:**\n   - Update `public/manifest.json` with a `shortcuts` array:\n     - Shortcut 1:\n       - `name`: `\"I'm in Bed\"`\n       - `short_name`: `\"In Bed\"`\n       - `url`: `\"/?action=in-bed\"`\n       - `icons`: `[{ \"src\": \"/icons/icon-192x192.png\", \"sizes\": \"192x192\", \"type\": \"image/png\" }]`\n     - Shortcut 2:\n       - `name`: `\"I'm Awake\"`\n       - `short_name`: `\"Wake Up\"`\n       - `url`: `\"/?action=wake-up\"`\n       - `icons`: `[{ \"src\": \"/icons/icon-192x192.png\", \"sizes\": \"192x192\", \"type\": \"image/png\" }]`\n2. **Deep-Link Handling in Dashboard:**\n   - In `src/app/page.tsx`, inspect URL search params on mount (`useSearchParams()`).\n   - If `action === 'in-bed'` or `action === 'wake-up'`, verify authenticated member session and immediately trigger check-in.\n   - Display confirmation toast and sanitize query parameters via `window.history.replaceState`.\n\n## API Wiring & Endpoints\n- `POST /api/members/in-bed`: Registers bedtime check-in.\n- `POST /api/members/wake-up`: Registers morning wake-up check-in.\n\n## Target Files & Key References\n- `public/manifest.json`\n- `public/icons/`\n- `src/app/page.tsx`\n- `src/app/api/members/in-bed/route.ts`\n- `src/app/api/members/wake-up/route.ts`\n\n## Acceptance Criteria\n- Long-pressing PWA icon on Android, iOS WebClip, or desktop displays \"I'm in Bed\" and \"I'm Awake\" shortcuts.\n- Selecting a shortcut launches the PWA and triggers the corresponding check-in immediately.\n- Clean URL query replacement prevents duplicate triggers on page refresh.\n\n## Automated Regression Testing\n- **Test File:** `scripts/test-app-icon-shortcuts.mjs`\n- **Suite Integration:** Must pass via `scripts/run-tests.mjs` (and `npm run test:unit`).\n- Must assert manifest shortcuts schema validity, icon path references, and query parameter trigger handling.",
+    "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/69",
+    "ghNumber": 69,
+    "jiraKey": null,
+    "jiraUrl": null,
+    "remoteLinked": false
+  },
+  {
+    "id": 9,
+    "phase": "Phase 3 (P2): Native-Grade PWA Lock-Screen & Home Screen Features",
+    "priorityTag": "P2 - Medium",
+    "jiraPriority": "Medium",
+    "issueTypeId": "10071",
+    "title": "[P2] App Icon Badging for Unread Nags & Wind-Down Alerts",
+    "labels": [
+      "pwa",
+      "frontend",
+      "enhancement",
+      "priority: medium"
+    ],
+    "targetFiles": [
+      "public/sw.js",
+      "src/app/api/cron/dispatch-notifications/route.ts",
+      "public/icons/badge-72x72.png",
+      "src/lib/pushClient.ts",
+      "src/app/page.tsx"
+    ],
+    "testFile": "scripts/test-app-icon-badging.mjs",
+    "body": "## Goal & Summary\nSurface pending accountability alerts and unread bedtime nags directly on the home screen app icon via the Badging API.\n\n## Architecture & Implementation Blueprint\n1. **Badge Setting in Service Worker:**\n   - In `public/sw.js`, invoke `navigator.setAppBadge(count)` when push events arrive from `/api/cron/dispatch-notifications`.\n   - Read badge count from payload (`data.badgeCount` or increment local badge counter).\n   - Ensure feature detection guard (`if ('setAppBadge' in navigator)`) prevents errors on unsupported browsers.\n   - Pair with monochrome `public/icons/badge-72x72.png` for Android notification tray badging.\n2. **Badge Clearing on App Focus:**\n   - In `src/lib/pushClient.ts` and `src/app/page.tsx`, invoke `navigator.clearAppBadge()` whenever the user opens, focuses, or returns to the dashboard tab (`visibilitychange` event).\n\n## API Wiring & Endpoints\n- Web Push payload from `src/app/api/cron/dispatch-notifications/route.ts`.\n- Browser Badging API (`navigator.setAppBadge` / `navigator.clearAppBadge`).\n\n## Target Files & Key References\n- `public/sw.js`\n- `src/app/api/cron/dispatch-notifications/route.ts`\n- `public/icons/badge-72x72.png`\n- `src/lib/pushClient.ts`\n- `src/app/page.tsx`\n\n## Acceptance Criteria\n- Unread push alerts increment the OS home screen app icon badge.\n- Opening or focusing the app tab clears the badge immediately.\n- Graceful degradation on browsers lacking Badging API support.\n\n## Automated Regression Testing\n- **Test File:** `scripts/test-app-icon-badging.mjs`\n- **Suite Integration:** Must pass via `scripts/run-tests.mjs` (and `npm run test:unit`).\n- Must assert badging calls on push receipt, badge clearing on app visibility, and feature detection safety.",
+    "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/70",
+    "ghNumber": 70,
+    "jiraKey": null,
+    "jiraUrl": null,
+    "remoteLinked": false
+  },
+  {
+    "id": 10,
+    "phase": "Phase 4 (P3): Offline Resilience",
+    "priorityTag": "P3 - Low",
+    "jiraPriority": "Low",
+    "issueTypeId": "10071",
+    "title": "[P3] Offline Check-In Queue via Background Sync",
+    "labels": [
+      "pwa",
+      "backend",
+      "frontend",
+      "enhancement",
+      "priority: low"
+    ],
+    "targetFiles": [
+      "src/app/api/members/in-bed/route.ts",
+      "src/app/api/members/wake-up/route.ts",
+      "public/sw.js",
+      "src/app/page.tsx"
+    ],
+    "testFile": "scripts/test-offline-checkin-sync.mjs",
+    "body": "## Goal & Summary\nPrevent failed sleep check-ins when users toggle airplane mode or have weak bedroom Wi-Fi connectivity at night.\n\n## Architecture & Implementation Blueprint\n1. **Offline Request Interception:**\n   - In `public/sw.js`, intercept POST requests targeting `/api/members/in-bed` and `/api/members/wake-up`.\n   - When network request fails (`TypeError: Failed to fetch` or `!navigator.onLine`), clone request body and persist it to IndexedDB queue (`z_catchers_offline_checkins`).\n2. **Background Sync Registration:**\n   - Register a Background Sync tag (`sync.register('replay-checkins')`).\n   - Listen for `sync` events in `public/sw.js`: replay queued requests sequentially with original timestamps and session headers once network connectivity returns.\n   - Purge successfully synced records from IndexedDB and show a push notification: `\"🦊 Check-in synced successfully!\"`.\n3. **Dashboard Feedback Pill:**\n   - In `src/app/page.tsx`, query pending queue count from IndexedDB.\n   - Display a compact `\"⏳ Queued Offline (will sync when online)\"` pill on the action bar when items are pending.\n\n## API Wiring & Endpoints\n- `POST /api/members/in-bed`: Idempotent handling of delayed/queued check-ins with client timestamp.\n- `POST /api/members/wake-up`: Idempotent handling of delayed/queued wake-up check-ins.\n\n## Target Files & Key References\n- `src/app/api/members/in-bed/route.ts`\n- `src/app/api/members/wake-up/route.ts`\n- `public/sw.js`\n- `src/app/page.tsx`\n\n## Acceptance Criteria\n- Sleep and wake check-ins triggered offline queue locally in IndexedDB without losing data.\n- Check-ins replay automatically when the device reconnects to the internet.\n- UI displays a clear \"Queued Offline\" indicator while offline items await synchronization.\n\n## Automated Regression Testing\n- **Test File:** `scripts/test-offline-checkin-sync.mjs`\n- **Suite Integration:** Must pass via `scripts/run-tests.mjs` (and `npm run test:unit`).\n- Must assert fetch interception, IndexedDB record creation, background sync replay sequencing, and offline pill state.",
+    "ghUrl": "https://github.com/KrishJdev/Z-Catchers/issues/71",
+    "ghNumber": 71,
+    "jiraKey": null,
+    "jiraUrl": null,
+    "remoteLinked": false
+  }
+]

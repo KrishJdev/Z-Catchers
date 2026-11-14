@@ -22,7 +22,8 @@ if (issueTitle.startsWith('[ZC-')) {
 const JIRA_DOMAIN = process.env.JIRA_DOMAIN || 'krishjaiswal2182003.atlassian.net';
 const JIRA_EMAIL = process.env.JIRA_EMAIL;
 const JIRA_TOKEN = process.env.JIRA_TOKEN;
-const PROJECT_KEY = process.env.JIRA_PROJECT_KEY || 'ZC';
+const PROJECT_ID = process.env.JIRA_PROJECT_ID || '10033';
+const ISSUE_TYPE_ID = process.env.JIRA_ISSUE_TYPE_ID || '10071';
 
 if (!JIRA_EMAIL || !JIRA_TOKEN) {
   console.error('Missing JIRA_EMAIL or JIRA_TOKEN environment variables.');
@@ -44,7 +45,7 @@ async function main() {
     },
     body: JSON.stringify({
       fields: {
-        project: { key: PROJECT_KEY },
+        project: { id: PROJECT_ID },
         summary: issueTitle,
         description: {
           type: 'doc',
@@ -56,7 +57,7 @@ async function main() {
             },
           ],
         },
-        issuetype: { name: 'Task' },
+        issuetype: { id: ISSUE_TYPE_ID },
       },
     }),
   });
