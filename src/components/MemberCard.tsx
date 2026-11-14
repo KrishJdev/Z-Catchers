@@ -53,6 +53,26 @@ interface MemberCardProps {
  * @param props - Component properties for member state and interaction handlers
  * @returns Rendered compact member card with progressive disclosure
  */
+let activeScrollLocks = 0;
+let originalBodyOverflow = '';
+
+function acquireScrollLock() {
+  if (typeof document === 'undefined') return;
+  if (activeScrollLocks === 0) {
+    originalBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+  activeScrollLocks++;
+}
+
+function releaseScrollLock() {
+  if (typeof document === 'undefined') return;
+  activeScrollLocks = Math.max(0, activeScrollLocks - 1);
+  if (activeScrollLocks === 0) {
+    document.body.style.overflow = originalBodyOverflow;
+  }
+}
+
 export function MemberCard({
   member,
   state,
@@ -73,8 +93,10 @@ export function MemberCard({
   const { bucket, formattedViewerTime, formattedSleeperTime, pendingNotice, streakMilestone } = state;
   const isViewer = Boolean(currentMemberId && member.id === currentMemberId);
 
-  // Progressive Disclosure Bottom Sheet state
+  // Progressive Disclosure Bottom Sheet state & focus management refs
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const sheetDialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   // Optimistic UI state for "I'm In Bed" check-in & "Wake Up" undo
   const [optimisticInBed, setOptimisticInBed] = useState<boolean | null>(null);
@@ -116,27 +138,64 @@ export function MemberCard({
     }
   };
 
-  // Close sheet on Escape key
+  // Focus management, focus containment (trap), and Escape handling for bottom sheet modal
   useEffect(() => {
     if (!isDetailsOpen) return;
+
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+
+    // Focus first interactive element inside sheet dialog
+    const focusTimer = setTimeout(() => {
+      const firstFocusable = sheetDialogRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
+    }, 50);
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         setIsDetailsOpen(false);
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        if (!sheetDialogRef.current) return;
+        const focusables = sheetDialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      clearTimeout(focusTimer);
+      window.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus();
+    };
   }, [isDetailsOpen]);
 
-  // Lock body scroll when bottom sheet is open
+  // Lock body scroll only when bottom sheet is open, preserving pre-lock overflow with shared lock count
   useEffect(() => {
-    if (isDetailsOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    if (!isDetailsOpen) return;
+    acquireScrollLock();
     return () => {
-      document.body.style.overflow = '';
+      releaseScrollLock();
     };
   }, [isDetailsOpen]);
 
@@ -559,7 +618,7 @@ export function MemberCard({
           triggerHaptic(10);
           setIsDetailsOpen(true);
         }}
-        className={`w-full max-w-full overflow-hidden flex flex-col justify-between p-3.5 sm:p-4 gap-2.5 rounded-2xl bg-night-surface border transition-all cursor-pointer hover:border-night-border/90 active:scale-[0.99] select-none ${cardBorderAndResting}`}
+        className={`w-full max-w-full overflow-hidden flex flex-col justify-between p-2.5 sm:p-3.5 gap-2 sm:gap-2.5 rounded-2xl bg-night-surface border transition-all cursor-pointer hover:border-night-border/90 active:scale-[0.99] select-none ${cardBorderAndResting}`}
       >
         {/* Top Zone: Fixed avatar wrapper, strict single-line Name+Star, Sub-header badges, and right clock + pill */}
         <div className="flex items-start justify-between gap-3">
@@ -767,13 +826,14 @@ export function MemberCard({
           id={`member-details-${member.id}`}
           aria-modal="true"
           aria-labelledby={`member-sheet-title-${member.id}`}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 animate-fade-in"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-night-bg/80 backdrop-blur-sm p-0 sm:p-4 animate-fade-in"
           onClick={(e) => {
             e.stopPropagation();
             setIsDetailsOpen(false);
           }}
         >
           <div
+            ref={sheetDialogRef}
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-lg max-h-[90vh] sm:max-h-[85vh] bg-night-surface border-t sm:border border-night-border rounded-t-3xl sm:rounded-2xl flex flex-col shadow-2xl overflow-hidden animate-slide-up"
           >
@@ -814,7 +874,7 @@ export function MemberCard({
             {/* Sheet Scrollable Body */}
             <div className="overflow-y-auto p-5 flex flex-col gap-4">
               {/* Full Schedule & Timezone Details Row */}
-              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-zinc-400 bg-white/[0.02] px-3 py-2 rounded-xl border border-white/[0.04]">
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-cream-secondary bg-night-elevated/40 px-3 py-2 rounded-xl border border-night-border/50">
                 <div className="flex flex-wrap items-center gap-1.5 font-medium text-cream-secondary">
                   <span className="whitespace-nowrap">
                     {formattedSleeperTime} → {state.formattedWakeTime || formatTime12h(state.activeWakeTimeLocal || member.wake_time_local || '07:00')}
@@ -837,7 +897,7 @@ export function MemberCard({
                     </span>
                   ) : null}
                 </div>
-                <span className="whitespace-nowrap opacity-75">
+                <span className="whitespace-nowrap text-cream-muted">
                   ({formatGmtOffset(member.timezone)})
                 </span>
               </div>
@@ -845,7 +905,7 @@ export function MemberCard({
               {/* Notice Zone */}
               {/* Out of Strikes Alert */}
               {strikesUsed >= 3 && (
-                <div className="flex items-center justify-between rounded-xl border border-status-coral/40 bg-status-coral/10 px-3 py-2 text-[11px] font-semibold text-status-coral">
+                <div className="flex items-center justify-between rounded-xl border border-fox-rust/50 bg-fox-rust/15 px-3 py-2 text-[11px] font-semibold text-fox-rust">
                   <div className="flex items-center gap-1.5">
                     <FoxMascot state="alert" size={16} />
                     <span>Out of Strikes • 0 Margin Left</span>
@@ -953,8 +1013,8 @@ export function MemberCard({
                 <div className="flex items-center justify-between px-3 py-2 rounded-xl text-xs whitespace-nowrap border border-night-border bg-night-elevated">
                   {/* Strikes Indicator */}
                   <div className="flex items-center gap-1.5" title={`${strikesUsed} of 3 monthly strikes used`}>
-                    <span className="font-semibold text-status-coral flex items-center gap-1">
-                      <Zap className="h-3 w-3 fill-status-coral text-status-coral" />
+                    <span className="font-semibold text-fox-rust flex items-center gap-1">
+                      <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
                       <span>Strikes:</span>
                       <span className="tabular-nums font-bold">{strikesUsed}/3</span>
                     </span>
@@ -962,9 +1022,9 @@ export function MemberCard({
                       {[1, 2, 3].map((pip) => (
                         <span
                           key={`sheet-strike-${member.id}-${pip}`}
-                          className={`h-2.5 w-2.5 rounded-full transition-colors ${
+                          className={`h-1.5 w-1.5 rounded-full transition-colors ${
                             pip <= strikesUsed
-                              ? 'bg-status-coral ring-1 ring-status-coral/40 shadow-sm shadow-status-coral/50'
+                              ? 'bg-fox-rust ring-1 ring-fox-rust/40 shadow-sm shadow-fox-rust/50'
                               : 'bg-night-border border border-night-border/80'
                           }`}
                         />
@@ -977,8 +1037,8 @@ export function MemberCard({
                     className="flex items-center gap-1.5"
                     title={`${metastrikesUsed} of 3 monthly excused metastrikes used`}
                   >
-                    <span className="font-semibold text-status-amber flex items-center gap-1">
-                      <Shield className="h-3 w-3 fill-status-amber/20 text-status-amber" />
+                    <span className="font-semibold text-fox-amber flex items-center gap-1">
+                      <Shield className="h-3 w-3 fill-fox-amber/20 text-fox-amber" />
                       <span>Meta:</span>
                       <span className="tabular-nums font-bold">{metastrikesUsed}/3</span>
                     </span>
@@ -986,9 +1046,9 @@ export function MemberCard({
                       {[1, 2, 3].map((pip) => (
                         <span
                           key={`sheet-meta-${member.id}-${pip}`}
-                          className={`h-2.5 w-2.5 rounded-full transition-colors ${
+                          className={`h-1.5 w-1.5 rounded-full transition-colors ${
                             pip <= metastrikesUsed
-                              ? 'bg-status-amber ring-1 ring-status-amber/40 shadow-sm shadow-status-amber/50'
+                              ? 'bg-fox-amber ring-1 ring-fox-amber/40 shadow-sm shadow-fox-amber/50'
                               : 'bg-night-border border border-night-border/80'
                           }`}
                         />
@@ -1022,7 +1082,7 @@ export function MemberCard({
                   </button>
 
                   {/* Trigger for MetastrikeModal.tsx */}
-                  {onOpenMetastrike && (
+                  {onOpenMetastrike && isViewer && metastrikesUsed < 3 && (isStrikeConvertible || !isMetastrikeActive) && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1112,7 +1172,7 @@ export function MemberCard({
                   href={member.journal_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={handleNagJournalClick}
+                  onClick={isNagNow || bucket === 'WINDING_DOWN' ? handleNagJournalClick : undefined}
                   className={`w-full h-11 min-h-[44px] flex items-center justify-center gap-2 rounded-xl font-semibold transition-all text-xs sm:text-sm px-3 whitespace-nowrap shadow-sm ${
                     isNagNow
                       ? 'bg-status-coral text-night-bg hover:bg-status-coral/90 active:scale-[0.98]'
@@ -1465,7 +1525,7 @@ export function MemberCard({
                             ) : wakeCooldownSeconds > 0 ? (
                               <>
                                 <Clock className="h-3.5 w-3.5 text-cream-muted shrink-0" />
-                                <span className="truncate">Nag in {formatNagCooldown(nagCooldownSeconds)}</span>
+                                <span className="truncate">Nag in {formatNagCooldown(wakeCooldownSeconds)}</span>
                               </>
                             ) : (
                               <>
