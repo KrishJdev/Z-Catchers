@@ -1,12 +1,12 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T22:05:00+05:30  
+> **Last Updated:** 2026-11-14T22:45:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `5fc9338`  
+> **Latest Commit:** `622d4dd`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72)  
-> **Active Integration Pull Requests:** [#73 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/73) (`feat/issue-64-smart-status-bucket-folding` -> `dev`) [Verified: CodeRabbit review comments resolved, CI passing]  
+> **Active Integration Pull Requests:** [#73 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/73) (`feat/issue-64-smart-status-bucket-folding` -> `dev`) [Verified: Merge conflict with `dev` resolved, MERGEABLE, CI passing]  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)  
 > **Active Production Release Pull Request:** [#61 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/61) (`dev` -> `main`)  
 > **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 36/36 suites passed | `npm run build` clean)
@@ -69,6 +69,23 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 95: PR #73 Merge Conflict Resolution with `dev` & Verification (GitHub #64, Jira ZC-30)
+* **Objective & Context:**
+  - Resolved merge conflict on Pull Request [#73](https://github.com/KrishJdev/Z-Catchers/pull/73) (`feat/issue-64-smart-status-bucket-folding` -> `dev`) following the upstream merge of PR #72 (`PinnedSelfActionBar`).
+* **Key Implementation & Resolution Details:**
+  1. **Conflict Resolution (`scripts/run-tests.mjs`):**
+     - Resolved conflicting test suite array entries by retaining both `'test-pinned-self-action-bar.mjs'` and `'test-smart-status-bucket-folding.mjs'` (and `'test-decluttering-issue-sync.mjs'` on `krish`).
+  2. **Dashboard Verification (`src/app/page.tsx`):**
+     - Verified `page.tsx` cleanly incorporates both features: persistent `PinnedSelfActionBar` check-in/wake-up/cancel-pending controls for authenticated users and collapsible `StatusBucket` sections with smart default folding.
+  3. **PR #73 Status Restoration:**
+     - Committed merge resolution (`7f980f5`) and pushed to `origin feat/issue-64-smart-status-bucket-folding`.
+     - Confirmed GitHub PR #73 status transition from `DIRTY / CONFLICTING` to `MERGEABLE`.
+  4. **Active Branch Synchronization:**
+     - Merged `feat/issue-64-smart-status-bucket-folding` into active working branch `krish`.
+* **Verification & Testing:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 36/36 test suites passed cleanly (100%).
 
 ### Phase 94: Smart Status Bucket Folding Code Review Resolution & PR #73 Pre-Merge Validation (GitHub #64, Jira ZC-30)
 * **Objective & Context:**
