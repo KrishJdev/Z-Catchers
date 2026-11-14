@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 import { setStoredMemberId, setStoredAuthToken, setStoredAuthMember } from '@/lib/pushClient';
-import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone, DayKey, DailySchedule, WeeklySchedule, DAY_KEYS } from '@/lib/timezone';
+import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone, detectUserTimezone, DayKey, DailySchedule, WeeklySchedule, DAY_KEYS } from '@/lib/timezone';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
 
 const DAY_LABELS: Record<DayKey, { short: string; full: string }> = {
@@ -83,7 +83,7 @@ export function MyScheduleModal({
   const [journalUrl, setJournalUrl] = useState<string>('');
   const [bedtime, setBedtime] = useState<string>('23:00');
   const [wakeTime, setWakeTime] = useState<string>('07:00');
-  const [timezone, setTimezone] = useState<string>(viewerTimezone);
+  const [timezone, setTimezone] = useState<string>(viewerTimezone || detectUserTimezone());
 
   // Weekend hours (Friday & Saturday nights)
   const [enableWeekendHours, setEnableWeekendHours] = useState<boolean>(false);
@@ -1232,6 +1232,7 @@ export function MyScheduleModal({
                   <TimezoneSelect
                     value={timezone}
                     onChange={setTimezone}
+                    compact={true}
                     selectClassName="w-full min-h-[44px] rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-xs text-cream-primary outline-none focus:border-status-amber"
                   />
                 </div>

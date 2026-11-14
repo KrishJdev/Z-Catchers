@@ -45,6 +45,10 @@ const UNIT_TESTS = [
   'test-ui-normalization-and-button-wrapping.mjs',
   'test-strike-persistence-and-alias-reconciliation.mjs',
   'test-update-schedule-mod-rate-limit.mjs',
+  'test-pinned-self-action-bar.mjs',
+  'test-smart-status-bucket-folding.mjs',
+  'test-compact-member-cards.mjs',
+  'test-silent-timezone-auto-detection.mjs',
 ];
 
 // E2E tests: require live Supabase database or running network services
