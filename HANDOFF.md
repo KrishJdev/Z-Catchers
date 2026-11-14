@@ -1,12 +1,12 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T23:45:00+05:30  
+> **Last Updated:** 2026-11-15T00:20:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `5e97a78`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73)  
-> **Active Integration Pull Requests:** [#74 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/74) (`feat/issue-63-compact-member-cards` -> `dev`) [Verified: CI passing, CodeRabbit review addressed & re-requested]  
+> **Latest Commit:** `a22f9e2`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74)  
+> **Active Integration Pull Requests:** [#75 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/75) (`feat/issue-67-silent-timezone-auto-detection` -> `dev`) [Verified: CI passing, CodeRabbit review requested]  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)  
 > **Active Production Release Pull Request:** [#61 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/61) (`dev` -> `main`)  
 > **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 37/37 suites passed, 100% | `npm run build` clean)
@@ -69,6 +69,41 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 97: Silent Timezone Auto-Detection & Compact UI Presentation (GitHub #67, Jira ZC-33)
+* **Objective & Context:**
+  - Resolved GitHub Issue [#67](https://github.com/KrishJdev/Z-Catchers/issues/67) and implemented Jira Task [ZC-33](https://krishjaiswal2182003.atlassian.net/browse/ZC-33) [Priority: P1 - High] on feature branch `feat/issue-67-silent-timezone-auto-detection`.
+  - Removed manual timezone dropdown friction during member onboarding (`/join`) and schedule updates (`MyScheduleModal.tsx`) by silently detecting the user's IANA timezone and presenting a compact UI pill with a manual override option.
+* **Key Implementation Details:**
+  1. **Silent IANA Auto-Detection (`src/lib/sleepEngine.ts`, `src/lib/timezone.ts`):**
+     - Utilizes `Intl.DateTimeFormat().resolvedOptions().timeZone` to detect the client's current IANA timezone.
+     - Strictly validates specifiers against Luxon's `IANAZone.isValidSpecifier(detected)` and `isValidTimezone(detected)`.
+     - Safely falls back to `'UTC'` if the browser reports an invalid or unrecognized specifier, or if runtime environment throws an exception.
+     - Exports pure helpers `detectUserTimezone(fallback = 'UTC')`, `formatTimezoneDisplay(zoneStr)`, and `formatTimezonePill(zoneStr)`.
+  2. **Compact UI Presentation (`src/components/TimezoneSelect.tsx`):**
+     - Added `compact?: boolean` prop and `onOverrideToggle?: (isOverriding: boolean) => void`.
+     - In compact mode, renders a compact pill: `📍 Asia/Kolkata (GMT+05:30)` alongside a subtle `"Change"` button with minimum 44px touch target ergonomics (`min-h-[44px]`).
+     - Keeps the full search filter input and `<select>` dropdown hidden by default until the user taps `"Change"`.
+     - Displays a subtle `"Done"` button in override mode to collapse back to the compact pill once a custom timezone is selected.
+     - Strictly follows Warm Dark design tokens (`bg-night-elevated`, `border-night-border`, `text-cream-primary`, `text-status-amber`).
+  3. **Onboarding & Schedule Modal Wiring (`src/app/join/page.tsx`, `src/components/MyScheduleModal.tsx`):**
+     - Initial form state for `regTimezone` on `/join` and `timezone` on `MyScheduleModal.tsx` is pre-populated via `detectUserTimezone()`.
+     - Client hydration silently re-validates the local timezone without layout shifts or dropdown friction.
+     - Onboarding and schedule forms render `<TimezoneSelect compact={true} />`.
+     - Form submissions automatically send the validated detected timezone in payloads without manual user selection.
+  4. **API Endpoint Validation (`src/app/api/members/update-schedule/route.ts`):**
+     - Confirmed and verified timezone validation via `isValidTimezone` from `@/lib/timezone`.
+  5. **Automated Regression Testing (`scripts/test-silent-timezone-auto-detection.mjs`, `scripts/run-tests.mjs`):**
+     - Complete test suite asserting valid IANA detection across global timezones (`Asia/Kolkata`, `America/New_York`, `Europe/London`, `Australia/Sydney`, `Pacific/Auckland`).
+     - Asserts fallback to `'UTC'` on invalid specifiers (`Invalid/Timezone_Specifier`, `Fake/City`, `GMT+05:30`, `UTC-5`, `''`, `null`, `undefined`) and throwing runtime environments.
+     - Asserts pill and display string formatting.
+     - Asserts compact pill rendering, dropdown hiding, and override toggle visibility.
+     - Asserts mobile touch target compliance (>= 44x44px) and Warm Dark tokens.
+     - Integrated as test suite #37 in `scripts/run-tests.mjs`.
+* **Pull Request & Integration:**
+  - Created feature branch `feat/issue-67-silent-timezone-auto-detection` branched from `dev` and opened Integration Pull Request [#75](https://github.com/KrishJdev/Z-Catchers/pull/75) targeting `dev`.
+  - Added reviewer `@coderabbitai` and dispatched review request comment.
+  - Merged feature branch into active working branch `krish`.
 
 ### Phase 96: Compact Member Cards with Progressive Disclosure & Code Review Resolution (GitHub #63, Jira ZC-29)
 * **Objective & Context:**
@@ -2050,11 +2085,11 @@ d:\Projects\Z Catchers\
 | Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
 |---|---|---|---|---|---|
 | **ZC-28** | **Critical (P0)** | Pinned Self-Action Bar for One-Tap Check-Ins | `src/components/PinnedSelfActionBar.tsx`, `src/app/page.tsx` | [#62](https://github.com/KrishJdev/Z-Catchers/issues/62) | **DONE** (PR #72 merged) |
-| **ZC-29** | **Critical (P0)** | Compact Member Cards with Progressive Disclosure | `src/components/MemberCard.tsx`, `src/lib/timezone.ts`, `src/components/SleepCalendarModal.tsx` | [#63](https://github.com/KrishJdev/Z-Catchers/issues/63) | **DONE** (PR #74 open) |
+| **ZC-29** | **Critical (P0)** | Compact Member Cards with Progressive Disclosure | `src/components/MemberCard.tsx`, `src/lib/timezone.ts`, `src/components/SleepCalendarModal.tsx` | [#63](https://github.com/KrishJdev/Z-Catchers/issues/63) | **DONE** (PR #74 merged) |
 | **ZC-30** | **Critical (P0)** | Smart Status Bucket Folding by Default | `src/components/StatusBucket.tsx`, `src/lib/sleepEngine.ts`, `src/app/page.tsx` | [#64](https://github.com/KrishJdev/Z-Catchers/issues/64) | **DONE** (PR #73 merged) |
 | **ZC-31** | **High (P1)** | Consolidated Profile & Settings Drawer | `src/components/Header.tsx`, `src/components/BottomNav.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/PushModal.tsx` | [#65](https://github.com/KrishJdev/Z-Catchers/issues/65) | **TODO** |
 | **ZC-32** | **High (P1)** | Unified PWA Install & Push Onboarding Card | `src/components/PwaBanner.tsx`, `src/components/PushModal.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts` | [#66](https://github.com/KrishJdev/Z-Catchers/issues/66) | **TODO** |
-| **ZC-33** | **High (P1)** | Silent Timezone Auto-Detection | `src/lib/timezone.ts`, `src/app/join/page.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/TimezoneSelect.tsx` | [#67](https://github.com/KrishJdev/Z-Catchers/issues/67) | **TODO** |
+| **ZC-33** | **High (P1)** | Silent Timezone Auto-Detection | `src/lib/timezone.ts`, `src/app/join/page.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/TimezoneSelect.tsx` | [#67](https://github.com/KrishJdev/Z-Catchers/issues/67) | **DONE** (PR #75 open) |
 | **ZC-34** | **Medium (P2)** | Interactive Lock-Screen Push Notification Actions | `src/lib/pushServer.ts`, `src/lib/cronDispatcher.ts`, `public/sw.js` | [#68](https://github.com/KrishJdev/Z-Catchers/issues/68) | **TODO** |
 | **ZC-35** | **Medium (P2)** | Home Screen App Icon Shortcuts | `public/manifest.json`, `public/icons/`, `src/app/page.tsx` | [#69](https://github.com/KrishJdev/Z-Catchers/issues/69) | **TODO** |
 | **ZC-36** | **Medium (P2)** | App Icon Badging for Unread Nags & Wind-Down Alerts | `public/sw.js`, `src/app/api/cron/dispatch-notifications/route.ts`, `src/lib/pushClient.ts` | [#70](https://github.com/KrishJdev/Z-Catchers/issues/70) | **TODO** |
@@ -2106,11 +2141,11 @@ d:\Projects\Z Catchers\
    * **ZC-29 / GH #63 (`src/components/MemberCard.tsx`, `scripts/test-compact-member-cards.mjs`):** **COMPLETED** (PR [#74](https://github.com/KrishJdev/Z-Catchers/pull/74) open targeting `dev`, verified with 36/36 tests clean, CodeRabbit review requested).
    * **ZC-30 / GH #64:** **COMPLETED** (PR [#73](https://github.com/KrishJdev/Z-Catchers/pull/73) merged into `dev`).
 
-2. **Sprint 2 (Immediate Next Task) — Phase 2 (P1) Navigation Consolidation & Onboarding Streamlining:**
+2. **Sprint 2 — Phase 2 (P1) Navigation Consolidation & Onboarding Streamlining:**
+   * **ZC-33 / GH #67 (`src/lib/timezone.ts`, `src/app/join/page.tsx`):** **COMPLETED** (PR [#75](https://github.com/KrishJdev/Z-Catchers/pull/75) open targeting `dev`, verified with 37/37 tests clean, CodeRabbit review requested).
    * **ZC-31 / GH #65 (`src/components/Header.tsx`, `src/components/BottomNav.tsx`):** **[START HERE]**
      - Consolidated Profile & Settings Drawer (`SettingsDrawer.tsx`), keeping `ModDrawer.tsx` strictly isolated.
    * **ZC-32 / GH #66 (`src/components/PwaBanner.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts`):** Unified 2-step PWA install & push onboarding card with auto-dismiss in standalone mode.
-   * **ZC-33 / GH #67 (`src/lib/timezone.ts`, `src/app/join/page.tsx`):** Silent IANA timezone auto-detection with compact pill and hidden `TimezoneSelect.tsx`.
 
 3. **Sprint 3 — Phase 3 (P2) Native-Grade PWA Lock-Screen & Home Screen Features:**
    * **ZC-34 / GH #68 (`src/lib/pushServer.ts`, `public/sw.js`):** Interactive lock-screen push notification action buttons (`in-bed`, `wake-up`, `nag-assist`).
