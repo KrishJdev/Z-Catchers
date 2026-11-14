@@ -309,7 +309,11 @@ export default function HomePage() {
   }, [fetchRoster, isSessionChecked]);
 
   // "I'm in Bed" Check-In Safe Button handler
-  const handleCheckIn = useCallback(async (memberId: string) => {
+  const handleCheckIn = useCallback(async (memberId: string): Promise<boolean> => {
+    const priorInBed = currentUser?.id === memberId ? Boolean(currentUser.is_in_bed) : false;
+    const priorWokeUp = currentUser?.id === memberId ? Boolean(currentUser.is_woke_up) : true;
+    const priorShield = isSleepShieldActive;
+
     try {
       setIsCheckingIn(true);
       // Instant optimistic UI update
@@ -334,27 +338,40 @@ export default function HomePage() {
           type: 'success',
         });
         await fetchRoster();
+        return true;
       } else if (res.status === 401) {
+        // Restore prior sleep state directly
+        setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, is_in_bed: priorInBed, is_woke_up: priorWokeUp } : prev));
+        setIsSleepShieldActive(priorShield);
         router.push('/join');
+        return false;
       } else {
         const data = await res.json().catch(() => ({}));
+        // Restore prior sleep state directly
+        setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, is_in_bed: priorInBed, is_woke_up: priorWokeUp } : prev));
+        setIsSleepShieldActive(priorShield);
         setToastMessage({
           text: data.error || 'Failed to check in.',
           type: 'error',
         });
         await fetchRoster();
+        return false;
       }
     } catch (err) {
       console.error('Failed to check in:', err);
+      // Restore prior sleep state directly
+      setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, is_in_bed: priorInBed, is_woke_up: priorWokeUp } : prev));
+      setIsSleepShieldActive(priorShield);
       setToastMessage({
         text: 'Network error checking in.',
         type: 'error',
       });
       await fetchRoster();
+      return false;
     } finally {
       setIsCheckingIn(false);
     }
-  }, [fetchRoster, router]);
+  }, [fetchRoster, router, currentUser, isSleepShieldActive]);
 
   // Wake Up handler (Instant Button or Manual Time Entry)
   const handleWakeUp = useCallback(
@@ -457,7 +474,21 @@ export default function HomePage() {
 
   // Cancel 48-hour pending schedule cooldown handler
   const handleCancelPending = useCallback(
-    async (memberId: string) => {
+    async (memberId: string): Promise<boolean> => {
+      // Capture prior pending fields before clearing
+      const priorPending =
+        currentUser?.id === memberId
+          ? {
+              pending_bedtime_local: currentUser.pending_bedtime_local,
+              pending_wake_time_local: currentUser.pending_wake_time_local,
+              pending_timezone: currentUser.pending_timezone,
+              pending_weekend_bedtime_local: currentUser.pending_weekend_bedtime_local,
+              pending_weekend_wake_time_local: currentUser.pending_weekend_wake_time_local,
+              pending_weekly_schedule: currentUser.pending_weekly_schedule,
+              pending_effective_at: currentUser.pending_effective_at,
+            }
+          : null;
+
       try {
         setIsCheckingIn(true);
         // Instant optimistic UI update
@@ -492,25 +523,36 @@ export default function HomePage() {
             type: 'success',
           });
           await fetchRoster();
+          return true;
         } else {
+          // Restore prior pending fields immediately
+          if (priorPending) {
+            setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, ...priorPending } : prev));
+          }
           setToastMessage({
             text: data.error || 'Failed to cancel pending schedule change.',
             type: 'error',
           });
           await fetchRoster();
+          return false;
         }
       } catch (err) {
         console.error('Failed to cancel pending schedule change:', err);
+        // Restore prior pending fields immediately
+        if (priorPending) {
+          setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, ...priorPending } : prev));
+        }
         setToastMessage({
           text: 'Network error cancelling pending schedule change.',
           type: 'error',
         });
         await fetchRoster();
+        return false;
       } finally {
         setIsCheckingIn(false);
       }
     },
-    [fetchRoster]
+    [fetchRoster, currentUser]
   );
 
   // Synchronize currentUser in_bed status to active Sleep Shield
