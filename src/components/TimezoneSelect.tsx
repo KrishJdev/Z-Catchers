@@ -5,6 +5,7 @@ import {
   getTimezoneGroups,
   filterTimezoneGroups,
   formatGmtOffset,
+  formatTimezoneDisplay,
 } from '@/lib/timezone';
 
 export interface TimezoneSelectProps {
@@ -18,6 +19,8 @@ export interface TimezoneSelectProps {
   showSearch?: boolean;
   searchPlaceholder?: string;
   ariaLabel?: string;
+  compact?: boolean;
+  onOverrideToggle?: (isOverriding: boolean) => void;
 }
 
 export function TimezoneSelect({
@@ -31,8 +34,11 @@ export function TimezoneSelect({
   showSearch = true,
   searchPlaceholder = 'Filter by city, country or ±GMT (e.g. Karachi, London, +5:30)...',
   ariaLabel = 'Timezone',
+  compact = false,
+  onOverrideToggle,
 }: TimezoneSelectProps) {
   const [search, setSearch] = useState('');
+  const [isOverriding, setIsOverriding] = useState(false);
 
   // Base timezone groups (Popular, GMT Offsets, Americas, Europe, Asia, Africa, Oceania, Other)
   const baseGroups = useMemo(() => getTimezoneGroups(), []);
@@ -67,8 +73,58 @@ export function TimezoneSelect({
   const defaultSelectStyles =
     'w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-cream-primary text-sm focus:border-status-amber focus:outline-none';
 
+  // In compact mode, show compact pill by default until user clicks "Change"
+  if (compact && !isOverriding) {
+    return (
+      <div className={`space-y-1.5 ${className}`}>
+        <div
+          data-testid="timezone-compact-pill"
+          className="flex items-center justify-between gap-3 rounded-xl border border-night-border bg-night-elevated px-3 py-2"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm shrink-0" aria-hidden="true">
+              📍
+            </span>
+            <span className="text-xs font-medium text-cream-primary truncate">
+              {formatTimezoneDisplay(value)}
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              setIsOverriding(true);
+              onOverrideToggle?.(true);
+            }}
+            className="shrink-0 min-h-[44px] px-3 py-2 text-xs font-semibold text-status-amber hover:text-status-amber/80 underline decoration-status-amber/40 underline-offset-2 hover:bg-status-amber/10 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
+            aria-label="Change timezone"
+          >
+            Change
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`space-y-1.5 ${className}`}>
+    <div className={`space-y-1.5 ${className}`} data-testid={compact ? 'timezone-override-picker' : undefined}>
+      {compact && (
+        <div className="flex items-center justify-between px-0.5">
+          <span className="text-[11px] text-cream-muted">Manual Timezone Override</span>
+          <button
+            type="button"
+            onClick={() => {
+              setIsOverriding(false);
+              onOverrideToggle?.(false);
+            }}
+            className="text-[11px] text-status-amber hover:underline hover:text-status-amber/90 transition-colors min-h-[32px] px-2 flex items-center"
+            aria-label="Keep current timezone"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
       {showSearch && (
         <div className="relative">
           <input

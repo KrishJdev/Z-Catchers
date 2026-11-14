@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FoxMascot } from '@/components/FoxMascot';
 import type { Member } from '@/lib/db';
-import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset } from '@/lib/timezone';
+import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, detectUserTimezone } from '@/lib/timezone';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
 import {
   setStoredAuthToken,
@@ -68,7 +68,7 @@ function JoinPageContent() {
   const [regJournalUrl, setRegJournalUrl] = useState('');
   const [regBedtime, setRegBedtime] = useState('23:00');
   const [regWakeTime, setRegWakeTime] = useState('07:00');
-  const [regTimezone, setRegTimezone] = useState('UTC');
+  const [regTimezone, setRegTimezone] = useState(() => detectUserTimezone());
   const [enableWeekend, setEnableWeekend] = useState(false);
   const [weekendBedtime, setWeekendBedtime] = useState('00:00');
   const [weekendWakeTime, setWeekendWakeTime] = useState('08:30');
@@ -118,14 +118,10 @@ function JoinPageContent() {
     };
   }, [router, claimToken]);
 
-  // Auto-detect viewer timezone
+  // Auto-detect viewer timezone silently using IANA validation
   useEffect(() => {
-    try {
-      const iana = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      setRegTimezone(iana);
-    } catch {
-      setRegTimezone('UTC');
-    }
+    const detected = detectUserTimezone();
+    setRegTimezone(detected);
   }, []);
 
   // Fetch claim details if claimToken is present
@@ -537,6 +533,7 @@ function JoinPageContent() {
                     <TimezoneSelect
                       value={regTimezone}
                       onChange={setRegTimezone}
+                      compact={true}
                       selectClassName="w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-cream-primary text-sm focus:border-status-amber focus:outline-none"
                     />
                   </div>
