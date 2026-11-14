@@ -45,6 +45,7 @@ const UNIT_TESTS = [
   'test-ui-normalization-and-button-wrapping.mjs',
   'test-strike-persistence-and-alias-reconciliation.mjs',
   'test-update-schedule-mod-rate-limit.mjs',
+  'test-pinned-self-action-bar.mjs',
   'test-smart-status-bucket-folding.mjs',
 ];
 
