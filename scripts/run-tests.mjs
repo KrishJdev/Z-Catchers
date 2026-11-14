@@ -48,6 +48,7 @@ const UNIT_TESTS = [
   'test-decluttering-issue-sync.mjs',
   'test-pinned-self-action-bar.mjs',
   'test-smart-status-bucket-folding.mjs',
+  'test-compact-member-cards.mjs',
 ];
 
 // E2E tests: require live Supabase database or running network services
