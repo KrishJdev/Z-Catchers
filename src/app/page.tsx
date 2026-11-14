@@ -1256,6 +1256,7 @@ export default function HomePage() {
           <>
             {/* 1. Bedtime Hit / Nag Now (Always top priority) */}
             <StatusBucket
+              id="nag-now"
               title="Nag Now"
               count={categorized.nagNow.length}
               accentColor="text-status-coral"
@@ -1287,6 +1288,7 @@ export default function HomePage() {
 
             {/* 2. Winding Down */}
             <StatusBucket
+              id="winding-down"
               title="Winding Down"
               count={categorized.windingDown.length}
               accentColor="text-status-amber"
@@ -1318,11 +1320,12 @@ export default function HomePage() {
 
             {/* 3. Awake */}
             <StatusBucket
+              id="awake"
               title="Awake"
               count={categorized.awake.length}
               accentColor="text-cream-secondary"
               icon={<Sun className="h-4 w-4 text-cream-secondary" />}
-              defaultExpanded={true}
+              defaultExpanded={false}
             >
               {categorized.awake.map(({ member, state }) => (
                 <MemberCard
@@ -1348,11 +1351,12 @@ export default function HomePage() {
 
             {/* 4. Sleeping (Sleep Shield Active) */}
             <StatusBucket
+              id="sleeping"
               title="Sleeping"
               count={categorized.sleeping.length}
               accentColor="text-cream-muted"
               icon={<Moon className="h-4 w-4 text-cream-muted" />}
-              defaultExpanded={categorized.awake.length === 0}
+              defaultExpanded={false}
               showEmptyState={true}
               emptyMessage="No members currently asleep."
             >
