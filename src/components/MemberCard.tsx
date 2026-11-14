@@ -32,7 +32,7 @@ interface MemberCardProps {
   currentMemberId?: string | null;
   isStarred?: boolean;
   onToggleStar?: (memberId: string) => void;
-  onCheckIn?: (memberId: string) => Promise<void>;
+  onCheckIn?: (memberId: string) => Promise<boolean | void> | void;
   onCancelInBed?: (memberId: string) => Promise<void>;
   isCheckingIn?: boolean;
   onVoteStrike?: (targetMemberId: string) => Promise<void>;
