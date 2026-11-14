@@ -1,6 +1,7 @@
-import { DateTime } from 'luxon';
+import { DateTime, IANAZone, Settings } from 'luxon';
 import type { Member, DayKey, DailySchedule, WeeklySchedule } from './db';
 
+export { Settings };
 export type { DayKey, DailySchedule, WeeklySchedule };
 
 export const DAY_KEYS: readonly DayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
@@ -170,18 +171,50 @@ export function formatGmtOffset(zoneStr: string | null | undefined): string {
 
 /**
  * Automatically captures the local system IANA timezone using the Intl API.
- * Falls back to 'UTC' if detection fails or runs on an unsupported runtime.
+ * Validates the detected specifier against Luxon's IANAZone.isValidSpecifier.
+ * Falls back safely to 'UTC' if detection fails, runs on an unsupported runtime,
+ * or reports an invalid or unrecognized specifier.
  */
-export function detectUserTimezone(): string {
+export function detectUserTimezone(fallback: string = 'UTC'): string {
   try {
-    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (detected && isValidTimezone(detected)) {
-      return detected;
+    if (typeof Intl !== 'undefined' && typeof Intl.DateTimeFormat === 'function') {
+      const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (
+        detected &&
+        typeof detected === 'string' &&
+        IANAZone.isValidSpecifier(detected) &&
+        isValidTimezone(detected)
+      ) {
+        return detected;
+      }
     }
   } catch {
     // Ignore runtime exceptions in non-browser or sandbox environments
   }
-  return 'UTC';
+  const cleanFallback = fallback && typeof fallback === 'string' ? fallback.trim() : 'UTC';
+  return IANAZone.isValidSpecifier(cleanFallback) && isValidTimezone(cleanFallback)
+    ? cleanFallback
+    : 'UTC';
+}
+
+/**
+ * Formats an IANA timezone into a compact display string with GMT offset.
+ * Example: "Asia/Kolkata (GMT+05:30)"
+ */
+export function formatTimezoneDisplay(zoneStr: string | null | undefined): string {
+  if (!zoneStr) return 'UTC (GMT+00:00)';
+  const clean = zoneStr.trim();
+  if (clean.startsWith('GMT')) return clean;
+  const valid = isValidTimezone(clean) ? clean : 'UTC';
+  return `${valid} (${formatGmtOffset(valid)})`;
+}
+
+/**
+ * Formats an IANA timezone into a compact display pill string with a location pin.
+ * Example: "📍 Asia/Kolkata (GMT+05:30)"
+ */
+export function formatTimezonePill(zoneStr: string | null | undefined): string {
+  return `📍 ${formatTimezoneDisplay(zoneStr)}`;
 }
 
 /**
