@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T15:02:00+05:30  
+> **Last Updated:** 2026-11-14T16:05:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `2b4b801`  
+> **Latest Commit:** `f1dab4f`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60)  
 > **Active Integration Pull Requests:** None  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)  
 > **Active Production Release Pull Request:** [#61 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/61) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 33/33 suites passed | `npm run build` clean)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 34/34 suites passed | `npm run build` clean)
 
 ---
 
@@ -69,6 +69,39 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 90: Z-Catchers Decluttering & PWA Enhancement Issue Creation & Jira Cloud Two-Way Synchronization (GitHub #62–#71, Jira ZC-28–ZC-37)
+* **Objective & Context:**
+  - Designed, created, prioritized, and synchronized 10 foundational decluttering and PWA enhancement issues spanning Phases 1 through 4 (P0 Critical, P1 High, P2 Medium, P3 Low).
+  - Linked GitHub issues directly to Jira Cloud Project `ZC` (`10033`, `krishjaiswal2182003.atlassian.net`) using top-level Task type (`10071`).
+  - Established bidirectional traceability: native Atlassian remote links on Jira tickets pointing to GitHub issues, and reciprocal markdown cross-links posted as comments on every GitHub issue.
+* **Taxonomy & Labeling:**
+  - Added new repository label `priority: critical` (`#B60205`) for P0 items alongside existing `priority: high`, `priority: medium`, and `priority: low`.
+  - Mapped domain labels across tickets: `frontend`, `backend`, `pwa`, `enhancement`.
+* **The 10 Created & Synchronized Issues:**
+  | # | Priority | Jira Key | GitHub Issue | Domain | Summary & Scope |
+  |---|---|---|---|---|---|
+  | 1 | **P0 - Critical** | [ZC-28](https://krishjaiswal2182003.atlassian.net/browse/ZC-28) | [#62](https://github.com/KrishJdev/Z-Catchers/issues/62) | `frontend`, `enhancement` | **Pinned Self-Action Bar for One-Tap Check-Ins:** Decouple logged-in member check-ins from scrolling list into sticky bottom bar above BottomNav wired to `/api/members/in-bed`, `/api/members/wake-up`, and `/api/members/cancel-pending`. |
+  | 2 | **P0 - Critical** | [ZC-29](https://krishjaiswal2182003.atlassian.net/browse/ZC-29) | [#63](https://github.com/KrishJdev/Z-Catchers/issues/63) | `frontend`, `enhancement` | **Compact Member Cards with Progressive Disclosure:** Reduce card height by $\ge 40\%$ on mobile by restricting default view to avatar, handle, status badge, and local time, moving modals and nag controls to tap-to-expand bottom sheet. |
+  | 3 | **P0 - Critical** | [ZC-30](https://krishjaiswal2182003.atlassian.net/browse/ZC-30) | [#64](https://github.com/KrishJdev/Z-Catchers/issues/64) | `frontend`, `enhancement` | **Smart Status Bucket Folding by Default:** Auto-collapse passive buckets (asleep, wide awake) on initial render while keeping actionable buckets (nag now, winding down) expanded with member count header pills. |
+  | 4 | **P1 - High** | [ZC-31](https://krishjaiswal2182003.atlassian.net/browse/ZC-31) | [#65](https://github.com/KrishJdev/Z-Catchers/issues/65) | `frontend`, `enhancement` | **Consolidated Profile & Settings Drawer:** Combine `MyScheduleModal`, `PushModal`, and `LoginModal` into a single unified settings sheet while keeping `ModDrawer` strictly isolated. |
+  | 5 | **P1 - High** | [ZC-32](https://krishjaiswal2182003.atlassian.net/browse/ZC-32) | [#66](https://github.com/KrishJdev/Z-Catchers/issues/66) | `frontend`, `pwa`, `enhancement` | **Unified PWA Install & Push Onboarding Card:** Replace competing top banners and popups with a 2-step setup card that auto-dismisses permanently once standalone mode and push are active. |
+  | 6 | **P1 - High** | [ZC-33](https://krishjaiswal2182003.atlassian.net/browse/ZC-33) | [#67](https://github.com/KrishJdev/Z-Catchers/issues/67) | `frontend`, `backend`, `enhancement` | **Silent Timezone Auto-Detection:** Automatically detect IANA timezone via `Intl.DateTimeFormat` on `/join` and schedule edit, showing a compact pill and hiding `TimezoneSelect` behind a Change button. |
+  | 7 | **P2 - Medium** | [ZC-34](https://krishjaiswal2182003.atlassian.net/browse/ZC-34) | [#68](https://github.com/KrishJdev/Z-Catchers/issues/68) | `pwa`, `backend`, `enhancement` | **Interactive Lock-Screen Push Notification Actions:** Add action buttons (`in-bed`, `wake-up`, `nag-assist`) to push payloads and handle background POST calls in `public/sw.js` without opening browser tabs. |
+  | 8 | **P2 - Medium** | [ZC-35](https://krishjaiswal2182003.atlassian.net/browse/ZC-35) | [#69](https://github.com/KrishJdev/Z-Catchers/issues/69) | `pwa`, `frontend`, `enhancement` | **Home Screen App Icon Shortcuts:** Populate `shortcuts` in `manifest.json` for "I'm in Bed" and "I'm Awake" with deep linking query parameters executed on dashboard mount. |
+  | 9 | **P2 - Medium** | [ZC-36](https://krishjaiswal2182003.atlassian.net/browse/ZC-36) | [#70](https://github.com/KrishJdev/Z-Catchers/issues/70) | `pwa`, `frontend`, `enhancement` | **App Icon Badging for Unread Nags & Wind-Down Alerts:** Invoke `navigator.setAppBadge` on incoming push alerts and clear badge via `navigator.clearAppBadge` upon app launch/focus. |
+  | 10 | **P3 - Low** | [ZC-37](https://krishjaiswal2182003.atlassian.net/browse/ZC-37) | [#71](https://github.com/KrishJdev/Z-Catchers/issues/71) | `pwa`, `backend`, `frontend`, `enhancement` | **Offline Check-In Queue via Background Sync:** Intercept failed sleep/wake POSTs in `public/sw.js`, queue in IndexedDB, register Background Sync tag, and display "Queued Offline" pill. |
+* **Tooling, Scripts & Unit Tests:**
+  - `scripts/create-and-sync-decluttering-issues.mjs`: Programmatic issue generation script using GitHub CLI and structured blueprints.
+  - `scripts/sync-decluttering-issues-to-jira.mjs`: Jira API synchronizer parsing markdown into ADF v1 and creating remote issue links.
+  - `scripts/link-decluttering-gh-to-jira.mjs`: Script cross-linking Jira keys back to GitHub issues via API comments.
+  - `scripts/test-decluttering-issue-sync.mjs`: Unit test verifying issue counts, sequential priorities, ADF v1 parsing, required blueprint sections, and checkpoint maps. Registered in `scripts/run-tests.mjs`.
+  - `.github/scripts/sync-github-to-jira.mjs`: Hardened default GitHub Actions sync script to support `PROJECT_ID = '10033'` and `ISSUE_TYPE_ID = '10071'`.
+* **Verification & Testing:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 34/34 test suites passed cleanly (100%).
+  - GitHub Actions Workflow `Jira Issue Transition` (Run #43585338858): Successful execution, creating Jira tickets `ZC-28` to `ZC-37`.
+  - GitHub Issue Comments: 100% verified cross-links on `#62` through `#71`.
 
 ### Phase 89: CodeRabbit Review Hardening & Touch/Schema Resilience
 * **Objective & Context:**
@@ -1837,6 +1870,21 @@ d:\Projects\Z Catchers\
 
 ## 6. Current Status of Jira Tasks & Milestones
 
+### Active Backlog Tasks: Decluttering & PWA Enhancements (Phases 1–4, P0–P3)
+
+| Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
+|---|---|---|---|---|---|
+| **ZC-28** | **Critical (P0)** | Pinned Self-Action Bar for One-Tap Check-Ins | `src/components/StatusBucket.tsx`, `src/components/MemberCard.tsx`, `src/components/BottomNav.tsx`, `src/app/page.tsx` | [#62](https://github.com/KrishJdev/Z-Catchers/issues/62) | **TODO** |
+| **ZC-29** | **Critical (P0)** | Compact Member Cards with Progressive Disclosure | `src/components/MemberCard.tsx`, `src/lib/timezone.ts`, `src/components/SleepCalendarModal.tsx` | [#63](https://github.com/KrishJdev/Z-Catchers/issues/63) | **TODO** |
+| **ZC-30** | **Critical (P0)** | Smart Status Bucket Folding by Default | `src/components/StatusBucket.tsx`, `src/lib/sleepEngine.ts`, `src/app/page.tsx` | [#64](https://github.com/KrishJdev/Z-Catchers/issues/64) | **TODO** |
+| **ZC-31** | **High (P1)** | Consolidated Profile & Settings Drawer | `src/components/Header.tsx`, `src/components/BottomNav.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/PushModal.tsx` | [#65](https://github.com/KrishJdev/Z-Catchers/issues/65) | **TODO** |
+| **ZC-32** | **High (P1)** | Unified PWA Install & Push Onboarding Card | `src/components/PwaBanner.tsx`, `src/components/PushModal.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts` | [#66](https://github.com/KrishJdev/Z-Catchers/issues/66) | **TODO** |
+| **ZC-33** | **High (P1)** | Silent Timezone Auto-Detection | `src/lib/timezone.ts`, `src/app/join/page.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/TimezoneSelect.tsx` | [#67](https://github.com/KrishJdev/Z-Catchers/issues/67) | **TODO** |
+| **ZC-34** | **Medium (P2)** | Interactive Lock-Screen Push Notification Actions | `src/lib/pushServer.ts`, `src/lib/cronDispatcher.ts`, `public/sw.js` | [#68](https://github.com/KrishJdev/Z-Catchers/issues/68) | **TODO** |
+| **ZC-35** | **Medium (P2)** | Home Screen App Icon Shortcuts | `public/manifest.json`, `public/icons/`, `src/app/page.tsx` | [#69](https://github.com/KrishJdev/Z-Catchers/issues/69) | **TODO** |
+| **ZC-36** | **Medium (P2)** | App Icon Badging for Unread Nags & Wind-Down Alerts | `public/sw.js`, `src/app/api/cron/dispatch-notifications/route.ts`, `src/lib/pushClient.ts` | [#70](https://github.com/KrishJdev/Z-Catchers/issues/70) | **TODO** |
+| **ZC-37** | **Low (P3)** | Offline Check-In Queue via Background Sync | `src/app/api/members/in-bed/route.ts`, `src/app/api/members/wake-up/route.ts`, `public/sw.js`, `src/app/page.tsx` | [#71](https://github.com/KrishJdev/Z-Catchers/issues/71) | **TODO** |
+
 ### Active Backlog Tasks: Phase 61 Robustness & Security Audit
 
 | Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
@@ -1878,38 +1926,40 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Sprint 1 — P1 (High Priority) Security & Auth Hardening:**
-   * **ZC-16 / GH #30 (`src/lib/auth.ts`):** **[DONE in Phase 76]** Failed closed in production for `SESSION_SECRET` and `PIN_SALT`. Strictly stripped fallback secrets when `NODE_ENV === 'production'`.
-   * **ZC-17 / GH #31 & #46 (`src/app/api/push/unsubscribe/route.ts`):** **[DONE in Phase 80]** Strictly enforced authenticated member session for all unsubscriptions; chained `.eq('member_id', sessionMemberId)` on endpoint deletions to prevent IDOR and DoS subscription wiping.
-   * **ZC-22 / GH #36 (`src/components/PushModal.tsx`, `src/lib/pushClient.ts`):** **[DONE in Phase 80]** Injected `Authorization: Bearer <token>` into `/api/push/unsubscribe` and `/api/push/test` requests to survive cookie-restricted PWA runtimes.
-   * **ZC-18 / GH #32 & #47 (`src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts`):** **[DONE in Phase 81 / PR #54]** Enforced persistent rate limiting via `checkPinRateLimitPersistent` and `recordPinFailurePersistent`.
-   * **ZC-19 / GH #33 & #48 (`src/lib/auth.ts`):** **[DONE in Phase 81 / PR #55]** Sanitized and validated `x-forwarded-host` in OAuth redirect base URL.
-   * **ZC-20 / GH #34 (`src/app/api/members/update-schedule/route.ts`):** **[DONE in Phase 86]** Return HTTP 429 immediately when moderator rate limit is exceeded instead of falling through to claim unlinked profiles, and reject invalid moderator passcodes immediately with HTTP 401.
+1. **Sprint 1 (Immediate Next Task) — Phase 1 (P0) High-Impact UI Decluttering & Core Action Ergonomics:**
+   * **ZC-28 / GH #62 (`src/components/StatusBucket.tsx`, `src/components/MemberCard.tsx`, `src/components/BottomNav.tsx`, `src/app/page.tsx`):** **[START HERE]**
+     - Build `PinnedSelfActionBar.tsx` sticky above `BottomNav.tsx` in `src/app/page.tsx`.
+     - Wire action buttons directly to `/api/members/in-bed`, `/api/members/wake-up`, and `/api/members/cancel-pending`.
+     - Enforce context-awareness (In Bed, Wake Up, Cancel Pending) and $\ge 44\text{px}$ touch targets.
+     - Author automated unit test `scripts/test-pinned-self-action-bar.mjs` and register in `scripts/run-tests.mjs`.
+   * **ZC-29 / GH #63 (`src/components/MemberCard.tsx`, `src/lib/timezone.ts`, `src/components/SleepCalendarModal.tsx`):**
+     - Implement compact member card with progressive disclosure bottom sheet for secondary actions, reducing card height by $\ge 40\%$ on mobile.
+     - Author automated unit test `scripts/test-compact-member-cards.mjs`.
+   * **ZC-30 / GH #64 (`src/components/StatusBucket.tsx`, `src/lib/sleepEngine.ts`, `src/app/page.tsx`):**
+     - Auto-collapse passive status buckets (asleep, wide awake) on initial render with member count badges on headers.
+     - Author automated unit test `scripts/test-smart-status-bucket-folding.mjs`.
 
-2. **Sprint 2 — P2 (Medium Priority) PWA, Push & Concurrency Fixes:**
-   * **ZC-21 / GH #35 (`src/app/api/members/nag-notif/route.ts`):** **[NEXT UP]** Commit notification log deduplication record before dispatching push notifications.
-   * **ZC-23 / GH #37 (`src/app/api/members/nag-assist/route.ts`):** Calculate local date using `getSleepCycleDate()` instead of standard calendar day.
-   * **ZC-24 / GH #38 (`public/sw.js`):** Clean up `postMessage` during `client.navigate()` in service worker `notificationclick` handler to avoid dropped deep link actions.
-   * **ZC-25 / GH #39 (`src/app/api/members/update-schedule/route.ts`):** Remove default `= '07:00'` destructuring to prevent unintentional overwriting of custom wake times.
+2. **Sprint 2 — Phase 2 (P1) Navigation Consolidation & Onboarding Streamlining:**
+   * **ZC-31 / GH #65 (`src/components/Header.tsx`, `src/components/BottomNav.tsx`):** Consolidated Profile & Settings Drawer (`SettingsDrawer.tsx`), keeping `ModDrawer.tsx` isolated.
+   * **ZC-32 / GH #66 (`src/components/PwaBanner.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts`):** Unified 2-step PWA install & push onboarding card with auto-dismiss in standalone mode.
+   * **ZC-33 / GH #67 (`src/lib/timezone.ts`, `src/app/join/page.tsx`):** Silent IANA timezone auto-detection with compact pill and hidden `TimezoneSelect.tsx`.
 
-2. **Sprint 2 — P2 (Medium Priority) PWA, Push & Concurrency Fixes:**
-   * **ZC-21 / GH #35 (`src/app/api/members/nag-notif/route.ts`):** Commit notification log deduplication record before dispatching push notifications.
-   * **ZC-23 / GH #37 (`src/app/api/members/nag-assist/route.ts`):** Calculate local date using `getSleepCycleDate()` instead of standard calendar day.
-   * **ZC-24 / GH #38 (`public/sw.js`):** Clean up `postMessage` during `client.navigate()` in service worker `notificationclick` handler to avoid dropped deep link actions.
-   * **ZC-25 / GH #39 (`src/app/api/members/update-schedule/route.ts`):** Remove default `= '07:00'` destructuring to prevent unintentional overwriting of custom wake times.
+3. **Sprint 3 — Phase 3 (P2) Native-Grade PWA Lock-Screen & Home Screen Features:**
+   * **ZC-34 / GH #68 (`src/lib/pushServer.ts`, `public/sw.js`):** Interactive lock-screen push notification action buttons (`in-bed`, `wake-up`, `nag-assist`).
+   * **ZC-35 / GH #69 (`public/manifest.json`, `src/app/page.tsx`):** Home screen app icon shortcuts (`/?action=in-bed`, `/?action=wake-up`).
+   * **ZC-36 / GH #70 (`public/sw.js`, `src/lib/pushClient.ts`):** App icon badging (`navigator.setAppBadge`) and auto-clearing on app focus (`navigator.clearAppBadge`).
 
-3. **Sprint 3 — P3 (Low Priority) State Machine, UI Polish & SW Cache Invalidation:**
-   * **ZC-26 / GH #40 (`src/lib/sleepEngine.ts`, `src/components/MemberCard.tsx`):** Reconcile conflicting `isSleepShieldActive` vs `canVoteStrike` states in 60-480m overdue window.
-   * **ZC-27 / GH #41 (`src/app/api/auth/me/route.ts`, `src/app/api/members/route.ts`):** Enforce mutual exclusion between `is_in_bed` and `is_woke_up`.
-   * **ZC-14 / GH #42 (`src/components/ModDrawer.tsx`):** Avoid storing plaintext master moderator passcode in browser `sessionStorage`.
-   * **ZC-15 / GH #43 (`public/sw.js`):** Implement build-hash or versioned cache busting for `_next/static` assets to prevent hydration mismatches on new deployments.
+4. **Sprint 4 — Phase 4 (P3) Offline Resilience:**
+   * **ZC-37 / GH #71 (`public/sw.js`, `src/app/page.tsx`):** Offline check-in queue via Background Sync API and IndexedDB persistence.
 
-4. **Review & Merge Active Integration Pull Request [#44 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/44):**
-   * Active PR: [#44 `chore: sync code audit issues to Jira, cross-link GitHub issues, and update transition tooling`](https://github.com/KrishJdev/Z-Catchers/pull/44) targets `dev` from `krish`.
-   * Integrates all verified Phase 61 audit synchronization and Jira transition tooling into `dev`:
-     - Jira audit issues `ZC-14` through `ZC-27` mapped to GitHub issues `#30` through `#43`.
-     - Hardened Jira transition workflow and idempotent transition scripts.
-     - Documented audit matrix and taxonomy in `HANDOFF.md`.
+5. **Historical Sprint 1 & 2 Completed / Backlog Tasks:**
+   * **ZC-16 / GH #30:** [DONE in Phase 76] Removed fallback secrets in production.
+   * **ZC-17 / GH #31:** [DONE in Phase 80] Unauthenticated push unsubscribe fixed.
+   * **ZC-22 / GH #36:** [DONE in Phase 80] Added Bearer header to push requests.
+   * **ZC-18 / GH #32:** [DONE in Phase 81 / PR #54] Database-backed persistent rate limiting.
+   * **ZC-19 / GH #33:** [DONE in Phase 81 / PR #55] Sanitized x-forwarded-host.
+   * **ZC-20 / GH #34:** [DONE in Phase 86] Mod rate limit IDOR prevention.
+   * **ZC-21 / GH #35:** [DONE in Phase 90 on branch feat/zc-21] Atomic nag deduplication.
    * Note: Production release PR [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28) was successfully merged into `main`.
 
 5. **Database Migration Execution in Supabase SQL Editor:**
