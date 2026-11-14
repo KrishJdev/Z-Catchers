@@ -89,4 +89,23 @@ for (const issue of declutteringIssues) {
 }
 console.log('  ✅ All 10 issue bodies parse cleanly to valid ADF structures.\n');
 
+// ---------------------------------------------------------------------------
+// Test 4: Checkpointed sync mapping and Jira keys
+// ---------------------------------------------------------------------------
+console.log('▶ Test 4: Verifying decluttering issues sync map and Jira keys');
+import fs from 'fs';
+import path from 'path';
+
+const mapFile = path.join(process.cwd(), 'scripts', 'decluttering-issues-map.json');
+assert(fs.existsSync(mapFile), 'decluttering-issues-map.json must exist');
+const mapData = JSON.parse(fs.readFileSync(mapFile, 'utf8'));
+assert.strictEqual(mapData.length, 10, 'Map must contain all 10 issues');
+
+for (const entry of mapData) {
+  assert(entry.ghNumber >= 62, `Issue #${entry.id} must have valid GitHub issue number, found ${entry.ghNumber}`);
+  assert(entry.ghUrl.startsWith('https://github.com/KrishJdev/Z-Catchers/issues/'), `Issue #${entry.id} must have valid GitHub URL`);
+  assert(entry.jiraKey && entry.jiraKey.startsWith('ZC-'), `Issue #${entry.id} must have valid Jira key, found ${entry.jiraKey}`);
+}
+console.log('  ✅ All 10 issues mapped with valid GitHub issue numbers and Jira keys.\n');
+
 console.log('🎉 All Decluttering & PWA Issue Sync verification checks passed successfully!\n');
