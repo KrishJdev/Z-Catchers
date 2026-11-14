@@ -21,7 +21,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import type { Member } from '@/lib/db';
-import type { MemberState } from '@/lib/sleepEngine';
+import { formatTime12h, type MemberState } from '@/lib/sleepEngine';
 import { formatGmtOffset } from '@/lib/timezone';
 import { FoxMascot } from './FoxMascot';
 
@@ -238,6 +238,13 @@ export function MemberCard({
     state.isSleepShieldActive ||
     bucket === 'SLEEPING' ||
     isMetastrikeActive
+  );
+
+  // Check if there is an active left action button in the sleeping state (Strike vote, Wake up nag, or Shield On)
+  const hasSleepingActionButton = Boolean(
+    (!isInBed && !isMetastrikeActive && !isViewer && onVoteStrike) ||
+    state.isPastWakeTime ||
+    (isTargetShieldOn && !isViewer)
   );
 
   // Nag Notif dispatch states
@@ -515,17 +522,17 @@ export function MemberCard({
 
   return (
     <div
-      className={`w-full max-w-full overflow-hidden p-5 rounded-2xl bg-night-surface border transition-colors flex flex-col justify-between gap-4 ${cardBorderAndResting}`}
+      className={`w-full max-w-full overflow-hidden flex flex-col justify-between h-full p-4 gap-3 rounded-2xl bg-night-surface border transition-colors ${cardBorderAndResting}`}
     >
-      <div className="flex flex-col gap-3.5">
-        {/* Header: Fixed avatar wrapper, consistent metadata sequence, and viewer time + pill */}
+      <div className="flex flex-col gap-3 min-w-0">
+        {/* Top Zone: Fixed avatar wrapper, strict single-line Name+Star, Sub-header badges, and right clock + pill */}
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            {/* Avatar with fixed dimensions to prevent squishing & profile modal trigger */}
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            {/* Avatar Wrapper anchored to the top-left */}
             <button
               type="button"
               onClick={handleProfileClick}
-              className="relative w-11 h-11 rounded-full shrink-0 flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-status-amber/50 transition-all focus:outline-none"
+              className="relative shrink-0 w-11 h-11 rounded-full flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-status-amber/50 transition-all focus:outline-none"
               title={`View ${member.discord_username}'s profile, sleep calendar history & weekly timetable`}
               aria-label={`View ${member.discord_username}'s profile`}
             >
@@ -545,19 +552,45 @@ export function MemberCard({
               )}
             </button>
 
-            {/* Member Info: Name (clickable profile trigger), YOU badge, Star button, Streak pill */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Identity Stack */}
+            <div className="flex flex-col min-w-0 flex-1 gap-1">
+              {/* Name + Star Row: Strict single-line flex container */}
+              <div className="flex items-center gap-1.5 min-w-0">
                 <button
                   type="button"
                   onClick={handleProfileClick}
-                  className="text-base font-semibold text-cream-primary truncate max-w-[120px] sm:max-w-[150px] min-h-[44px] min-w-[44px] inline-flex items-center hover:text-status-amber hover:underline transition-colors text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-status-amber/40 rounded px-0.5 -mx-0.5"
+                  className="truncate min-h-[44px] min-w-[44px] inline-flex items-center font-semibold text-base leading-tight text-cream-primary hover:text-status-amber hover:underline transition-colors text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-status-amber/40 rounded px-0.5 -mx-0.5"
                   title={`View ${member.discord_username}'s profile, sleep calendar history & weekly timetable`}
                   aria-label={`View ${member.discord_username}'s profile`}
                 >
-                  {member.discord_username}
+                  <span className="truncate">{member.discord_username}</span>
                 </button>
 
+                {/* Watchlist star button: Never wraps to new line */}
+                {onToggleStar && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      triggerHaptic(10);
+                      onToggleStar(member.id);
+                    }}
+                    className={`shrink-0 p-1 -m-1 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
+                      isStarred
+                        ? 'text-status-amber hover:text-status-amber/80'
+                        : 'text-cream-secondary/40 hover:text-cream-secondary'
+                    }`}
+                    title={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
+                    aria-label={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
+                  >
+                    <Star className={`h-4 w-4 ${isStarred ? 'fill-status-amber' : ''}`} />
+                  </button>
+                )}
+              </div>
+
+              {/* Sub-header Badges Row: Clean inline row directly under username */}
+              <div className="flex flex-wrap items-center gap-1.5 min-h-[22px]">
                 {isViewer && (
                   <span className="rounded bg-status-amber/20 border border-status-amber/40 px-1.5 py-0.5 text-[9px] font-bold text-status-amber shrink-0">
                     YOU
@@ -568,28 +601,6 @@ export function MemberCard({
                   <span className="rounded bg-night-elevated border border-night-border px-1.5 py-0.5 text-[9px] font-medium text-cream-secondary shrink-0">
                     MOD
                   </span>
-                )}
-
-                {/* Buddy Star Toggle (Meets 44x44 touch target) */}
-                {onToggleStar && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      triggerHaptic(10);
-                      onToggleStar(member.id);
-                    }}
-                    className={`min-h-[44px] min-w-[44px] -my-2.5 -mx-2 flex items-center justify-center rounded-lg transition-colors shrink-0 ${
-                      isStarred
-                        ? 'text-status-amber hover:text-status-amber/80'
-                        : 'text-cream-secondary/40 hover:text-cream-secondary'
-                    }`}
-                    title={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
-                    aria-label={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
-                  >
-                    <Star className={`h-4 w-4 ${isStarred ? 'fill-status-amber' : ''}`} />
-                  </button>
                 )}
 
                 {/* Streak milestone badge */}
@@ -603,39 +614,16 @@ export function MemberCard({
                   </span>
                 ) : null}
               </div>
-
-              <div className="flex items-center gap-1.5 flex-wrap text-xs text-cream-secondary mt-0.5">
-                <span>
-                  {formattedSleeperTime} → {state.activeWakeTimeLocal || member.wake_time_local || '07:00'} ({formatGmtOffset(member.timezone)})
-                </span>
-                {state.isWeekendSchedule ? (
-                  <span
-                    className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30"
-                    title="Weekend bedtime schedule active (Friday/Saturday nights)"
-                  >
-                    <Moon className="h-2.5 w-2.5 text-status-amber" />
-                    <span>Weekend</span>
-                  </span>
-                ) : state.isCustomScheduleToday ? (
-                  <span
-                    className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30"
-                    title={`Custom daily schedule active for ${state.dayKey ? state.dayKey.toUpperCase() : 'today'}`}
-                  >
-                    <Sparkles className="h-2.5 w-2.5 text-status-amber" />
-                    <span>Custom today</span>
-                  </span>
-                ) : null}
-              </div>
             </div>
           </div>
 
-          {/* Right Header: Bedtime in viewer timezone & status badge */}
-          <div className="flex flex-col items-end shrink-0 gap-1 text-right">
-            <span className="text-xl font-bold tabular-nums text-cream-primary">
+          {/* Right Header: Local time & status badge */}
+          <div className="flex flex-col items-end shrink-0 text-right">
+            <span className="text-lg font-bold leading-tight whitespace-nowrap tabular-nums text-cream-primary">
               {formattedViewerTime}
             </span>
             <span
-              className={`whitespace-nowrap px-2.5 py-1 text-xs rounded-full inline-flex items-center gap-1.5 ${statusPillConfig.className}`}
+              className={`whitespace-nowrap mt-1 px-2.5 py-1 text-xs rounded-full inline-flex items-center gap-1.5 ${statusPillConfig.className}`}
             >
               {statusPillConfig.icon}
               <span>{statusPillConfig.label}</span>
@@ -643,54 +631,36 @@ export function MemberCard({
           </div>
         </div>
 
-        {/* Compact Accountability Row: Strikes & Metastrikes */}
-        <div className="flex items-center justify-between rounded-xl border border-night-border bg-night-elevated/50 px-3 py-1.5 text-[11px]">
-          {/* Strikes Indicator */}
-          <div className="flex items-center gap-1.5" title={`${strikesUsed} of 3 monthly strikes used`}>
-            <span className="font-semibold text-status-coral flex items-center gap-1">
-              <Zap className="h-3 w-3 fill-status-coral text-status-coral" />
-              <span>Strikes:</span>
-              <span className="tabular-nums font-bold">{strikesUsed}/3</span>
+        {/* Dedicated Full-Width Schedule Row */}
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-zinc-400 bg-white/[0.02] px-2.5 py-1.5 rounded-lg border border-white/[0.04]">
+          <div className="flex flex-wrap items-center gap-1.5 font-medium text-cream-secondary">
+            <span className="whitespace-nowrap">
+              {formattedSleeperTime} → {state.formattedWakeTime || formatTime12h(state.activeWakeTimeLocal || member.wake_time_local || '07:00')}
             </span>
-            <div className="flex items-center gap-1 ml-0.5">
-              {[1, 2, 3].map((pip) => (
-                <span
-                  key={`strike-${member.id}-${pip}`}
-                  className={`h-2 w-2 rounded-full transition-colors ${
-                    pip <= strikesUsed
-                      ? 'bg-status-coral ring-1 ring-status-coral/40 shadow-sm shadow-status-coral/50'
-                      : 'bg-night-border border border-night-border/80'
-                  }`}
-                />
-              ))}
-            </div>
+            {state.isWeekendSchedule ? (
+              <span
+                className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30 shrink-0"
+                title="Weekend bedtime schedule active (Friday/Saturday nights)"
+              >
+                <Moon className="h-2.5 w-2.5 text-status-amber" />
+                <span>Weekend</span>
+              </span>
+            ) : state.isCustomScheduleToday ? (
+              <span
+                className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30 shrink-0"
+                title={`Custom daily schedule active for ${state.dayKey ? state.dayKey.toUpperCase() : 'today'}`}
+              >
+                <Sparkles className="h-2.5 w-2.5 text-status-amber" />
+                <span>Custom</span>
+              </span>
+            ) : null}
           </div>
-
-          {/* Metastrikes Indicator */}
-          <div
-            className="flex items-center gap-1.5"
-            title={`${metastrikesUsed} of 3 monthly excused metastrikes used`}
-          >
-            <span className="font-semibold text-status-amber flex items-center gap-1">
-              <Shield className="h-3 w-3 fill-status-amber/20 text-status-amber" />
-              <span>Meta:</span>
-              <span className="tabular-nums font-bold">{metastrikesUsed}/3</span>
-            </span>
-            <div className="flex items-center gap-1 ml-0.5">
-              {[1, 2, 3].map((pip) => (
-                <span
-                  key={`meta-${member.id}-${pip}`}
-                  className={`h-2 w-2 rounded-full transition-colors ${
-                    pip <= metastrikesUsed
-                      ? 'bg-status-amber ring-1 ring-status-amber/40 shadow-sm shadow-status-amber/50'
-                      : 'bg-night-border border border-night-border/80'
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
+          <span className="whitespace-nowrap opacity-75">
+            ({formatGmtOffset(member.timezone)})
+          </span>
         </div>
 
+        {/* Middle Optional Notice Zone */}
         {/* Out of Strikes Sleepy Fox Alert Badge */}
         {strikesUsed >= 3 && (
           <div className="flex items-center justify-between rounded-lg border border-status-coral/40 bg-status-coral/10 px-2.5 py-1 text-[11px] font-semibold text-status-coral">
@@ -704,10 +674,13 @@ export function MemberCard({
 
         {/* Pending 48-Hour Schedule Shift Cooldown Notice */}
         {pendingNotice && (
-          <div className="flex items-center justify-between rounded-lg border border-dashed border-status-amber/40 bg-status-amber/10 px-3 py-1.5 text-xs tabular-nums text-status-amber">
-            <span className="flex items-center gap-1.5">
+          <div
+            className="text-xs py-1.5 px-3 rounded-lg whitespace-nowrap overflow-hidden text-ellipsis border border-dashed border-status-amber/40 bg-status-amber/10 text-status-amber tabular-nums flex items-center justify-between"
+            title={pendingNotice}
+          >
+            <span className="flex items-center gap-1.5 truncate">
               <Clock className="h-3.5 w-3.5 shrink-0" />
-              <span>{pendingNotice}</span>
+              <span className="truncate">{pendingNotice}</span>
             </span>
           </div>
         )}
@@ -864,8 +837,56 @@ export function MemberCard({
         )}
       </div>
 
-      {/* Action Bar (Anchored to bottom via flex layout, touch targets >= 44x44px) */}
-      <div className="mt-auto pt-1 w-full">
+      {/* Bottom Zone: Group BOTH Strikes/Meta bar AND action buttons in mt-auto (touch targets >= 44x44px) */}
+      <div className="mt-auto flex flex-col gap-2.5 pt-1 w-full">
+        {/* Compact Accountability Row: Strikes & Metastrikes */}
+        <div className="flex items-center justify-between px-3 py-1.5 rounded-full text-xs whitespace-nowrap border border-night-border bg-night-elevated/50">
+          {/* Strikes Indicator */}
+          <div className="flex items-center gap-1.5" title={`${strikesUsed} of 3 monthly strikes used`}>
+            <span className="font-semibold text-status-coral flex items-center gap-1">
+              <Zap className="h-3 w-3 fill-status-coral text-status-coral" />
+              <span>Strikes:</span>
+              <span className="tabular-nums font-bold">{strikesUsed}/3</span>
+            </span>
+            <div className="flex items-center gap-1 ml-0.5">
+              {[1, 2, 3].map((pip) => (
+                <span
+                  key={`strike-${member.id}-${pip}`}
+                  className={`h-2 w-2 rounded-full transition-colors ${
+                    pip <= strikesUsed
+                      ? 'bg-status-coral ring-1 ring-status-coral/40 shadow-sm shadow-status-coral/50'
+                      : 'bg-night-border border border-night-border/80'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Metastrikes Indicator */}
+          <div
+            className="flex items-center gap-1.5"
+            title={`${metastrikesUsed} of 3 monthly excused metastrikes used`}
+          >
+            <span className="font-semibold text-status-amber flex items-center gap-1">
+              <Shield className="h-3 w-3 fill-status-amber/20 text-status-amber" />
+              <span>Meta:</span>
+              <span className="tabular-nums font-bold">{metastrikesUsed}/3</span>
+            </span>
+            <div className="flex items-center gap-1 ml-0.5">
+              {[1, 2, 3].map((pip) => (
+                <span
+                  key={`meta-${member.id}-${pip}`}
+                  className={`h-2 w-2 rounded-full transition-colors ${
+                    pip <= metastrikesUsed
+                      ? 'bg-status-amber ring-1 ring-status-amber/40 shadow-sm shadow-status-amber/50'
+                      : 'bg-night-border border border-night-border/80'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
         {isNagNow && (
           <div className="flex flex-col gap-2 w-full">
             {/* Primary Action Button: Nag in Discord Journal - Normalized Full-Width, Height-Locked */}
@@ -1164,43 +1185,43 @@ export function MemberCard({
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-2 w-full">
+              <div className="grid grid-cols-2 gap-2 w-full">
                 {/* 1. Strike voting if member missed bedtime and not in bed / not metastrike */}
                 {!isInBed && !isMetastrikeActive && !isViewer && onVoteStrike ? (
-                  <div className="flex-1 min-w-0">
-                    {isStrikeIssuedTonight ? (
-                      <span className="h-11 min-h-[44px] flex items-center justify-center gap-1 rounded-xl px-2.5 text-xs font-semibold text-status-coral whitespace-nowrap">
-                        <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                        <span className="truncate">Strike Issued</span>
+                  isStrikeIssuedTonight ? (
+                    <span className="flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-semibold rounded-xl text-status-coral whitespace-nowrap">
+                      <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
+                      <span className="truncate">Strike Issued</span>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic(15);
+                        onVoteStrike(member.id);
+                      }}
+                      disabled={isVotingStrike || member.has_voted_strike}
+                      className={`flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-semibold rounded-xl whitespace-nowrap transition-colors ${
+                        member.has_voted_strike
+                          ? 'border border-status-coral/30 bg-night-elevated text-status-coral/60 cursor-not-allowed'
+                          : 'border border-status-coral/40 bg-status-coral/15 text-status-coral hover:bg-status-coral/25 active:scale-95'
+                      }`}
+                    >
+                      <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
+                      <span className="truncate">
+                        {member.has_voted_strike
+                          ? `Voted (${strikeVotesCount}/2)`
+                          : `Vote Strike (${strikeVotesCount}/2)`}
                       </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic(15);
-                          onVoteStrike(member.id);
-                        }}
-                        disabled={isVotingStrike || member.has_voted_strike}
-                        className="w-full h-11 min-h-[44px] flex items-center justify-center gap-1 rounded-xl border border-status-coral/40 bg-status-coral/15 px-2.5 text-xs font-semibold text-status-coral hover:bg-status-coral/25 active:scale-95 transition-all"
-                      >
-                        <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                        <span className="truncate">
-                          {member.has_voted_strike
-                            ? `Voted (${strikeVotesCount}/2)`
-                            : `Vote Strike (${strikeVotesCount}/2)`}
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                ) : null}
-
-                {/* 2. Wake-up reminder if past wake time */}
-                {state.isPastWakeTime ? (
+                    </button>
+                  )
+                ) : state.isPastWakeTime ? (
+                  /* 2. Wake-up reminder if past wake time */
                   <button
                     type="button"
                     onClick={handleSendWakeUpNagNotif}
                     disabled={isSendingWakeNag || wakeCooldownSeconds > 0}
-                    className={`flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all shadow-sm ${
+                    className={`flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-semibold rounded-xl whitespace-nowrap transition-colors shadow-sm ${
                       wakeCooldownSeconds > 0
                         ? 'border border-night-border/70 bg-night-elevated/70 text-cream-muted cursor-not-allowed'
                         : 'border border-status-amber/40 bg-status-amber/15 text-status-amber hover:bg-status-amber/25 active:scale-95'
@@ -1228,11 +1249,12 @@ export function MemberCard({
                       </>
                     )}
                   </button>
-                ) : !(!isInBed && !isMetastrikeActive && !isViewer && onVoteStrike) && isTargetShieldOn && !isViewer ? (
+                ) : isTargetShieldOn && !isViewer ? (
+                  /* 3. Shield On */
                   <button
                     type="button"
                     onClick={handleSendNagNotif}
-                    className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-slumber/40 bg-status-slumber/15 px-2.5 text-xs font-semibold text-status-slumber hover:bg-status-slumber/25 transition-all shadow-sm"
+                    className="flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-semibold rounded-xl whitespace-nowrap transition-colors border border-status-slumber/40 bg-status-slumber/15 text-status-slumber hover:bg-status-slumber/25 shadow-sm"
                     title={`Sleep Shield is ON for ${member.discord_username} until their wake time (${state.activeWakeTimeLocal || '07:00'}). Tap to view shield status.`}
                   >
                     <Shield className="h-3.5 w-3.5 fill-status-slumber/20 shrink-0" />
@@ -1240,15 +1262,20 @@ export function MemberCard({
                   </button>
                 ) : null}
 
-                {/* Leave quiet note - flex-1 min-w-0 with truncate to prevent ANY overflow */}
+                {/* Leave quiet note - dynamically shortened to Quiet Note */}
                 <a
                   href={member.journal_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-2.5 text-xs text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 shadow-sm"
+                  className={`${
+                    hasSleepingActionButton ? '' : 'col-span-2'
+                  } flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-medium rounded-xl whitespace-nowrap transition-colors border border-night-border bg-night-elevated text-cream-secondary hover:text-cream-primary hover:border-night-border/80 shadow-sm`}
                   title="Open Discord journal to leave a quiet note"
                 >
-                  <span className="truncate">Leave quiet note</span>
+                  <span className="truncate">
+                    Quiet Note
+                    <span className="sr-only"> (Leave quiet note)</span>
+                  </span>
                   <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                 </a>
               </div>
@@ -1257,7 +1284,7 @@ export function MemberCard({
         )}
 
         {bucket === 'AWAKE' && (
-          <div className="flex items-center gap-2 w-full">
+          <div className={isViewer && (state.needsWakeUpLog || (isWokeUp && onCheckIn)) ? "grid grid-cols-2 gap-2 w-full" : "w-full"}>
             {isViewer && state.needsWakeUpLog && (
               <button
                 type="button"
@@ -1276,7 +1303,7 @@ export function MemberCard({
                     setOptimisticWokeUp(prevWokeUp);
                   }
                 }}
-                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber text-night-bg px-2.5 text-xs font-bold hover:bg-status-amber/90 active:scale-95 transition-all shadow-sm"
+                className="w-full min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-bold rounded-xl border border-status-amber bg-status-amber text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all shadow-sm whitespace-nowrap"
                 title="Log when you woke up"
               >
                 <Sun className="h-4 w-4 shrink-0" />
@@ -1288,7 +1315,7 @@ export function MemberCard({
                 type="button"
                 onClick={handleCheckInClick}
                 disabled={isCheckingIn}
-                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-2.5 text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm"
+                className="w-full min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-semibold rounded-xl border border-status-amber/40 bg-status-amber/15 text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm whitespace-nowrap"
                 title="Go to bed and turn on Sleep Shield"
               >
                 <BedDouble className="h-3.5 w-3.5 text-status-amber shrink-0" />
@@ -1299,7 +1326,7 @@ export function MemberCard({
               href={member.journal_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3 text-xs font-medium text-cream-secondary transition-colors hover:text-cream-primary hover:border-night-border/80 ml-auto shadow-sm"
+              className="w-full min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-medium rounded-xl whitespace-nowrap transition-colors border border-night-border bg-night-elevated text-cream-secondary hover:text-cream-primary hover:border-night-border/80 shadow-sm"
               title="Open Discord Journal"
             >
               <span className="truncate">Journal</span>

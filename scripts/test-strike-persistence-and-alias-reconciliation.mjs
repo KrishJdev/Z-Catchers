@@ -263,12 +263,29 @@ async function run() {
   assert(isTestMemberFixture(syncTestId) === false, 'syncInMemoryMemberCache does NOT register ID as test fixture');
   assert(getInMemoryMember(syncTestId)?.strikes_used === 1, 'syncInMemoryMemberCache updated memoryMembers');
 
-  console.log('\n--- 7. Conditional Member Update & Missing Month Persistence ---');
-  // Verify SafeUpdateOptions.conditions
-  const updateRes = await updateMemberSafe(syncTestId, { strikes_used: 2 }, {
+  console.log('\n--- 7. Conditional Member Update & Alias Reconciliation ---');
+  // Verify SafeUpdateOptions.conditions with mismatched condition rejects
+  const updateResMismatched = await updateMemberSafe(syncTestId, { strikes_used: 2 }, {
     conditions: { strikes_used: 999 }, // Mismatched condition
   });
-  assert(updateRes.data === null || updateRes.error !== null || !isTestMemberFixture(syncTestId), 'Conditional update respects conditions');
+  assert(updateResMismatched.data === null && updateResMismatched.error !== null, 'Conditional update with mismatched condition fails');
+
+  // Verify SafeUpdateOptions.conditions with matching alias succeeds
+  // syncTestId currently has strikes_used: 1. Condition checks strikes_count: 1 (its alias)
+  const updateResAliasMatch = await updateMemberSafe(syncTestId, { strikes_used: 2 }, {
+    conditions: { strikes_count: 1 },
+  });
+  assert(updateResAliasMatch.data?.strikes_used === 2, 'Conditional update translates condition alias and succeeds');
+
+  // Verify zero-value property updates succeed cleanly without truthiness falsy bug
+  const zeroUpdateRes = await updateMemberSafe(syncTestId, { strikes_used: 0 });
+  assert(zeroUpdateRes.data?.strikes_used === 0, 'updateMemberSafe handles 0-value field updates cleanly');
+
+  // Verify SafeUpdateOptions.conditions rejects absent column with no valid alias rather than stripping it unguarded
+  const bogusColRes = await updateMemberSafe(syncTestId, { strikes_used: 3 }, {
+    conditions: { nonexistent_guard_col_xyz: 42 },
+  });
+  assert(bogusColRes.data === null && bogusColRes.error !== null, 'Conditional update with unknown condition column is rejected');
 
   console.log('\n======================================================');
   if (failed) {

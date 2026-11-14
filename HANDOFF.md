@@ -1,12 +1,14 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T03:12:00+05:30  
-> **Active Working Branch:** `feat/zc-20-update-schedule-mod-rate-limit`  
+> **Last Updated:** 2026-11-14T14:55:00+05:30  
+> **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57)  
-> **Active Integration Pull Requests:** [#58 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/58) (`feat/zc-20-update-schedule-mod-rate-limit` -> `dev`)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52)  
+> **Latest Commit:** `3515950`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58)  
+> **Active Integration Pull Requests:** [#60 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/60) (`krish` -> `dev`)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)  
+> **Active Production Release Pull Request:** None  
 > **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 33/33 suites passed | `npm run build` clean)
 
 ---
@@ -67,6 +69,101 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 89: CodeRabbit Review Hardening & Touch/Schema Resilience
+* **Objective & Context:**
+  - Addressed CodeRabbit review findings on open PR #60 across `MemberCard.tsx`, `SleepCalendarModal.tsx`, and `db.ts`.
+  - Hardened accessibility touch targets, responsive narrow-card wrapping, modal refresh lifecycle, and conditional write schema resilience.
+* **Key Implementation Details:**
+  1. **MemberCard Touch Target & Header Name Truncation (`src/components/MemberCard.tsx`):**
+     - Updated username button with `min-h-[44px] min-w-[44px] inline-flex items-center` to enforce mobile touch target standards (>= 44x44px) while wrapping username in `<span className="truncate">` to preserve clean text ellipsis on long handles.
+  2. **MemberCard Schedule Row Responsive Flex-Wrap (`src/components/MemberCard.tsx`):**
+     - Converted schedule container to `flex flex-wrap items-center justify-between gap-x-2 gap-y-1`.
+     - Removed group-level `whitespace-nowrap` on left schedule+badge group while preserving `whitespace-nowrap` on individual time spans and badges, allowing the GMT offset `(GMT+XX:XX)` to wrap cleanly onto a second line without clipping on narrow cards (< 320px).
+  3. **SleepCalendarModal Refresh Lifecycle on Reopen (`src/components/SleepCalendarModal.tsx`):**
+     - Reset `prevTargetIdRef.current = null` and `prevFingerprintRef.current = null` when modal closes (`!isOpen`).
+     - Added `prevIsOpenRef` tracking to recognize modal reopenings (`justOpened = !prevIsOpenRef.current && isOpen`), immediately triggering fresh sleep history fetches upon reopening while preserving change-based refreshes while open.
+  4. **Database Conditional Writes & Schema Alias Protection (`src/lib/db.ts`):**
+     - Added `MEMBER_COLUMN_ALIASES` mapping (`strikes_used` <-> `strikes_count`, `metastrikes_used` <-> `metastrikes_count`).
+     - Hardened `updateMemberSafe`: if a condition column is not in `existingCols`, translates the condition predicate to its verified schema alias if present; otherwise, rejects the conditional write with `{ data: null, error }` instead of stripping it and executing an unguarded write.
+     - Preserved alias translation and fail-closed rejection inside the PostgREST schema-cache recovery loop.
+     - Fixed missing-column retry loop to delete properties using `missingCol in cleanUpdates`, properly removing columns even when values are falsy (`0`, `null`, `false`).
+  5. **Automated Unit Test Verification:**
+     - Updated `scripts/test-member-profile-and-overflow-fix.mjs` to assert 44x44px username touch targets, responsive schedule wrapping, and modal reopening history refreshes.
+     - Expanded `scripts/test-strike-persistence-and-alias-reconciliation.mjs` to assert conditional update rejection on unknown condition columns, alias translation on condition columns, and 0-value field update resilience.
+* **Files Modified:**
+  - `src/components/MemberCard.tsx`
+  - `src/components/SleepCalendarModal.tsx`
+  - `src/lib/db.ts`
+  - `scripts/test-member-profile-and-overflow-fix.mjs`
+  - `scripts/test-strike-persistence-and-alias-reconciliation.mjs`
+* **Verification & Testing:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 33/33 test suites passed cleanly (100%).
+  - `npm run build`: Production Next.js build succeeded (28/28 routes prerendered).
+  - `node scripts/test-phase2-mobile-touch-ux.mjs`: PASSED.
+  - `node scripts/test-phase35-pwa-phone-robustness.mjs`: PASSED.
+
+### Phase 88: UI/UX Card Alignment & Responsive Grid Fix
+* **Objective & Context:**
+  - Resolved card alignment, avatar vertical drift, schedule time formatting inconsistencies, and responsive grid squeeze across desktop and mobile viewports per the UI/UX Card Alignment & Responsive Grid Fix Specification.
+  - Maintained Mobile PWA first standards (< 640px single-column, >= 44px touch targets, zero horizontal overflow) and strict business logic preservation (modal triggers, click handlers, strike voting, Discord links).
+* **Key Implementation Details:**
+  1. **Card Header Alignment & Avatar Vertical Drift (`src/components/MemberCard.tsx`):**
+     - Anchored avatar to top-left with `relative shrink-0 w-11 h-11 rounded-full` so it never shifts vertically when streak badges or status pills are present.
+     - Wrapped username and watchlist star in a strict single-line flex row (`flex items-center gap-1.5 min-w-0`), applying `truncate font-semibold text-base leading-tight` to username and `shrink-0 p-1 -m-1 min-h-[44px] min-w-[44px]` to the star button to prevent line wrapping across all name lengths.
+     - Extracted YOU, MOD, and streak badges into a dedicated sub-header row (`flex flex-wrap items-center gap-1.5 min-h-[22px]`).
+     - Aligned local time (`text-lg font-bold leading-tight whitespace-nowrap`) and status pill (`mt-1 whitespace-nowrap`) cleanly in the right column.
+  2. **Consistent Schedule Time Formatting & Full-Width Schedule Row (`src/lib/sleepEngine.ts` & `src/components/MemberCard.tsx`):**
+     - Added and exported `formatTime12h` in `src/lib/sleepEngine.ts` to convert 24h `HH:mm` strings into uniform 12h `h:mm A` format without mixing 12h and 24h representations.
+     - Enriched `MemberState` with `formattedWakeTime` computed directly during `computeMemberState()`.
+     - Moved bedtime and wake time out of the cramped avatar column into a dedicated full-width metadata row below the header (`flex items-center justify-between text-xs text-zinc-400 bg-white/[0.02] px-2.5 py-1.5 rounded-lg border border-white/[0.04]`), placing formatted schedule (`11:00 PM → 6:00 AM`) on the left and timezone offset `(GMT+02:00)` on the right with `whitespace-nowrap`.
+  3. **Deterministic 3-Zone Flex Rhythm & Bottom-Anchored Accountability Bar (`src/components/MemberCard.tsx`):**
+     - Structured `MemberCard` as `flex flex-col justify-between h-full p-4 gap-3 rounded-2xl`.
+     - Placed optional schedule cooldown/shift banner as a compact full-width pill (`text-xs py-1.5 px-3 rounded-lg whitespace-nowrap overflow-hidden text-ellipsis`).
+     - Bottom-anchored the Strikes & Metastrikes accountability bar inside `mt-auto flex flex-col gap-2.5 pt-1 w-full` directly above action buttons, aligning the bar and buttons horizontally across all cards in desktop grid rows.
+  4. **Action Button Truncation Fix (`src/components/MemberCard.tsx`):**
+     - Replaced asymmetric button wrapping with a clean `grid grid-cols-2 gap-2 w-full` layout.
+     - Styled buttons with `inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-medium rounded-xl whitespace-nowrap transition-colors`.
+     - Shortened secondary button text to `Quiet Note` (with `sr-only` support for `(Leave quiet note)`) preventing truncation while preserving test suite compatibility.
+  5. **Responsive Grid Breakpoints (`src/components/StatusBucket.tsx` & `src/app/page.tsx`):**
+     - Updated member grid containers to `grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 md:gap-4 items-stretch`, preventing cards from dropping below comfortable desktop widths (< 280px).
+     - Standardized outer dashboard container padding with `max-w-7xl mx-auto px-4 sm:px-6 py-4 md:py-6 pb-28 md:pb-12`.
+* **Files Modified:**
+  - `src/lib/sleepEngine.ts`
+  - `src/components/MemberCard.tsx`
+  - `src/components/StatusBucket.tsx`
+  - `src/app/page.tsx`
+* **Verification & Testing:**
+  - `npx tsc --noEmit`: Clean, 0 errors.
+  - `npm run build`: Production build succeeded with all 28 App Router routes prerendered.
+  - `npm run test:unit`: 33/33 suites passed (100%).
+  - `node scripts/test-phase2-mobile-touch-ux.mjs`: PASSED (100% >= 44px touch targets).
+  - `node scripts/test-phase35-pwa-phone-robustness.mjs`: PASSED.
+  - `node scripts/test-ui-normalization-and-button-wrapping.mjs`: PASSED.
+  - `node scripts/test-metastrike-overflow-fix.mjs`: PASSED.
+  - `node scripts/test-wake-up-and-overflow.mjs`: PASSED.
+  - `node scripts/test-member-profile-and-overflow-fix.mjs`: PASSED.
+* **Integration Pull Request:**
+  - Opened Pull Request **[#60 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/60)**: *`fix(ui): align card header, unify schedule time formatting, and fix responsive grid`* targeting `dev`.
+
+### Phase 87: Production Release PR #59 (`dev` -> `main`)
+* **Objective & Promotion Scope:**
+  - Verified and prepared the major production release promoting all accumulated and verified fixes, features, and hardening from `dev` into `main`.
+* **Included Pull Requests & Capabilities:**
+  1. **PR #58 (Fixes GH #34, Jira ZC-20):** Prevent IDOR and unauthenticated claim in `update-schedule` when moderator rate limit is exceeded.
+  2. **PR #57:** Strike count durability, alias synchronization (`strikes_used` / `strikes_count`), `globalThis.__memoryStrikeStore` persistence, PostgREST schema-safe updates, and monthly ground-truth log reconciliation.
+  3. **PR #56 (Phase 84 & Phase 83):** UI normalization, 44px/48px touch targets, anti-wrapping on small viewports across `ModDrawer`, `SleepCalendarModal`, `PwaBanner`, and `MemberCard`; plus weekly schedule schema resilience and migration script.
+  4. **PR #55 (Closes GH #33, #48, Jira ZC-19):** Sanitize and validate `x-forwarded-host` in OAuth redirect base URL to prevent host-header poisoning.
+  5. **PR #54 (Fixes GH #32, Jira ZC-18):** Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe`.
+  6. **PR #53 (Fixes GH #31, #46, #36):** Prevent unauthenticated push deletion, authorize client requests, retain failed push endpoints for retry, and support query param endpoint deletion.
+* **Verification & QA:**
+  - Verified `git merge-tree` clean 3-way merge without conflicts between `origin/main` and `origin/dev`.
+  - Executed `npx tsc --noEmit` cleanly (0 errors).
+  - Executed `npm run test:unit` cleanly with 33/33 passing test suites.
+* **Production Release Pull Request:**
+  - Opened and successfully merged **[#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)**: *`release: promote security hardening, persistent strikes, weekly schedule resilience, and UI normalization to main`*.
+  - Successfully purged all merged feature branches locally and remotely (`feat/zc-20-update-schedule-mod-rate-limit`), retaining only active branches `krish`, `dev`, and `main`.
 
 ### Phase 86: Security Hardening - Prevent IDOR & Unauthenticated Claim in update-schedule When Moderator Rate Limit is Exceeded (GH #34, Jira ZC-20)
 * **Root Cause & Vulnerability Analysis:**
@@ -142,6 +239,12 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
     7. **`src/lib/strikes.ts` (Missing Month Persistence):** Added `needsMonthPersist` condition so members with missing `strike_cycle_month` have their active cycle month persisted to Supabase even if strike counts are 0.
     8. **`src/lib/db.ts` (`syncInMemoryMemberCache` & `SafeUpdateOptions.conditions`):** Created `syncInMemoryMemberCache` that updates in-memory members without registering them into `testFixtures`, preventing production member reads from bypassing live Supabase in `getMemberByIdSafe`. Supported arbitrary column conditions in `SafeUpdateOptions.conditions`.
     9. **Automated Unit Tests:** Expanded `scripts/test-strike-persistence-and-alias-reconciliation.mjs` to assert cache cycle isolation, non-fixture cache synchronization, and conditional updates (all 32 test suites passing cleanly).
+    10. **Comprehensive PR Review & Second-Pass Hardening:**
+        - **`src/lib/db.ts` (`activeConditions` Sanitization):** Sanitized `activeConditions` in `updateMemberSafe` against `existingCols` and auto-recovered missing condition columns in the schema cache mismatch loop to prevent PostgREST errors on unmigrated schemas.
+        - **`src/lib/strikes.ts` (Luxon Month Boundaries):** Computed `startDate` and `endDate` in `getMonthlyStrikeCountsBatch` strictly via `DateTime.fromISO` using `startOf('month')` and `endOf('month')`, guaranteeing leap-year and 30-day month accuracy.
+        - **`src/lib/strikes.ts` (Optimistic Concurrency on Conditional Updates):** Updated `updateMemberStrikeCounts` so that when `conditions` are specified, in-memory cache is committed only when the conditional database update succeeds, preventing stale cache poisoning on concurrent collision. Also included fallback alias column checks and `strike_cycle_month: null` in `repairConditions`.
+        - **`src/components/SleepCalendarModal.tsx` (Flicker-Free Fingerprinting):** Replaced reference comparison with data fingerprinting (`initialFingerprint` over ID, strikes, metastrikes, and cycle month), eliminating unnecessary API refetches and data clearing on simple parent re-renders.
+        - **Line Ending Normalization:** Normalized `src/lib/strikes.ts` to pure LF, eliminating 2,160 lines of CRLF whitespace noise in GitHub PR #57.
 
 ### Phase 84: UI Normalization, Button Touch-Target Sizing & Anti-Wrapping Standardization
 * **Root Cause & Visual Bug Identification (`ModDrawer.tsx`):**
