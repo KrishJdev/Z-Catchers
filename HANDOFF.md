@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T16:05:00+05:30  
-> **Active Working Branch:** `krish`  
+> **Last Updated:** 2026-11-14T16:15:00+05:30  
+> **Active Working Branch:** `feat/issue-62-pinned-self-action-bar`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `f1dab4f`  
+> **Latest Commit:** Pending PR for Issue #62  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60)  
 > **Active Integration Pull Requests:** None  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)  
 > **Active Production Release Pull Request:** [#61 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/61) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 34/34 suites passed | `npm run build` clean)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 35/35 suites passed | `npm run build` clean)
 
 ---
 
@@ -69,6 +69,38 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 91: Pinned Self-Action Bar for One-Tap Check-Ins (GitHub #62, Jira ZC-28)
+* **Objective & Context:**
+  - Implemented the highest-priority decluttering task (P0 Critical Issue #62, Jira ZC-28).
+  - Decoupled the logged-in member's sleep/wake controls from the scrolling member cards into a persistent, pinned action bar mounted directly above `BottomNav.tsx` on mobile (`fixed bottom-16 md:bottom-0 left-0 right-0 z-30`).
+* **Key Implementation Details:**
+  1. **Component Creation (`src/components/PinnedSelfActionBar.tsx`):**
+     - Created `PinnedSelfActionBar` adhering strictly to Warm Dark design tokens (`#1C1714` surface, `#F5EBE1` text, amber accents, Sleepy Fox mascot fallback).
+     - Context-aware display:
+       - When Awake: prominent `"🛏️ I'm in Bed"` check-in button (`onCheckIn`).
+       - When Asleep: prominent `"☀️ I'm Awake"` check-in button (`onWakeUp`) and Sleep Shield status indicator.
+       - When 48h schedule cooldown pending (`pending_effective_at` / `pending_bedtime_local`): compact `"⏳ Cancel Pending Change"` secondary button (`onCancelPending`).
+     - Mobile touch target compliance: enforces `min-h-[44px]` and `min-w-[44px]` across all interactive buttons with subtle haptic feedback.
+     - Optimistic UI updates with instant state toggling and graceful error rollback.
+  2. **Dashboard Wiring (`src/app/page.tsx`):**
+     - Mounted `<PinnedSelfActionBar>` conditionally guarded by `{currentUser && (` so unauthenticated visitors do not see the self-action bar.
+     - Integrated `handleCancelPending` invoking `POST /api/members/cancel-pending` with session authorization headers and optimistic state clearance.
+     - Enhanced `handleCheckIn` with instant optimistic dashboard feedback.
+     - Adjusted main dashboard container bottom padding to `pb-36 md:pb-24` ensuring cards have full clearance above the pinned bar on mobile and desktop viewports.
+  3. **Automated Unit Testing (`scripts/test-pinned-self-action-bar.mjs`):**
+     - Verifies component export, Warm Dark tokens, `luxon` timezone math, `min-h-[44px] min-w-[44px]` touch targets, context-aware action presentation, authentication guards, and `cancel-pending` wiring.
+     - Registered in `scripts/run-tests.mjs` as test suite 35.
+* **Files Modified & Created:**
+  - `src/components/PinnedSelfActionBar.tsx` (created)
+  - `scripts/test-pinned-self-action-bar.mjs` (created)
+  - `src/app/page.tsx` (modified)
+  - `scripts/run-tests.mjs` (modified)
+  - `HANDOFF.md` (modified)
+* **Verification & Testing:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 35/35 test suites passed cleanly (100%).
+  - `npm run build`: Production Next.js build succeeded (28/28 routes prerendered).
 
 ### Phase 90: Z-Catchers Decluttering & PWA Enhancement Issue Creation & Jira Cloud Two-Way Synchronization (GitHub #62–#71, Jira ZC-28–ZC-37)
 * **Objective & Context:**

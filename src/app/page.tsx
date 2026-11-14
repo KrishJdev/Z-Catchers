@@ -13,6 +13,7 @@ import { PushModal } from '@/components/PushModal';
 import { BottomNav, type MobileNavTab } from '@/components/BottomNav';
 import { MetastrikeModal } from '@/components/MetastrikeModal';
 import { SleepCalendarModal } from '@/components/SleepCalendarModal';
+import { PinnedSelfActionBar } from '@/components/PinnedSelfActionBar';
 import { computeMemberState, MemberState } from '@/lib/sleepEngine';
 import { formatGmtOffset } from '@/lib/timezone';
 import {
@@ -311,6 +312,10 @@ export default function HomePage() {
   const handleCheckIn = useCallback(async (memberId: string) => {
     try {
       setIsCheckingIn(true);
+      // Instant optimistic UI update
+      setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, is_in_bed: true, is_woke_up: false } : prev));
+      setIsSleepShieldActive(true);
+
       const token = getStoredAuthToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -337,6 +342,7 @@ export default function HomePage() {
           text: data.error || 'Failed to check in.',
           type: 'error',
         });
+        await fetchRoster();
       }
     } catch (err) {
       console.error('Failed to check in:', err);
@@ -344,6 +350,7 @@ export default function HomePage() {
         text: 'Network error checking in.',
         type: 'error',
       });
+      await fetchRoster();
     } finally {
       setIsCheckingIn(false);
     }
@@ -447,6 +454,64 @@ export default function HomePage() {
       setIsCheckingIn(false);
     }
   }, [fetchRoster, router]);
+
+  // Cancel 48-hour pending schedule cooldown handler
+  const handleCancelPending = useCallback(
+    async (memberId: string) => {
+      try {
+        setIsCheckingIn(true);
+        // Instant optimistic UI update
+        setCurrentUser((prev) =>
+          prev && prev.id === memberId
+            ? {
+                ...prev,
+                pending_bedtime_local: null,
+                pending_wake_time_local: null,
+                pending_timezone: null,
+                pending_weekend_bedtime_local: null,
+                pending_weekend_wake_time_local: null,
+                pending_weekly_schedule: null,
+                pending_effective_at: null,
+              }
+            : prev
+        );
+
+        const token = getStoredAuthToken();
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/members/cancel-pending', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ member_id: memberId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          setToastMessage({
+            text: data.message || 'Pending schedule change cancelled successfully.',
+            type: 'success',
+          });
+          await fetchRoster();
+        } else {
+          setToastMessage({
+            text: data.error || 'Failed to cancel pending schedule change.',
+            type: 'error',
+          });
+          await fetchRoster();
+        }
+      } catch (err) {
+        console.error('Failed to cancel pending schedule change:', err);
+        setToastMessage({
+          text: 'Network error cancelling pending schedule change.',
+          type: 'error',
+        });
+        await fetchRoster();
+      } finally {
+        setIsCheckingIn(false);
+      }
+    },
+    [fetchRoster]
+  );
 
   // Synchronize currentUser in_bed status to active Sleep Shield
   useEffect(() => {
@@ -808,7 +873,7 @@ export default function HomePage() {
         onLogout={handleLogout}
       />
 
-      <div className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-4 md:py-6 pb-28 md:pb-12">
+      <div className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-4 md:py-6 pb-36 md:pb-24">
         {/* Floating Notification Toast */}
         {toastMessage && (
           <div
@@ -1273,6 +1338,18 @@ export default function HomePage() {
           </>
         )}
       </div>
+
+      {/* Persistent Pinned Self-Action Bar (Authenticated Members Only) */}
+      {currentUser && (
+        <PinnedSelfActionBar
+          currentUser={currentUser}
+          isSleepShieldActive={isSleepShieldActive}
+          onCheckIn={handleCheckIn}
+          onWakeUp={handleWakeUp}
+          onCancelPending={handleCancelPending}
+          isCheckingIn={isCheckingIn}
+        />
+      )}
 
       {/* Sticky Bottom Navigation (Mobile Viewports Only: < 768px) */}
       <BottomNav
