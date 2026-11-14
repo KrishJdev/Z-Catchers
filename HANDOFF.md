@@ -1,12 +1,12 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T16:48:00+05:30  
+> **Last Updated:** 2026-11-14T17:08:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `2ce4a57`  
+> **Latest Commit:** `edcf5e4`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60)  
-> **Active Integration Pull Requests:** [#72 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/72) (`feat/issue-62-pinned-self-action-bar` -> `dev`), [#73 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/73) (`feat/issue-64-smart-status-bucket-folding` -> `dev`)  
+> **Active Integration Pull Requests:** [#72 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/72) (`feat/issue-62-pinned-self-action-bar` -> `dev`) [Verified: All CI checks passing, review comments resolved], [#73 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/73) (`feat/issue-64-smart-status-bucket-folding` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)  
 > **Active Production Release Pull Request:** [#61 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/61) (`dev` -> `main`)  
 > **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 36/36 suites passed | `npm run build` clean)
@@ -69,6 +69,38 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 93: Pinned Self-Action Bar Code Review Resolution & PR #72 Pre-Merge Validation (GitHub #62, Jira ZC-28)
+* **Objective & Context:**
+  - Validated and addressed automated CodeRabbit code review feedback and pre-merge checks on Pull Request [#72](https://github.com/KrishJdev/Z-Catchers/pull/72) (`feat/issue-62-pinned-self-action-bar` -> `dev`) implementing [ZC-28](https://krishjaiswal2182003.atlassian.net/browse/ZC-28) / GitHub Issue #62.
+  - Verified each finding against current code, resolved still-valid issues, eliminated out-of-scope diffs, and brought CI and Vercel checks to 100% green.
+* **Key Implementation & Resolution Details:**
+  1. **Transient Optimistic UI Lifecycle (`src/components/PinnedSelfActionBar.tsx`):**
+     - Cleared `optimisticInBed` state explicitly in `finally` blocks (`setOptimisticInBed(null)`) so authoritative props govern UI state once network requests settle.
+     - Scoped `isCancellingPending` cancellation suppression strictly to in-flight requests, clearing it in `finally` (`setIsCancellingPending(false)`) so subsequent pending changes or errors cleanly re-enable the button.
+  2. **Failure State Restoration & Direct Error Handling (`src/app/page.tsx`):**
+     - Enhanced `handleCheckIn`: captures `priorInBed`, `priorWokeUp`, and `priorShield` prior to optimistic mutation; immediately restores prior state upon network failure or non-OK response regardless of `fetchRoster()` outcome; returns `Promise<boolean>`.
+     - Enhanced `handleCancelPending`: captures `priorPending` object prior to optimistic mutation; immediately restores pending schedule fields upon failure; returns `Promise<boolean>`.
+  3. **Strict TypeScript Interface Typing (`src/components/MemberCard.tsx`):**
+     - Updated `MemberCardProps.onCheckIn` type signature to `(memberId: string) => Promise<boolean | void>`, allowing `handleCheckIn` to return a boolean status while maintaining full backwards compatibility across the component tree.
+  4. **PR #72 Scope Isolation & Pre-Merge Check Resolution:**
+     - Rebased `feat/issue-62-pinned-self-action-bar` cleanly onto `origin/dev` as a single focused commit containing only the 5 relevant files (`PinnedSelfActionBar.tsx`, `MemberCard.tsx`, `page.tsx`, `test-pinned-self-action-bar.mjs`, and `run-tests.mjs`).
+     - Removed out-of-scope decluttering and Jira scripts from the PR diff against `dev` while preserving full history and sync tools safely on `krish`.
+     - Resolved the "Out of Scope Changes" pre-merge check; GitHub Actions CI (`Build & Test Verification`) and Vercel preview deployment passed completely.
+  5. **Unit Test Assertions (`scripts/test-pinned-self-action-bar.mjs`):**
+     - Updated unit test assertions to match the transient optimistic lifecycle (`setOptimisticInBed(null)` and `setIsCancellingPending(false)`).
+* **Files Modified & Created:**
+  - `src/components/PinnedSelfActionBar.tsx` (modified)
+  - `src/app/page.tsx` (modified)
+  - `src/components/MemberCard.tsx` (modified)
+  - `scripts/test-pinned-self-action-bar.mjs` (modified)
+  - `HANDOFF.md` (modified)
+* **Verification & Testing:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 36/36 test suites passed cleanly (100%).
+  - `npm run build`: Production Next.js build succeeded (28/28 routes prerendered).
+  - GitHub Actions CI Run `43590528484`: SUCCESS (Build & Test Verification in 1m23s).
+  - Vercel Deployment `9Q5R7BgLrwnq85hLHCqokvmuRzCD`: SUCCESS.
 
 ### Phase 92: Smart Status Bucket Folding by Default (GitHub #64, Jira ZC-30)
 * **Objective & Context:**
@@ -1943,9 +1975,9 @@ d:\Projects\Z Catchers\
 
 | Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
 |---|---|---|---|---|---|
-| **ZC-28** | **Critical (P0)** | Pinned Self-Action Bar for One-Tap Check-Ins | `src/components/StatusBucket.tsx`, `src/components/MemberCard.tsx`, `src/components/BottomNav.tsx`, `src/app/page.tsx` | [#62](https://github.com/KrishJdev/Z-Catchers/issues/62) | **TODO** |
+| **ZC-28** | **Critical (P0)** | Pinned Self-Action Bar for One-Tap Check-Ins | `src/components/PinnedSelfActionBar.tsx`, `src/app/page.tsx` | [#62](https://github.com/KrishJdev/Z-Catchers/issues/62) | **DONE** (PR #72) |
 | **ZC-29** | **Critical (P0)** | Compact Member Cards with Progressive Disclosure | `src/components/MemberCard.tsx`, `src/lib/timezone.ts`, `src/components/SleepCalendarModal.tsx` | [#63](https://github.com/KrishJdev/Z-Catchers/issues/63) | **TODO** |
-| **ZC-30** | **Critical (P0)** | Smart Status Bucket Folding by Default | `src/components/StatusBucket.tsx`, `src/lib/sleepEngine.ts`, `src/app/page.tsx` | [#64](https://github.com/KrishJdev/Z-Catchers/issues/64) | **TODO** |
+| **ZC-30** | **Critical (P0)** | Smart Status Bucket Folding by Default | `src/components/StatusBucket.tsx`, `src/lib/sleepEngine.ts`, `src/app/page.tsx` | [#64](https://github.com/KrishJdev/Z-Catchers/issues/64) | **DONE** (PR #73) |
 | **ZC-31** | **High (P1)** | Consolidated Profile & Settings Drawer | `src/components/Header.tsx`, `src/components/BottomNav.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/PushModal.tsx` | [#65](https://github.com/KrishJdev/Z-Catchers/issues/65) | **TODO** |
 | **ZC-32** | **High (P1)** | Unified PWA Install & Push Onboarding Card | `src/components/PwaBanner.tsx`, `src/components/PushModal.tsx`, `src/app/page.tsx`, `src/lib/pushClient.ts` | [#66](https://github.com/KrishJdev/Z-Catchers/issues/66) | **TODO** |
 | **ZC-33** | **High (P1)** | Silent Timezone Auto-Detection | `src/lib/timezone.ts`, `src/app/join/page.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/TimezoneSelect.tsx` | [#67](https://github.com/KrishJdev/Z-Catchers/issues/67) | **TODO** |
@@ -1996,17 +2028,12 @@ d:\Projects\Z Catchers\
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
 1. **Sprint 1 (Immediate Next Task) — Phase 1 (P0) High-Impact UI Decluttering & Core Action Ergonomics:**
-   * **ZC-28 / GH #62 (`src/components/StatusBucket.tsx`, `src/components/MemberCard.tsx`, `src/components/BottomNav.tsx`, `src/app/page.tsx`):** **[START HERE]**
-     - Build `PinnedSelfActionBar.tsx` sticky above `BottomNav.tsx` in `src/app/page.tsx`.
-     - Wire action buttons directly to `/api/members/in-bed`, `/api/members/wake-up`, and `/api/members/cancel-pending`.
-     - Enforce context-awareness (In Bed, Wake Up, Cancel Pending) and $\ge 44\text{px}$ touch targets.
-     - Author automated unit test `scripts/test-pinned-self-action-bar.mjs` and register in `scripts/run-tests.mjs`.
-   * **ZC-29 / GH #63 (`src/components/MemberCard.tsx`, `src/lib/timezone.ts`, `src/components/SleepCalendarModal.tsx`):**
-     - Implement compact member card with progressive disclosure bottom sheet for secondary actions, reducing card height by $\ge 40\%$ on mobile.
-     - Author automated unit test `scripts/test-compact-member-cards.mjs`.
-   * **ZC-30 / GH #64 (`src/components/StatusBucket.tsx`, `src/lib/sleepEngine.ts`, `src/app/page.tsx`):**
-     - Auto-collapse passive status buckets (asleep, wide awake) on initial render with member count badges on headers.
-     - Author automated unit test `scripts/test-smart-status-bucket-folding.mjs`.
+   * **ZC-29 / GH #63 (`src/components/MemberCard.tsx`, `src/lib/timezone.ts`, `src/components/SleepCalendarModal.tsx`):** **[START HERE]**
+     - Implement compact member card with progressive disclosure bottom sheet / modal for secondary actions, reducing card height by $\ge 40\%$ on mobile.
+     - Move secondary actions (Vote Strike, View History, Discord Journal link) into the progressive disclosure drawer while preserving direct primary actions (Nag Now).
+     - Author automated unit test `scripts/test-compact-member-cards.mjs` and register in `scripts/run-tests.mjs`.
+   * **ZC-28 / GH #62:** **COMPLETED** (PR [#72](https://github.com/KrishJdev/Z-Catchers/pull/72) open, verified with all CI & Vercel checks green).
+   * **ZC-30 / GH #64:** **COMPLETED** (PR [#73](https://github.com/KrishJdev/Z-Catchers/pull/73) open, verified with all CI & Vercel checks green).
 
 2. **Sprint 2 — Phase 2 (P1) Navigation Consolidation & Onboarding Streamlining:**
    * **ZC-31 / GH #65 (`src/components/Header.tsx`, `src/components/BottomNav.tsx`):** Consolidated Profile & Settings Drawer (`SettingsDrawer.tsx`), keeping `ModDrawer.tsx` isolated.

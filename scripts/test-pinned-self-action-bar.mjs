@@ -103,10 +103,14 @@ assert(
   'Must render Sleep Shield status indicator when member is in bed'
 );
 
-// Optimistic UI state handling
+// Optimistic UI state handling & settlement cleanup
 assert(
-  componentSource.includes('setOptimisticInBed') && componentSource.includes('optimisticPendingCancelled'),
-  'Must support optimistic UI state updates for check-in, wake-up, and cancel-pending'
+  componentSource.includes('setOptimisticInBed') && componentSource.includes('setOptimisticInBed(null)'),
+  'Must clear optimisticInBed upon request settlement so authoritative props govern state'
+);
+assert(
+  componentSource.includes('setIsCancellingPending') && componentSource.includes('setIsCancellingPending(false)'),
+  'Must clear cancellation suppression once the request settles'
 );
 console.log('  ✅ Context-aware presentation logic verified.\n');
 
