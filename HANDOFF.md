@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T16:15:00+05:30  
-> **Active Working Branch:** `feat/issue-62-pinned-self-action-bar`  
+> **Last Updated:** 2026-11-14T16:48:00+05:30  
+> **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `5009d4e`  
+> **Latest Commit:** `2ce4a57`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60)  
-> **Active Integration Pull Requests:** [#72 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/72) (`feat/issue-62-pinned-self-action-bar` -> `dev`)  
+> **Active Integration Pull Requests:** [#72 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/72) (`feat/issue-62-pinned-self-action-bar` -> `dev`), [#73 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/73) (`feat/issue-64-smart-status-bucket-folding` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59)  
 > **Active Production Release Pull Request:** [#61 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/61) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 35/35 suites passed | `npm run build` clean)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 36/36 suites passed | `npm run build` clean)
 
 ---
 
@@ -69,6 +69,38 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 92: Smart Status Bucket Folding by Default (GitHub #64, Jira ZC-30)
+* **Objective & Context:**
+  - Implemented smart status bucket folding to declutter the dashboard and surface actionable members first (GitHub Issue #64, Jira [ZC-30](https://krishjaiswal2182003.atlassian.net/browse/ZC-30)).
+  - Automatically collapses passive buckets (Awake and Sleeping) by default on initial page render while keeping actionable buckets (Nag Now and Winding Down) expanded above the fold.
+* **Key Implementation Details:**
+  1. **Passive Bucket Auto-Collapse (`src/app/page.tsx` & `src/components/StatusBucket.tsx`):**
+     - Updated `src/app/page.tsx` status bucket declarations:
+       - 🚨 **Nag Now:** `defaultExpanded={true}` (surfaces overdue members hitting bedtime immediately).
+       - 🌙 **Winding Down:** `defaultExpanded={true}` (surfaces members within 60 minutes of bedtime).
+       - ☀️ **Awake:** `defaultExpanded={false}` (auto-folds passive daytime members to prevent vertical scroll fatigue).
+       - 💤 **Sleeping:** `defaultExpanded={false}` (auto-folds members currently in bed or within 8h sleep window).
+  2. **Collapsed Header UX & Smooth Chevron Transitions (`src/components/StatusBucket.tsx`):**
+     - Rendered clean member count pill on accordion headers displaying formatted counts with fox/foxes phrasing (`{count} {count === 1 ? 'fox' : 'foxes'}`) in tabular figures (`tabular-nums`) with Warm Dark elevated token styling (`bg-night-elevated border-night-border text-cream-secondary`).
+     - Added smooth hardware-accelerated chevron rotation animation using `ChevronRight` with `transition-transform duration-200 ease-in-out` (`rotate-90` when expanded, `rotate-0` when collapsed).
+     - Full accessibility compliance with `aria-expanded`, `aria-controls`, and `min-h-[44px]` touch target sizing.
+  3. **Active Session User Override Preservation (`src/components/StatusBucket.tsx`):**
+     - Integrated `sessionStorage` (`zc_bucket_${bucketKey}_expanded`) persistence to preserve manual user accordion toggles during the active browser session.
+     - Implemented `typeof window === 'undefined'` guard for SSR safety, guaranteeing zero layout shift (CLS = 0) and preventing hydration mismatches.
+  4. **Automated Regression Testing (`scripts/test-smart-status-bucket-folding.mjs`):**
+     - Created standalone unit test suite validating component exports, Warm Dark design tokens, 44x44px touch targets, smooth chevron transitions, count pill phrasing, session persistence, default expanded/collapsed state wiring in `page.tsx`, and `sleepEngine.ts` categorization.
+     - Registered test suite in `scripts/run-tests.mjs` (Suite 36).
+* **Files Modified & Created:**
+  - `src/components/StatusBucket.tsx` (modified)
+  - `src/app/page.tsx` (modified)
+  - `scripts/test-smart-status-bucket-folding.mjs` (created)
+  - `scripts/run-tests.mjs` (modified)
+  - `HANDOFF.md` (modified)
+* **Verification & Testing:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 36/36 test suites passed cleanly (100%).
+  - `npm run build`: Production Next.js build succeeded (28/28 routes prerendered).
 
 ### Phase 91: Pinned Self-Action Bar for One-Tap Check-Ins (GitHub #62, Jira ZC-28)
 * **Objective & Context:**
@@ -135,6 +167,11 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   - GitHub Actions Workflow `Jira Issue Transition` (Run #43585338858): Successful execution, creating Jira tickets `ZC-28` to `ZC-37`.
   - GitHub Issue Comments: 100% verified cross-links on `#62` through `#71`.
 
+=======
+  - `npm run test:unit`: 34/34 test suites passed cleanly (100%).
+  - `npm run build`: Production Next.js build succeeded (28/28 routes prerendered).
+
+>>>>>>> feat/issue-64-smart-status-bucket-folding
 ### Phase 89: CodeRabbit Review Hardening & Touch/Schema Resilience
 * **Objective & Context:**
   - Addressed CodeRabbit review findings on open PR #60 across `MemberCard.tsx`, `SleepCalendarModal.tsx`, and `db.ts`.

@@ -47,6 +47,7 @@ const UNIT_TESTS = [
   'test-update-schedule-mod-rate-limit.mjs',
   'test-decluttering-issue-sync.mjs',
   'test-pinned-self-action-bar.mjs',
+  'test-smart-status-bucket-folding.mjs',
 ];
 
 // E2E tests: require live Supabase database or running network services
