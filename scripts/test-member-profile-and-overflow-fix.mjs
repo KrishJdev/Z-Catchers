@@ -38,7 +38,15 @@ assert(
   memberCardContent.includes('aria-label={`View ${member.discord_username}\'s profile`}'),
   'MemberCard provides accessible profile trigger on avatar or name'
 );
-console.log('✅ PASSED: Clicking member name or avatar triggers profile modal.');
+assert(
+  memberCardContent.includes('min-h-[44px] min-w-[44px]') && memberCardContent.includes('handleProfileClick'),
+  'Username button enforces min-h-[44px] min-w-[44px] touch targets'
+);
+assert(
+  memberCardContent.includes('flex flex-wrap items-center justify-between gap-x-2 gap-y-1'),
+  'Schedule row supports flex-wrap with horizontal and vertical gaps'
+);
+console.log('✅ PASSED: Clicking member name or avatar triggers profile modal with >= 44x44px touch targets and responsive schedule wrapping.');
 
 // C. Overflow protection on feedback and error toasts
 assert(
@@ -123,6 +131,10 @@ assert(
 assert(
   modalContent.includes('avgDurationMinutes') && modalContent.includes('onTimePercentage'),
   'Calendar renders monthly summary statistics'
+);
+assert(
+  modalContent.includes('justOpened') && modalContent.includes('prevIsOpenRef'),
+  'Calendar modal refreshes history when reopened or identities change'
 );
 console.log('✅ PASSED: SleepCalendarModal provides full member profile, weekly timetable, and streak calendar.');
 

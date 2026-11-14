@@ -230,15 +230,24 @@ export function SleepCalendarModal({
   const prevTargetIdRef = useRef<string | null>(null);
   const prevFingerprintRef = useRef<string | null>(null);
   const prevMonthRef = useRef<string>(currentMonth);
+  const prevIsOpenRef = useRef<boolean>(false);
 
   useEffect(() => {
-    if (!isOpen || !activeTargetId) return;
+    if (!isOpen || !activeTargetId) {
+      prevTargetIdRef.current = null;
+      prevFingerprintRef.current = null;
+      prevIsOpenRef.current = isOpen;
+      return;
+    }
 
+    const justOpened = !prevIsOpenRef.current && isOpen;
     const idChanged = prevTargetIdRef.current !== activeTargetId;
     const fingerprintChanged = prevFingerprintRef.current !== initialFingerprint;
     const monthChanged = prevMonthRef.current !== currentMonth;
 
-    if (idChanged || fingerprintChanged || monthChanged) {
+    prevIsOpenRef.current = isOpen;
+
+    if (justOpened || idChanged || fingerprintChanged || monthChanged) {
       prevTargetIdRef.current = activeTargetId;
       prevFingerprintRef.current = initialFingerprint;
       prevMonthRef.current = currentMonth;

@@ -311,6 +311,16 @@ let knownMemberColumns: Set<string> | null = null;
 let lastColumnCheck = 0;
 const COLUMN_CACHE_TTL_MS = 30000;
 
+/**
+ * Known interchangeable column aliases on the members table across schema migrations.
+ */
+export const MEMBER_COLUMN_ALIASES: Record<string, string> = {
+  strikes_used: 'strikes_count',
+  strikes_count: 'strikes_used',
+  metastrikes_used: 'metastrikes_count',
+  metastrikes_count: 'metastrikes_used',
+};
+
 export function clearKnownMemberColumns(): void {
   knownMemberColumns = null;
   lastColumnCheck = 0;
@@ -450,7 +460,18 @@ export async function updateMemberSafe(
     const existingCols = await getExistingMemberColumns();
     for (const key of Object.keys(activeConditions)) {
       if (!existingCols.has(key)) {
-        delete activeConditions[key];
+        const alias = MEMBER_COLUMN_ALIASES[key];
+        if (alias && existingCols.has(alias)) {
+          activeConditions[alias] = activeConditions[key];
+          delete activeConditions[key];
+        } else {
+          return {
+            data: null,
+            error: {
+              message: `Conditional update rejected: condition column '${key}' not found in database schema`,
+            },
+          };
+        }
       }
     }
   }
@@ -486,11 +507,24 @@ export async function updateMemberSafe(
       if (knownMemberColumns) {
         knownMemberColumns.delete(missingCol);
       }
-      if (cleanUpdates[missingCol]) {
+      if (missingCol in cleanUpdates) {
         delete cleanUpdates[missingCol];
       }
-      if (activeConditions && activeConditions[missingCol]) {
-        delete activeConditions[missingCol];
+      if (activeConditions && missingCol in activeConditions) {
+        const alias = MEMBER_COLUMN_ALIASES[missingCol];
+        const existingCols = await getExistingMemberColumns(true);
+        if (alias && existingCols.has(alias)) {
+          const val = activeConditions[missingCol];
+          delete activeConditions[missingCol];
+          activeConditions[alias] = val;
+        } else {
+          return {
+            data: null,
+            error: {
+              message: `Conditional update rejected: condition column '${missingCol}' not found in schema cache`,
+            },
+          };
+        }
       }
       const retry = await performUpdate(cleanUpdates);
       data = retry.data;
@@ -510,6 +544,24 @@ export async function updateMemberSafe(
   } else if (!isSupabaseConfigured) {
     const existing = memoryMembers.get(memberId);
     if (existing) {
+      if (activeConditions) {
+        for (const [col, val] of Object.entries(activeConditions)) {
+          const alias = MEMBER_COLUMN_ALIASES[col];
+          if (!(col in existing) && (!alias || !(alias in existing))) {
+            return { data: null, error: { message: `Condition column '${col}' not found on member` } };
+          }
+          const currentVal = (existing as any)[col];
+          const aliasVal = alias ? (existing as any)[alias] : undefined;
+          const effectiveVal = currentVal !== undefined ? currentVal : aliasVal;
+          if (val === null || val === undefined) {
+            if (effectiveVal !== null && effectiveVal !== undefined) {
+              return { data: null, error: { message: `Condition failed on ${col}` } };
+            }
+          } else if (effectiveVal !== val) {
+            return { data: null, error: { message: `Condition failed on ${col}` } };
+          }
+        }
+      }
       if (Object.keys(scheduleUpdates).length > 0) {
         setInMemoryWeekendHours(memberId, scheduleUpdates);
       }

@@ -559,11 +559,11 @@ export function MemberCard({
                 <button
                   type="button"
                   onClick={handleProfileClick}
-                  className="truncate font-semibold text-base leading-tight text-cream-primary hover:text-status-amber hover:underline transition-colors text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-status-amber/40 rounded px-0.5 -mx-0.5"
+                  className="truncate min-h-[44px] min-w-[44px] inline-flex items-center font-semibold text-base leading-tight text-cream-primary hover:text-status-amber hover:underline transition-colors text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-status-amber/40 rounded px-0.5 -mx-0.5"
                   title={`View ${member.discord_username}'s profile, sleep calendar history & weekly timetable`}
                   aria-label={`View ${member.discord_username}'s profile`}
                 >
-                  {member.discord_username}
+                  <span className="truncate">{member.discord_username}</span>
                 </button>
 
                 {/* Watchlist star button: Never wraps to new line */}
@@ -632,14 +632,14 @@ export function MemberCard({
         </div>
 
         {/* Dedicated Full-Width Schedule Row */}
-        <div className="flex items-center justify-between text-xs text-zinc-400 bg-white/[0.02] px-2.5 py-1.5 rounded-lg border border-white/[0.04]">
-          <div className="flex items-center gap-1.5 whitespace-nowrap font-medium text-cream-secondary">
-            <span>
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-zinc-400 bg-white/[0.02] px-2.5 py-1.5 rounded-lg border border-white/[0.04]">
+          <div className="flex flex-wrap items-center gap-1.5 font-medium text-cream-secondary">
+            <span className="whitespace-nowrap">
               {formattedSleeperTime} → {state.formattedWakeTime || formatTime12h(state.activeWakeTimeLocal || member.wake_time_local || '07:00')}
             </span>
             {state.isWeekendSchedule ? (
               <span
-                className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30"
+                className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30 shrink-0"
                 title="Weekend bedtime schedule active (Friday/Saturday nights)"
               >
                 <Moon className="h-2.5 w-2.5 text-status-amber" />
@@ -647,7 +647,7 @@ export function MemberCard({
               </span>
             ) : state.isCustomScheduleToday ? (
               <span
-                className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30"
+                className="inline-flex items-center gap-1 rounded bg-status-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30 shrink-0"
                 title={`Custom daily schedule active for ${state.dayKey ? state.dayKey.toUpperCase() : 'today'}`}
               >
                 <Sparkles className="h-2.5 w-2.5 text-status-amber" />

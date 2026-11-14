@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-14T04:08:00+05:30  
+> **Last Updated:** 2026-11-14T14:55:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -69,6 +69,40 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 89: CodeRabbit Review Hardening & Touch/Schema Resilience
+* **Objective & Context:**
+  - Addressed CodeRabbit review findings on open PR #60 across `MemberCard.tsx`, `SleepCalendarModal.tsx`, and `db.ts`.
+  - Hardened accessibility touch targets, responsive narrow-card wrapping, modal refresh lifecycle, and conditional write schema resilience.
+* **Key Implementation Details:**
+  1. **MemberCard Touch Target & Header Name Truncation (`src/components/MemberCard.tsx`):**
+     - Updated username button with `min-h-[44px] min-w-[44px] inline-flex items-center` to enforce mobile touch target standards (>= 44x44px) while wrapping username in `<span className="truncate">` to preserve clean text ellipsis on long handles.
+  2. **MemberCard Schedule Row Responsive Flex-Wrap (`src/components/MemberCard.tsx`):**
+     - Converted schedule container to `flex flex-wrap items-center justify-between gap-x-2 gap-y-1`.
+     - Removed group-level `whitespace-nowrap` on left schedule+badge group while preserving `whitespace-nowrap` on individual time spans and badges, allowing the GMT offset `(GMT+XX:XX)` to wrap cleanly onto a second line without clipping on narrow cards (< 320px).
+  3. **SleepCalendarModal Refresh Lifecycle on Reopen (`src/components/SleepCalendarModal.tsx`):**
+     - Reset `prevTargetIdRef.current = null` and `prevFingerprintRef.current = null` when modal closes (`!isOpen`).
+     - Added `prevIsOpenRef` tracking to recognize modal reopenings (`justOpened = !prevIsOpenRef.current && isOpen`), immediately triggering fresh sleep history fetches upon reopening while preserving change-based refreshes while open.
+  4. **Database Conditional Writes & Schema Alias Protection (`src/lib/db.ts`):**
+     - Added `MEMBER_COLUMN_ALIASES` mapping (`strikes_used` <-> `strikes_count`, `metastrikes_used` <-> `metastrikes_count`).
+     - Hardened `updateMemberSafe`: if a condition column is not in `existingCols`, translates the condition predicate to its verified schema alias if present; otherwise, rejects the conditional write with `{ data: null, error }` instead of stripping it and executing an unguarded write.
+     - Preserved alias translation and fail-closed rejection inside the PostgREST schema-cache recovery loop.
+     - Fixed missing-column retry loop to delete properties using `missingCol in cleanUpdates`, properly removing columns even when values are falsy (`0`, `null`, `false`).
+  5. **Automated Unit Test Verification:**
+     - Updated `scripts/test-member-profile-and-overflow-fix.mjs` to assert 44x44px username touch targets, responsive schedule wrapping, and modal reopening history refreshes.
+     - Expanded `scripts/test-strike-persistence-and-alias-reconciliation.mjs` to assert conditional update rejection on unknown condition columns, alias translation on condition columns, and 0-value field update resilience.
+* **Files Modified:**
+  - `src/components/MemberCard.tsx`
+  - `src/components/SleepCalendarModal.tsx`
+  - `src/lib/db.ts`
+  - `scripts/test-member-profile-and-overflow-fix.mjs`
+  - `scripts/test-strike-persistence-and-alias-reconciliation.mjs`
+* **Verification & Testing:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 33/33 test suites passed cleanly (100%).
+  - `npm run build`: Production Next.js build succeeded (28/28 routes prerendered).
+  - `node scripts/test-phase2-mobile-touch-ux.mjs`: PASSED.
+  - `node scripts/test-phase35-pwa-phone-robustness.mjs`: PASSED.
 
 ### Phase 88: UI/UX Card Alignment & Responsive Grid Fix
 * **Objective & Context:**
