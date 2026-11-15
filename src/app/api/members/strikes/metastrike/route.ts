@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member } from '@/lib/db';
+import { supabaseAdmin, Member, getMemberByIdSafe } from '@/lib/db';
 import { getRequestSessionMemberId, verifyPin, verifyModPasscode } from '@/lib/auth';
 import {
   useProactiveMetastrike,
@@ -42,11 +42,7 @@ export async function POST(request: Request) {
     }
 
     // Fetch target member
-    const { data: rawMember, error: memberErr } = await supabaseAdmin
-      .from('members')
-      .select('*')
-      .eq('id', member_id)
-      .single();
+    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(member_id);
 
     if (memberErr || !rawMember) {
       return NextResponse.json({ error: 'Member not found.' }, { status: 404 });
@@ -95,13 +91,9 @@ export async function POST(request: Request) {
       if (sessionMemberId === member.id) {
         isAuthorized = true;
       } else {
-        const { data: sessionUser } = await supabaseAdmin
-          .from('members')
-          .select('role, is_active')
-          .eq('id', sessionMemberId)
-          .single();
+        const { data: sessionUser } = await getMemberByIdSafe(sessionMemberId);
 
-        if (sessionUser && sessionUser.is_active && sessionUser.role === 'moderator') {
+        if (sessionUser && sessionUser.is_active && (sessionUser.role === 'moderator' || sessionUser.is_moderator)) {
           isAuthorized = true;
           isModerator = true;
         }
