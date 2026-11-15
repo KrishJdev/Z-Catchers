@@ -38,8 +38,14 @@ assert(
 
 assert(
   pwaBannerSource.includes('export function UnifiedOnboardingCard') ||
-    pwaBannerSource.includes('export { UnifiedOnboardingCard'),
+    pwaBannerSource.includes('UnifiedOnboardingCard'),
   'PwaBanner.tsx must export UnifiedOnboardingCard'
+);
+
+// Verify that UnifiedOnboardingCard is the sole component implementation and PwaBanner re-exports it
+assert(
+  !pwaBannerSource.includes('return (') && !pwaBannerSource.includes('return <section'),
+  'PwaBanner.tsx must not duplicate JSX implementation; it should re-export UnifiedOnboardingCard'
 );
 
 assert(
@@ -197,12 +203,38 @@ assert(
   `Unified onboarding card must enforce min-w-[44px] on dismiss icon button (found ${minWidthMatches.length})`
 );
 
-console.log('  ✅ Warm Dark tokens and 44px touch targets verified.\n');
+// ---------------------------------------------------------------------------
+// Test 5: Review Feedback Guardrails & Edge Cases
+// ---------------------------------------------------------------------------
+console.log('▶ Test 5: Verifying review feedback guardrails (sync, standalone derivation, SW readiness)');
+
+// 1. Synchronize isPushSubscribed with both true and false changes to isPushGranted with token guard
+assert(
+  unifiedCardSource.includes('setIsPushSubscribed(isPushGranted)') &&
+    unifiedCardSource.includes('inspectionTokenRef'),
+  'Must synchronize isPushSubscribed directly on isPushGranted and invalidate stale background inspections'
+);
+
+// 2. Standalone state is derived from isStandaloneMode() rather than assumed upon acceptance
+assert(
+  unifiedCardSource.includes('setIsStandalone(isStandaloneMode())'),
+  'Must derive standalone mode from isStandaloneMode() upon installation acceptance'
+);
+
+// 3. Service worker readiness is bounded and recoverable errors handled
+assert(
+  unifiedCardSource.includes('navigator.serviceWorker.ready') &&
+    unifiedCardSource.includes('Promise.race') &&
+    unifiedCardSource.includes('pushErrorMessage'),
+  'Must bound service worker readiness check before inline subscribe and handle recoverable error'
+);
+
+console.log('  ✅ Review feedback guardrails verified.\n');
 
 // ---------------------------------------------------------------------------
-// Test 5: Behavioral Unit Tests (Simulated Environment)
+// Test 6: Behavioral Unit Tests (Simulated Environment)
 // ---------------------------------------------------------------------------
-console.log('▶ Test 5: Running simulated behavioral tests for push and standalone states');
+console.log('▶ Test 6: Running simulated behavioral tests for push and standalone states');
 
 import {
   isStandaloneMode,

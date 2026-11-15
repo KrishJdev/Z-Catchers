@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
-import { PwaBanner, UnifiedOnboardingCard } from '@/components/PwaBanner';
+import { UnifiedOnboardingCard } from '@/components/UnifiedOnboardingCard';
 import { StatusBucket } from '@/components/StatusBucket';
 import { MemberCard } from '@/components/MemberCard';
 import { FoxMascot } from '@/components/FoxMascot';
