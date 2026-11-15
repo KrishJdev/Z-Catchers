@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-15T05:56:00+05:30  
+> **Last Updated:** 2026-11-16T00:38:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `7c0ae88`  
+> **Latest Commit:** `a809952`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75)  
 > **Active Integration Pull Requests:** [#77 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/77) (`feat/issue-66-unified-pwa-push-onboarding` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76)  
@@ -69,6 +69,30 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 101: Strike & Metastrike Authorization Propagation, UI Responsiveness & Verification (GitHub #40, Jira ZC-26)
+* **Objective & Context:**
+  - Carried out a comprehensive re-check across all strike and metastrike components, API routes, and dashboard synchronization to ensure complete and correct implementation following user feedback.
+  - Identified and fixed subtle edge cases in client session header propagation, unreachable conditions in component status flags, and optimistic state updates.
+* **Key Fixes & Enhancements:**
+  1. **Authorization Header Propagation in `MetastrikeModal.tsx`:**
+     - Added `getStoredAuthToken()` from `@/lib/pushClient` to inject `Authorization: Bearer ${token}` headers into `fetch('/api/members/strikes/metastrike')` requests.
+     - Prevents HTTP 401 unauthorized errors when claiming proactive metastrikes or converting retroactive strikes on mobile PWAs and local sessions where tokens are stored in `localStorage`.
+  2. **Authorization Header in Roster Queries (`src/app/page.tsx`):**
+     - Injected `Authorization: Bearer ${token}` into `fetchRoster` and periodic 30-second re-fetch polling in `src/app/page.tsx`.
+     - Because `/api/members` dynamically computes each member's `has_voted_strike` flag based on `getRequestSessionMemberId(request)`, passing the session token ensures that returning members see their already-voted buttons correctly disabled and labeled (`Voted (1/2)`) instead of resetting back to active.
+  3. **Optimistic UI Feedback on Strike Voting (`src/app/page.tsx`):**
+     - Updated `handleVoteStrike` to immediately update state in `members` with `has_voted_strike: true`, the updated strike log, and new strike counts before awaiting the network `fetchRoster()` round-trip.
+     - Eliminates button state latency and UI flicker upon casting a vote.
+  4. **Status Flag Condition Correction in `MemberCard.tsx`:**
+     - Corrected invalid type comparison on line 320 (`bucket === 'BEDTIME_GRACE' || bucket === 'OVERDUE_NAG_NOW'`). Because `bucket` is of type `SleepBucket` (`'AWAKE' | 'WINDING_DOWN' | 'BEDTIME_NOW' | 'SLEEPING'`), these conditions were dead code.
+     - Updated to `const isNagNow = bucket === 'BEDTIME_NOW' || state.status === 'BEDTIME_GRACE' || state.status === 'OVERDUE_NAG_NOW';`, ensuring accurate display of grace countdown and strike action triggers.
+  5. **Durability Test Suite Clock Isolation (`scripts/test-wake-up-durability-and-times.mjs`):**
+     - Updated future cycle date assertion in wake-up durability tests from hardcoded static date to dynamic Luxon date `DateTime.now().setZone(testTz).plus({ days: 2 }).toISODate()`, ensuring tests pass reliably across arbitrary execution dates and midnight transitions.
+* **Verification & QA Status:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 40/40 test suites passed cleanly (100% pass rate in 52.19s).
+  - Committed to active branch `krish` under commit `a809952`.
 
 ### Phase 100: Community Strikes Accountability System & Memory-Safe Endpoint Restoration (Fixes #40, Jira ZC-26)
 * **Objective & Context:**
@@ -2202,7 +2226,7 @@ d:\Projects\Z Catchers\
 | **ZC-23** | **Medium (P2)** | Backend: Align nag-assist date calculation with `getSleepCycleDate()` | `src/app/api/members/nag-assist/route.ts` | [#37](https://github.com/KrishJdev/Z-Catchers/issues/37) | **TODO** |
 | **ZC-24** | **Medium (P2)** | PWA / Service Worker: Resolve `notificationclick` message dropping during tab navigation | `public/sw.js` | [#38](https://github.com/KrishJdev/Z-Catchers/issues/38) | **TODO** |
 | **ZC-25** | **Medium (P2)** | Backend: Remove `wake_time_local` default destructuring to prevent schedule overwrites | `src/app/api/members/update-schedule/route.ts` | [#39](https://github.com/KrishJdev/Z-Catchers/issues/39) | **TODO** |
-| **ZC-26** | **Medium (P3)** | State Machine: Reconcile Sleep Shield active vs `canVoteStrike` in 60-480m overdue window | `src/lib/sleepEngine.ts`, `src/components/MemberCard.tsx` | [#40](https://github.com/KrishJdev/Z-Catchers/issues/40) | **DONE** (Commit `7c0ae88`, Phase 100) |
+| **ZC-26** | **Medium (P3)** | State Machine: Reconcile Sleep Shield active vs `canVoteStrike` in 60-480m overdue window | `src/lib/sleepEngine.ts`, `src/components/MemberCard.tsx` | [#40](https://github.com/KrishJdev/Z-Catchers/issues/40) | **DONE** (Commits `7c0ae88`, `a809952`, Phases 100 & 101) |
 | **ZC-27** | **Low (P3)** | State Machine: Enforce mutual exclusion between `is_in_bed` and `is_woke_up` flags | `src/app/api/auth/me/route.ts`, `src/app/api/members/route.ts` | [#41](https://github.com/KrishJdev/Z-Catchers/issues/41) | **TODO** |
 | **ZC-14** | **Low (P3)** | Security / ModDrawer: Avoid storing plaintext moderator passcode in `sessionStorage` | `src/components/ModDrawer.tsx` | [#42](https://github.com/KrishJdev/Z-Catchers/issues/42) | **TODO** |
 | **ZC-15** | **Low (P3)** | PWA / Cache: Implement versioned cache invalidation for `_next/static` assets in Service Worker | `public/sw.js` | [#43](https://github.com/KrishJdev/Z-Catchers/issues/43) | **TODO** |
