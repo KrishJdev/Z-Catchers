@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-15T05:23:00+05:30  
+> **Last Updated:** 2026-11-15T05:37:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `de6f447`  
+> **Latest Commit:** `59b6d2c`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75)  
 > **Active Integration Pull Requests:** [#77 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/77) (`feat/issue-66-unified-pwa-push-onboarding` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76)  
@@ -97,10 +97,16 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
      - Asserts standalone display check, push subscription state resolution, and auto-dismiss decision matrix.
      - Asserts 2-step setup architecture, Sleep Shield guarantee text, touch targets $\ge 44\text{px}$, and localStorage cooldown math.
      - Integrated as test suite #39 in `scripts/run-tests.mjs` and verified clean via `npm run test:unit`.
+* **CodeRabbit Review Findings & Resolutions:**
+  1. **Push State Synchronization & Race Condition Guard:** Synchronized `isPushSubscribed` with both `true` and `false` updates to `isPushGranted`, and introduced `inspectionTokenRef` to ensure stale asynchronous inspection callbacks can never overwrite a newer parent prop state.
+  2. **Standalone State Derivation:** Updated installation acceptance handler to derive standalone state dynamically from `isStandaloneMode()` rather than assuming prompt acceptance means the current window is standalone, while tracking installation acceptance separately (`isInstallAccepted`). Added dynamic media query listener for `(display-mode: standalone)`.
+  3. **Bounded Service Worker Readiness:** Added a bounded wait (at most 4000ms via `Promise.race`) for `navigator.serviceWorker.ready` before inline `subscribeToPush`. If readiness fails or times out, displays a recoverable error message (`pushErrorMessage`) and restores the "Enable Alerts" action button via `setIsEnablingPush(false)`, without timing out the subscription call itself.
+  4. **Component Dedup & Shared Canonical Implementation:** Consolidated the sole component implementation inside `src/components/UnifiedOnboardingCard.tsx`, reduced `src/components/PwaBanner.tsx` to clean re-exports (`UnifiedOnboardingCard`, `PwaBanner`, types, constants), and routed `src/app/page.tsx` through the shared component.
 * **Pull Request & Code Review:**
   - Feature branch `feat/issue-66-unified-pwa-push-onboarding` pushed to origin.
   - Pull Request opened: [#77: feat(pwa): unified PWA install & push onboarding card (#66)](https://github.com/KrishJdev/Z-Catchers/pull/77) targeting `dev`.
-  - CodeRabbit review requested via comment `@coderabbitai review` on PR #77.
+  - Review fixes committed (`109e2c7`) and pushed to `feat/issue-66-unified-pwa-push-onboarding`.
+  - Merged into `krish` (`59b6d2c`).
 * **Verification & QA Status:**
   - `npx tsc --noEmit`: Clean (0 errors).
   - `npm run test:unit`: 39/39 test suites passed cleanly (100%).
