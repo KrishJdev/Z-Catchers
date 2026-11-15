@@ -317,7 +317,7 @@ export function MemberCard({
       ? 2
       : 0;
 
-  const isNagNow = bucket === 'BEDTIME_NOW' || bucket === 'BEDTIME_GRACE' || bucket === 'OVERDUE_NAG_NOW';
+  const isNagNow = bucket === 'BEDTIME_NOW' || state.status === 'BEDTIME_GRACE' || state.status === 'OVERDUE_NAG_NOW';
 
   // Real-time bedtime nag notification eligibility:
   // 1. Viewer cannot nag themselves (!isViewer)

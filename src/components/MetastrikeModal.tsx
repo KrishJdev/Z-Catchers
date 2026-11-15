@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { FoxMascot } from './FoxMascot';
 import { Member } from '@/lib/db';
 import { Shield, Sparkles, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { getStoredAuthToken } from '@/lib/pushClient';
 
 interface MetastrikeModalProps {
   isOpen: boolean;
@@ -54,9 +55,13 @@ export function MetastrikeModal({
     setLoading(true);
 
     try {
+      const token = getStoredAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/api/members/strikes/metastrike', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           member_id: member.id,
           action: mode === 'convert_retroactive' ? 'convert_retroactive' : 'proactive',
