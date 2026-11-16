@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member, updateMemberSafe, upsertSleepLog, getMemberByIdSafe } from '@/lib/db';
+import {
+  supabaseAdmin,
+  Member,
+  updateMemberSafe,
+  upsertSleepLog,
+  getMemberByIdSafe,
+  isSupabaseConfigured,
+  isTestMemberFixture,
+} from '@/lib/db';
 import { DateTime } from 'luxon';
 import { verifyPin, getRequestSessionMemberId, verifyModeratorAuthorization } from '@/lib/auth';
 import { calculateSleepStreak, getSleepCycleDate, resolveActiveSleepCycle } from '@/lib/sleepEngine';
@@ -172,15 +180,17 @@ export async function POST(request: Request) {
 
     if (action === 'cancel' || action === 'wake_up') {
       // Remove check-in for member's current local date
-      const { error: delErr } = await supabaseAdmin
-        .from('notification_logs')
-        .delete()
-        .eq('member_id', member.id)
-        .eq('notification_type', 'IN_BED_EARLY')
-        .eq('local_date', localDate);
+      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+        const { error: delErr } = await supabaseAdmin
+          .from('notification_logs')
+          .delete()
+          .eq('member_id', member.id)
+          .eq('notification_type', 'IN_BED_EARLY')
+          .eq('local_date', localDate);
 
-      if (delErr) {
-        return NextResponse.json({ error: delErr.message }, { status: 500 });
+        if (delErr) {
+          return NextResponse.json({ error: delErr.message }, { status: 500 });
+        }
       }
 
       if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date === localDate) {
@@ -197,17 +207,19 @@ export async function POST(request: Request) {
       }
 
       // Record WOKE_UP log to transition member from sleeping state to AWAKE
-      await supabaseAdmin
-        .from('notification_logs')
-        .upsert(
-          {
-            member_id: member.id,
-            notification_type: 'WOKE_UP',
-            local_date: localDate,
-            dispatched_at: nowUtc.toISO(),
-          },
-          { onConflict: 'member_id,notification_type,local_date' }
-        );
+      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+        await supabaseAdmin
+          .from('notification_logs')
+          .upsert(
+            {
+              member_id: member.id,
+              notification_type: 'WOKE_UP',
+              local_date: localDate,
+              dispatched_at: nowUtc.toISO(),
+            },
+            { onConflict: 'member_id,notification_type,local_date' }
+          );
+      }
 
       // If action is explicit wake_up, record in sleep_logs
       if (action === 'wake_up') {
@@ -245,27 +257,29 @@ export async function POST(request: Request) {
 
     // Default action: 'check_in' ("I'm in Bed" Safe Button)
     // Clear any active WOKE_UP override for tonight's sleep cycle
-    await supabaseAdmin
-      .from('notification_logs')
-      .delete()
-      .eq('member_id', member.id)
-      .eq('notification_type', 'WOKE_UP')
-      .eq('local_date', localDate);
+    if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+      await supabaseAdmin
+        .from('notification_logs')
+        .delete()
+        .eq('member_id', member.id)
+        .eq('notification_type', 'WOKE_UP')
+        .eq('local_date', localDate);
 
-    const { error: insertErr } = await supabaseAdmin
-      .from('notification_logs')
-      .upsert(
-        {
-          member_id: member.id,
-          notification_type: 'IN_BED_EARLY',
-          local_date: localDate,
-          dispatched_at: nowUtc.toISO(),
-        },
-        { onConflict: 'member_id,notification_type,local_date' }
-      );
+      const { error: insertErr } = await supabaseAdmin
+        .from('notification_logs')
+        .upsert(
+          {
+            member_id: member.id,
+            notification_type: 'IN_BED_EARLY',
+            local_date: localDate,
+            dispatched_at: nowUtc.toISO(),
+          },
+          { onConflict: 'member_id,notification_type,local_date' }
+        );
 
-    if (insertErr) {
-      return NextResponse.json({ error: insertErr.message }, { status: 500 });
+      if (insertErr) {
+        return NextResponse.json({ error: insertErr.message }, { status: 500 });
+      }
     }
 
     await updateMemberSafe(member.id, {

@@ -845,6 +845,8 @@ export function filterTimezoneGroups(groups: TimezoneGroup[], query: string): Ti
 
 export type SleepBucket =
   | 'BEDTIME_NOW'
+  | 'OVERDUE'
+  | 'OVERDUE_BEDTIME'
   | 'BEDTIME_GRACE'
   | 'OVERDUE_NAG_NOW'
   | 'WINDING_DOWN'
@@ -888,6 +890,19 @@ export interface MemberState {
   needsWakeUpLog?: boolean;
   isPastWakeTime?: boolean;
   hasLoggedWakeUp?: boolean;
+  isOverdue?: boolean;
+}
+
+/**
+ * Checks whether a bucket or status corresponds to the Overdue / Past Bedtime section.
+ */
+export function isOverdueBucket(bucket: string | null | undefined): boolean {
+  return (
+    bucket === 'BEDTIME_NOW' ||
+    bucket === 'OVERDUE' ||
+    bucket === 'OVERDUE_BEDTIME' ||
+    bucket === 'Overdue / Past Bedtime'
+  );
 }
 
 /**
@@ -1507,6 +1522,7 @@ export function computeMemberState(
   let graceMinutesLeft = 0;
   let canVoteStrike = false;
   let needsWakeUpLog = false;
+  let isOverdue = false;
 
   const effectiveInBed = isInBed !== undefined ? isInBed : Boolean(member.is_in_bed);
 
@@ -1517,8 +1533,8 @@ export function computeMemberState(
 
   const isPastWakeTime = sleeperNow >= activeCycle.targetWakeTime;
 
-  // If member has checked in via "I'm in Bed" Safe Button
-  // (Applies when within 3h before bedtime through 8h sleep window unless explicitly marked awake)
+  // 1. If member has checked in via "I'm in Bed" Safe Button
+  // (Manual-Only trigger: member enters SLEEPING state strictly when clicking "I'm in Bed")
   if (effectiveInBed && !hasLoggedWakeUp && diffMinutes >= -180) {
     bucket = 'SLEEPING';
     status = 'SLEEPING';
@@ -1532,8 +1548,9 @@ export function computeMemberState(
     checkedInEarly = true;
     canVoteStrike = false;
     needsWakeUpLog = true;
+    isOverdue = false;
   } else if (diffMinutes < 0 && diffMinutes >= -60) {
-    // 1 to 60 minutes before bedtime: Winding down window
+    // 2. 1 to 60 minutes before bedtime: Winding down window (Preserved completely unchanged)
     bucket = 'WINDING_DOWN';
     status = 'WINDING_DOWN';
     statusText = `Bedtime in ${Math.abs(Math.floor(diffMinutes))}m`;
@@ -1541,8 +1558,9 @@ export function computeMemberState(
     isSleepShieldActive = false;
     checkedInEarly = false;
     needsWakeUpLog = false;
+    isOverdue = false;
   } else if (hasLoggedWakeUp) {
-    // Explicitly marked awake / woke up from sleep
+    // 3. Explicitly marked awake / woke up from sleep (Manual-Only trigger via "Wake Up" button)
     bucket = 'AWAKE';
     status = 'AWAKE';
     statusText = 'Wide Awake • Rested';
@@ -1550,36 +1568,41 @@ export function computeMemberState(
     checkedInEarly = false;
     canVoteStrike = false;
     needsWakeUpLog = false;
-  } else if (diffMinutes >= 0 && diffMinutes <= 5) {
-    // 5-minute grace window: Strike voting is strictly locked
+    isOverdue = false;
+  } else if (diffMinutes >= 0 && !isPastWakeTime) {
+    // 4. Overdue / Past Bedtime Section:
+    // Drops into Overdue the EXACT moment scheduled bedtime passes (diffMinutes >= 0) if not checked in.
+    // Stays in Overdue from minute 0 onward until either manually checking in ("I'm in Bed")
+    // or normal scheduled wake-up time passes. Never automatically transitions to Asleep!
     bucket = 'BEDTIME_NOW';
-    status = 'BEDTIME_GRACE';
-    graceMinutesLeft = Math.max(1, Math.ceil(5 - diffMinutes));
-    statusText = `Grace Period: ${graceMinutesLeft}m left`;
+    isOverdue = true;
+    isSleepShieldActive = false;
     canVoteStrike = false;
-  } else if (diffMinutes > 5 && diffMinutes <= 60) {
-    // Overdue within the immediate nag window: Bedtime nag active (peer voting removed in favor of 10m auto-strike)
-    bucket = 'BEDTIME_NOW';
-    status = 'OVERDUE_NAG_NOW';
-    statusText = `Bedtime hit ${Math.floor(diffMinutes)}m ago — Nag them!`;
-    canVoteStrike = false;
-  } else if (diffMinutes > 60 && diffMinutes <= 480) {
-    // Active sleep window (60m to 480m) without safe check-in:
-    bucket = 'SLEEPING';
-    status = 'OVERDUE_NAG_NOW';
-    statusText = isPastWakeTime
-      ? `Catching Z's • Past Wake Time (${activeWakeTimeLocal})`
-      : `Catching Z's (Asleep)`;
-    isSleepShieldActive = !isPastWakeTime;
-    canVoteStrike = false;
-    needsWakeUpLog = true;
+    needsWakeUpLog = false;
+    checkedInEarly = false;
+
+    if (diffMinutes <= 5) {
+      // 5-minute grace window: Strike voting is strictly locked
+      status = 'BEDTIME_GRACE';
+      graceMinutesLeft = Math.max(1, Math.ceil(5 - diffMinutes));
+      statusText = `Grace Period: ${graceMinutesLeft}m left`;
+    } else {
+      // Past 5 minutes: Bedtime nag active (automated strike fires at 10m via cron, member remains overdue)
+      status = 'OVERDUE_NAG_NOW';
+      statusText = `Bedtime hit ${Math.floor(diffMinutes)}m ago — Nag them!`;
+    }
   } else {
+    // 5. Normal Awake / Daytime state OR Fallback Rule:
+    // If a user completely forgets to click "I'm in Bed" and their normal scheduled wake-up time passes,
+    // they transition directly out of overdue to "Awake" at wake-up time without ever being marked asleep.
+    // Their missed bedtime remains un-checked-in and penalized.
     bucket = 'AWAKE';
     status = 'AWAKE';
     canVoteStrike = false;
-    if (effectiveInBed || (sleeperNow >= activeCycle.targetBedtime && sleeperNow < activeCycle.targetWakeTime.plus({ hours: 4 }))) {
-      needsWakeUpLog = true;
-    }
+    isSleepShieldActive = false;
+    needsWakeUpLog = false;
+    isOverdue = false;
+
     // Find next upcoming bedtime strictly in the future
     const upcomingCandidates = [0, 1, 2, 3, 4, 5, 6]
       .map((offset) => {
@@ -1638,6 +1661,7 @@ export function computeMemberState(
     needsWakeUpLog,
     isPastWakeTime,
     hasLoggedWakeUp,
+    isOverdue,
   };
 }
 

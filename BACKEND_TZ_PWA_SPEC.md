@@ -167,9 +167,19 @@ export interface MemberSchedule {
   // ... other fields
 }
 
-export type SleepBucket = 'BEDTIME_NOW' | 'WINDING_DOWN' | 'SLEEPING' | 'AWAKE';
+export type SleepBucket = 'BEDTIME_NOW' | 'OVERDUE' | 'OVERDUE_BEDTIME' | 'WINDING_DOWN' | 'SLEEPING' | 'AWAKE';
 
 export function computeMemberState(member: MemberSchedule, viewerTz: string, nowUtc = DateTime.utc()) {
+  // 1. Manual-Only State Transitions & Rules:
+  // - "Asleep" (SLEEPING) is entered STRICTLY when the member clicks "I'm in Bed" (effectiveInBed === true).
+  // - "Awake" (AWAKE) is entered STRICTLY when the member clicks "Wake Up" (hasLoggedWakeUp === true), or
+  //   via the Fallback Rule: if an unchecked-in member exceeds their scheduled wake-up time, they transition
+  //   directly from Overdue to AWAKE, leaving the missed bedtime penalized.
+  // - Members do NOT automatically transition to SLEEPING or AWAKE based on elapsed time alone.
+  // - Unchecked-in members drop into the "Overdue / Past Bedtime" bucket the exact moment their scheduled
+  //   bedtime passes (currentLocalTime >= scheduledBedtime, diffMinutes >= 0).
+  // - The 10-minute automated strike fires at diffMinutes >= 10, but the member stays in Overdue until
+  //   checking in or reaching their scheduled wake time.
   // 1. Parse sleeper's local bedtime today in their IANA zone
   const [hours, minutes] = member.bedtimeLocal.split(':').map(Number);
   const sleeperNow = nowUtc.setZone(member.timezone);
@@ -192,17 +202,20 @@ export function computeMemberState(member: MemberSchedule, viewerTz: string, now
   let statusText = '';
   let isSleepShieldActive = false;
 
-  if (diffMinutes >= 0 && diffMinutes <= 60) {
-    bucket = 'BEDTIME_NOW';
-    statusText = `Bedtime hit ${Math.floor(diffMinutes)}m ago — Nag them!`;
+  if (effectiveInBed) {
+    // Explicit in-bed click via /api/members/in-bed
+    bucket = 'SLEEPING';
+    isSleepShieldActive = true;
+    statusText = isPastWakeTime ? 'In Bed • Past Wake Time' : 'Catching Z\'s (Asleep)';
   } else if (diffMinutes < 0 && diffMinutes >= -60) {
     bucket = 'WINDING_DOWN';
     statusText = `Bedtime in ${Math.abs(Math.floor(diffMinutes))}m`;
-  } else if (diffMinutes > 60 && diffMinutes <= 480) { // 8 hour sleep shield window
-    bucket = 'SLEEPING';
-    statusText = `Catching Z's (Asleep)`;
-    isSleepShieldActive = true;
+  } else if (diffMinutes >= 0 && !isPastWakeTime) {
+    // Overdue / Past Bedtime section (from minute 0 onward until in-bed or scheduled wake)
+    bucket = 'BEDTIME_NOW'; // UI maps to 'Overdue / Past Bedtime' section
+    statusText = diffMinutes <= 5 ? `Grace Period: ${Math.max(0, 5 - Math.floor(diffMinutes))}m left` : `Bedtime hit ${Math.floor(diffMinutes)}m ago — Nag them!`;
   } else {
+    // Fallback Rule: unchecked-in member past scheduled wake time transitions directly to AWAKE
     bucket = 'AWAKE';
     const nextBedtime = diffMinutes < 0 ? targetBedtime : bedtimeTomorrow;
     const hoursUntil = Math.floor(nextBedtime.diff(sleeperNow, 'hours').hours);
@@ -239,10 +252,11 @@ The accountability system ensures members adhere to their bedtimes with automate
 
 #### 2. Timezone & 10-Minute Cutoff State Machine
 * **`BEDTIME_GRACE` ($0 \le \text{diffMinutes} \le 5$):**
-  * Status text: `"Grace Period: Xm left"`.
-* **`OVERDUE_NAG_NOW` ($\text{diffMinutes} > 5$ up to 480 minutes):**
+  * Status text: `"Grace Period: Xm left"`. Member drops into "Overdue / Past Bedtime" section immediately at minute 0.
+* **`OVERDUE_NAG_NOW` ($\text{diffMinutes} > 5$):**
   * Status text: `"Bedtime hit Xm ago — Nag them!"`.
   * If $\text{diffMinutes} \ge 10$, the Automated Bedtime Strike Engine issues 1 normal strike unless the member has checked into bed or applied a Metastrike for this sleep cycle.
+  * **Overdue Bucket Retention:** The member remains in the "Overdue / Past Bedtime" section after receiving the strike until they either explicitly log "I'm in Bed" (which transitions them to `SLEEPING`) or their scheduled wake-up time passes (which transitions them directly to `AWAKE` via the fallback rule).
   * **Idempotency:** Automatic strikes are tracked via `AUTO_BEDTIME_STRIKE` in `notification_logs` and `nightly_strike_logs`, ensuring at most 1 automatic strike per sleep cycle across repeated cron passes.
 
 #### 3. Metastrike Prevention & Pre-Next-Bedtime Replacement Workflows

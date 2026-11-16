@@ -87,19 +87,33 @@ assert(tokyoState.bucket === 'AWAKE', 'Tokyo friend is AWAKE');
 assert(tokyoState.isSleepShieldActive === false, 'Tokyo friend Sleep Shield is OFF (eligible for community nag)');
 
 // Member 4: Friend in London (currently 23:00 GMT, bedtime was 21:30 GMT -> 90m into sleep window)
-// Must be protected by Sleep Shield!
+// Checked in via in-bed, must be protected by Sleep Shield!
 const sleepingFriend = {
   ...sleeperMember,
   id: 'friend-london',
   discord_username: 'LondonFriend',
   bedtime_local: '21:30', // bedtime hit 90 minutes ago
   timezone: 'Europe/London',
+  is_in_bed: true,
 };
 
 const londonState = computeMemberState(sleepingFriend, 'Europe/London', fixedNowUtc);
 assert(londonState.diffMinutes === 90, 'London friend is 90 minutes past bedtime');
 assert(londonState.bucket === 'SLEEPING', 'London friend bucket is SLEEPING');
 assert(londonState.isSleepShieldActive === true, 'London friend Sleep Shield is strictly ACTIVE');
+
+// Member 4B: Overdue friend who did NOT check in -> stays in Overdue bucket, Sleep Shield is OFF
+const overdueFriend = {
+  ...sleeperMember,
+  id: 'friend-overdue',
+  discord_username: 'OverdueFriend',
+  bedtime_local: '21:30',
+  timezone: 'Europe/London',
+  is_in_bed: false,
+};
+const overdueLondonState = computeMemberState(overdueFriend, 'Europe/London', fixedNowUtc);
+assert(overdueLondonState.bucket === 'BEDTIME_NOW', 'Overdue friend remains in Overdue bucket (BEDTIME_NOW)');
+assert(overdueLondonState.isSleepShieldActive === false, 'Overdue friend Sleep Shield is OFF');
 
 // Member 5: Friend whose bedtime is in 10 minutes (23:10 UTC) -> Within 15-minute quiet shield
 const aboutToSleepFriend = {
