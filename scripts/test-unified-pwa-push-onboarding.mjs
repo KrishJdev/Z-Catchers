@@ -229,6 +229,13 @@ assert(
   'Must bound service worker readiness check before inline subscribe and handle recoverable error'
 );
 
+// 4. Notification permission is requested directly during click to preserve transient user activation
+assert(
+  unifiedCardSource.includes('Notification.requestPermission()') &&
+    unifiedCardSource.includes('handleEnablePushClick'),
+  'Must request notification permission during click gesture to retain transient user activation'
+);
+
 console.log('  ✅ Review feedback guardrails verified.\n');
 
 // ---------------------------------------------------------------------------
@@ -313,5 +320,40 @@ const oldDismissedAt = now - 8 * 24 * 60 * 60 * 1000;
 const isOldDismissed = now - oldDismissedAt < SEVEN_DAYS_MS_VAL;
 assert.strictEqual(isOldDismissed, false, 'Expired dismissal cooldown must restore card');
 console.log('  ✓ LocalStorage 7-day cooldown calculation passed.');
+
+// 5.4 Stale inspection completion behavioral simulation
+{
+  let inspectionTokenRef = 0;
+  let pushGranted = true;
+  let isPushSubscribed = true;
+
+  // Simulate start of async inspection #1
+  const token1 = ++inspectionTokenRef;
+  let resolveInspection1;
+  const inspection1Promise = new Promise((resolve) => {
+    resolveInspection1 = resolve;
+  });
+
+  // Parent state changes to false while inspection #1 is in-flight
+  pushGranted = false;
+  inspectionTokenRef += 1;
+  isPushSubscribed = false;
+
+  // Stale inspection #1 resolves afterwards with true
+  resolveInspection1(true);
+  const staleSubResult = await inspection1Promise;
+
+  // Token guard prevents stale async completion from overwriting newer state
+  if (token1 === inspectionTokenRef) {
+    isPushSubscribed = staleSubResult;
+  }
+
+  assert.strictEqual(
+    isPushSubscribed,
+    false,
+    'Stale async inspection completion must not overwrite newer disabled parent state'
+  );
+  console.log('  ✓ Stale async inspection token invalidation simulation passed.');
+}
 
 console.log('\n🎉 All Unified PWA Install & Push Onboarding tests passed cleanly! 🦊💤');

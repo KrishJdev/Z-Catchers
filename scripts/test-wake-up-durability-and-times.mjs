@@ -292,7 +292,7 @@ async function run() {
         memberId: testMemberId,
         mode: 'manual',
         wokeUpTime: '23:59',
-        cycleDate: fixedReferenceDt.setZone(testTz).plus({ days: 1 }).toISODate(),
+        cycleDate: DateTime.now().setZone(testTz).plus({ days: 2 }).toISODate(),
       }),
     });
 
