@@ -9,7 +9,15 @@ import {
   getMemberByIdSafe,
 } from './db.ts';
 import type { Member, NightlyStrikeLog, StrikeRecordType } from './db.ts';
-import { computeMemberState, checkMonthlyStrikeReset, getCurrentStrikeMonth, getSleepCycleDate } from './sleepEngine.ts';
+import {
+  computeMemberState,
+  checkMonthlyStrikeReset,
+  getCurrentStrikeMonth,
+  getSleepCycleDate,
+  toValidLuxonZone,
+  getNightScheduleDateTime,
+  getNextScheduledBedtimeAfter,
+} from './sleepEngine.ts';
 
 /**
  * In-memory fallback cache when PostgreSQL tables/columns have not yet been migrated in Supabase.
@@ -216,7 +224,7 @@ export async function updateMemberStrikeCounts(
   metastrikesUsed: number,
   cycleMonth: string,
   conditions?: Record<string, any>
-): Promise<void> {
+): Promise<{ success: boolean; data?: Member | null; error?: any }> {
   const clampedStrikes = Math.max(0, Math.min(3, strikesUsed));
   const clampedMetastrikes = Math.max(0, Math.min(3, metastrikesUsed));
 
@@ -244,45 +252,84 @@ export async function updateMemberStrikeCounts(
   }
 
   // Use updateMemberSafe for resilient Supabase update with auto-column stripping and schema cache mismatch recovery
-  try {
-    const { data } = await updateMemberSafe(
-      memberId,
-      {
-        strikes_used: clampedStrikes,
-        strikes_count: clampedStrikes,
-        metastrikes_used: clampedMetastrikes,
-        metastrikes_count: clampedMetastrikes,
-        strike_cycle_month: cycleMonth,
-        updated_at: DateTime.utc().toISO(),
-      },
-      conditions ? { conditions } : {}
-    );
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await updateMemberSafe(
+        memberId,
+        {
+          strikes_used: clampedStrikes,
+          strikes_count: clampedStrikes,
+          metastrikes_used: clampedMetastrikes,
+          metastrikes_count: clampedMetastrikes,
+          strike_cycle_month: cycleMonth,
+          updated_at: DateTime.utc().toISO(),
+        },
+        conditions ? { conditions } : {}
+      );
 
-    // If conditions were passed, only commit to memory if conditional DB write succeeded (or running offline)
-    if (conditions && (data || !isSupabaseConfigured)) {
-      memoryStore.memberCounts.set(memberId, {
-        strikes_used: clampedStrikes,
-        strikes_count: clampedStrikes,
-        metastrikes_used: clampedMetastrikes,
-        metastrikes_count: clampedMetastrikes,
-        strike_cycle_month: cycleMonth,
-      });
+      if (error) {
+        console.warn('Could not update member strike counts in DB:', error);
+        return { success: false, error };
+      }
 
-      const inMem = getInMemoryMember(memberId);
-      if (inMem) {
-        syncInMemoryMemberCache({
-          ...inMem,
+      if (conditions && !data) {
+        return { success: false, error: 'Condition mismatch during atomic update' };
+      }
+
+      // If conditions were passed, only commit to memory if conditional DB write succeeded
+      if (conditions && data) {
+        memoryStore.memberCounts.set(memberId, {
           strikes_used: clampedStrikes,
           strikes_count: clampedStrikes,
           metastrikes_used: clampedMetastrikes,
           metastrikes_count: clampedMetastrikes,
           strike_cycle_month: cycleMonth,
         });
+
+        const inMem = getInMemoryMember(memberId);
+        if (inMem) {
+          syncInMemoryMemberCache({
+            ...inMem,
+            strikes_used: clampedStrikes,
+            strikes_count: clampedStrikes,
+            metastrikes_used: clampedMetastrikes,
+            metastrikes_count: clampedMetastrikes,
+            strike_cycle_month: cycleMonth,
+          });
+        }
       }
+
+      return { success: true, data };
+    } catch (e) {
+      console.warn('Could not update member strike counts in DB:', e);
+      return { success: false, error: e };
     }
-  } catch (e) {
-    console.warn('Could not update member strike counts in DB:', e);
   }
+
+  // Offline / in-memory conditional update
+  if (conditions) {
+    memoryStore.memberCounts.set(memberId, {
+      strikes_used: clampedStrikes,
+      strikes_count: clampedStrikes,
+      metastrikes_used: clampedMetastrikes,
+      metastrikes_count: clampedMetastrikes,
+      strike_cycle_month: cycleMonth,
+    });
+
+    const inMem = getInMemoryMember(memberId);
+    if (inMem) {
+      syncInMemoryMemberCache({
+        ...inMem,
+        strikes_used: clampedStrikes,
+        strikes_count: clampedStrikes,
+        metastrikes_used: clampedMetastrikes,
+        metastrikes_count: clampedMetastrikes,
+        strike_cycle_month: cycleMonth,
+      });
+    }
+  }
+
+  return { success: true };
 }
 
 /**
@@ -492,16 +539,57 @@ export async function getNightlyStrikeLogsBatch(
 }
 
 /**
- * Resolves the most recent strike log for a member eligible for retroactive conversion within 24 hours.
+ * Validates whether a strike is eligible for replacement by a Metastrike.
+ * A strike is eligible at any point during the current cycle—all the way until
+ * the member's next scheduled bedtime in their local timezone.
+ */
+export function isStrikeEligibleForReplacement(
+  member: Member,
+  strikeLog: NightlyStrikeLog,
+  nowUtc = DateTime.utc(),
+  isModerator = false
+): boolean {
+  if (isModerator) return true;
+  if (strikeLog.record_type !== 'strike') return false;
+
+  const normalizedZone = toValidLuxonZone(member.timezone);
+  const sleeperZone = DateTime.now().setZone(normalizedZone).isValid ? normalizedZone : 'UTC';
+  const sleeperNow = nowUtc.setZone(sleeperZone);
+
+  // Bedtime of the cycle when strike occurred
+  const cycleNightDt = DateTime.fromISO(strikeLog.sleep_cycle_date, { zone: sleeperZone }).startOf('day');
+  const cycleSched = getNightScheduleDateTime(member, cycleNightDt);
+  const cycleBedtime = cycleSched.bedtimeDateTime;
+
+  // The next scheduled bedtime occurring strictly after that cycle's bedtime
+  const nextScheduledBedtime = getNextScheduledBedtimeAfter(member, cycleBedtime);
+
+  // Eligible as long as current local time is before the next scheduled bedtime
+  return sleeperNow < nextScheduledBedtime;
+}
+
+/**
+ * Resolves the most recent strike log for a member eligible for replacement before their next scheduled bedtime.
  *
  * @param targetMemberId - ID of member to check
  * @param nowUtc - Current UTC DateTime
- * @returns The most recent strike log within 24 hours, or null
+ * @param targetMember - Optional target member entity
+ * @returns The most recent eligible strike log, or null
  */
 export async function getRecentEligibleStrikeLog(
   targetMemberId: string,
-  nowUtc = DateTime.utc()
+  nowUtc = DateTime.utc(),
+  targetMember?: Member | null
 ): Promise<NightlyStrikeLog | null> {
+  let member = targetMember;
+  if (!member && isSupabaseConfigured) {
+    const { data } = await getMemberByIdSafe(targetMemberId);
+    member = data as Member | null;
+  }
+  if (!member) {
+    member = getInMemoryMember(targetMemberId) || null;
+  }
+
   // Check DB first if configured
   if (isSupabaseConfigured) {
     try {
@@ -516,18 +604,21 @@ export async function getRecentEligibleStrikeLog(
 
       if (!error) {
         if (data) {
-          const createdAt = DateTime.fromISO(data.created_at, { zone: 'utc' });
-          if (nowUtc.diff(createdAt, 'hours').hours <= 24) {
-            return {
-              id: data.id,
-              target_member_id: data.target_member_id,
-              sleep_cycle_date: data.sleep_cycle_date,
-              record_type: data.record_type as StrikeRecordType,
-              voter_ids: Array.isArray(data.voter_ids) ? data.voter_ids : [],
-              reason: data.reason || null,
-              created_at: data.created_at,
-              updated_at: data.updated_at,
-            };
+          const log: NightlyStrikeLog = {
+            id: data.id,
+            target_member_id: data.target_member_id,
+            sleep_cycle_date: data.sleep_cycle_date,
+            record_type: data.record_type as StrikeRecordType,
+            voter_ids: Array.isArray(data.voter_ids) ? data.voter_ids : [],
+            reason: data.reason || null,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          };
+          const isEligible = member
+            ? isStrikeEligibleForReplacement(member, log, nowUtc)
+            : nowUtc.diff(DateTime.fromISO(data.created_at, { zone: 'utc' }), 'hours').hours <= 24;
+          if (isEligible) {
+            return log;
           }
         }
         // After a successful query, treat missing row as authoritative and do not fill from memory
@@ -543,9 +634,11 @@ export async function getRecentEligibleStrikeLog(
   let bestTime = 0;
   for (const log of memoryStore.logs.values()) {
     if (log.target_member_id === targetMemberId && log.record_type === 'strike') {
+      const isEligible = member
+        ? isStrikeEligibleForReplacement(member, log, nowUtc)
+        : nowUtc.diff(DateTime.fromISO(log.created_at, { zone: 'utc' }), 'hours').hours <= 24;
       const createdAt = DateTime.fromISO(log.created_at, { zone: 'utc' });
-      const ageHours = nowUtc.diff(createdAt, 'hours').hours;
-      if (ageHours <= 24 && createdAt.toMillis() > bestTime) {
+      if (isEligible && createdAt.toMillis() > bestTime) {
         bestTime = createdAt.toMillis();
         bestCandidate = log;
       }
@@ -556,23 +649,35 @@ export async function getRecentEligibleStrikeLog(
 }
 
 /**
- * Resolves recent strike logs for multiple members eligible for retroactive conversion within 24 hours.
- * Uses a single batched query filtered by target_member_id, record_type='strike', and created_at within 24 hours.
+ * Resolves recent strike logs for multiple members eligible for replacement before their next scheduled bedtime.
  * Avoids any monthly-reset writes on this retrieval path and groups results in memory per member.
  *
  * @param targetMemberIds - List of member IDs to retrieve recent eligible strikes for
  * @param nowUtc - Current UTC DateTime (defaults to DateTime.utc())
+ * @param membersMap - Optional Map of member entities by ID
  * @returns Map of targetMemberId to the most recent eligible NightlyStrikeLog
  */
 export async function getRecentEligibleStrikeLogsBatch(
   targetMemberIds: string[],
-  nowUtc = DateTime.utc()
+  nowUtc = DateTime.utc(),
+  membersMap?: Map<string, Member>
 ): Promise<Map<string, NightlyStrikeLog>> {
   const result = new Map<string, NightlyStrikeLog>();
   if (!targetMemberIds.length) return result;
 
   const uniqueIds = Array.from(new Set(targetMemberIds));
-  const sinceIso = nowUtc.minus({ hours: 24 }).toISO();
+  const sinceIso = nowUtc.minus({ hours: 48 }).toISO();
+
+  const resolvedMembers = new Map<string, Member>();
+  if (membersMap) {
+    for (const [id, m] of membersMap.entries()) resolvedMembers.set(id, m);
+  }
+  for (const id of uniqueIds) {
+    if (!resolvedMembers.has(id)) {
+      const mem = getInMemoryMember(id);
+      if (mem) resolvedMembers.set(id, mem);
+    }
+  }
 
   let querySucceeded = false;
   if (isSupabaseConfigured) {
@@ -589,18 +694,21 @@ export async function getRecentEligibleStrikeLogsBatch(
         querySucceeded = true;
         for (const row of data) {
           if (!result.has(row.target_member_id)) {
-            const createdAt = DateTime.fromISO(row.created_at, { zone: 'utc' });
-            if (nowUtc.diff(createdAt, 'hours').hours <= 24) {
-              const parsedLog: NightlyStrikeLog = {
-                id: row.id,
-                target_member_id: row.target_member_id,
-                sleep_cycle_date: row.sleep_cycle_date,
-                record_type: row.record_type as StrikeRecordType,
-                voter_ids: Array.isArray(row.voter_ids) ? row.voter_ids : [],
-                reason: row.reason || null,
-                created_at: row.created_at,
-                updated_at: row.updated_at,
-              };
+            const parsedLog: NightlyStrikeLog = {
+              id: row.id,
+              target_member_id: row.target_member_id,
+              sleep_cycle_date: row.sleep_cycle_date,
+              record_type: row.record_type as StrikeRecordType,
+              voter_ids: Array.isArray(row.voter_ids) ? row.voter_ids : [],
+              reason: row.reason || null,
+              created_at: row.created_at,
+              updated_at: row.updated_at,
+            };
+            const member = resolvedMembers.get(row.target_member_id);
+            const isEligible = member
+              ? isStrikeEligibleForReplacement(member, parsedLog, nowUtc)
+              : nowUtc.diff(DateTime.fromISO(row.created_at, { zone: 'utc' }), 'hours').hours <= 24;
+            if (isEligible) {
               result.set(row.target_member_id, parsedLog);
             }
           }
@@ -612,17 +720,19 @@ export async function getRecentEligibleStrikeLogsBatch(
   }
 
   // Populate from in-memory store ONLY when Supabase is unconfigured or the query failed.
-  // After a successful query, treat missing rows as authoritative and do not fill them from memory.
   if (!querySucceeded) {
     for (const memberId of uniqueIds) {
       if (!result.has(memberId)) {
         let bestCandidate: NightlyStrikeLog | null = null;
         let bestTime = 0;
+        const member = resolvedMembers.get(memberId);
         for (const log of memoryStore.logs.values()) {
           if (log.target_member_id === memberId && log.record_type === 'strike') {
+            const isEligible = member
+              ? isStrikeEligibleForReplacement(member, log, nowUtc)
+              : nowUtc.diff(DateTime.fromISO(log.created_at, { zone: 'utc' }), 'hours').hours <= 24;
             const createdAt = DateTime.fromISO(log.created_at, { zone: 'utc' });
-            const ageHours = nowUtc.diff(createdAt, 'hours').hours;
-            if (ageHours <= 24 && createdAt.toMillis() > bestTime) {
+            if (isEligible && createdAt.toMillis() > bestTime) {
               bestTime = createdAt.toMillis();
               bestCandidate = log;
             }
@@ -641,12 +751,28 @@ export async function getRecentEligibleStrikeLogsBatch(
 /**
  * Upserts a nightly strike log in DB (with resilient fallback).
  */
-export async function saveNightlyStrikeLog(log: NightlyStrikeLog): Promise<NightlyStrikeLog> {
+export async function saveNightlyStrikeLog(
+  log: NightlyStrikeLog,
+  options?: { requireDurable?: boolean }
+): Promise<NightlyStrikeLog> {
   const key = getStrikeLogKey(log.target_member_id, log.sleep_cycle_date);
-  memoryStore.logs.set(key, log);
 
   if (isSupabaseConfigured) {
     try {
+      // Guard against automatic strike overwriting a metastrike row in DB
+      if (log.record_type === 'strike') {
+        const { data: existingRow } = await supabaseAdmin
+          .from('nightly_strike_logs')
+          .select('record_type')
+          .eq('target_member_id', log.target_member_id)
+          .eq('sleep_cycle_date', log.sleep_cycle_date)
+          .maybeSingle();
+
+        if (existingRow?.record_type === 'metastrike') {
+          throw new Error('Cycle is protected by an existing Metastrike');
+        }
+      }
+
       const payload = {
         id: log.id,
         target_member_id: log.target_member_id,
@@ -664,7 +790,11 @@ export async function saveNightlyStrikeLog(log: NightlyStrikeLog): Promise<Night
         .select('*')
         .single();
 
-      if (!error && data) {
+      if (error) {
+        if (options?.requireDurable) {
+          throw error;
+        }
+      } else if (data) {
         const persisted: NightlyStrikeLog = {
           id: data.id,
           target_member_id: data.target_member_id,
@@ -678,11 +808,15 @@ export async function saveNightlyStrikeLog(log: NightlyStrikeLog): Promise<Night
         memoryStore.logs.set(key, persisted);
         return persisted;
       }
-    } catch {
+    } catch (e) {
+      if (options?.requireDurable) {
+        throw e;
+      }
       // In-memory fallback already populated
     }
   }
 
+  memoryStore.logs.set(key, log);
   return log;
 }
 
@@ -713,22 +847,191 @@ export async function deleteNightlyStrikeLog(
 }
 
 /**
- * COMMUNITY 2-VOTE STRIKE WORKFLOW
+ * AUTOMATED 10-MINUTE BEDTIME STRIKE ENGINE
  *
- * Rules:
- * 1. Caller cannot be the target member.
- * 2. Target member's local time must be past Bedtime + 5 minutes (status: OVERDUE_NAG_NOW).
- * 3. Locked during 5-minute grace period (status: BEDTIME_GRACE).
- * 4. Locked if target member has activated an excused Metastrike for tonight.
- * 5. Locked if a strike has already been issued tonight.
- * 6. Each voter can only vote once per target per sleep cycle date.
- * 7. When the 2nd unique vote is cast, record_type becomes 'strike' and target member's strikes_used increments by 1.
+ * Automatically issues 1 normal strike if a member has not logged "In Bed"
+ * within 10 minutes past their scheduled bedtime, provided they have not
+ * checked in via in-bed or applied an excused Metastrike for this sleep cycle.
+ *
+ * Idempotent across multiple runs in the same sleep cycle.
  */
-export async function recordStrikeVote(
-  targetMember: Member,
-  voterId: string,
+export async function issueAutomaticBedtimeStrike(
+  member: Member,
   sleepCycleDate?: string,
   nowUtc = DateTime.utc()
+): Promise<{
+  success: boolean;
+  strikeIssued: boolean;
+  log?: NightlyStrikeLog;
+  strikesUsed?: number;
+  reason?: string;
+  error?: string;
+}> {
+  const cycleDate = sleepCycleDate || getSleepCycleDate(member, nowUtc);
+
+  // 1. Check if member already checked into bed for this cycle
+  let hasInBedLog = false;
+  if (isSupabaseConfigured) {
+    try {
+      const { data: inBedEntry } = await supabaseAdmin
+        .from('notification_logs')
+        .select('id')
+        .eq('member_id', member.id)
+        .eq('notification_type', 'IN_BED_EARLY')
+        .eq('local_date', cycleDate)
+        .maybeSingle();
+
+      if (inBedEntry) hasInBedLog = true;
+    } catch {
+      // Non-blocking
+    }
+  }
+
+  const isCheckedIn = Boolean(
+    member.is_in_bed ||
+    hasInBedLog ||
+    (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date === cycleDate)
+  );
+
+  if (isCheckedIn) {
+    return {
+      success: true,
+      strikeIssued: false,
+      reason: 'already_checked_in',
+      error: 'Member has already checked into bed for this cycle.',
+    };
+  }
+
+  // 2. Check existing nightly strike log for this cycle (idempotency & metastrike protection)
+  const existingLog = await getNightlyStrikeLog(member.id, cycleDate);
+  if (existingLog) {
+    if (existingLog.record_type === 'metastrike') {
+      return {
+        success: true,
+        strikeIssued: false,
+        reason: 'metastrike_active',
+        log: existingLog,
+        error: 'Member is protected by an excused Metastrike for tonight.',
+      };
+    }
+    if (existingLog.record_type === 'strike') {
+      const counts = await resolveMemberStrikeCounts(member, nowUtc);
+      return {
+        success: true,
+        strikeIssued: false,
+        reason: 'already_issued',
+        log: existingLog,
+        strikesUsed: counts.strikes_used,
+        error: 'A strike has already been issued for this sleep cycle.',
+      };
+    }
+  }
+
+  // 3. Resolve member's monthly strike counts and verify not already capped
+  const counts = await resolveMemberStrikeCounts(member, nowUtc);
+  if (counts.strikes_used >= 3) {
+    return {
+      success: true,
+      strikeIssued: false,
+      reason: 'already_at_max_strikes',
+      strikesUsed: counts.strikes_used,
+      error: 'Member has already reached the maximum limit of 3 strikes for this month.',
+    };
+  }
+
+  const newStrikesUsed = counts.strikes_used + 1;
+
+  // Re-verify existing log immediately prior to commit (protect against concurrent metastrike)
+  const freshLog = await getNightlyStrikeLog(member.id, cycleDate);
+  if (freshLog?.record_type === 'metastrike') {
+    return {
+      success: true,
+      strikeIssued: false,
+      reason: 'metastrike_active',
+      log: freshLog,
+      error: 'Member is protected by an excused Metastrike for tonight.',
+    };
+  }
+
+  // Update member strike counts with conditional concurrency check
+  const updateRes = await updateMemberStrikeCounts(
+    member.id,
+    newStrikesUsed,
+    counts.metastrikes_used,
+    counts.strike_cycle_month,
+    isSupabaseConfigured
+      ? {
+          strikes_used: counts.strikes_used,
+          metastrikes_used: counts.metastrikes_used,
+        }
+      : undefined
+  );
+
+  if (!updateRes.success) {
+    // If conditional check failed, re-check if metastrike was applied concurrently
+    const conflictLog = await getNightlyStrikeLog(member.id, cycleDate);
+    if (conflictLog?.record_type === 'metastrike') {
+      return {
+        success: true,
+        strikeIssued: false,
+        reason: 'metastrike_active',
+        log: conflictLog,
+        error: 'Member is protected by an excused Metastrike for tonight.',
+      };
+    }
+    return {
+      success: false,
+      strikeIssued: false,
+      reason: 'db_update_failed',
+      error: updateRes.error ? `Failed to persist strike count: ${updateRes.error.message || updateRes.error}` : 'Failed to update member strike counts',
+    };
+  }
+
+  // 4. Save nightly strike log
+  const strikeLog: NightlyStrikeLog = {
+    id: existingLog?.id || crypto.randomUUID(),
+    target_member_id: member.id,
+    sleep_cycle_date: cycleDate,
+    record_type: 'strike',
+    voter_ids: [],
+    reason: 'Automated 10-minute bedtime strike (missed bedtime check-in)',
+    created_at: existingLog?.created_at || nowUtc.toISO(),
+    updated_at: nowUtc.toISO(),
+  };
+
+  try {
+    const saved = await saveNightlyStrikeLog(strikeLog, { requireDurable: isSupabaseConfigured });
+    return {
+      success: true,
+      strikeIssued: true,
+      log: saved,
+      strikesUsed: newStrikesUsed,
+    };
+  } catch (err: any) {
+    // Rollback strike count on nightly log failure
+    await updateMemberStrikeCounts(
+      member.id,
+      counts.strikes_used,
+      counts.metastrikes_used,
+      counts.strike_cycle_month
+    );
+    return {
+      success: false,
+      strikeIssued: false,
+      reason: 'db_log_failed',
+      error: `Failed to persist nightly strike log: ${err?.message || err}`,
+    };
+  }
+}
+
+/**
+ * Peer strike voting has been disabled and superseded by the Automated 10-Minute Bedtime Strike Engine.
+ */
+export async function recordStrikeVote(
+  _targetMember: Member,
+  _voterId: string,
+  _sleepCycleDate?: string,
+  _nowUtc = DateTime.utc()
 ): Promise<{
   success: boolean;
   log?: NightlyStrikeLog;
@@ -737,313 +1040,9 @@ export async function recordStrikeVote(
   strikesUsed?: number;
   error?: string;
 }> {
-  // Rule 1: No self-voting
-  if (targetMember.id === voterId) {
-    return { success: false, error: 'You cannot vote to strike yourself.' };
-  }
-
-  const cycleDate = sleepCycleDate || getSleepCycleDate(targetMember, nowUtc);
-
-  // Check if target member has an IN_BED_EARLY notification logged for this cycle date
-  let hasInBedLog = false;
-  if (isSupabaseConfigured) {
-    try {
-      const { data: inBedEntry } = await supabaseAdmin
-        .from('notification_logs')
-        .select('id')
-        .eq('member_id', targetMember.id)
-        .eq('notification_type', 'IN_BED_EARLY')
-        .eq('local_date', cycleDate)
-        .maybeSingle();
-
-      if (inBedEntry) {
-        hasInBedLog = true;
-      }
-    } catch {
-      // Non-blocking in case of DB issues
-    }
-  }
-
-  const isCheckedIn = Boolean(
-    targetMember.is_in_bed ||
-    hasInBedLog ||
-    (targetMember.last_notified_stage === 'IN_BED_EARLY' &&
-      targetMember.last_notified_cycle_date === cycleDate)
-  );
-
-  // Pass isCheckedIn so computeMemberState sets checkedInEarly = true
-  const targetWithInBed: Member = { ...targetMember, is_in_bed: isCheckedIn };
-  const state = computeMemberState(targetWithInBed, targetMember.timezone, nowUtc, isCheckedIn);
-
-  // Rule 2: Check in-bed check-in status
-  if (isCheckedIn || state.checkedInEarly) {
-    return {
-      success: false,
-      error: `Strike voting is blocked. ${targetMember.discord_username} has already checked into bed for tonight.`,
-    };
-  }
-
-  // Rule 3: Check grace period and overdue status
-  if (state.status === 'BEDTIME_GRACE') {
-    return {
-      success: false,
-      error: `Grace period is active (${state.statusText}). Strike voting is locked for 5 minutes after bedtime.`,
-    };
-  }
-
-  if (state.status !== 'OVERDUE_NAG_NOW' && !state.canVoteStrike) {
-    return {
-      success: false,
-      error: 'Strike voting is only permitted when a member is overdue past their 5-minute bedtime grace period.',
-    };
-  }
-
-  // Resolve target member's current monthly counts (with lazy reset)
-  const counts = await resolveMemberStrikeCounts(targetMember, nowUtc);
-
-  // Atomic cross-instance vote recording with optimistic concurrency
-  let lastDbError: { message?: string; code?: string } | null = null;
-  if (isSupabaseConfigured) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const existingLog = await getNightlyStrikeLog(targetMember.id, cycleDate);
-
-      if (existingLog) {
-        // Rule 4: Metastrike shield active
-        if (existingLog.record_type === 'metastrike') {
-          return {
-            success: false,
-            error: `Strike voting is blocked. ${targetMember.discord_username} is protected by an excused Metastrike tonight (${existingLog.reason || 'Excused'}).`,
-          };
-        }
-
-        // Rule 5: Strike already issued
-        if (existingLog.record_type === 'strike') {
-          return {
-            success: false,
-            error: `A strike has already been issued for ${targetMember.discord_username} tonight.`,
-          };
-        }
-
-        // Rule 6: Pending vote - Check if caller has already voted
-        if (existingLog.record_type === 'pending_vote') {
-          if (existingLog.voter_ids.includes(voterId)) {
-            return {
-              success: false,
-              error: 'You have already voted to strike this member tonight.',
-            };
-          }
-
-          const updatedVoterIds = [...existingLog.voter_ids, voterId];
-          const strikeIssued = updatedVoterIds.length >= 2;
-          const newRecordType: StrikeRecordType = strikeIssued ? 'strike' : 'pending_vote';
-
-          let newStrikesUsed = counts.strikes_used;
-          if (strikeIssued) {
-            newStrikesUsed = Math.min(3, counts.strikes_used + 1);
-          }
-
-          try {
-            const { data: updatedData, error: updateErr } = await supabaseAdmin
-              .from('nightly_strike_logs')
-              .update({
-                record_type: newRecordType,
-                voter_ids: updatedVoterIds,
-                updated_at: nowUtc.toISO(),
-              })
-              .eq('id', existingLog.id)
-              .eq('record_type', 'pending_vote')
-              .select('*')
-              .maybeSingle();
-
-            if (updateErr) {
-              lastDbError = updateErr;
-              break;
-            }
-
-            if (!updatedData) {
-              // Concurrent write updated this row, retry loop
-              continue;
-            }
-
-            if (strikeIssued) {
-              await updateMemberStrikeCounts(
-                targetMember.id,
-                newStrikesUsed,
-                counts.metastrikes_used,
-                counts.strike_cycle_month
-              );
-            }
-
-            const parsedLog: NightlyStrikeLog = {
-              id: updatedData.id,
-              target_member_id: updatedData.target_member_id,
-              sleep_cycle_date: updatedData.sleep_cycle_date,
-              record_type: updatedData.record_type as StrikeRecordType,
-              voter_ids: Array.isArray(updatedData.voter_ids) ? updatedData.voter_ids : [],
-              reason: updatedData.reason || null,
-              created_at: updatedData.created_at,
-              updated_at: updatedData.updated_at,
-            };
-            const key = getStrikeLogKey(targetMember.id, cycleDate);
-            memoryStore.logs.set(key, parsedLog);
-
-            return {
-              success: true,
-              log: parsedLog,
-              strikeIssued,
-              votesCount: updatedVoterIds.length,
-              strikesUsed: newStrikesUsed,
-            };
-          } catch (err: unknown) {
-            lastDbError = { message: err instanceof Error ? err.message : 'Database update exception' };
-            break;
-          }
-        }
-      } else {
-        // First vote for this member tonight: attempt insert
-        const newLogPayload = {
-          id: crypto.randomUUID(),
-          target_member_id: targetMember.id,
-          sleep_cycle_date: cycleDate,
-          record_type: 'pending_vote',
-          voter_ids: [voterId],
-          reason: null,
-          created_at: nowUtc.toISO(),
-          updated_at: nowUtc.toISO(),
-        };
-
-        try {
-          const { data: insertedData, error: insertErr } = await supabaseAdmin
-            .from('nightly_strike_logs')
-            .insert(newLogPayload)
-            .select('*')
-            .maybeSingle();
-
-          if (insertErr) {
-            if (insertErr.code === '23505') {
-              // Concurrent insert won race, retry loop to add vote to newly created row
-              continue;
-            }
-            lastDbError = insertErr;
-            break;
-          }
-
-          if (insertedData) {
-            const parsedLog: NightlyStrikeLog = {
-              id: insertedData.id,
-              target_member_id: insertedData.target_member_id,
-              sleep_cycle_date: insertedData.sleep_cycle_date,
-              record_type: 'pending_vote',
-              voter_ids: [voterId],
-              reason: null,
-              created_at: insertedData.created_at,
-              updated_at: insertedData.updated_at,
-            };
-            const key = getStrikeLogKey(targetMember.id, cycleDate);
-            memoryStore.logs.set(key, parsedLog);
-            return {
-              success: true,
-              log: parsedLog,
-              strikeIssued: false,
-              votesCount: 1,
-              strikesUsed: counts.strikes_used,
-            };
-          }
-        } catch (err: unknown) {
-          lastDbError = { message: err instanceof Error ? err.message : 'Database insert exception' };
-          break;
-        }
-      }
-    }
-
-    // When Supabase is configured, return failure instead of silent memory-only fallback,
-    // unless the table does not exist (unmigrated database code 42P01).
-    if (lastDbError?.code !== '42P01') {
-      return {
-        success: false,
-        error:
-          lastDbError?.message ||
-          'Failed to record strike vote due to database error or exhausted retries. Please try again.',
-      };
-    }
-  }
-
-  // Resilient in-memory fallback (used when Supabase is unreachable or in mock tests)
-  const fallbackKey = getStrikeLogKey(targetMember.id, cycleDate);
-  const fallbackLog = memoryStore.logs.get(fallbackKey);
-
-  if (fallbackLog) {
-    if (fallbackLog.record_type === 'metastrike') {
-      return {
-        success: false,
-        error: `Strike voting is blocked. ${targetMember.discord_username} is protected by an excused Metastrike tonight (${fallbackLog.reason || 'Excused'}).`,
-      };
-    }
-    if (fallbackLog.record_type === 'strike') {
-      return {
-        success: false,
-        error: `A strike has already been issued for ${targetMember.discord_username} tonight.`,
-      };
-    }
-    if (fallbackLog.voter_ids.includes(voterId)) {
-      return {
-        success: false,
-        error: 'You have already voted to strike this member tonight.',
-      };
-    }
-
-    const updatedVoterIds = [...fallbackLog.voter_ids, voterId];
-    const strikeIssued = updatedVoterIds.length >= 2;
-    const newRecordType: StrikeRecordType = strikeIssued ? 'strike' : 'pending_vote';
-    const newStrikesUsed = strikeIssued
-      ? Math.min(3, counts.strikes_used + 1)
-      : counts.strikes_used;
-
-    if (strikeIssued) {
-      await updateMemberStrikeCounts(
-        targetMember.id,
-        newStrikesUsed,
-        counts.metastrikes_used,
-        counts.strike_cycle_month
-      );
-    }
-
-    const updatedLog: NightlyStrikeLog = {
-      ...fallbackLog,
-      record_type: newRecordType,
-      voter_ids: updatedVoterIds,
-      updated_at: nowUtc.toISO(),
-    };
-    memoryStore.logs.set(fallbackKey, updatedLog);
-
-    return {
-      success: true,
-      log: updatedLog,
-      strikeIssued,
-      votesCount: updatedVoterIds.length,
-      strikesUsed: newStrikesUsed,
-    };
-  }
-
-  const newLog: NightlyStrikeLog = {
-    id: crypto.randomUUID(),
-    target_member_id: targetMember.id,
-    sleep_cycle_date: cycleDate,
-    record_type: 'pending_vote',
-    voter_ids: [voterId],
-    reason: null,
-    created_at: nowUtc.toISO(),
-    updated_at: nowUtc.toISO(),
-  };
-
-  const saved = await saveNightlyStrikeLog(newLog);
-
   return {
-    success: true,
-    log: saved,
-    strikeIssued: false,
-    votesCount: 1,
-    strikesUsed: counts.strikes_used,
+    success: false,
+    error: 'Peer strike voting has been disabled. Bedtime strikes are issued automatically 10 minutes past scheduled bedtime.',
   };
 }
 
@@ -1066,6 +1065,7 @@ export async function useProactiveMetastrike(
   success: boolean;
   log?: NightlyStrikeLog;
   metastrikesUsed?: number;
+  strikesUsed?: number;
   error?: string;
 }> {
   const counts = await resolveMemberStrikeCounts(member, nowUtc);
@@ -1088,10 +1088,13 @@ export async function useProactiveMetastrike(
       };
     }
     if (existingLog.record_type === 'strike') {
+      if (isStrikeEligibleForReplacement(member, existingLog, nowUtc)) {
+        return convertStrikeToMetastrike(member, reason, cycleDate, nowUtc);
+      }
       return {
         success: false,
         error:
-          'A strike was already issued tonight. Use "Convert to Metastrike" within 24 hours to swap it.',
+          'The window to replace this strike with a Metastrike has expired (next scheduled bedtime has arrived).',
       };
     }
   }
@@ -1191,7 +1194,7 @@ export async function convertStrikeToMetastrike(
 
   let cycleDate = sleepCycleDate;
   if (!cycleDate) {
-    const recent = await getRecentEligibleStrikeLog(member.id, nowUtc);
+    const recent = await getRecentEligibleStrikeLog(member.id, nowUtc, member);
     cycleDate = recent ? recent.sleep_cycle_date : getSleepCycleDate(member, nowUtc);
   }
 
@@ -1204,26 +1207,36 @@ export async function convertStrikeToMetastrike(
     };
   }
 
-  // Verify 24-hour window
-  const createdAt = DateTime.fromISO(existingLog.created_at, { zone: 'utc' });
-  const hoursSinceStrike = nowUtc.diff(createdAt, 'hours').hours;
-
-  if (hoursSinceStrike > 24 && !isModeratorOverride) {
+  // Verify eligibility window (pre-next-bedtime replacement)
+  if (!isModeratorOverride && !isStrikeEligibleForReplacement(member, existingLog, nowUtc, isModeratorOverride)) {
     return {
       success: false,
-      error: 'The 24-hour window to convert this strike to a Metastrike has expired.',
+      error: 'The window to convert this strike to a Metastrike has expired (next scheduled bedtime has arrived).',
     };
   }
 
   const newStrikesUsed = Math.max(0, counts.strikes_used - 1);
   const newMetastrikesUsed = Math.min(3, counts.metastrikes_used + 1);
 
-  await updateMemberStrikeCounts(
+  const updateRes = await updateMemberStrikeCounts(
     member.id,
     newStrikesUsed,
     newMetastrikesUsed,
-    counts.strike_cycle_month
+    counts.strike_cycle_month,
+    isSupabaseConfigured
+      ? {
+          strikes_used: counts.strikes_used,
+          metastrikes_used: counts.metastrikes_used,
+        }
+      : undefined
   );
+
+  if (!updateRes.success) {
+    return {
+      success: false,
+      error: 'Could not convert strike due to concurrent count modification. Please retry.',
+    };
+  }
 
   const cleanReason = (reason || '').trim() || 'Retroactive Conversion';
 
@@ -1234,14 +1247,27 @@ export async function convertStrikeToMetastrike(
     updated_at: nowUtc.toISO(),
   };
 
-  const saved = await saveNightlyStrikeLog(updatedLog);
-
-  return {
-    success: true,
-    log: saved,
-    strikesUsed: newStrikesUsed,
-    metastrikesUsed: newMetastrikesUsed,
-  };
+  try {
+    const saved = await saveNightlyStrikeLog(updatedLog, { requireDurable: isSupabaseConfigured });
+    return {
+      success: true,
+      log: saved,
+      strikesUsed: newStrikesUsed,
+      metastrikesUsed: newMetastrikesUsed,
+    };
+  } catch (err: any) {
+    // Rollback strike counts on log persistence failure
+    await updateMemberStrikeCounts(
+      member.id,
+      counts.strikes_used,
+      counts.metastrikes_used,
+      counts.strike_cycle_month
+    );
+    return {
+      success: false,
+      error: `Failed to persist Metastrike conversion: ${err?.message || err}`,
+    };
+  }
 }
 
 /**

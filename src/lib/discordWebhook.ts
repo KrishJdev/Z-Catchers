@@ -308,8 +308,8 @@ export async function sendStrikeDiscordWebhook(
   const mention = formatMemberDiscordMention(member);
 
   const embed: DiscordEmbed = {
-    title: `⚡ Community Strike Issued: ${member.discord_username}`,
-    description: `A strike has been confirmed for ${mention} tonight. **${strikesUsed}/3 strikes** used for this month.${reason ? ` Reason: ${reason}` : ''} 🦊⚡`,
+    title: `⚡ Bedtime Strike Issued: ${member.discord_username}`,
+    description: `A bedtime strike has been recorded for ${mention}. **${strikesUsed}/3 strikes** used for this month.${reason ? ` Reason: ${reason}` : ''} 🦊⚡`,
     url: member.journal_url,
     color: DISCORD_EMBED_COLORS.CORAL_NAG,
     fields: [
@@ -320,12 +320,12 @@ export async function sendStrikeDiscordWebhook(
       },
       {
         name: '🛡️ Excused Pass (Metastrike)',
-        value: 'Members can convert an accidental strike to an excused Metastrike within 24 hours in the app.',
+        value: 'Members can replace an automatic normal strike with an excused Metastrike anytime before their next scheduled bedtime in the app.',
         inline: false,
       },
     ],
     footer: {
-      text: 'Z Catchers Accountability System • 2-Vote Community Verification',
+      text: 'Z Catchers Accountability System • Automated Bedtime Strike Engine',
     },
     timestamp: new Date().toISOString(),
   };

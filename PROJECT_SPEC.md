@@ -382,20 +382,23 @@ To ship ASAP without waiting on complex OAuth app verification:
 ### 5.6 Monthly Strikes & Metastrikes Accountability Engine
 
 1. **Core Accountability Rules:**
-   * **Strikes (Max 3 per month):** Issued when a member goes to bed more than 5 minutes past their scheduled bedtime without an excused Metastrike.
+   * **Automated 10-Minute Bedtime Strike Engine:** Automatically issues 1 normal strike if a member has not logged "In Bed" within 10 minutes past their scheduled bedtime (`currentLocalTime >= scheduledBedtime + 10 minutes`). Evaluated per active member according to their active daily or weekly timetable in their local timezone.
+   * **Scope Restriction:** Strikes apply strictly to missed bedtimes. Wake-up actions in `src/app/api/members/wake-up/route.ts` must never trigger strikes.
+   * **Peer Strike Voting Removed:** Manual peer strike voting has been removed and disabled (`POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`). Regular members cannot vote to strike others.
+   * **Strikes (Max 3 per month):** Each member can accumulate up to 3 strikes per calendar month.
    * **Metastrikes (Max 3 per month):** Excused passes used for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
    * **Monthly Reset:** Both Strikes and Metastrikes reset to 0 used (3 remaining each) on the 1st of every calendar month via automatic lazy evaluation (`strike_cycle_month`).
-   * **No Auto-Strikes:** Because sleep check-ins happen in Discord journal threads, the app **never** auto-assigns a strike based on app inactivity. It strictly enforces a **2-Vote Community Verification system** paired with self-service Metastrike passes.
 
-2. **5-Minute Grace Period Logic:**
-   * `diffMinutes >= 0 && diffMinutes <= 5`: Status is `BEDTIME_GRACE` (`"Grace Period: Xm left"`). Strike voting is strictly locked during this window.
-   * `diffMinutes > 5 && diffMinutes <= 480`: Status is `OVERDUE_NAG_NOW`. Strike voting becomes active unless the member has checked into bed early or activated a Metastrike for tonight.
+2. **5-Minute Grace Period & 10-Minute Cutoff Logic:**
+   * `diffMinutes >= 0 && diffMinutes <= 5`: Status is `BEDTIME_GRACE` (`"Grace Period: Xm left"`).
+   * `diffMinutes > 5 && diffMinutes < 10`: Status is `OVERDUE_NAG_NOW`. Nags are active, but strike is not yet issued.
+   * `diffMinutes >= 10`: If the member has neither checked in via `"I'm in Bed"` nor applied a Metastrike for tonight's sleep cycle, the cron dispatcher automatically issues 1 normal strike via `issueAutomaticBedtimeStrike()`.
+   * **Idempotency:** Automatic strikes are strictly capped at 1 per member per sleep cycle date across repeated cron passes (`AUTO_BEDTIME_STRIKE` in `notification_logs` and `nightly_strike_logs`).
 
-3. **Workflows:**
-   * **Community 2-Vote Strike:** Any authenticated member (except the target) can tap `"Vote Strike (0/2)"`. Each member can only vote once per target per `sleep_cycle_date`. When the 2nd unique vote is cast, `record_type` locks as `'strike'` and target member's `strikes_used` increments by 1.
-   * **Proactive Metastrike (Excuse Pass):** On their own profile/card, a member taps `"Use Metastrike Tonight"` and picks or types an excuse ("Monthly Battle", "Family", "Birthday", "Emergency"). This consumes 1 Metastrike (`metastrikes_used + 1`) and renders a `"Protected by Metastrike: [Reason]"` shield badge, locking out strike votes.
-   * **Retroactive Metastrike (24-Hour Swap):** If a member receives a 2-vote Strike within the last 24 hours while away, they can tap `"Convert to Metastrike"` (if `metastrikes_used < 3`). This decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` to `'metastrike'`.
-   * **Moderator Override:** Inside the Moderator Panel, mods can manually adjust any member's Strikes or Metastrikes (0 to 3) and clear accidental votes or strike records.
+3. **Metastrike Prevention & Pre-Next-Bedtime Replacement Workflows:**
+   * **Applied Before Bedtime (+10m Cutoff):** If a member activates a Metastrike before the 10-minute auto-strike cutoff, the cycle is marked with `record_type: 'metastrike'`, preventing any normal strike from being issued.
+   * **Pre-Next-Bedtime Replacement Window:** If an automatic normal strike was already issued at +10 minutes, the member can apply a Metastrike at any point—all the way until their next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`), including the next morning or afternoon. Doing so decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` from `'strike'` to `'metastrike'`. Once the next scheduled bedtime arrives, this replacement window expires.
+   * **Moderator Override:** Inside the Moderator Drawer (`src/components/ModDrawer.tsx` and `src/app/api/mod/route.ts`), moderators can manually add, adjust, or remove Strikes or Metastrikes (0 to 3) and clear accidental strike records via `clear_strike_log`.
 
 ### 5.7 "I Woke Up" Mechanic & State Transition Engine
 

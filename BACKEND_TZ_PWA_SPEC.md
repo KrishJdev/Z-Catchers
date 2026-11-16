@@ -227,40 +227,36 @@ export function computeMemberState(member: MemberSchedule, viewerTz: string, now
 
 ### 2.3 Monthly Strikes & Metastrikes Accountability System Engine
 
-The accountability system ensures members adhere to their bedtimes with community oversight while accommodating valid life events.
+The accountability system ensures members adhere to their bedtimes with automated evaluation while accommodating valid life events through metastrike passes.
 
 #### 1. Core Accountability Rules
-* **Strikes (Max 3 per calendar month):** Issued when a member is more than 5 minutes past their scheduled bedtime without an excused pass.
+* **Automated 10-Minute Bedtime Strike Engine:** Automatically issues 1 normal strike if an active member has not logged "In Bed" within 10 minutes past their scheduled bedtime (`currentLocalTime >= scheduledBedtime + 10 minutes`). Evaluated per member according to their active daily or weekly timetable in their local timezone.
+* **Scope Restriction:** Strikes apply strictly to missed bedtimes. Wake-up actions in `/api/members/wake-up` must never trigger strikes.
+* **Peer Strike Voting Removed:** Manual peer strike voting has been removed and disabled (`POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`). Regular members cannot vote to strike others.
+* **Strikes (Max 3 per calendar month):** Up to 3 strikes per month before community consequences.
 * **Metastrikes (Max 3 per calendar month):** Excused passes for unexpected or important events (e.g. Monthly Battle, Family Event, Birthday Celebration, Health Emergency).
 * **Automatic Lazy Monthly Reset:** Both `strikes_used` and `metastrikes_used` reset to 0 used (3 remaining each) on the 1st of every calendar month. Stored in `members.strike_cycle_month` (`YYYY-MM`) and evaluated lazily whenever a profile is read or updated via `checkMonthlyStrikeReset()`.
-* **Zero Auto-Strikes Guarantee:** Sleep check-ins occur in Discord journal threads. The system **never** auto-assigns strikes based on app inactivity. It strictly enforces a **2-Vote Community Verification system** paired with self-service Metastrike passes.
 
-#### 2. Timezone & 5-Minute Grace Window State Machine
+#### 2. Timezone & 10-Minute Cutoff State Machine
 * **`BEDTIME_GRACE` ($0 \le \text{diffMinutes} \le 5$):**
   * Status text: `"Grace Period: Xm left"`.
-  * Strike voting is strictly locked (`canVoteStrike = false`).
 * **`OVERDUE_NAG_NOW` ($\text{diffMinutes} > 5$ up to 480 minutes):**
   * Status text: `"Bedtime hit Xm ago — Nag them!"`.
-  * Strike voting is unlocked (`canVoteStrike = true`), provided the member has not checked in early via `"I'm in Bed"` and has not activated a Metastrike for tonight.
+  * If $\text{diffMinutes} \ge 10$, the Automated Bedtime Strike Engine issues 1 normal strike unless the member has checked into bed or applied a Metastrike for this sleep cycle.
+  * **Idempotency:** Automatic strikes are tracked via `AUTO_BEDTIME_STRIKE` in `notification_logs` and `nightly_strike_logs`, ensuring at most 1 automatic strike per sleep cycle across repeated cron passes.
 
-#### 3. Community 2-Vote Strike Workflow
-* Any authenticated member (except the target member) can vote on a member in status `OVERDUE_NAG_NOW`.
-* Each voter can only vote once per target per `sleep_cycle_date`.
-* **Vote 1:** Record type stays `'pending_vote'`, voter ID recorded in `voter_ids` JSON array, card displays `"Vote Strike (1/2)"`.
-* **Vote 2:** Record type automatically transitions to `'strike'`, target's `strikes_used` increments by 1 (capped at 3), card locks to `"Strike Issued Tonight"`.
+#### 3. Metastrike Prevention & Pre-Next-Bedtime Replacement Workflows
+* **Proactive Metastrike (Applied before +10m Cutoff):** Member taps `"Use Metastrike Tonight"` on their own card and selects or types a reason. Consumes 1 Metastrike (`metastrikes_used + 1`), sets `record_type = 'metastrike'` for tonight's `sleep_cycle_date`, and locks the cycle against automatic normal strikes with a `"Protected by Metastrike: [Reason]"` shield badge.
+* **Pre-Next-Bedtime Replacement Window:** If a member receives an automatic normal strike at +10 minutes, they can apply a Metastrike at any point—all the way until their next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`), including the next morning or afternoon. Doing so decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` from `'strike'` to `'metastrike'`. Once the next scheduled bedtime arrives, this replacement window expires.
 
-#### 4. Proactive & Retroactive Metastrike (Excuse Pass) Workflows
-* **Proactive Metastrike:** Member taps `"Use Metastrike Tonight"` on their own card and selects or types a reason. Consumes 1 Metastrike (`metastrikes_used + 1`), sets `record_type = 'metastrike'` for tonight's `sleep_cycle_date`, and locks out all community strike votes with a `"Protected by Metastrike: [Reason]"` shield badge.
-* **Retroactive 24-Hour Swap:** If a member receives a 2-vote Strike within the last 24 hours while away, they can tap `"Convert to Metastrike"` (if `metastrikes_used < 3`). This decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` from `'strike'` to `'metastrike'`.
-
-#### 5. Moderator Override & Nightly Log Administration
+#### 4. Moderator Override & Nightly Log Administration
 * Authenticated moderators using `MOD_SECRET_PASSCODE` can manually increment or decrement any member's `strikes_used` and `metastrikes_used` (bounded within $[0, 3]$).
 * Moderators can clear accidental strike votes or nightly logs via `POST /api/mod` with action `clear_strike_log`.
 
-#### 6. REST API Endpoints for Strikes (Canonical)
-* `POST /api/members/strikes`: Casts a community strike vote (enforces non-self and uniqueness).
+#### 5. REST API Endpoints for Strikes (Canonical)
+* `POST /api/members/strikes`: Returns 403 `PEER_VOTING_DISABLED` (peer strike voting disabled).
 * `GET /api/members/strikes`: Retrieves strike counts and tonight's active log for a member.
-* `POST /api/members/strikes/metastrike`: Activates a proactive pass or performs a 24-hour retroactive swap.
+* `POST /api/members/strikes/metastrike`: Activates a proactive pass or performs a pre-next-bedtime replacement.
 * `POST /api/mod`: Handles `adjust_strikes` and `clear_strike_log` moderator actions.
 
 ---

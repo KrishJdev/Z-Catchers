@@ -77,7 +77,6 @@ export default function HomePage() {
   // Strikes & Metastrikes accountability states
   const [metastrikeMember, setMetastrikeMember] = useState<Member | null>(null);
   const [metastrikeMode, setMetastrikeMode] = useState<'proactive' | 'convert_retroactive'>('proactive');
-  const [isVotingStrike, setIsVotingStrike] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   // Dialog / Modal states: 'schedule' | 'mod' | 'push' | null
@@ -770,75 +769,6 @@ export default function HomePage() {
     });
   };
 
-  // Community 2-Vote Strike Handler
-  const handleVoteStrike = async (targetMemberId: string) => {
-    try {
-      setIsVotingStrike(true);
-      const token = getStoredAuthToken();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch('/api/members/strikes', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ target_member_id: targetMemberId }),
-      });
-
-      const json = await res.json();
-      if (!res.ok) {
-        if (res.status === 401) {
-          router.push('/join');
-        }
-        setToastMessage({ text: json.error || 'Failed to cast strike vote.', type: 'error' });
-        setTimeout(() => setToastMessage(null), 4000);
-        return;
-      }
-
-      if (json.strike_issued) {
-        setToastMessage({
-          text: '2/2 Votes Reached! Strike officially issued for tonight.',
-          type: 'success',
-        });
-      } else {
-        setToastMessage({
-          text: `Vote recorded (${json.votes_count}/2). One more vote will issue a strike.`,
-          type: 'info',
-        });
-      }
-      setTimeout(() => setToastMessage(null), 4000);
-
-      // Optimistic roster update for immediate button response
-      setMembers((prev) =>
-        prev.map((m) => {
-          if (m.id !== targetMemberId) return m;
-          const strikeIssued = Boolean(json.strike_issued);
-          const updatedLog = json.log || {
-            id: 'optimistic_log',
-            target_member_id: targetMemberId,
-            sleep_cycle_date: json.sleep_cycle_date,
-            record_type: strikeIssued ? 'strike' : 'pending_vote',
-            voter_ids: [currentUser?.id || 'viewer_voter'],
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          return {
-            ...m,
-            has_voted_strike: true,
-            tonight_strike_log: updatedLog,
-            strikes_used: typeof json.strikes_used === 'number' ? json.strikes_used : strikeIssued ? (m.strikes_used || 0) + 1 : m.strikes_used,
-            strikes_count: typeof json.strikes_count === 'number' ? json.strikes_count : strikeIssued ? (m.strikes_count || 0) + 1 : m.strikes_count,
-          };
-        })
-      );
-
-      await fetchRoster();
-    } catch (err) {
-      console.error('Strike voting error:', err);
-    } finally {
-      setIsVotingStrike(false);
-    }
-  };
-
   // Metastrike Excuse Modal Handler
   const handleOpenMetastrike = (member: Member, mode: 'proactive' | 'convert_retroactive') => {
     setMetastrikeMember(member);
@@ -1313,9 +1243,7 @@ export default function HomePage() {
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
-                  onVoteStrike={handleVoteStrike}
                   onOpenMetastrike={handleOpenMetastrike}
-                  isVotingStrike={isVotingStrike}
                   isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
@@ -1345,9 +1273,7 @@ export default function HomePage() {
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
-                  onVoteStrike={handleVoteStrike}
                   onOpenMetastrike={handleOpenMetastrike}
-                  isVotingStrike={isVotingStrike}
                   isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
@@ -1376,9 +1302,7 @@ export default function HomePage() {
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
-                  onVoteStrike={handleVoteStrike}
                   onOpenMetastrike={handleOpenMetastrike}
-                  isVotingStrike={isVotingStrike}
                   isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
@@ -1409,9 +1333,7 @@ export default function HomePage() {
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
-                  onVoteStrike={handleVoteStrike}
                   onOpenMetastrike={handleOpenMetastrike}
-                  isVotingStrike={isVotingStrike}
                   isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
