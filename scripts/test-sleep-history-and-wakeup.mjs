@@ -314,6 +314,47 @@ async function run() {
   testAssert(stateWokeUp.isSleepShieldActive === false, 'Sleep Shield deactivated upon wake-up');
   testAssert(stateWokeUp.needsWakeUpLog === false, 'needsWakeUpLog is FALSE once wake-up is logged');
 
+  // 5C. Manual-Only State Transitions & Overdue / Past Bedtime Bucket:
+  // Case 1: Member passes bedtime by 1 second without checking in -> immediately drops into Overdue bucket
+  const bedtime1sPastUtc = DateTime.fromISO('2026-11-12T23:30:01', { zone: testTz }).toUTC();
+  const state1sPast = computeMemberState(mockTestMember, testTz, bedtime1sPastUtc, false);
+  testAssert(state1sPast.bucket === 'BEDTIME_NOW', '1 second past bedtime without check-in moves to Overdue / Past Bedtime bucket');
+  testAssert(state1sPast.isOverdue === true, 'isOverdue flag is TRUE for overdue member');
+  testAssert(state1sPast.status === 'BEDTIME_GRACE', 'Within 5m grace window, status is BEDTIME_GRACE');
+  testAssert(state1sPast.isSleepShieldActive === false, 'Sleep Shield is inactive while overdue');
+
+  // Case 2: Member passes bedtime by 10 minutes without clicking in-bed -> remains in Overdue bucket
+  const bedtime10mPastUtc = DateTime.fromISO('2026-11-12T23:40:00', { zone: testTz }).toUTC();
+  const state10mPast = computeMemberState(mockTestMember, testTz, bedtime10mPastUtc, false);
+  testAssert(state10mPast.bucket === 'BEDTIME_NOW', '10 minutes past bedtime without check-in remains in Overdue bucket');
+  testAssert(state10mPast.status === 'OVERDUE_NAG_NOW', 'At 10m past bedtime, status is OVERDUE_NAG_NOW');
+  testAssert(state10mPast.isSleepShieldActive === false, 'Sleep Shield remains OFF at 10m without check-in');
+
+  // Case 3: Member passes bedtime without clicking in-bed, and time runs past scheduled wake-up time (07:30 AM)
+  // Transitions directly out of overdue to "Awake" without ever being marked asleep
+  const pastWakeWithoutCheckinUtc = DateTime.fromISO('2026-11-13T07:35:00', { zone: testTz }).toUTC();
+  const statePastWakeUnchecked = computeMemberState(mockTestMember, testTz, pastWakeWithoutCheckinUtc, false);
+  testAssert(statePastWakeUnchecked.bucket === 'AWAKE', 'Past scheduled wake-up time without in-bed check-in transitions directly to AWAKE');
+  testAssert(statePastWakeUnchecked.status === 'AWAKE', 'Status resolves to AWAKE');
+  testAssert(statePastWakeUnchecked.needsWakeUpLog === false, 'needsWakeUpLog is FALSE (user never went to bed)');
+  testAssert(statePastWakeUnchecked.isSleepShieldActive === false, 'Sleep Shield remains OFF');
+
+  // Case 4: Member manually clicks "I'm in Bed" from Overdue / Winding Down -> moves to "Asleep" (SLEEPING)
+  const stateCheckedInFromOverdue = computeMemberState(mockTestMember, testTz, bedtime10mPastUtc, true);
+  testAssert(stateCheckedInFromOverdue.bucket === 'SLEEPING', 'Manually clicking "I\'m in Bed" moves member from Overdue to SLEEPING (Asleep)');
+  testAssert(stateCheckedInFromOverdue.status === 'SLEEPING', 'Status transitions to SLEEPING');
+  testAssert(stateCheckedInFromOverdue.isSleepShieldActive === true, 'Sleep Shield becomes active once in bed');
+
+  // Case 5: Member in bed past scheduled wake-up time stays in SLEEPING until explicitly clicking "Wake Up"
+  const stateInBedPastWake = computeMemberState(
+    { ...mockTestMember, is_in_bed: true, last_wake_cycle_date: null },
+    testTz,
+    pastWakeWithoutCheckinUtc,
+    true
+  );
+  testAssert(stateInBedPastWake.bucket === 'SLEEPING', 'Member in bed past scheduled wake time remains in SLEEPING until clicking Wake Up');
+  testAssert(stateInBedPastWake.needsWakeUpLog === true, 'needsWakeUpLog is TRUE while sleeping past wake time');
+
   // -------------------------------------------------------------
   // 6. UI Components & Touch UX Verification
   // -------------------------------------------------------------

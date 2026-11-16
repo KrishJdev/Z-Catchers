@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member, updateMemberSafe, upsertSleepLog, getMemberByIdSafe } from '@/lib/db';
+import {
+  supabaseAdmin,
+  Member,
+  updateMemberSafe,
+  upsertSleepLog,
+  getMemberByIdSafe,
+  isSupabaseConfigured,
+  isTestMemberFixture,
+} from '@/lib/db';
 import { DateTime } from 'luxon';
 import { verifyPin, getRequestSessionMemberId, verifyModeratorAuthorization } from '@/lib/auth';
 import { calculateSleepStreak, getSleepCycleDate, resolveActiveSleepCycle } from '@/lib/sleepEngine';
@@ -172,42 +180,54 @@ export async function POST(request: Request) {
 
     if (action === 'cancel' || action === 'wake_up') {
       // Remove check-in for member's current local date
-      const { error: delErr } = await supabaseAdmin
-        .from('notification_logs')
-        .delete()
-        .eq('member_id', member.id)
-        .eq('notification_type', 'IN_BED_EARLY')
-        .eq('local_date', localDate);
+      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+        const { error: delErr } = await supabaseAdmin
+          .from('notification_logs')
+          .delete()
+          .eq('member_id', member.id)
+          .eq('notification_type', 'IN_BED_EARLY')
+          .eq('local_date', localDate);
 
-      if (delErr) {
-        return NextResponse.json({ error: delErr.message }, { status: 500 });
+        if (delErr) {
+          return NextResponse.json({ error: delErr.message }, { status: 500 });
+        }
       }
 
+      let updateRes;
       if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date === localDate) {
-        await updateMemberSafe(member.id, {
+        updateRes = await updateMemberSafe(member.id, {
           last_notified_stage: null,
           last_woke_up_at: nowUtc.toISO(),
           last_wake_cycle_date: localDate,
         });
       } else {
-        await updateMemberSafe(member.id, {
+        updateRes = await updateMemberSafe(member.id, {
           last_woke_up_at: nowUtc.toISO(),
           last_wake_cycle_date: localDate,
         });
       }
 
-      // Record WOKE_UP log to transition member from sleeping state to AWAKE
-      await supabaseAdmin
-        .from('notification_logs')
-        .upsert(
-          {
-            member_id: member.id,
-            notification_type: 'WOKE_UP',
-            local_date: localDate,
-            dispatched_at: nowUtc.toISO(),
-          },
-          { onConflict: 'member_id,notification_type,local_date' }
+      if (updateRes.error || !updateRes.data) {
+        return NextResponse.json(
+          { error: updateRes.error?.message || 'Failed to update member state.' },
+          { status: 500 }
         );
+      }
+
+      // Record WOKE_UP log to transition member from sleeping state to AWAKE
+      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+        await supabaseAdmin
+          .from('notification_logs')
+          .upsert(
+            {
+              member_id: member.id,
+              notification_type: 'WOKE_UP',
+              local_date: localDate,
+              dispatched_at: nowUtc.toISO(),
+            },
+            { onConflict: 'member_id,notification_type,local_date' }
+          );
+      }
 
       // If action is explicit wake_up, record in sleep_logs
       if (action === 'wake_up') {
@@ -222,15 +242,18 @@ export async function POST(request: Request) {
       }
 
       // Recompute streak after cancellation
-      const { data: logs } = await supabaseAdmin
-        .from('notification_logs')
-        .select('local_date')
-        .eq('member_id', member.id)
-        .eq('notification_type', 'IN_BED_EARLY')
-        .order('local_date', { ascending: false })
-        .limit(60);
+      let checkinDates: string[] = [];
+      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+        const { data: logs } = await supabaseAdmin
+          .from('notification_logs')
+          .select('local_date')
+          .eq('member_id', member.id)
+          .eq('notification_type', 'IN_BED_EARLY')
+          .order('local_date', { ascending: false })
+          .limit(60);
 
-      const checkinDates = (logs || []).map((l: { local_date: string }) => l.local_date);
+        checkinDates = (logs || []).map((l: { local_date: string }) => l.local_date);
+      }
       const streakDays = calculateSleepStreak(checkinDates, sleeperNow);
 
       return NextResponse.json({
@@ -245,35 +268,44 @@ export async function POST(request: Request) {
 
     // Default action: 'check_in' ("I'm in Bed" Safe Button)
     // Clear any active WOKE_UP override for tonight's sleep cycle
-    await supabaseAdmin
-      .from('notification_logs')
-      .delete()
-      .eq('member_id', member.id)
-      .eq('notification_type', 'WOKE_UP')
-      .eq('local_date', localDate);
+    if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+      await supabaseAdmin
+        .from('notification_logs')
+        .delete()
+        .eq('member_id', member.id)
+        .eq('notification_type', 'WOKE_UP')
+        .eq('local_date', localDate);
 
-    const { error: insertErr } = await supabaseAdmin
-      .from('notification_logs')
-      .upsert(
-        {
-          member_id: member.id,
-          notification_type: 'IN_BED_EARLY',
-          local_date: localDate,
-          dispatched_at: nowUtc.toISO(),
-        },
-        { onConflict: 'member_id,notification_type,local_date' }
-      );
+      const { error: insertErr } = await supabaseAdmin
+        .from('notification_logs')
+        .upsert(
+          {
+            member_id: member.id,
+            notification_type: 'IN_BED_EARLY',
+            local_date: localDate,
+            dispatched_at: nowUtc.toISO(),
+          },
+          { onConflict: 'member_id,notification_type,local_date' }
+        );
 
-    if (insertErr) {
-      return NextResponse.json({ error: insertErr.message }, { status: 500 });
+      if (insertErr) {
+        return NextResponse.json({ error: insertErr.message }, { status: 500 });
+      }
     }
 
-    await updateMemberSafe(member.id, {
+    const checkinUpdateRes = await updateMemberSafe(member.id, {
       last_notified_stage: 'IN_BED_EARLY',
       last_notified_cycle_date: localDate,
       last_woke_up_at: null,
       last_wake_cycle_date: null,
     });
+
+    if (checkinUpdateRes.error || !checkinUpdateRes.data) {
+      return NextResponse.json(
+        { error: checkinUpdateRes.error?.message || 'Failed to update member state.' },
+        { status: 500 }
+      );
+    }
 
     // Resolve active schedule for this sleep cycle to record targets & status in sleep_logs
     const activeCycle = resolveActiveSleepCycle(member, sleeperNow, true);

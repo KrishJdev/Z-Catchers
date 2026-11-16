@@ -228,13 +228,13 @@ assert(fs.existsSync(pagePath), 'page.tsx must exist');
 
 const pageSource = fs.readFileSync(pagePath, 'utf8');
 
-// 1. Actionable Buckets: Nag Now & Winding Down must be defaultExpanded={true}
-const nagNowBlock = pageSource.match(/title="Nag Now"[\s\S]*?defaultExpanded=\{([a-z]+)\}/);
-assert(nagNowBlock, 'Nag Now status bucket must specify defaultExpanded');
+// 1. Actionable Buckets: Overdue / Past Bedtime & Winding Down must be defaultExpanded={true}
+const nagNowBlock = pageSource.match(/title="(?:Overdue \/ Past Bedtime|Nag Now)"[\s\S]*?defaultExpanded=\{([a-z]+)\}/);
+assert(nagNowBlock, 'Overdue / Past Bedtime status bucket must specify defaultExpanded');
 assert.strictEqual(
   nagNowBlock[1],
   'true',
-  'Nag Now bucket must be defaultExpanded={true} so overdue friends appear immediately'
+  'Overdue / Past Bedtime bucket must be defaultExpanded={true} so overdue friends appear immediately'
 );
 
 const windingDownBlock = pageSource.match(/title="Winding Down"[\s\S]*?defaultExpanded=\{([a-z]+)\}/);
@@ -264,8 +264,8 @@ assert.strictEqual(
 
 // 3. Accurate member count passing
 assert(
-  pageSource.includes('count={categorized.nagNow.length}'),
-  'Nag Now bucket must receive accurate categorized.nagNow count'
+  pageSource.includes('count={categorized.overdue.length}') || pageSource.includes('count={categorized.nagNow.length}'),
+  'Overdue / Past Bedtime bucket must receive accurate categorized.overdue count'
 );
 assert(
   pageSource.includes('count={categorized.windingDown.length}'),

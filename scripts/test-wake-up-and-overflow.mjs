@@ -48,26 +48,35 @@ assert.strictEqual(stateAwake.bucket, 'AWAKE', 'Member must transition to AWAKE 
 assert.strictEqual(stateAwake.isSleepShieldActive, false, 'Sleep Shield must be deactivated when waking up');
 console.log('✅ PASSED: Undoing sleep state via is_woke_up moves member directly to AWAKE bucket with Sleep Shield off.');
 
-// State C: Even during the deep 8-hour sleep window (e.g. 03:00 AM, 120 mins after bedtime)
+// State C: Manual-Only State Enforcement: Without in-bed check-in, member remains in Overdue bucket (never auto-moves to SLEEPING)
 const time120mPastBedtimeUtc = DateTime.fromISO('2026-11-12T03:00:00', { zone: 'UTC+05:30' }).toUTC();
 
-// Normal unsaved state would be SLEEPING by default
-const stateDefaultInWindow = computeMemberState(
+const stateUncheckedInWindow = computeMemberState(
   { ...mockMember, is_in_bed: false, is_woke_up: false },
   'GMT+05:30',
   time120mPastBedtimeUtc
 );
-assert.strictEqual(stateDefaultInWindow.bucket, 'SLEEPING', 'Default in 8h window is SLEEPING');
+assert.strictEqual(stateUncheckedInWindow.bucket, 'BEDTIME_NOW', 'Without in-bed check-in, member remains in Overdue bucket (BEDTIME_NOW)');
+assert.strictEqual(stateUncheckedInWindow.isSleepShieldActive, false, 'Sleep Shield is inactive when member is overdue without check-in');
 
-// When is_woke_up is set to true (undid sleep state)
+// When member explicitly checks in via in-bed, bucket transitions to SLEEPING
+const stateCheckedInWindow = computeMemberState(
+  { ...mockMember, is_in_bed: true, is_woke_up: false },
+  'GMT+05:30',
+  time120mPastBedtimeUtc
+);
+assert.strictEqual(stateCheckedInWindow.bucket, 'SLEEPING', 'Explicit in-bed check-in transitions member to SLEEPING bucket');
+assert.strictEqual(stateCheckedInWindow.isSleepShieldActive, true, 'Sleep Shield active for in-bed member');
+
+// When is_woke_up is set to true (undid sleep state or woke up)
 const stateWokeUpInWindow = computeMemberState(
   { ...mockMember, is_in_bed: false, is_woke_up: true },
   'GMT+05:30',
   time120mPastBedtimeUtc
 );
-assert.strictEqual(stateWokeUpInWindow.bucket, 'AWAKE', 'Explicit wake-up overrides 8h sleep window into AWAKE');
+assert.strictEqual(stateWokeUpInWindow.bucket, 'AWAKE', 'Explicit wake-up overrides sleep window into AWAKE');
 assert.strictEqual(stateWokeUpInWindow.isSleepShieldActive, false, 'Sleep Shield off for woke-up member');
-console.log('✅ PASSED: Member waking up within 8h window transitions cleanly to AWAKE bucket.');
+console.log('✅ PASSED: Manual-only state transitions enforced cleanly across sleep window.');
 
 // State D: Logging wake-up via last_wake_cycle_date immediately transitions to AWAKE with needsWakeUpLog = false
 const stateWithWakeCycleDate = computeMemberState(

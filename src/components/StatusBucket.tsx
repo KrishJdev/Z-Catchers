@@ -4,7 +4,14 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { FoxMascot } from '@/components/FoxMascot';
 
-interface StatusBucketProps {
+export const BUCKET_TITLES = {
+  OVERDUE: 'Overdue / Past Bedtime',
+  WINDING_DOWN: 'Winding Down',
+  AWAKE: 'Awake',
+  SLEEPING: 'Sleeping',
+} as const;
+
+export interface StatusBucketProps {
   id?: string;
   title: string;
   count: number;
@@ -51,7 +58,7 @@ const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 /**
- * Collapsible section bucket component grouping members by sleep status (Asleep, Winding Down, Nag Now, etc.).
+ * Collapsible section bucket component grouping members by sleep status (Overdue / Past Bedtime, Winding Down, Awake, Sleeping).
  * Includes count pills, Warm Dark theme accents, smooth chevron transitions, and Sleepy Fox empty state illustrations.
  *
  * @param props - Status bucket configuration properties and children cards
@@ -140,5 +147,32 @@ export function StatusBucket({
         </div>
       )}
     </section>
+  );
+}
+
+export interface OverdueStatusBucketProps extends Omit<StatusBucketProps, 'title' | 'id'> {
+  id?: string;
+  title?: string;
+}
+
+/**
+ * Renders the active "Overdue / Past Bedtime" bucket section.
+ * Placed as an active, expanded-by-default category positioned above passive buckets.
+ */
+export function OverdueStatusBucket({
+  id = 'overdue-past-bedtime',
+  title = BUCKET_TITLES.OVERDUE,
+  accentColor = 'text-status-coral',
+  defaultExpanded = true,
+  ...props
+}: OverdueStatusBucketProps) {
+  return (
+    <StatusBucket
+      id={id}
+      title={title}
+      accentColor={accentColor}
+      defaultExpanded={defaultExpanded}
+      {...props}
+    />
   );
 }

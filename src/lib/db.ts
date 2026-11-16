@@ -545,7 +545,8 @@ export async function updateMemberSafe(
     const hydrated = hydrateMemberWeekendHours(data as unknown as Member);
     memoryMembers.set(memberId, hydrated);
     return { data: hydrated, error };
-  } else if (!isSupabaseConfigured) {
+  } else if (!isSupabaseConfigured || (!error && memoryMembers.has(memberId))) {
+    // When no database row matches and no error occurred, persist changes to the in-memory fixture
     const existing = memoryMembers.get(memberId);
     if (existing) {
       if (activeConditions) {

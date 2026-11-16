@@ -799,7 +799,7 @@ export default function HomePage() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const _forceRecompute = tick;
 
-    const nagNow: { member: Member; state: MemberState }[] = [];
+    const overdue: { member: Member; state: MemberState }[] = [];
     const windingDown: { member: Member; state: MemberState }[] = [];
     const awake: { member: Member; state: MemberState }[] = [];
     const sleeping: { member: Member; state: MemberState }[] = [];
@@ -808,7 +808,9 @@ export default function HomePage() {
       const state = computeMemberState(member, viewerTimezone);
       switch (state.bucket) {
         case 'BEDTIME_NOW':
-          nagNow.push({ member, state });
+        case 'OVERDUE':
+        case 'OVERDUE_BEDTIME':
+          overdue.push({ member, state });
           break;
         case 'WINDING_DOWN':
           windingDown.push({ member, state });
@@ -822,24 +824,24 @@ export default function HomePage() {
       }
     }
 
-    // Sort: nagNow by most overdue, windingDown by closest to bedtime, awake by time until bedtime
-    nagNow.sort((a, b) => b.state.diffMinutes - a.state.diffMinutes);
+    // Sort: overdue by most overdue, windingDown by closest to bedtime, awake by time until bedtime
+    overdue.sort((a, b) => b.state.diffMinutes - a.state.diffMinutes);
     windingDown.sort((a, b) => b.state.diffMinutes - a.state.diffMinutes);
 
-    return { nagNow, windingDown, awake, sleeping };
+    return { overdue, nagNow: overdue, windingDown, awake, sleeping };
   }, [displayedMembers, viewerTimezone, tick]);
 
   // Home Screen App Badging API: Sync overdue friend count to mobile PWA icon
   useEffect(() => {
     if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
-      const overdueCount = categorized.nagNow.length;
+      const overdueCount = categorized.overdue.length;
       if (overdueCount > 0) {
         navigator.setAppBadge(overdueCount).catch(() => {});
       } else if ('clearAppBadge' in navigator) {
         navigator.clearAppBadge().catch(() => {});
       }
     }
-  }, [categorized.nagNow.length]);
+  }, [categorized.overdue.length]);
 
   const handleOpenPushModal = () => {
     setActiveModal('push');
@@ -929,7 +931,7 @@ export default function HomePage() {
             <div className="flex items-center gap-3.5">
               {claimedMember?.is_in_bed ? (
                 <FoxMascot state="sleeping" size={42} />
-              ) : categorized.nagNow.length > 0 ? (
+              ) : categorized.overdue.length > 0 ? (
                 <FoxMascot state="alert" size={42} className="animate-pulse" />
               ) : categorized.windingDown.length > 0 ? (
                 <FoxMascot state="lantern" size={42} />
@@ -1100,10 +1102,10 @@ export default function HomePage() {
                 ) : (
                   <>
                     <h2 className="text-sm font-bold tracking-wide text-cream-primary sm:text-base">
-                      {categorized.nagNow.length > 0
-                        ? `Bedtime Alert: ${categorized.nagNow.length} friend${
-                            categorized.nagNow.length > 1 ? 's' : ''
-                          } hit bedtime!`
+                      {categorized.overdue.length > 0
+                        ? `Overdue Alert: ${categorized.overdue.length} friend${
+                            categorized.overdue.length > 1 ? 's' : ''
+                          } past bedtime!`
                         : categorized.windingDown.length > 0
                         ? `Winding Down: ${categorized.windingDown.length} friend${
                             categorized.windingDown.length > 1 ? 's' : ''
@@ -1111,7 +1113,7 @@ export default function HomePage() {
                         : 'The Fox Den is Peaceful'}
                     </h2>
                     <p className="text-xs text-cream-secondary sm:text-sm">
-                      {categorized.nagNow.length > 0
+                      {categorized.overdue.length > 0
                         ? 'Check their Discord journal threads to nag them off screens and into bed.'
                         : categorized.windingDown.length > 0
                         ? 'Say your goodnights and remind them to turn down blue light.'
@@ -1127,7 +1129,7 @@ export default function HomePage() {
             {/* Quick summary counters */}
             <div className="flex items-center gap-2 self-start rounded-xl bg-night-surface border border-night-border px-3 py-1.5 text-xs font-medium text-cream-secondary sm:self-auto">
               <span className="text-status-coral font-bold tabular-nums">
-                {categorized.nagNow.length} Nag
+                {categorized.overdue.length} Overdue
               </span>
               <span>•</span>
               <span className="text-status-amber font-bold tabular-nums">
@@ -1222,17 +1224,17 @@ export default function HomePage() {
           </div>
         ) : (
           <>
-            {/* 1. Bedtime Hit / Nag Now (Always top priority) */}
+            {/* 1. Overdue / Past Bedtime (Always top priority) */}
             <StatusBucket
-              id="nag-now"
-              title="Nag Now"
-              count={categorized.nagNow.length}
+              id="overdue-past-bedtime"
+              title="Overdue / Past Bedtime"
+              count={categorized.overdue.length}
               accentColor="text-status-coral"
               icon={<ShieldAlert className="h-4 w-4 text-status-coral animate-pulse" />}
               defaultExpanded={true}
               showEmptyState={false}
             >
-              {categorized.nagNow.map(({ member, state }) => (
+              {categorized.overdue.map(({ member, state }) => (
                 <MemberCard
                   key={member.id}
                   member={member}
