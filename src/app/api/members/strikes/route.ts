@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member, getMemberByIdSafe } from '@/lib/db';
-import { resolveMemberStrikeCounts, getNightlyStrikeLog, recordStrikeVote } from '@/lib/strikes';
-import { sendStrikeDiscordWebhook } from '@/lib/discordWebhook';
+import { Member, getMemberByIdSafe } from '@/lib/db';
+import { resolveMemberStrikeCounts, getNightlyStrikeLog } from '@/lib/strikes';
 import { getSleepCycleDate } from '@/lib/sleepEngine';
-import { getRequestSessionMemberId } from '@/lib/auth';
-import { checkVoteRateLimitPersistent, recordVoteAttemptPersistent } from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
 /**
@@ -63,13 +60,9 @@ export async function GET(request: Request) {
 }
 
 /**
- * POST: Community 2-Vote Strike Verification.
- * Allows two distinct community members to verify and confirm a strike against
- * a member only after the 5-minute bedtime grace period has passed without an in-bed check-in.
- * Enforces authenticated voter verification and voter-scoped rate limiting.
- *
- * @param request - Incoming HTTP request with target_member_id in JSON body
- * @returns JSON response containing vote status, strike count, and updated strike log
+ * POST: Peer strike voting has been disabled.
+ * Strikes are now automatically issued by the 10-Minute Bedtime Strike Engine
+ * if a member has not logged "In Bed" within 10 minutes past their scheduled bedtime.
  */
 export async function POST(request: Request) {
   try {
@@ -83,100 +76,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Identify the voter: only an authenticated session can vote on strikes
-    const sessionVoterId = getRequestSessionMemberId(request);
-    if (!sessionVoterId || typeof sessionVoterId !== 'string') {
-      return NextResponse.json(
-        {
-          error: 'Authentication required. Please log in with your profile to vote on strikes.',
-          code: 'UNAUTHORIZED',
-        },
-        { status: 401 }
-      );
-    }
-
-    // Verify session identity belongs to an existing active member
-    const { data: voterMember } = await getMemberByIdSafe(sessionVoterId);
-
-    if (!voterMember || !voterMember.is_active) {
-      return NextResponse.json(
-        {
-          error: 'Voter profile not found or inactive.',
-          code: 'UNAUTHORIZED',
-        },
-        { status: 401 }
-      );
-    }
-
-    // Voter cannot be the strike target
-    if (sessionVoterId === targetMemberId) {
-      return NextResponse.json(
-        { error: 'You cannot vote to strike yourself.' },
-        { status: 400 }
-      );
-    }
-
-    // Enforce voter-scoped rate limiting (isolated from PIN failures and shared IPs)
-    const rateCheck = await checkVoteRateLimitPersistent(sessionVoterId);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: `Too many vote attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before voting again.`,
-        },
-        {
-          status: 429,
-          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-        }
-      );
-    }
-    await recordVoteAttemptPersistent(sessionVoterId);
-
-    // Fetch target member
-    const { data: targetMember, error: targetErr } = await getMemberByIdSafe(targetMemberId);
-
-    if (targetErr || !targetMember || !targetMember.is_active) {
-      return NextResponse.json(
-        { error: 'Target member not found or inactive.' },
-        { status: 404 }
-      );
-    }
-
-    const nowUtc = DateTime.utc();
-    const cycleDate = getSleepCycleDate(targetMember as Member, nowUtc);
-
-    const result = await recordStrikeVote(
-      targetMember as Member,
-      sessionVoterId,
-      cycleDate,
-      nowUtc
+    return NextResponse.json(
+      {
+        error: 'Peer strike voting has been disabled. Bedtime strikes are issued automatically 10 minutes past scheduled bedtime.',
+        code: 'PEER_VOTING_DISABLED',
+      },
+      { status: 403 }
     );
-
-    if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
-    }
-
-    if (result.strikeIssued) {
-      try {
-        await sendStrikeDiscordWebhook(
-          targetMember as Member,
-          result.strikesUsed ?? 1,
-          'Confirmed by 2 community member votes'
-        );
-      } catch (webhookErr) {
-        console.error('Failed to dispatch strike Discord webhook:', webhookErr);
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      target_member_id: targetMember.id,
-      sleep_cycle_date: cycleDate,
-      log: result.log,
-      strike_issued: result.strikeIssued,
-      votes_count: result.votesCount,
-      strikes_used: result.strikesUsed,
-      strikes_count: result.strikesUsed,
-    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown server error';
     return NextResponse.json({ error: message }, { status: 500 });

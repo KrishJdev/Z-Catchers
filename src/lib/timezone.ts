@@ -25,6 +25,9 @@ import {
   WEEKDAY_TO_DAY_KEY,
   getScheduleForDay,
   getNightScheduleDateTime,
+  getNextScheduledBedtime,
+  getNextScheduledBedtimeAfter,
+  getPreviousScheduledBedtime,
   resolveActiveSleepCycle,
 } from './sleepEngine';
 
@@ -55,5 +58,8 @@ export {
   WEEKDAY_TO_DAY_KEY,
   getScheduleForDay,
   getNightScheduleDateTime,
+  getNextScheduledBedtime,
+  getNextScheduledBedtimeAfter,
+  getPreviousScheduledBedtime,
   resolveActiveSleepCycle,
 };

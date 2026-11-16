@@ -167,7 +167,7 @@ export async function POST(request: Request) {
           ? sleep_cycle_date.trim()
           : undefined;
       if (!targetCycleDate) {
-        const eligibleStrike = await getRecentEligibleStrikeLog(member.id, nowUtc);
+        const eligibleStrike = await getRecentEligibleStrikeLog(member.id, nowUtc, member);
         targetCycleDate = eligibleStrike ? eligibleStrike.sleep_cycle_date : cycleDate;
       }
 
@@ -210,10 +210,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      action: 'proactive',
+      action: result.strikesUsed !== undefined ? 'convert_retroactive' : 'proactive',
       member_id: member.id,
       sleep_cycle_date: cycleDate,
       log: result.log,
+      strikes_used: result.strikesUsed,
+      strikes_count: result.strikesUsed,
       metastrikes_used: result.metastrikesUsed,
       metastrikes_count: result.metastrikesUsed,
     });

@@ -1257,6 +1257,80 @@ export function getNightScheduleDateTime(
 }
 
 /**
+ * Calculates the next upcoming scheduled bedtime DateTime for a member strictly in the future.
+ * DST-aware Luxon calculation across standard, weekend, and custom 7-day schedules.
+ */
+export function getNextScheduledBedtime(
+  member: Member,
+  nowUtc = DateTime.utc()
+): DateTime {
+  const normalizedZone = toValidLuxonZone(member.timezone);
+  const sleeperZone = DateTime.now().setZone(normalizedZone).isValid ? normalizedZone : 'UTC';
+  const sleeperNow = nowUtc.setZone(sleeperZone);
+
+  const upcomingCandidates = [-1, 0, 1, 2, 3, 4, 5, 6, 7]
+    .map((offset) => {
+      const nightDt = sleeperNow.plus({ days: offset }).startOf('day');
+      return getNightScheduleDateTime(member, nightDt).bedtimeDateTime;
+    })
+    .filter((dt) => dt > sleeperNow)
+    .sort((a, b) => a.toMillis() - b.toMillis());
+
+  return upcomingCandidates[0] || sleeperNow.plus({ days: 1 });
+}
+
+/**
+ * Calculates the next scheduled bedtime DateTime strictly occurring after a reference bedtime.
+ */
+export function getNextScheduledBedtimeAfter(
+  member: Member,
+  referenceBedtime: DateTime
+): DateTime {
+  const normalizedZone = toValidLuxonZone(member.timezone);
+  const sleeperZone = DateTime.now().setZone(normalizedZone).isValid ? normalizedZone : 'UTC';
+  const refInZone = referenceBedtime.setZone(sleeperZone);
+
+  const upcomingCandidates = [-1, 0, 1, 2, 3, 4, 5, 6, 7]
+    .map((offset) => {
+      const nightDt = refInZone.plus({ days: offset }).startOf('day');
+      return getNightScheduleDateTime(member, nightDt).bedtimeDateTime;
+    })
+    .filter((dt) => dt > refInZone)
+    .sort((a, b) => a.toMillis() - b.toMillis());
+
+  return upcomingCandidates[0] || refInZone.plus({ days: 1 });
+}
+
+/**
+ * Calculates the most recent scheduled bedtime DateTime in the past for a member.
+ */
+export function getPreviousScheduledBedtime(
+  member: Member,
+  nowUtc = DateTime.utc()
+): { bedtimeDateTime: DateTime; cycleEveningDate: string } {
+  const normalizedZone = toValidLuxonZone(member.timezone);
+  const sleeperZone = DateTime.now().setZone(normalizedZone).isValid ? normalizedZone : 'UTC';
+  const sleeperNow = nowUtc.setZone(sleeperZone);
+
+  const pastCandidates = [0, 1, 2, 3, 4, 5, 6, 7]
+    .map((offset) => {
+      const nightDt = sleeperNow.minus({ days: offset }).startOf('day');
+      const sched = getNightScheduleDateTime(member, nightDt);
+      return {
+        bedtimeDateTime: sched.bedtimeDateTime,
+        cycleEveningDate: nightDt.toISODate()!,
+      };
+    })
+    .filter((c) => c.bedtimeDateTime <= sleeperNow)
+    .sort((a, b) => b.bedtimeDateTime.toMillis() - a.bedtimeDateTime.toMillis());
+
+  return pastCandidates[0] || {
+    bedtimeDateTime: sleeperNow.minus({ days: 1 }),
+    cycleEveningDate: sleeperNow.minus({ days: 1 }).toISODate()!,
+  };
+}
+
+/**
  * Resolves the active sleep cycle schedule and cycle night date for a member at a given moment in their timezone.
  *
  * Evaluation Order:
@@ -1484,11 +1558,11 @@ export function computeMemberState(
     statusText = `Grace Period: ${graceMinutesLeft}m left`;
     canVoteStrike = false;
   } else if (diffMinutes > 5 && diffMinutes <= 60) {
-    // Overdue within the immediate nag window: Strike voting unlocked
+    // Overdue within the immediate nag window: Bedtime nag active (peer voting removed in favor of 10m auto-strike)
     bucket = 'BEDTIME_NOW';
     status = 'OVERDUE_NAG_NOW';
     statusText = `Bedtime hit ${Math.floor(diffMinutes)}m ago — Nag them!`;
-    canVoteStrike = true;
+    canVoteStrike = false;
   } else if (diffMinutes > 60 && diffMinutes <= 480) {
     // Active sleep window (60m to 480m) without safe check-in:
     bucket = 'SLEEPING';
@@ -1497,7 +1571,7 @@ export function computeMemberState(
       ? `Catching Z's • Past Wake Time (${activeWakeTimeLocal})`
       : `Catching Z's (Asleep)`;
     isSleepShieldActive = !isPastWakeTime;
-    canVoteStrike = true;
+    canVoteStrike = false;
     needsWakeUpLog = true;
   } else {
     bucket = 'AWAKE';

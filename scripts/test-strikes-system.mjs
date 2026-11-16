@@ -28,11 +28,13 @@ import {
   checkMonthlyStrikeReset,
   getCurrentStrikeMonth,
   getSleepCycleDate,
+  getNextScheduledBedtime,
 } from '../src/lib/sleepEngine.ts';
 import {
   recordStrikeVote,
   convertStrikeToMetastrike,
   useProactiveMetastrike,
+  issueAutomaticBedtimeStrike,
   modAdjustStrikes,
   modClearStrikeLog,
   resolveMemberStrikeCounts,
@@ -108,57 +110,77 @@ async function run() {
   const state6 = computeMemberState(dummyMember, 'GMT+00:00', t6);
   assert(state6.bucket === 'BEDTIME_NOW', 'At 23:06, bucket is BEDTIME_NOW');
   assert(state6.status === 'OVERDUE_NAG_NOW', 'At 23:06, status transitions to OVERDUE_NAG_NOW');
-  assert(state6.canVoteStrike === true, 'At 23:06, strike voting is unlocked');
+  assert(state6.canVoteStrike === false, 'At 23:06, peer strike voting is disabled');
 
-  // Test 1D: Locked voting check via recordStrikeVote during grace period
-  const graceVoteResult = await recordStrikeVote(dummyMember, 'friend-voter-1', '2026-11-10', t3);
-  assert(graceVoteResult.success === false, 'recordStrikeVote rejected during 5-minute grace period');
+  // Test 1D: Peer strike voting disabled check
+  const disabledVoteResult = await recordStrikeVote(dummyMember, 'friend-voter-1', '2026-11-10', t3);
+  assert(disabledVoteResult.success === false, 'recordStrikeVote rejected as peer voting is disabled');
   assert(
-    graceVoteResult.error && graceVoteResult.error.includes('Grace period is active'),
-    'recordStrikeVote returns grace period error message'
+    disabledVoteResult.error && disabledVoteResult.error.includes('disabled'),
+    'recordStrikeVote returns disabled error message'
   );
 
-  console.log('\n--- 2. Community 2-Vote Strike Workflow ---');
-  // Test 2A: Self-voting rejection
-  const selfVote = await recordStrikeVote(dummyMember, dummyMember.id, '2026-11-10', t6);
-  assert(selfVote.success === false, 'Self-voting is rejected');
-  assert(selfVote.error === 'You cannot vote to strike yourself.', 'Self-voting returns error message');
+  console.log('\n--- 2. Automated 10-Minute Bedtime Strike Engine ---');
+  // Test 2A: Member is 9 minutes past bedtime without checking in -> 0 strikes issued
+  const t9 = DateTime.fromISO('2026-11-10T23:09:00.000Z');
+  const state9 = computeMemberState(dummyMember, 'GMT+00:00', t9);
+  assert(state9.diffMinutes === 9, 'At 23:09, diffMinutes is 9 (< 10m cutoff)');
+  assert(state9.diffMinutes < 10, '9 minutes past bedtime is strictly before 10-minute auto-strike cutoff');
 
-  // Test 2B: In-bed check-in guard
-  const checkedInMember = { ...dummyMember, is_in_bed: true };
-  const inBedVote = await recordStrikeVote(checkedInMember, 'voter-alice', '2026-11-10', t6);
-  assert(inBedVote.success === false, 'Strike voting rejected when member is checked into bed');
-  assert(inBedVote.error && inBedVote.error.includes('checked into bed'), 'Returns in-bed protection error');
+  // Test 2B: Member is 10+ minutes past bedtime without checking in -> 1 normal strike automatically issued
+  const t10 = DateTime.fromISO('2026-11-10T23:10:00.000Z');
+  const state10 = computeMemberState(dummyMember, 'GMT+00:00', t10);
+  assert(state10.diffMinutes >= 10, 'At 23:10, diffMinutes is 10 (>= 10m cutoff)');
+  const autoStrike1 = await issueAutomaticBedtimeStrike(dummyMember, '2026-11-10', t10);
+  assert(autoStrike1.success === true, 'Automatic strike issued at +10 minutes past bedtime');
+  assert(autoStrike1.strikeIssued === true, 'strikeIssued is true');
+  assert(autoStrike1.strikesUsed === 1, 'Member strikes_used incremented to 1');
+  assert(autoStrike1.log?.record_type === 'strike', 'Nightly strike log created with record_type strike');
 
-  // Test 2C: 1st Vote from Friend 1
-  const vote1 = await recordStrikeVote(dummyMember, 'voter-alice', '2026-11-10', t6);
-  assert(vote1.success === true, '1st vote succeeded');
-  assert(vote1.strikeIssued === false, '1st vote does NOT issue strike yet');
-  assert(vote1.votesCount === 1, 'Votes count is 1/2');
-  assert(vote1.log?.record_type === 'pending_vote', 'Record type is pending_vote');
+  // Test 2C: Subsequent cron runs in the same cycle issue 0 additional strikes (Idempotency)
+  const t15 = DateTime.fromISO('2026-11-10T23:15:00.000Z');
+  const autoStrikeDupe = await issueAutomaticBedtimeStrike(dummyMember, '2026-11-10', t15);
+  assert(autoStrikeDupe.strikeIssued === false, 'Duplicate automatic strike in same sleep cycle yields 0 new strikes');
+  assert(autoStrikeDupe.reason === 'already_issued', 'Reason indicates strike already issued');
+  assert(autoStrikeDupe.strikesUsed === 1, 'strikes_used remains 1');
 
-  // Test 2D: Duplicate vote rejection from Friend 1
-  const dupeVote = await recordStrikeVote(dummyMember, 'voter-alice', '2026-11-10', t6);
-  assert(dupeVote.success === false, 'Duplicate vote from same user is rejected');
-  assert(
-    dupeVote.error && dupeVote.error.includes('already voted'),
-    'Duplicate vote returns already voted error'
-  );
+  // Test 2D: Member who checked into bed -> 0 strikes issued
+  const checkedInMember = { ...dummyMember, id: 'test-checked-in-sleeper', is_in_bed: true };
+  const inBedStrike = await issueAutomaticBedtimeStrike(checkedInMember, '2026-11-10', t10);
+  assert(inBedStrike.strikeIssued === false, 'Automatic strike strictly prevented when member is in bed');
+  assert(inBedStrike.reason === 'already_checked_in', 'Reason indicates member checked into bed');
 
-  // Test 2E: 2nd Unique Vote from Friend 2 -> Triggers Strike
-  const vote2 = await recordStrikeVote(dummyMember, 'voter-bob', '2026-11-10', t6);
-  assert(vote2.success === true, '2nd vote succeeded');
-  assert(vote2.strikeIssued === true, '2nd vote issues STRIKE');
-  assert(vote2.votesCount === 2, 'Votes count reached 2/2');
-  assert(vote2.log?.record_type === 'strike', 'Record type updated to strike');
-  assert(vote2.strikesUsed === 1, 'Target member strikes_used incremented to 1');
+  // Test 2E: Peer strike voting is strictly disabled
+  const peerVote = await recordStrikeVote(dummyMember, 'voter-alice', '2026-11-10', t10);
+  assert(peerVote.success === false, 'Peer strike voting is rejected');
+  assert(peerVote.error && peerVote.error.includes('disabled'), 'Returns peer voting disabled message');
 
-  // Test 2F: Attempting 3rd vote after strike is already issued
-  const vote3 = await recordStrikeVote(dummyMember, 'voter-charlie', '2026-11-10', t6);
-  assert(vote3.success === false, 'Voting blocked after strike is already issued');
-  assert(vote3.error && vote3.error.includes('already been issued'), 'Returns strike already issued error');
+  // Test 2F: Member already at 3 strikes limit receives 0 new strikes (capped)
+  const maxStrikesMember = {
+    ...dummyMember,
+    id: 'test-max-strikes-sleeper',
+    strikes_used: 3,
+    strikes_count: 3,
+  };
+  const maxStrikeRes = await issueAutomaticBedtimeStrike(maxStrikesMember, '2026-11-10', t10);
+  assert(maxStrikeRes.strikeIssued === false, 'Member with 3 strikes receives 0 new strikes');
+  assert(maxStrikeRes.reason === 'already_at_max_strikes', 'Reason indicates already at max strikes');
+  assert(maxStrikeRes.strikesUsed === 3, 'Strikes used remains capped at 3');
 
-  console.log('\n--- 3. Retroactive Metastrike (24-Hour Swap) ---');
+  // Test 2G: Next scheduled bedtime evaluation across midnight boundaries
+  const midnightMember = {
+    ...dummyMember,
+    id: 'test-midnight-sleeper',
+    bedtime_local: '01:00',
+    wake_time_local: '09:00',
+    timezone: 'UTC',
+  };
+  // At 00:30 UTC, next bedtime is 01:00 UTC today (derived from yesterday evening cycle offset -1)
+  const at0030 = DateTime.fromISO('2026-11-11T00:30:00.000Z');
+  const nextBedtime = getNextScheduledBedtime(midnightMember, at0030);
+  assert(nextBedtime.toFormat('yyyy-MM-dd HH:mm') === '2026-11-11 01:00', 'Next bedtime at 00:30 is 01:00 today, not tomorrow');
+
+  console.log('\n--- 3. Pre-Next-Bedtime Metastrike Replacement Workflow ---');
   // Member currently has 1 strike from tonight
   const sleeperWithStrike = {
     ...dummyMember,
@@ -172,50 +194,15 @@ async function run() {
     sleeperWithStrike,
     'Family Emergency',
     '2026-11-10',
-    t6.plus({ hours: 2 }) // 2 hours after strike (well within 24h)
+    t10.plus({ hours: 2 }) // 2 hours after strike (well before next bedtime)
   );
-  assert(convertRes.success === true, 'Strike successfully converted to Metastrike within 24h');
+  assert(convertRes.success === true, 'Strike successfully replaced with Metastrike before next bedtime');
   assert(convertRes.strikesUsed === 0, 'Strikes decremented back to 0');
   assert(convertRes.metastrikesUsed === 1, 'Metastrikes incremented to 1');
   assert(convertRes.log?.record_type === 'metastrike', 'Log record_type updated to metastrike');
   assert(convertRes.log?.reason === 'Family Emergency', 'Metastrike reason saved properly');
 
-  // Test 3B: Conversion fails if past 24 hours
-  const expiredMember = {
-    id: 'test-sleeper-expired',
-    discord_username: 'ExpiredFox',
-    discord_handle: '@expired',
-    bedtime_local: '23:00',
-    wake_time_local: '07:00',
-    timezone: 'GMT+00:00',
-    role: 'member',
-    is_active: true,
-    strikes_used: 1,
-    metastrikes_used: 0,
-    strike_cycle_month: '2026-11',
-  };
-
-  await saveNightlyStrikeLog({
-    id: 'expired-log-1',
-    target_member_id: expiredMember.id,
-    sleep_cycle_date: '2026-11-08',
-    record_type: 'strike',
-    voter_ids: ['voter-a', 'voter-b'],
-    created_at: DateTime.utc().minus({ hours: 26 }).toISO(),
-    updated_at: DateTime.utc().minus({ hours: 26 }).toISO(),
-  });
-  await updateMemberStrikeCounts(expiredMember.id, 1, 0, '2026-11');
-
-  const expiredConvert = await convertStrikeToMetastrike(
-    expiredMember,
-    'Late excuse',
-    '2026-11-08',
-    DateTime.utc()
-  );
-  assert(expiredConvert.success === false, 'Conversion rejected past 24-hour window');
-  assert(expiredConvert.error && expiredConvert.error.includes('24-hour window'), 'Returns 24h expired error');
-
-  // Test 3C: Conversion across cycle change without explicit sleep_cycle_date (resolves via getRecentEligibleStrikeLog)
+  // Test 3B: Next afternoon before next scheduled bedtime (e.g. 14:00 UTC next day, next bedtime 23:00)
   const rolloverMember = {
     id: 'test-sleeper-rollover',
     discord_username: 'RolloverFox',
@@ -238,13 +225,13 @@ async function run() {
     target_member_id: rolloverMember.id,
     sleep_cycle_date: '2026-11-10',
     record_type: 'strike',
-    voter_ids: ['voter-a', 'voter-b'],
+    voter_ids: [],
     created_at: strikeTime.toISO(),
     updated_at: strikeTime.toISO(),
   });
   await updateMemberStrikeCounts(rolloverMember.id, 1, 0, '2026-11');
 
-  // Next afternoon: 14:00 UTC next day (14h 45m after strike, well within 24h, but cycle date has rolled over to 2026-11-11)
+  // Next afternoon: 14:00 UTC next day (currentLocalTime < nextScheduledBedtime)
   const nextDayTime = DateTime.fromISO('2026-11-11T14:00:00.000Z', { zone: 'utc' });
   const rolloverConvert = await convertStrikeToMetastrike(
     rolloverMember,
@@ -252,13 +239,94 @@ async function run() {
     undefined, // No explicit sleepCycleDate provided
     nextDayTime
   );
-  assert(rolloverConvert.success === true, 'Conversion resolves recent strike across cycle change');
+  assert(rolloverConvert.success === true, 'Conversion resolves recent strike across cycle change before next bedtime');
   assert(rolloverConvert.log?.sleep_cycle_date === '2026-11-10', 'Correctly targeted previous cycle date of strike');
   assert(rolloverConvert.strikesUsed === 0, 'Strikes decremented to 0');
   assert(rolloverConvert.metastrikesUsed === 1, 'Metastrikes incremented to 1');
 
-  const postConversionEligible = await getRecentEligibleStrikeLog(rolloverMember.id, nextDayTime);
+  const postConversionEligible = await getRecentEligibleStrikeLog(rolloverMember.id, nextDayTime, rolloverMember);
   assert(postConversionEligible === null, 'No eligible strikes remain after conversion');
+
+  // Test 3C: Conversion fails if past next scheduled bedtime
+  const expiredMember = {
+    id: 'test-sleeper-expired',
+    discord_username: 'ExpiredFox',
+    discord_handle: '@expired',
+    bedtime_local: '23:00',
+    wake_time_local: '07:00',
+    timezone: 'UTC',
+    role: 'member',
+    is_active: true,
+    strikes_used: 1,
+    strikes_count: 1,
+    metastrikes_used: 0,
+    metastrikes_count: 0,
+    strike_cycle_month: '2026-11',
+  };
+
+  // Strike from 2026-11-08 (bedtime was 2026-11-08 23:00)
+  await saveNightlyStrikeLog({
+    id: 'expired-log-1',
+    target_member_id: expiredMember.id,
+    sleep_cycle_date: '2026-11-08',
+    record_type: 'strike',
+    voter_ids: [],
+    created_at: DateTime.fromISO('2026-11-08T23:15:00.000Z', { zone: 'utc' }).toISO(),
+    updated_at: DateTime.fromISO('2026-11-08T23:15:00.000Z', { zone: 'utc' }).toISO(),
+  });
+  await updateMemberStrikeCounts(expiredMember.id, 1, 0, '2026-11');
+
+  // Evaluating on 2026-11-09 at 23:30 UTC (next scheduled bedtime was 23:00 on Nov 9, which has already arrived)
+  const pastNextBedtime = DateTime.fromISO('2026-11-09T23:30:00.000Z', { zone: 'utc' });
+  const expiredConvert = await convertStrikeToMetastrike(
+    expiredMember,
+    'Late excuse',
+    '2026-11-08',
+    pastNextBedtime
+  );
+  assert(expiredConvert.success === false, 'Conversion rejected past next scheduled bedtime');
+  assert(
+    expiredConvert.error && expiredConvert.error.includes('next scheduled bedtime'),
+    'Returns next scheduled bedtime expired error'
+  );
+
+  // Test 3D: Submitting via useProactiveMetastrike after +10m auto strike automatically converts/replaces the strike
+  const autoSwapMember = {
+    id: 'test-sleeper-autoswap',
+    discord_username: 'AutoSwapFox',
+    discord_handle: '@autoswap',
+    bedtime_local: '23:00',
+    wake_time_local: '07:00',
+    timezone: 'UTC',
+    role: 'member',
+    is_active: true,
+    strikes_used: 1,
+    strikes_count: 1,
+    metastrikes_used: 0,
+    metastrikes_count: 0,
+    strike_cycle_month: '2026-11',
+  };
+  await saveNightlyStrikeLog({
+    id: 'autoswap-strike-log',
+    target_member_id: autoSwapMember.id,
+    sleep_cycle_date: '2026-11-10',
+    record_type: 'strike',
+    voter_ids: [],
+    created_at: t10.toISO(),
+    updated_at: t10.toISO(),
+  });
+  await updateMemberStrikeCounts(autoSwapMember.id, 1, 0, '2026-11');
+
+  const autoSwapRes = await useProactiveMetastrike(
+    autoSwapMember,
+    'Modal excuse after bedtime strike',
+    '2026-11-10',
+    t10.plus({ hours: 1 })
+  );
+  assert(autoSwapRes.success === true, 'useProactiveMetastrike automatically replaces existing strike');
+  assert(autoSwapRes.strikesUsed === 0, 'Strikes decremented to 0');
+  assert(autoSwapRes.metastrikesUsed === 1, 'Metastrikes incremented to 1');
+  assert(autoSwapRes.log?.record_type === 'metastrike', 'Record type updated to metastrike');
 
   console.log('\n--- 4. Proactive Metastrike (Excuse Pass) Workflow ---');
   const freshMember = {
@@ -295,18 +363,14 @@ async function run() {
   assert(proactiveRes.metastrikesUsed === 2, 'Metastrikes used incremented to 2');
   assert(proactiveRes.log?.record_type === 'metastrike', 'Nightly log created with record_type metastrike');
 
-  // Verify that strike votes are strictly blocked when proactive metastrike is active
-  const blockedVote = await recordStrikeVote(
+  // Verify that automatic bedtime strikes are strictly blocked when proactive metastrike is active
+  const autoStrikeBlocked = await issueAutomaticBedtimeStrike(
     freshMember,
-    'voter-dan',
     '2026-11-11',
     DateTime.fromISO('2026-11-11T23:45:00.000Z')
   );
-  assert(blockedVote.success === false, 'Strike vote blocked because member is protected by Metastrike');
-  assert(
-    blockedVote.error && blockedVote.error.includes('protected by an excused Metastrike'),
-    'Returns protected by Metastrike error'
-  );
+  assert(autoStrikeBlocked.strikeIssued === false, '0 normal strikes issued when proactive metastrike is active');
+  assert(autoStrikeBlocked.reason === 'metastrike_active', 'Reason indicates member is protected by active Metastrike');
 
   console.log('\n--- 5. Monthly Lazy Reset & Max Limits ---');
   // Test 5A: Rollover from 2026-11 to 2026-12

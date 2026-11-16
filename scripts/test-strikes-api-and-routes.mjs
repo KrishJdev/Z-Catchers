@@ -15,10 +15,11 @@ if (!process.env.MOD_SECRET_PASSCODE) {
 // Dynamically import database and route handlers after environment isolation is sealed
 const { syncInMemoryMemberCache } = await import('../src/lib/db.ts');
 const { createSessionToken } = await import('../src/lib/auth.ts');
-const { computeMemberState } = await import('../src/lib/sleepEngine.ts');
+const { computeMemberState, getSleepCycleDate } = await import('../src/lib/sleepEngine.ts');
 const { GET: getStrikes, POST: postStrikeVote } = await import('../src/app/api/members/strikes/route.ts');
 const { POST: postMetastrike } = await import('../src/app/api/members/strikes/metastrike/route.ts');
 const { POST: postModAction } = await import('../src/app/api/mod/route.ts');
+const { issueAutomaticBedtimeStrike } = await import('../src/lib/strikes.ts');
 
 console.log('🧪 Starting Community Strikes & Metastrikes API Routes Verification...\n');
 
@@ -183,90 +184,35 @@ async function run() {
     testAssert(dataValid.is_strike_issued === false, 'Initial state has no strike issued');
   }
 
-  // 3. POST /api/members/strikes Authentication & Guardrails
-  console.log('\n--- 3. POST /api/members/strikes Auth & Guardrails ---');
+  // 3. POST /api/members/strikes Rejection (Peer Strike Voting Disabled)
+  console.log('\n--- 3. POST /api/members/strikes Disabled Peer Voting ---');
   {
-    // Missing target_member_id
-    const resNoTarget = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
+    // Any peer strike vote is strictly rejected with 403 Forbidden
+    const resVote = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aliceToken}` },
-      body: JSON.stringify({}),
-    }));
-    testAssert(resNoTarget.status === 400, 'POST rejects missing target_member_id with 400');
-
-    // Missing Authorization header
-    const resNoAuth = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target_member_id: targetCharlie.id }),
     }));
-    testAssert(resNoAuth.status === 401, 'POST rejects unauthenticated request with 401');
-
-    // Non-existent voter token
-    const fakeToken = createSessionToken('non-existent-voter-uuid');
-    const resFakeVoter = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${fakeToken}` },
-      body: JSON.stringify({ target_member_id: targetCharlie.id }),
-    }));
-    testAssert(resFakeVoter.status === 401, 'POST rejects non-existent voter profile with 401');
-
-    // Self-voting prevention
-    const resSelfVote = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${charlieToken}` },
-      body: JSON.stringify({ target_member_id: targetCharlie.id }),
-    }));
-    testAssert(resSelfVote.status === 400, 'POST rejects self-voting with 400');
-    const selfVoteBody = await resSelfVote.json();
-    testAssert(selfVoteBody.error.includes('strike yourself'), 'Self-voting error message mentions self-strike restriction');
-
-    // Checked-in control case: voting against a member who safely checked into bed must be rejected
-    const resCheckedInVote = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aliceToken}` },
-      body: JSON.stringify({ target_member_id: targetDaveCheckedIn.id }),
-    }));
-    testAssert(resCheckedInVote.status === 400, 'POST rejects strike voting against safely checked-in member with 400');
-    const checkedInBody = await resCheckedInVote.json();
-    testAssert(checkedInBody.error.includes('checked into bed'), 'Checked-in rejection explains member is checked in');
+    testAssert(resVote.status === 403, 'POST /api/members/strikes rejects peer strike voting with 403 Forbidden');
+    const voteBody = await resVote.json();
+    testAssert(voteBody.code === 'PEER_VOTING_DISABLED', 'Rejection code is PEER_VOTING_DISABLED');
+    testAssert(voteBody.error.includes('Peer strike voting has been disabled'), 'Error explains peer strike voting is disabled');
   }
 
-  // 4. Community 2-Vote Strike Workflow (30m Overdue Member)
-  console.log('\n--- 4. Community 2-Vote Strike Workflow Execution ---');
+  // 4. Automated Bedtime Strike Execution (30m Overdue Member)
+  console.log('\n--- 4. Automated Bedtime Strike Execution ---');
   {
-    // 1st Vote: Alice votes against overdue Charlie
-    const resVote1 = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aliceToken}` },
-      body: JSON.stringify({ target_member_id: targetCharlie.id }),
-    }));
-    testAssert(resVote1.status === 200, '1st strike vote returns 200 OK');
-    const vote1Body = await resVote1.json();
-    testAssert(vote1Body.strike_issued === false, '1st vote does not issue strike immediately');
-    testAssert(vote1Body.votes_count === 1, 'Votes count is 1/2');
+    const cycleDate = getSleepCycleDate(targetCharlie, nowUtc);
+    const autoStrikeRes = await issueAutomaticBedtimeStrike(targetCharlie, cycleDate, nowUtc);
+    testAssert(autoStrikeRes.success === true, 'issueAutomaticBedtimeStrike succeeded for 30m overdue Charlie');
+    testAssert(autoStrikeRes.strikeIssued === true, 'Automated strike officially issued for tonight');
+    testAssert((autoStrikeRes.strikesUsed || 0) >= 1, 'Target member strikes_used incremented');
+    testAssert(autoStrikeRes.log?.record_type === 'strike', 'Log record_type is strike');
 
-    // Duplicate vote by Alice
-    const resDupVote = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aliceToken}` },
-      body: JSON.stringify({ target_member_id: targetCharlie.id }),
-    }));
-    testAssert(resDupVote.status === 400, 'Duplicate vote from same voter rejected with 400');
-    const dupBody = await resDupVote.json();
-    testAssert(dupBody.error.includes('already voted'), 'Duplicate vote error indicates already voted');
-
-    // 2nd Vote: Bob votes against Charlie -> triggers strike
-    const resVote2 = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bobToken}` },
-      body: JSON.stringify({ target_member_id: targetCharlie.id }),
-    }));
-    testAssert(resVote2.status === 200, '2nd strike vote returns 200 OK');
-    const vote2Body = await resVote2.json();
-    testAssert(vote2Body.strike_issued === true, '2nd vote officially issues a STRIKE');
-    testAssert(vote2Body.votes_count === 2, 'Votes count reached 2/2');
-    testAssert(vote2Body.strikes_used >= 1, 'Target member strikes_used incremented');
+    // Duplicate check in same cycle -> 0 additional strikes
+    const autoStrikeDupe = await issueAutomaticBedtimeStrike(targetCharlie, cycleDate, nowUtc.plus({ minutes: 5 }));
+    testAssert(autoStrikeDupe.strikeIssued === false, 'Duplicate automatic strike yields 0 new strikes');
+    testAssert(autoStrikeDupe.reason === 'already_issued', 'Reason indicates already_issued');
 
     // Verified by GET endpoint
     const resGetAfterStrike = await getStrikes(new Request(`http://localhost:3000/api/members/strikes?memberId=${targetCharlie.id}`));
@@ -280,25 +226,18 @@ async function run() {
   {
     const stateEve = computeMemberState(targetEve90mOverdue, targetEve90mOverdue.timezone, nowUtc, false);
     testAssert(stateEve.status === 'OVERDUE_NAG_NOW', '90m overdue member without check-in has status: OVERDUE_NAG_NOW');
-    testAssert(stateEve.canVoteStrike === true, '90m overdue member has canVoteStrike: true');
+    testAssert(stateEve.canVoteStrike === false, '90m overdue member has canVoteStrike: false (peer voting disabled)');
 
-    const resVoteEve1 = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
+    const resVoteEve = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aliceToken}` },
       body: JSON.stringify({ target_member_id: targetEve90mOverdue.id }),
     }));
-    testAssert(resVoteEve1.status === 200, '1st vote against 90m overdue member returns 200 OK');
-    const eve1Body = await resVoteEve1.json();
-    testAssert(eve1Body.strike_issued === false, '1st vote against 90m overdue member recorded (1/2)');
+    testAssert(resVoteEve.status === 403, 'Peer vote against 90m overdue member is rejected with 403 Forbidden');
 
-    const resVoteEve2 = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bobToken}` },
-      body: JSON.stringify({ target_member_id: targetEve90mOverdue.id }),
-    }));
-    testAssert(resVoteEve2.status === 200, '2nd vote against 90m overdue member returns 200 OK');
-    const eve2Body = await resVoteEve2.json();
-    testAssert(eve2Body.strike_issued === true, '2nd vote against 90m overdue member officially issues a STRIKE');
+    const cycleDateEve = getSleepCycleDate(targetEve90mOverdue, nowUtc);
+    const autoStrikeEve = await issueAutomaticBedtimeStrike(targetEve90mOverdue, cycleDateEve, nowUtc);
+    testAssert(autoStrikeEve.strikeIssued === true, 'Automated strike issued for 90m overdue member');
   }
 
   // 5. Metastrike Retroactive Conversion & Proactive Protection
@@ -324,13 +263,13 @@ async function run() {
     testAssert(dataAfterConvert.is_metastrike_active === true, 'GET confirms is_metastrike_active: true');
     testAssert(dataAfterConvert.is_strike_issued === false, 'GET confirms strike was cleared/converted');
 
-    // Voting again while protected by Metastrike should be blocked
+    // Peer voting remains disabled
     const resVoteProtected = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aliceToken}` },
       body: JSON.stringify({ target_member_id: targetCharlie.id }),
     }));
-    testAssert(resVoteProtected.status === 400, 'Strike voting blocked against member protected by Metastrike');
+    testAssert(resVoteProtected.status === 403, 'Peer strike voting remains disabled (403)');
   }
 
   // 6. Moderator Clear Strike Log & Override

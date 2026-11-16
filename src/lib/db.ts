@@ -186,6 +186,10 @@ export async function fetchAllNotificationLogs<T = any>(
   builderFn: (query: any) => any,
   pageSize = 1000
 ): Promise<{ data: T[]; error: any }> {
+  if (!isSupabaseConfigured) {
+    return { data: [], error: null };
+  }
+
   let page = 0;
   const allRows: T[] = [];
 
@@ -670,6 +674,10 @@ export function isTestMemberFixture(memberId: string): boolean {
 
 export function getInMemoryMember(memberId: string): Member | undefined {
   return memoryMembers.get(memberId);
+}
+
+export function getAllInMemoryMembers(): Member[] {
+  return Array.from(memoryMembers.values());
 }
 
 /**
