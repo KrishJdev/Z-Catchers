@@ -310,12 +310,6 @@ export function MemberCard({
   const isStrikeConvertible = Boolean(
     isStrikeIssuedTonight || member.convertible_strike_log
   );
-  const strikeVotesCount =
-    member.tonight_strike_log?.record_type === 'pending_vote'
-      ? member.tonight_strike_log.voter_ids?.length || 0
-      : isStrikeIssuedTonight
-      ? 2
-      : 0;
 
   const isNagNow = bucket === 'BEDTIME_NOW' || state.status === 'BEDTIME_GRACE' || state.status === 'OVERDUE_NAG_NOW';
 
@@ -328,8 +322,7 @@ export function MemberCard({
   const hasSecondaryNagAction = Boolean(
     isMetastrikeActive ||
     isStrikeIssuedTonight ||
-    state.status === 'BEDTIME_GRACE' ||
-    (onVoteStrike && !isViewer)
+    state.status === 'BEDTIME_GRACE'
   );
 
   // Sleep Shield protection state:
@@ -341,9 +334,8 @@ export function MemberCard({
     isMetastrikeActive
   );
 
-  // Check if there is an active left action button in the sleeping state (Strike vote, Wake up nag, or Shield On)
+  // Check if there is an active left action button in the sleeping state (Wake up nag, or Shield On)
   const hasSleepingActionButton = Boolean(
-    (!isInBed && !isMetastrikeActive && !isViewer && onVoteStrike) ||
     state.isPastWakeTime ||
     (isTargetShieldOn && !isViewer)
   );
@@ -1263,7 +1255,7 @@ export function MemberCard({
                       </button>
                     )}
 
-                    {/* Contextual Secondary Status / Action Pill: Grace / Vote Strike / Strike Issued / Metastrike */}
+                    {/* Contextual Secondary Status Pill: Grace / Strike Issued / Metastrike */}
                     {isMetastrikeActive ? (
                       <div
                         className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-2.5 text-xs font-semibold text-status-amber shadow-sm`}
@@ -1279,7 +1271,7 @@ export function MemberCard({
                     ) : isStrikeIssuedTonight ? (
                       <div
                         className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/15 px-2.5 text-xs font-semibold text-status-coral shadow-sm`}
-                        title="2/2 community verification votes reached. Strike issued for tonight."
+                        title="Automatic bedtime strike recorded for tonight."
                       >
                         <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
                         <span className="truncate">Strike Issued</span>
@@ -1287,37 +1279,11 @@ export function MemberCard({
                     ) : state.status === 'BEDTIME_GRACE' ? (
                       <div
                         className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-2.5 text-xs text-cream-secondary shadow-sm`}
-                        title="5-minute grace period active. Strike voting is locked."
+                        title="5-minute grace period active."
                       >
                         <Clock className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">Grace: {state.graceMinutesLeft || 5}m left</span>
                       </div>
-                    ) : onVoteStrike && !isViewer ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic(15);
-                          onVoteStrike(member.id);
-                        }}
-                        disabled={isVotingStrike || member.has_voted_strike}
-                        className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-all shadow-sm ${
-                          member.has_voted_strike
-                            ? 'border border-status-coral/30 bg-night-elevated text-status-coral/60 cursor-not-allowed'
-                            : 'border border-status-coral/50 bg-status-coral/15 text-status-coral hover:bg-status-coral/25 active:scale-95'
-                        }`}
-                        title={
-                          member.has_voted_strike
-                            ? 'You have already voted to strike this member tonight'
-                            : 'Vote to verify bedtime missed (2 community votes needed)'
-                        }
-                      >
-                        <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                  <span className="truncate">
-                    {member.has_voted_strike
-                      ? `Voted (${strikeVotesCount}/2)`
-                      : `Vote Strike (${strikeVotesCount}/2)`}
-                  </span>
-                      </button>
                     ) : null}
                   </div>
                 )}
@@ -1487,37 +1453,8 @@ export function MemberCard({
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-2 w-full">
-                        {/* 1. Strike voting if member missed bedtime and not in bed / not metastrike */}
-                        {!isInBed && !isMetastrikeActive && !isViewer && onVoteStrike ? (
-                          isStrikeIssuedTonight ? (
-                            <span className="flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-semibold rounded-xl text-status-coral whitespace-nowrap">
-                              <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                              <span className="truncate">Strike Issued</span>
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                triggerHaptic(15);
-                                onVoteStrike(member.id);
-                              }}
-                              disabled={isVotingStrike || member.has_voted_strike}
-                              className={`flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-semibold rounded-xl whitespace-nowrap transition-colors ${
-                                member.has_voted_strike
-                                  ? 'border border-status-coral/30 bg-night-elevated text-status-coral/60 cursor-not-allowed'
-                                  : 'border border-status-coral/40 bg-status-coral/15 text-status-coral hover:bg-status-coral/25 active:scale-95'
-                              }`}
-                            >
-                              <Zap className="h-3.5 w-3.5 fill-status-coral shrink-0" />
-                              <span className="truncate">
-                                {member.has_voted_strike
-                                  ? `Voted (${strikeVotesCount}/2)`
-                                  : `Vote Strike (${strikeVotesCount}/2)`}
-                              </span>
-                            </button>
-                          )
-                        ) : state.isPastWakeTime ? (
-                          /* 2. Wake-up reminder if past wake time */
+                        {state.isPastWakeTime ? (
+                          /* 1. Wake-up reminder if past wake time */
                           <button
                             type="button"
                             onClick={handleSendWakeUpNagNotif}

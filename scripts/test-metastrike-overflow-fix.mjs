@@ -64,7 +64,7 @@ assert(
 console.log('✅ PASSED: Metastrike badge enforces min-w-0 and truncate so long reasons never overflow card borders.');
 
 // 6. Secondary action pills all enforce min-w-0 and truncate
-console.log('\n--- 5. Remaining Secondary Action Pills (Strike Issued, Grace, Vote Strike) ---');
+console.log('\n--- 5. Remaining Secondary Action Pills (Strike Issued, Grace, Peer Voting Removed) ---');
 assert(
   memberCardContent.includes('isStrikeIssuedTonight ? (') &&
   memberCardContent.includes('<span className="truncate">Strike Issued</span>'),
@@ -76,11 +76,10 @@ assert(
   'Grace countdown badge enforces truncate'
 );
 assert(
-  memberCardContent.includes('onVoteStrike && !isViewer ? (') &&
-  memberCardContent.includes('<span className="truncate">\n                    {member.has_voted_strike'),
-  'Vote strike button enforces truncate'
+  !memberCardContent.includes('onVoteStrike && !isViewer'),
+  'Peer strike voting button has been cleanly removed from MemberCard'
 );
-console.log('✅ PASSED: Strike Issued, Grace countdown, and Vote Strike pills all enforce min-w-0 and text truncation.');
+console.log('✅ PASSED: Strike Issued and Grace countdown pills enforce min-w-0 and text truncation; peer strike voting button is cleanly removed.');
 
 // 7. Non-nag Metastrike notice in card body also protected
 console.log('\n--- 6. Non-Nag Metastrike Notice in Card Body ---');

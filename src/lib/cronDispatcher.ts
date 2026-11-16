@@ -11,7 +11,8 @@ import {
 import { checkCooldownPromotion, computeMemberState, getSleepCycleDate } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
 import { sendPushNotification } from '@/lib/pushServer';
-import { sendBedtimeDiscordWebhook } from '@/lib/discordWebhook';
+import { sendBedtimeDiscordWebhook, sendStrikeDiscordWebhook } from '@/lib/discordWebhook';
+import { issueAutomaticBedtimeStrike, getNightlyStrikeLog } from '@/lib/strikes';
 
 // Preserve in-memory fallback cron locks on globalThis across module reloads and chunks
 const globalForCronLocks = globalThis as unknown as {
@@ -302,6 +303,7 @@ export interface DispatchResults {
   windDownDispatched: number;
   bedtimeHitDispatched: number;
   communityNagsDispatched: number;
+  autoStrikesDispatched: number;
   discordWebhooksCount: number;
   sleepShieldSuppressionsCount: number;
   prunedSubscriptionsCount: number;
@@ -309,6 +311,7 @@ export interface DispatchResults {
     windDownRecipients: string[];
     bedtimeRecipients: string[];
     communityNagRecipients: string[];
+    autoStrikeRecipients: string[];
     discordWebhooksDispatched: string[];
     suppressedDueToSleepShield: string[];
     errors: string[];
@@ -336,6 +339,7 @@ export async function executeNotificationDispatcher(options: {
     windDownDispatched: 0,
     bedtimeHitDispatched: 0,
     communityNagsDispatched: 0,
+    autoStrikesDispatched: 0,
     discordWebhooksCount: 0,
     sleepShieldSuppressionsCount: 0,
     prunedSubscriptionsCount: 0,
@@ -343,6 +347,7 @@ export async function executeNotificationDispatcher(options: {
       windDownRecipients: [],
       bedtimeRecipients: [],
       communityNagRecipients: [],
+      autoStrikeRecipients: [],
       discordWebhooksDispatched: [],
       suppressedDueToSleepShield: [],
       errors: [],
@@ -460,7 +465,7 @@ export async function executeNotificationDispatcher(options: {
     local_date: string;
   }>((q) =>
     q.select('member_id, notification_type, local_date')
-      .in('notification_type', ['WIND_DOWN_30M', 'BEDTIME_HIT', 'IN_BED_EARLY'])
+      .in('notification_type', ['WIND_DOWN_30M', 'BEDTIME_HIT', 'IN_BED_EARLY', 'AUTO_BEDTIME_STRIKE'])
       .gte('local_date', twoDaysAgo)
   );
 
@@ -479,7 +484,7 @@ export async function executeNotificationDispatcher(options: {
   // Helper to check idempotency / status log (O(1) in-memory lookup)
   const hasBeenDispatched = (
     memberId: string,
-    notificationType: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY',
+    notificationType: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY' | 'AUTO_BEDTIME_STRIKE',
     localDate: string
   ): boolean => {
     return dispatchedSet.has(`${memberId}:${notificationType}:${localDate}`);
@@ -488,7 +493,7 @@ export async function executeNotificationDispatcher(options: {
   // Helper to log dispatch and update in-memory cache
   const recordDispatch = async (
     memberId: string,
-    notificationType: 'WIND_DOWN_30M' | 'BEDTIME_HIT',
+    notificationType: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'AUTO_BEDTIME_STRIKE',
     localDate: string
   ) => {
     dispatchedSet.add(`${memberId}:${notificationType}:${localDate}`);
@@ -506,10 +511,12 @@ export async function executeNotificationDispatcher(options: {
     );
 
     // 2. Persistent tracking columns on members table for atomic idempotency
-    await updateMemberSafe(memberId, {
-      last_notified_stage: notificationType,
-      last_notified_cycle_date: localDate,
-    });
+    if (notificationType !== 'AUTO_BEDTIME_STRIKE') {
+      await updateMemberSafe(memberId, {
+        last_notified_stage: notificationType,
+        last_notified_cycle_date: localDate,
+      });
+    }
   };
 
   // 4. Evaluate each member
@@ -742,6 +749,90 @@ export async function executeNotificationDispatcher(options: {
         await recordDispatch(member.id, 'BEDTIME_HIT', localDate);
         if (!options.dryRun) {
           await markCronLockCompleted(bedtimeLockKey, { member_id: member.id, stage: 'BEDTIME_HIT', local_date: localDate });
+        }
+      }
+    }
+
+    // Check 3: Automated 10-Minute Bedtime Strike Engine
+    // Evaluates currentLocalTime >= scheduledBedtime + 10 minutes (diff >= 10).
+    // Automatically issues 1 normal strike if the member has neither checked in via in-bed
+    // nor applied an excused Metastrike for this sleep cycle.
+    const strikeLockKey = `notif:${member.id}:${localDate}:AUTO_BEDTIME_STRIKE`;
+    const isStrikeDue = diff >= 10;
+    const isStrikeAlreadyLogged =
+      hasBeenDispatched(member.id, 'AUTO_BEDTIME_STRIKE', localDate) ||
+      inMemoryCronLocks.get(strikeLockKey)?.metadata?.completed === true;
+
+    if (isStrikeDue && !isStrikeAlreadyLogged) {
+      if (alreadyInBed) {
+        // Sleeper is safely in bed! No strike issued.
+      } else {
+        const existingStrikeLog = await getNightlyStrikeLog(member.id, localDate);
+        if (existingStrikeLog?.record_type === 'metastrike') {
+          // Protected by an excused Metastrike for this sleep cycle! Skip.
+        } else if (existingStrikeLog?.record_type === 'strike') {
+          // Strike already recorded for this cycle! Idempotently mark complete.
+          await recordDispatch(member.id, 'AUTO_BEDTIME_STRIKE', localDate);
+          if (!options.dryRun) {
+            await markCronLockCompleted(strikeLockKey, { member_id: member.id, stage: 'AUTO_BEDTIME_STRIKE', local_date: localDate });
+          }
+        } else {
+          // Acquire lock to prevent race conditions across parallel runners
+          if (!options.dryRun) {
+            const lockAcquired = await acquireCronLock(
+              strikeLockKey,
+              NOTIFICATION_LEASE_SECONDS,
+              { member_id: member.id, stage: 'AUTO_BEDTIME_STRIKE', local_date: localDate, state: 'processing', delivered_sub_ids: [] }
+            );
+            if (!lockAcquired) {
+              continue;
+            }
+          }
+
+          // Issue 1 automatic normal strike
+          const strikeResult = await issueAutomaticBedtimeStrike(member, localDate, nowUtc);
+
+          if (strikeResult.strikeIssued) {
+            results.autoStrikesDispatched++;
+            results.details.autoStrikeRecipients.push(member.discord_username);
+
+            // 1. Deliver Push Notification to the sleeper
+            const memberSubs = subscriptionsByMember.get(member.id) || [];
+            const personalSubs = memberSubs.filter((s) => s.notify_personal);
+
+            for (const sub of personalSubs) {
+              await deliverPush(sub, {
+                title: '⚠️ Z Catchers: Bedtime Strike Recorded',
+                body: `You missed your scheduled bedtime check-in by 10 minutes. A normal strike has been recorded. You can replace it with a Metastrike anytime before your next bedtime.`,
+                url: member.journal_url,
+              });
+            }
+
+            // 2. Dispatch Discord Webhook Alert
+            if (!options.dryRun) {
+              const webhookRes = await sendStrikeDiscordWebhook(
+                member,
+                strikeResult.strikesUsed ?? 1,
+                'Automated 10-minute bedtime strike (missed bedtime check-in)'
+              );
+              if (webhookRes.success) {
+                results.discordWebhooksCount++;
+                results.details.discordWebhooksDispatched.push(
+                  `${member.discord_username} (Strike Alert)`
+                );
+              }
+            }
+
+            await recordDispatch(member.id, 'AUTO_BEDTIME_STRIKE', localDate);
+            if (!options.dryRun) {
+              await markCronLockCompleted(strikeLockKey, { member_id: member.id, stage: 'AUTO_BEDTIME_STRIKE', local_date: localDate });
+            }
+          } else {
+            await recordDispatch(member.id, 'AUTO_BEDTIME_STRIKE', localDate);
+            if (!options.dryRun) {
+              await markCronLockCompleted(strikeLockKey, { member_id: member.id, stage: 'AUTO_BEDTIME_STRIKE', local_date: localDate });
+            }
+          }
         }
       }
     }

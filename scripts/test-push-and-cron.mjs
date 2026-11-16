@@ -8,6 +8,10 @@ import {
   releaseCronLock,
   clearAllCronLocks,
 } from '../src/lib/cronDispatcher.ts';
+import {
+  issueAutomaticBedtimeStrike,
+  saveNightlyStrikeLog,
+} from '../src/lib/strikes.ts';
 
 console.log('🧪 Starting Web Push Notification Engine & Cron Dispatcher Verification...\n');
 
@@ -264,7 +268,103 @@ await releaseCronLock(testLockKey);
 const lockAfterRelease = await getCronLock(testLockKey);
 assert(lockAfterRelease === null, 'Lock successfully cleared on releaseCronLock');
 
-// 6. Test Summary
+// 6. Automated 10-Minute Bedtime Strike Engine & Cron Integration
+console.log('\n--- 6. Automated 10-Minute Bedtime Strike Engine in Cron Dispatcher ---');
+clearAllCronLocks();
+
+const cronTestSleeper = {
+  id: 'cron-sleeper-strike-test',
+  discord_username: 'CronStrikeFox',
+  discord_handle: 'cronstrikefox',
+  bedtime_local: '23:00',
+  wake_time_local: '07:00',
+  timezone: 'UTC',
+  role: 'member',
+  is_active: true,
+  is_in_bed: false,
+  strikes_used: 0,
+  strikes_count: 0,
+  metastrikes_used: 0,
+  metastrikes_count: 0,
+  strike_cycle_month: '2026-11',
+  created_at: fixedNowUtc.toISO(),
+  updated_at: fixedNowUtc.toISO(),
+};
+
+const strikeCycleDate = getSleepCycleDate(cronTestSleeper, fixedNowUtc);
+const autoStrikeLockKey = `notif:${cronTestSleeper.id}:${strikeCycleDate}:AUTO_BEDTIME_STRIKE`;
+
+// Case 6A: Member is 9 minutes past bedtime without checking in -> diff = 9m (< 10m threshold)
+const time9m = fixedNowUtc.plus({ minutes: 9 });
+const state9m = computeMemberState(cronTestSleeper, 'UTC', time9m);
+const isDue9m = state9m.diffMinutes >= 10;
+assert(state9m.diffMinutes === 9, 'Member is exactly 9 minutes past bedtime');
+assert(isDue9m === false, 'At 9m past bedtime, automatic strike is NOT triggered (diff < 10m cutoff)');
+
+// Case 6B: Member is 10+ minutes past bedtime without checking in -> 1 normal strike automatically issued
+const time10m = fixedNowUtc.plus({ minutes: 10 });
+const state10m = computeMemberState(cronTestSleeper, 'UTC', time10m);
+const isDue10m = state10m.diffMinutes >= 10;
+assert(isDue10m === true, 'At 10m past bedtime, automatic strike trigger condition is satisfied (diff >= 10m)');
+
+const lockAcquired = await acquireCronLock(autoStrikeLockKey, 300, {
+  member_id: cronTestSleeper.id,
+  stage: 'AUTO_BEDTIME_STRIKE',
+  local_date: strikeCycleDate,
+  state: 'processing',
+});
+assert(lockAcquired === true, 'Cron lock acquired for AUTO_BEDTIME_STRIKE');
+
+const strikeResult = await issueAutomaticBedtimeStrike(cronTestSleeper, strikeCycleDate, time10m);
+assert(strikeResult.success === true, 'issueAutomaticBedtimeStrike succeeded');
+assert(strikeResult.strikeIssued === true, '1 normal strike officially issued');
+assert(strikeResult.strikesUsed === 1, 'strikes_used incremented to 1');
+assert(strikeResult.log?.record_type === 'strike', 'Nightly strike log record_type is strike');
+
+await markCronLockCompleted(autoStrikeLockKey, {
+  member_id: cronTestSleeper.id,
+  stage: 'AUTO_BEDTIME_STRIKE',
+  local_date: strikeCycleDate,
+});
+const completedAutoLock = await getCronLock(autoStrikeLockKey);
+assert(completedAutoLock?.metadata?.completed === true, 'Auto-strike lock marked durably completed for the cycle');
+
+// Case 6C: Subsequent cron runs in the same cycle issue 0 additional strikes (Idempotent)
+const time15m = fixedNowUtc.plus({ minutes: 15 });
+const dupeLockAcquired = await acquireCronLock(autoStrikeLockKey, 300);
+assert(dupeLockAcquired === false, 'Subsequent cron run blocked by completed lock');
+
+const repeatStrikeRes = await issueAutomaticBedtimeStrike(cronTestSleeper, strikeCycleDate, time15m);
+assert(repeatStrikeRes.strikeIssued === false, 'Subsequent run issues 0 additional strikes (idempotent)');
+assert(repeatStrikeRes.reason === 'already_issued', 'Reason indicates strike already issued');
+
+// Case 6D: Member who checked into bed -> 0 strikes issued
+const checkedInSleeper = { ...cronTestSleeper, id: 'cron-checked-in-sleeper', is_in_bed: true };
+const checkedInStrikeRes = await issueAutomaticBedtimeStrike(checkedInSleeper, strikeCycleDate, time10m);
+assert(checkedInStrikeRes.strikeIssued === false, 'Checked-in member receives 0 strikes');
+assert(checkedInStrikeRes.reason === 'already_checked_in', 'Reason indicates already checked in');
+
+// Case 6E: Member who applied a metastrike before bedtime -> 10+ minutes past bedtime yields 0 normal strikes
+const metaProtectedSleeper = {
+  ...cronTestSleeper,
+  id: 'cron-meta-protected-sleeper',
+  metastrikes_used: 1,
+};
+await saveNightlyStrikeLog({
+  id: 'meta-protected-log-1',
+  target_member_id: metaProtectedSleeper.id,
+  sleep_cycle_date: strikeCycleDate,
+  record_type: 'metastrike',
+  reason: 'Family Dinner',
+  voter_ids: [],
+  created_at: fixedNowUtc.minus({ hours: 1 }).toISO(),
+  updated_at: fixedNowUtc.minus({ hours: 1 }).toISO(),
+});
+const metaStrikeRes = await issueAutomaticBedtimeStrike(metaProtectedSleeper, strikeCycleDate, time10m);
+assert(metaStrikeRes.strikeIssued === false, 'Member with active metastrike receives 0 normal strikes');
+assert(metaStrikeRes.reason === 'metastrike_active', 'Reason indicates metastrike is active');
+
+// 7. Test Summary
 console.log('\n-----------------------------------------------------------');
 if (failed) {
   console.error('❌ SOME TESTS FAILED!');

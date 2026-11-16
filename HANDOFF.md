@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-16T14:32:00+05:30  
+> **Last Updated:** 2026-11-16T17:07:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `a698447`  
+> **Latest Commit:** `87c993d`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78)  
 > **Active Integration Pull Requests:** None  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76)  
 > **Active Production Release Pull Request:** [#79 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/79) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 40/40 suites passed, 100% in 94.25s | `npm run build` clean, 28/28 routes prerendered)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 40/40 suites passed, 100% in 59.69s | `npm run build` clean, 28/28 routes prerendered)
 
 ---
 
@@ -69,6 +69,38 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 105: Automated 10-Minute Bedtime Strike Engine & Full-Cycle Pre-Next-Bedtime Metastrike Replacement System
+* **Objective & Context:**
+  - Replaced the manual 2-vote peer strike mechanic with the Automated 10-Minute Bedtime Strike Engine.
+  - Allowed metastrikes to prevent or replace normal strikes anytime before the next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`), including the next morning or afternoon.
+  - Strictly preserved moderator overrides (`ModDrawer.tsx`, `/api/mod`) and guaranteed that wake-up actions (`/api/members/wake-up`) never trigger strikes.
+* **Scope of Changes & Key Enhancements:**
+  1. **Automated 10-Minute Bedtime Strike Engine (`src/lib/sleepEngine.ts`, `src/lib/timezone.ts`, `src/lib/strikes.ts`, `src/lib/cronDispatcher.ts`):**
+     - Evaluates active members against their active daily or weekly schedule in local time via Luxon (`currentLocalTime >= scheduledBedtime + 10 minutes`).
+     - Trigger condition: If the member has not checked in via `"I'm in Bed"` and no metastrike covers the cycle, automatically issues 1 normal strike via `issueAutomaticBedtimeStrike()`.
+     - Idempotency: Protected by triple-layer idempotency (durable `cron_locks`, `AUTO_BEDTIME_STRIKE` in `notification_logs`, and `nightly_strike_logs`). Subsequent cron runs in the same cycle produce 0 additional strikes.
+     - Push & Discord Alerts: Delivers a Web Push notification to the sleeper and dispatches a rich Discord alert with strike status and metastrike replacement instructions.
+  2. **Metastrike Prevention & Pre-Next-Bedtime Replacement (`src/lib/sleepEngine.ts`, `src/lib/strikes.ts`, `src/app/api/members/strikes/metastrike/route.ts`):**
+     - Added `getNextScheduledBedtime(member, nowUtc)` and `getNextScheduledBedtimeAfter(member, referenceBedtime)` to compute next scheduled bedtime across standard, weekend, and custom weekly schedules.
+     - Implemented `isStrikeEligibleForReplacement(member, strikeLog, nowUtc, isModerator)` verifying `currentLocalTime < nextScheduledBedtime`.
+     - Metastrikes applied before +10m cutoff prevent normal strikes from being issued.
+     - Metastrikes applied after +10m cutoff anytime before next scheduled bedtime decrement `strikes_used` by 1, increment `metastrikes_used` by 1, and update log record type to `'metastrike'`.
+     - Once next scheduled bedtime arrives, replacement is rejected.
+     - `useProactiveMetastrike` automatically delegates to `convertStrikeToMetastrike` if a strike already exists for the cycle and replacement window is open.
+  3. **Removed Peer Strike Voting & Preserved Moderator Controls (`src/components/MemberCard.tsx`, `src/app/page.tsx`, `src/app/api/members/strikes/route.ts`):**
+     - Removed peer strike voting buttons, vote counters, and manual peer-strike triggers from `MemberCard.tsx` and `page.tsx`.
+     - `POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`.
+     - Full manual strike addition, removal, and reset controls preserved in `ModDrawer.tsx` and `POST /api/mod`.
+  4. **Documentation & Test Suite Updates (`PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `scripts/`):**
+     - Refactored `scripts/test-strikes-system.mjs`, `scripts/test-metastrike-overflow-fix.mjs`, `scripts/test-push-and-cron.mjs`, and `scripts/test-strikes-api-and-routes.mjs`.
+     - Verified all 5 required test cases:
+       1. Member 9m past bedtime without check-in -> 0 strikes issued.
+       2. Member 10+m past bedtime without check-in -> 1 normal strike automatically issued; repeat cron runs issue 0 additional strikes.
+       3. Member applies metastrike before bedtime -> at 10+m past bedtime, 0 normal strikes issued.
+       4. Member receives automatic strike at +10m, then applies metastrike before next bedtime -> normal strike removed and replaced with metastrike.
+       5. Moderator manually adds/removes strikes via `/api/mod` -> state updates accurately.
+     - Updated Section 5.6 of `PROJECT_SPEC.md` and Section 2.3 of `BACKEND_TZ_PWA_SPEC.md`.
 
 ### Phase 104: Production Release Pull Request #79 from `dev` to `main`
 * **Objective & Context:**
