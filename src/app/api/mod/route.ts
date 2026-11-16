@@ -5,6 +5,7 @@ import {
   updateMemberSafe,
   insertMemberSafe,
   hydrateMemberWeekendHours,
+  getMemberByIdSafe,
 } from '@/lib/db';
 import { verifyModPasscode, hashPin, sanitizeMember, verifyModeratorAuthorization, getRequestSessionMemberId } from '@/lib/auth';
 import {
@@ -762,11 +763,7 @@ export async function POST(request: Request) {
 
       let cycleDate = sleep_cycle_date;
       if (!cycleDate) {
-        const { data: member, error: memberErr } = await supabaseAdmin
-          .from('members')
-          .select('*')
-          .eq('id', member_id)
-          .maybeSingle();
+        const { data: member, error: memberErr } = await getMemberByIdSafe(member_id);
 
         if (memberErr || !member) {
           return NextResponse.json({ error: 'Member not found' }, { status: 404 });

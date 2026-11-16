@@ -19,6 +19,7 @@ import {
   isPushSupported,
   subscribeToPush,
   registerServiceWorker,
+  syncPushSubscriptionHealth,
   isStandaloneMode,
   shouldAutoDismissOnboarding,
 } from '@/lib/pushClient';
@@ -157,11 +158,14 @@ export function UnifiedOnboardingCard({
         try {
           const sub = await getExistingSubscription();
           const perm = getNotificationPermission();
+          let serverSynced = false;
+          if (Boolean(sub) && perm === 'granted') {
+            serverSynced = await syncPushSubscriptionHealth().catch(() => false);
+          }
 
           // Only apply if component is still mounted and no newer prop update has occurred
           if (isMounted && currentToken === inspectionTokenRef.current) {
-            const hasActiveSub = Boolean(sub) && perm === 'granted';
-            if (hasActiveSub) {
+            if (serverSynced) {
               setIsPushSubscribed(true);
               onPushStateChanged?.(true);
             } else if (!pushGrantedRef.current) {
@@ -203,8 +207,8 @@ export function UnifiedOnboardingCard({
     try {
       await installPrompt.prompt();
       const choice = await installPrompt.userChoice;
+      setInstallPrompt(null);
       if (choice.outcome === 'accepted') {
-        setInstallPrompt(null);
         setIsInstallAccepted(true);
         setIsStandalone(isStandaloneMode());
       }
@@ -335,7 +339,7 @@ export function UnifiedOnboardingCard({
         {isStandalone ? (
           <div className="flex items-center justify-between gap-3 rounded-xl border border-night-border/60 bg-night-elevated/40 p-3.5">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-status-sage/15 text-status-sage">
                 <CheckCircle2 className="h-4 w-4" />
               </div>
               <div className="min-w-0">
@@ -345,14 +349,14 @@ export function UnifiedOnboardingCard({
                 </p>
               </div>
             </div>
-            <span className="shrink-0 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-400">
+            <span className="shrink-0 rounded-full bg-status-sage/10 px-2.5 py-1 text-[11px] font-semibold text-status-sage">
               Installed ✓
             </span>
           </div>
         ) : isInstallAccepted ? (
           <div className="flex items-center justify-between gap-3 rounded-xl border border-night-border/60 bg-night-elevated/40 p-3.5">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-status-sage/15 text-status-sage">
                 <CheckCircle2 className="h-4 w-4" />
               </div>
               <div className="min-w-0">
@@ -362,7 +366,7 @@ export function UnifiedOnboardingCard({
                 </p>
               </div>
             </div>
-            <span className="shrink-0 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-400">
+            <span className="shrink-0 rounded-full bg-status-sage/10 px-2.5 py-1 text-[11px] font-semibold text-status-sage">
               Installed ✓
             </span>
           </div>
@@ -423,7 +427,7 @@ export function UnifiedOnboardingCard({
         {isPushActive ? (
           <div className="flex items-center justify-between gap-3 rounded-xl border border-night-border/60 bg-night-elevated/40 p-3.5">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-status-sage/15 text-status-sage">
                 <CheckCircle2 className="h-4 w-4" />
               </div>
               <div className="min-w-0">
@@ -433,7 +437,7 @@ export function UnifiedOnboardingCard({
                 </p>
               </div>
             </div>
-            <span className="shrink-0 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-400">
+            <span className="shrink-0 rounded-full bg-status-sage/10 px-2.5 py-1 text-[11px] font-semibold text-status-sage">
               Active ✓
             </span>
           </div>

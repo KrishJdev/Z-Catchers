@@ -73,6 +73,13 @@ async function transitionIssue(issueKey, targetState = 'in progress') {
     return;
   }
 
+  if (issueKey === 'SYNC_DECLUTTERING_TO_JIRA' || issueKey === 'SYNC_DECLUTTER_TO_JIRA') {
+    console.log('Detected SYNC_DECLUTTERING_TO_JIRA trigger! Executing sync-decluttering-issues-to-jira.mjs...');
+    const { execSync } = await import('child_process');
+    execSync('node scripts/sync-decluttering-issues-to-jira.mjs', { stdio: 'inherit' });
+    return;
+  }
+
   if (issueKey === 'DEBUG_PROJECTS' || process.env.JIRA_DEBUG === '1') {
     await debugJira();
     if (issueKey === 'DEBUG_PROJECTS') return;

@@ -356,4 +356,75 @@ console.log('  ✓ LocalStorage 7-day cooldown calculation passed.');
   console.log('  ✓ Stale async inspection token invalidation simulation passed.');
 }
 
+// 5.5 Native install prompt dismissal consumption simulation
+{
+  let installPrompt = {
+    promptCalled: false,
+    async prompt() {
+      this.promptCalled = true;
+    },
+    userChoice: Promise.resolve({ outcome: 'dismissed', platform: 'web' }),
+  };
+  let isInstallAccepted = false;
+  let isStandalone = false;
+
+  // Simulate handleInstallClick logic with dismissed choice
+  if (installPrompt) {
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    installPrompt = null; // Always cleared once consumed
+    if (choice.outcome === 'accepted') {
+      isInstallAccepted = true;
+      isStandalone = true;
+    }
+  }
+
+  assert.strictEqual(installPrompt, null, 'Prompt must be cleared immediately even when dismissed');
+  assert.strictEqual(isInstallAccepted, false, 'isInstallAccepted must remain false when user dismisses prompt');
+  assert.strictEqual(isStandalone, false, 'isStandalone must remain false when user dismisses prompt');
+  console.log('  ✓ Native install prompt dismissal consumption simulation passed.');
+}
+
+// 5.6 Native install prompt acceptance simulation
+{
+  let installPrompt = {
+    promptCalled: false,
+    async prompt() {
+      this.promptCalled = true;
+    },
+    userChoice: Promise.resolve({ outcome: 'accepted', platform: 'web' }),
+  };
+  let isInstallAccepted = false;
+  let isStandalone = false;
+
+  // Simulate handleInstallClick logic with accepted choice
+  if (installPrompt) {
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    installPrompt = null;
+    if (choice.outcome === 'accepted') {
+      isInstallAccepted = true;
+      isStandalone = isStandaloneMode();
+    }
+  }
+
+  assert.strictEqual(installPrompt, null, 'Prompt must be cleared when accepted');
+  assert.strictEqual(isInstallAccepted, true, 'isInstallAccepted must be set to true when accepted');
+  console.log('  ✓ Native install prompt acceptance simulation passed.');
+}
+
+// 5.7 Service worker readiness race & bounded timeout simulation
+{
+  const swReadyHang = new Promise(() => {}); // Never resolves
+  const timeoutMs = 50;
+
+  const isSwReady = await Promise.race([
+    swReadyHang.then(() => true).catch(() => false),
+    new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+  ]);
+
+  assert.strictEqual(isSwReady, false, 'Service worker timeout race must resolve false when SW hangs');
+  console.log('  ✓ Service worker readiness timeout bounded race simulation passed.');
+}
+
 console.log('\n🎉 All Unified PWA Install & Push Onboarding tests passed cleanly! 🦊💤');
