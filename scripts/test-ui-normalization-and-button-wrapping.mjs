@@ -134,12 +134,14 @@ assert(
   'SleepCalendarModal wake-up log/edit button must have min-h-[44px] and whitespace-nowrap shrink-0'
 );
 
-// 13. PwaBanner: Dismiss button must meet min-h-[44px] min-w-[44px] touch target
+// 13. PwaBanner / UnifiedOnboardingCard: Dismiss button must meet min-h-[44px] min-w-[44px] touch target
+const unifiedCardPath = path.resolve('src/components/UnifiedOnboardingCard.tsx');
 const pwaBannerPath = path.resolve('src/components/PwaBanner.tsx');
-const pwaBannerContent = fs.readFileSync(pwaBannerPath, 'utf8');
+const targetPath = fs.existsSync(unifiedCardPath) ? unifiedCardPath : pwaBannerPath;
+const targetContent = fs.readFileSync(targetPath, 'utf8');
 assert(
-  pwaBannerContent.includes('min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg'),
-  'PwaBanner dismiss buttons must meet min-h-[44px] min-w-[44px] touch target'
+  targetContent.includes('min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg'),
+  'PwaBanner / UnifiedOnboardingCard dismiss buttons must meet min-h-[44px] min-w-[44px] touch target'
 );
 
 // 14. HomePage: Hero manual wake form buttons have whitespace-nowrap and shrink-0
