@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-16T18:38:00+05:30  
+> **Last Updated:** 2026-11-17T02:30:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `c4c553d`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78)  
-> **Active Integration Pull Requests:** [#80 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/80) (`krish` -> `dev`)  
-> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76)  
-> **Active Production Release Pull Request:** [#79 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/79) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 40/40 suites passed, 100% in 60.78s)
+> **Latest Commit:** `1de01f1`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80)  
+> **Active Integration Pull Requests:** [#82 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/82) (`krish` -> `dev`)  
+> **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79)  
+> **Active Production Release Pull Request:** [#81 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/81) (`dev` -> `main`)  
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 41/41 suites passed, 100% in 50.90s | `npm run build` clean, 28/28 routes prerendered)
 
 ---
 
@@ -70,8 +70,80 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 ## 4. Comprehensive Task Changelog
 
+### Phase 107: Manual-Only Sleep State Transitions & Overdue / Past Bedtime Section
+* **Pull Request:** [#82 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/82) (`krish` -> `dev`)
+* **Objective & Context:**
+  - Updated the Z-Catchers sleep state engine so members never automatically transition to "Asleep" or "Awake" without explicit user interaction.
+  - Introduced the dedicated "Overdue / Past Bedtime" section starting the exact moment a scheduled bedtime passes (`currentLocalTime >= scheduledBedtime`).
+  - Retained the automated 10-minute bedtime strike engine, keeping members in the Overdue section after receiving a strike until explicit check-in or scheduled wake-up.
+  - Implemented the wake-up fallback rule: if an unchecked-in member exceeds their scheduled wake-up time, they transition directly to "Awake" without ever being falsely marked as asleep, leaving missed bedtimes penalized.
+  - Preserved "Winding Down" window (1 to 60m before bedtime) and moderator overrides (`ModDrawer.tsx`, `/api/mod`).
+* **Scope of Changes & Key Enhancements:**
+  1. **Manual-Only State Transitions (`src/lib/sleepEngine.ts`):**
+     - Removed legacy automatic 60m–480m `SLEEPING` transition branch from `computeMemberState`.
+     - Member enters "Asleep" (`bucket: 'SLEEPING'`, `isSleepShieldActive: true`) *strictly* when clicking "I'm in Bed" (`POST /api/members/in-bed`).
+     - Member enters "Awake" (`bucket: 'AWAKE'`) *strictly* when clicking "Wake Up" (`POST /api/members/wake-up`).
+     - Members in bed past scheduled wake time remain in `SLEEPING` with `statusText: "In Bed • Past Wake Time"` and `needsWakeUpLog: true` until explicitly clicking "Wake Up".
+     - Implemented Fallback Rule: Unchecked-in members reaching scheduled wake-up time (`isPastWakeTime`) transition directly out of overdue into `bucket = 'AWAKE'`, `status = 'AWAKE'`, `needsWakeUpLog = false`, `isSleepShieldActive = false`.
+  2. **Overdue / Past Bedtime Section (`src/lib/sleepEngine.ts`, `src/components/StatusBucket.tsx`, `src/app/page.tsx`):**
+     - Expanded `SleepBucket` type union with `'OVERDUE' | 'OVERDUE_BEDTIME'` and exported `isOverdueBucket(bucket)`.
+     - Added `isOverdue?: boolean` to `MemberState`.
+     - Members drop into the "Overdue / Past Bedtime" bucket the exact moment their scheduled bedtime passes (`diffMinutes >= 0 && !is_in_bed && !isPastWakeTime`).
+     - Statuses: `diffMinutes <= 5` -> `BEDTIME_GRACE` (`"Grace Period: Xm left"`), `diffMinutes > 5` -> `OVERDUE_NAG_NOW` (`"Bedtime hit Xm ago — Nag them!"`).
+     - 10-minute automated strike fires at `diffMinutes >= 10`, but member stays in Overdue until in-bed or scheduled wake-up.
+     - Exported `OverdueStatusBucket` component and `BUCKET_TITLES.OVERDUE = 'Overdue / Past Bedtime'`.
+     - Updated `src/app/page.tsx` to display top-priority status bucket `id="overdue-past-bedtime"`, `title="Overdue / Past Bedtime"`, quick summary pill `{categorized.overdue.length} Overdue`, and status banner counts.
+  3. **Offline & Fixture Safety in In-Bed Route (`src/app/api/members/in-bed/route.ts`):**
+     - Added `isSupabaseConfigured && !isTestMemberFixture(member.id)` guards around `notification_logs` delete/upsert operations so offline tests and mock fixtures execute reliably without foreign key errors.
+  4. **Verification & Regression Test Suites (`scripts/`):**
+     - Created `scripts/test-cron-dispatcher.mjs` verifying the 4 test cases (1s overdue, 10m overdue with strike, wake-up fallback, manual transitions) and registered it as test suite #41 in `scripts/run-tests.mjs`.
+     - Updated `scripts/test-sleep-history-and-wakeup.mjs`, `scripts/test-in-bed-and-streaks.mjs`, `scripts/test-push-and-cron.mjs`, `scripts/test-wake-up-and-overflow.mjs`, and `scripts/test-smart-status-bucket-folding.mjs` to reflect manual-only state changes.
+     - Verified all 41 test suites pass cleanly (100% in 59.75s).
+     - Verified `npx tsc --noEmit` passes with 0 errors.
+  5. **Documentation Updates (`PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`):**
+     - Updated Section 5.2 in `PROJECT_SPEC.md` to document manual-only transitions, the fallback rule, and the "Overdue / Past Bedtime" status bucket.
+     - Updated Section 2.2 and 2.3 in `BACKEND_TZ_PWA_SPEC.md` to document the state machine rules and overdue bucket retention.
+  6. **CodeRabbit Automated Review Remediation on PR #82 (`BACKEND_TZ_PWA_SPEC.md`, `scripts/test-cron-dispatcher.mjs`, `src/lib/db.ts`, `src/app/api/members/in-bed/route.ts`, `scripts/test-wake-up-durability-and-times.mjs`):**
+     - *Spec Example Identifiers (`BACKEND_TZ_PWA_SPEC.md`)*: Fully documented fields on `MemberSchedule` (`isInBed`, `isWokeUp`, `wakeTimeLocal`) and derived `effectiveInBed` and `isPastWakeTime` before state selection so the spec code example has zero unresolved identifiers.
+     - *Test Offline Isolation (`scripts/test-cron-dispatcher.mjs`)*: Guaranteed strict offline test mode before importing application modules by stripping remote Supabase credentials, ensuring module-level initialization strictly points to in-memory fixtures.
+     - *In-Memory Fixture Persistence (`src/lib/db.ts`)*: In `updateMemberSafe`, when no database row matches and no error occurred (`!error && memoryMembers.has(memberId)`), persists changes to the in-memory fixture while preserving database updates and error handling.
+     - *In-Bed Safe Update Validation (`src/app/api/members/in-bed/route.ts`)*: Checked the results of each `updateMemberSafe` call in both check-in and cancel/wake-up paths, returning HTTP 500 when the update fails or returns no member. Guarded `notification_logs` query with `isSupabaseConfigured && !isTestMemberFixture(member.id)` during streak calculation.
+     - *Clock-Skew Resilience (`scripts/test-wake-up-durability-and-times.mjs`)*: Replaced ambiguous relative date in future wake test with deterministic future date (`'2099-01-01'`) ensuring clock-skew resilience across test environments.
+* **Verification & QA Status:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 41/41 test suites passed cleanly (100% pass rate in 50.90s).
+
+### Phase 106: Production Release Pull Request #81 from `dev` to `main`
+* **Pull Request:** [#81 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/81) (`dev` -> `main`)
+* **Objective & Context:**
+  - Following the successful integration, CodeRabbit review remediation, and verification of Phase 105 into `dev` via PR #80, created Production Release Pull Request [#81](https://github.com/KrishJdev/Z-Catchers/pull/81) (`dev` -> `main`).
+  - Promotes the Automated 10-Minute Bedtime Strike Engine, full-cycle pre-next-bedtime Metastrike replacement system, peer strike voting de-escalation, and comprehensive CodeRabbit review remediations to production `main`.
+* **Scope of Included Changes:**
+  1. **Automated 10-Minute Bedtime Strike Engine (`src/lib/sleepEngine.ts`, `src/lib/strikes.ts`, `src/lib/cronDispatcher.ts`):**
+     - Cron dispatch evaluates sleepers at `currentLocalTime >= scheduledBedtime + 10m` and issues exactly 1 normal strike if neither checked in nor covered by a proactive metastrike.
+     - Strict scope restriction: Strikes apply exclusively to missed bedtimes; wake-up actions never trigger strikes.
+     - Triple-layer idempotency (`cron_locks`, `AUTO_BEDTIME_STRIKE` in `notification_logs`, and `nightly_strike_logs`).
+     - Max strikes cap (3) enforcement preventing invalid strike increments or overwrite upon conversion.
+     - Rollback protection on strike log DB failure and resumption of undelivered alerts for existing strikes.
+     - Dry-run safety guards bypassing all DB mutations, locks, push notifications, and webhook dispatches.
+     - Sends immediate personal Web Push alerts and rich Discord embed alerts with current strike allowances and metastrike instructions.
+  2. **Metastrike Prevention & Full-Cycle Replacement Window (`src/lib/strikes.ts`, `src/app/api/members/strikes/metastrike/route.ts`):**
+     - Proactive metastrikes prior to +10m cutoff mark the cycle `metastrike_active` and prevent automated strikes from issuing.
+     - Full cycle replacement window: members can convert an auto-strike to an excused Metastrike anytime before their next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`).
+     - Atomic swap decrements `strikes_used`, increments `metastrikes_used`, and updates log record type to `'metastrike'`.
+     - `useProactiveMetastrike` delegates cleanly to `convertStrikeToMetastrike` when a strike already exists for the cycle.
+  3. **Peer Strike Voting De-escalation & Preserved Moderator Controls (`src/components/MemberCard.tsx`, `src/app/page.tsx`, `src/app/api/members/strikes/route.ts`):**
+     - Removed peer strike voting buttons and counters from the dashboard.
+     - `POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`.
+     - Full manual strike adjustment, metastrike overrides, and audit log clearing preserved in `ModDrawer.tsx` and `POST /api/mod`.
+* **Verification & QA Status:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 40/40 test suites passed cleanly (100% pass rate in 83.22s).
+  - `npm run build`: Production build succeeded (28/28 routes prerendered).
+  - `git merge-tree origin/main origin/dev`: Clean 3-way merge, 0 conflicts.
+
 ### Phase 105: Automated 10-Minute Bedtime Strike Engine & Full-Cycle Pre-Next-Bedtime Metastrike Replacement System
-* **Pull Request:** [#80 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/80) (`krish` -> `dev`)
+* **Pull Request:** [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80) (`krish` -> `dev`)
 * **Objective & Context:**
   - Replaced the manual 2-vote peer strike mechanic with the Automated 10-Minute Bedtime Strike Engine.
   - Allowed metastrikes to prevent or replace normal strikes anytime before the next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`), including the next morning or afternoon.
@@ -2378,8 +2450,12 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Production Release Deployment & Verification (PR #79):**
-   * Review and merge Production Release Pull Request [#79](https://github.com/KrishJdev/Z-Catchers/pull/79) (`release: promote unified PWA onboarding, community strikes accountability system, and Jira sync hardening to main`) to deploy the latest verified enhancements to production.
+1. **Phase 107 Verification & Integration (PR #82):**
+   * Active Integration Pull Request [#82](https://github.com/KrishJdev/Z-Catchers/pull/82) (`krish` -> `dev`) opened for review.
+   * Promotes manual-only sleep state transitions, wake-up fallback rules, overdue / past bedtime section, and 41/41 unit test suites to `dev`.
+
+2. **Production Release Deployment & Verification (PR #81):**
+   * Review and merge Production Release Pull Request [#81](https://github.com/KrishJdev/Z-Catchers/pull/81) (`dev` -> `main`) to deploy Phase 105 & 106 to production.
    * Verify production deployment on Vercel and check that all cron dispatchers, PWA features, and strike accountability endpoints execute cleanly.
 
 2. **Sprint 1 & Sprint 2 (Completed & Merged to `dev`, PR #79 to `main`):**

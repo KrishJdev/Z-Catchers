@@ -251,41 +251,40 @@ Do not rely solely on a background job to promote pending schedules. Whenever a 
 
    * Display a subtle badge on their card: `"Schedule shifting to [Pending Time] in Xh Ym"`.
 
-### 5.2 Cross-Timezone Conversion & Status Calculation
+### 5.2 Cross-Timezone Conversion, Manual-Only State Transitions & Status Calculation
 
 Given a member's `bedtime_local` (`"23:30"`), their `timezone` (`"America/New_York"`), and the current UTC instant (`now`):
 
 1. Convert `now` into the member's local timezone using `luxon` (`DateTime.now().setZone(member.timezone)`).
 
-2. Construct today's target bedtime in the member's timezone, plus yesterday's bedtime and tomorrow's bedtime (to handle midnight boundary wrap-arounds seamlessly).
+2. Construct today's target bedtime in the member's timezone, plus yesterday's bedtime and tomorrow's bedtime (to handle midnight boundary wrap-arounds seamlessly), as well as their target wake-up time.
 
-3. Calculate the time delta in minutes from the most relevant bedtime instance:
+3. **Manual-Only Sleep State Transition Principles:**
+   * **No Automatic "Asleep" Transition:** Members **never** automatically transition to "Asleep" (`SLEEPING`) based on elapsed time alone. A member enters the "Asleep" state *strictly* when they explicitly click the "I'm in Bed" button (`POST /api/members/in-bed`).
+   * **No Automatic "Awake" Transition from Sleep:** Members who are in bed do **not** automatically transition to "Awake" when their scheduled wake-up time passes. They remain in `SLEEPING` (`statusText: "In Bed • Past Wake Time"`, `needsWakeUpLog: true`) until explicitly clicking "Wake Up" (`POST /api/members/wake-up`).
+   * **Fallback Rule for Unchecked-In Members:** If a user completely forgets to click "I'm in Bed" and their normal scheduled wake-up time passes (`currentLocalTime >= scheduledWakeTime`), they transition directly out of overdue to "Awake" (`AWAKE`) automatically at wake-up time, without ever being marked as asleep. Their missed bedtime remains un-checked-in and penalized with an automated strike.
 
-   * **Bucket 1: `BEDTIME_NOW` (Nag Window)**
+4. Calculate the time delta in minutes from the most relevant bedtime instance and determine the status bucket:
 
-     * Condition: Current time is between `0` and `60` minutes *after* their bedtime.
-
-     * UI Action: Rank at the very top of the page. Pulse badge: `"Bedtime hit Xm ago — Nag them!"`
+   * **Bucket 1: `OVERDUE` / `BEDTIME_NOW` ("Overdue / Past Bedtime" Section)**
+     * Condition: `currentLocalTime >= scheduledBedtime && !is_in_bed && !isPastWakeTime`. Drops into this section the *exact moment* their scheduled bedtime passes (`diffMinutes >= 0`).
+     * Retention & 10-Minute Strike: Members remain in the "Overdue / Past Bedtime" section from minute 0 past bedtime onward. At the 10-minute mark, the automated bedtime strike fires, but the member stays in this overdue bucket until they either manually check in ("I'm in Bed") or their scheduled wake-up time arrives.
+     * UI Action: Renders as the top-priority, expanded-by-default section above passive buckets. Coral alert styling.
+     * Statuses: `diffMinutes <= 5` -> `BEDTIME_GRACE` (`"Grace Period: Xm left"`), `diffMinutes > 5` -> `OVERDUE_NAG_NOW` (`"Overdue: Xm past bedtime — Nag them!"`).
 
    * **Bucket 2: `WINDING_DOWN`**
-
-     * Condition: Current time is between `1` and `60` minutes *before* their bedtime.
-
-     * UI Action: Rank second. Badge: `"Bedtime in Xm"`.
+     * Condition: Current time is between `1` and `60` minutes *before* their bedtime (`diffMinutes < 0 && diffMinutes >= -60`).
+     * UI Action: Rank second. Amber badge: `"Bedtime in Xm"`. Unchanged by manual transition rules.
 
    * **Bucket 3: `SLEEPING` (Sleep Shield Active)**
-
-     * Condition: Current time is between `61` minutes after bedtime and `480` minutes (8 hours) after bedtime (or until their `wake_time_local`).
-
-     * UI Action: Rank at the bottom, dimmed. Badge: `"Catching Z's • Wake in Xh Ym"`.
+     * Condition: Member has explicitly logged "In Bed" (`is_in_bed: true` or active `sleep_logs.in_bed_at` without wake-up log).
+     * UI Action: Dimmed slumber palette (`status-slumber`). Sleep Shield is active (suppresses community nag notifications). If `currentLocalTime > scheduledWakeTime`, prompts with `"In Bed • Past Wake Time"`.
 
    * **Bucket 4: `AWAKE`**
-
-     * Condition: All other times.
-
+     * Condition: Member has logged wake-up, or normal daytime hours prior to wind-down, or unchecked-in member past scheduled wake-up time (via fallback rule).
      * UI Action: Sort ascending by `minutes_until_next_bedtime`.
 
-4. **Viewer Local Time Conversion:**
+5. **Viewer Local Time Conversion:**
 
    * Take the member's next `bedtime` `DateTime` object and call `.setZone(viewerTimezone).toFormat('h:mm a')`.
 

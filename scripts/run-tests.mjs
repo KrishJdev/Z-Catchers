@@ -52,6 +52,7 @@ const UNIT_TESTS = [
   'test-silent-timezone-auto-detection.mjs',
   'test-unified-pwa-push-onboarding.mjs',
   'test-strikes-api-and-routes.mjs',
+  'test-cron-dispatcher.mjs',
 ];
 
 // E2E tests: require live Supabase database or running network services

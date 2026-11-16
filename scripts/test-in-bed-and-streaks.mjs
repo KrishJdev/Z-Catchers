@@ -127,6 +127,53 @@ const afterWakeUp = computeMemberState(
 assert(afterWakeUp.bucket === 'AWAKE', 'After wake-up logged: member resolves to AWAKE bucket');
 assert(afterWakeUp.needsWakeUpLog === false, 'After wake-up logged: needsWakeUpLog is false');
 
+// 2B. Manual-Only State Transitions & Overdue / Past Bedtime Bucket:
+// Case 1: Member passes scheduled bedtime by 1 second without checking in -> immediately moves to "Overdue / Past Bedtime" bucket
+const atBedtime1sUnchecked = computeMemberState(
+  mockMember,
+  'UTC',
+  DateTime.fromISO('2026-11-09T23:00:01.000Z', { zone: 'UTC' }),
+  false
+);
+assert(atBedtime1sUnchecked.bucket === 'BEDTIME_NOW', '1s past bedtime without check-in: member is in Overdue / Past Bedtime bucket');
+assert(atBedtime1sUnchecked.isOverdue === true, '1s past bedtime: isOverdue is true');
+assert(atBedtime1sUnchecked.status === 'BEDTIME_GRACE', '1s past bedtime: status is BEDTIME_GRACE');
+assert(atBedtime1sUnchecked.isSleepShieldActive === false, '1s past bedtime: Sleep Shield is OFF');
+
+// Case 2: Member passes bedtime by 10 minutes without in-bed check-in -> remains in Overdue bucket
+const atBedtime10mUnchecked = computeMemberState(
+  mockMember,
+  'UTC',
+  DateTime.fromISO('2026-11-09T23:10:00.000Z', { zone: 'UTC' }),
+  false
+);
+assert(atBedtime10mUnchecked.bucket === 'BEDTIME_NOW', '10m past bedtime without check-in: remains in Overdue bucket');
+assert(atBedtime10mUnchecked.status === 'OVERDUE_NAG_NOW', '10m past bedtime without check-in: status is OVERDUE_NAG_NOW');
+assert(atBedtime10mUnchecked.isSleepShieldActive === false, '10m past bedtime without check-in: Sleep Shield remains OFF');
+
+// Case 3: Member passes bedtime without clicking in-bed, and cron runs past scheduled wake-up time (07:00 AM)
+// Fallback Rule: transitions out of overdue directly to "Awake" without being incorrectly marked as asleep
+const atWakeTimeUnchecked = computeMemberState(
+  mockMember,
+  'UTC',
+  DateTime.fromISO('2026-11-10T07:05:00.000Z', { zone: 'UTC' }),
+  false
+);
+assert(atWakeTimeUnchecked.bucket === 'AWAKE', 'Past scheduled wake-up time without in-bed check-in: transitions directly to AWAKE');
+assert(atWakeTimeUnchecked.status === 'AWAKE', 'Past scheduled wake-up time without in-bed check-in: status is AWAKE');
+assert(atWakeTimeUnchecked.needsWakeUpLog === false, 'Past scheduled wake-up time without check-in: needsWakeUpLog is false');
+
+// Case 4: Member manually clicks "I'm in Bed" from Overdue -> moves from Overdue to "Asleep" (SLEEPING)
+const atOverdueCheckedIn = computeMemberState(
+  mockMember,
+  'UTC',
+  DateTime.fromISO('2026-11-09T23:10:00.000Z', { zone: 'UTC' }),
+  true
+);
+assert(atOverdueCheckedIn.bucket === 'SLEEPING', 'Manual in-bed click from Overdue: moves to SLEEPING (Asleep)');
+assert(atOverdueCheckedIn.status === 'SLEEPING', 'Status transitions to SLEEPING');
+assert(atOverdueCheckedIn.isSleepShieldActive === true, 'Sleep Shield is active once in bed');
+
 // -------------------------------------------------------------
 // 3. Live Database & Cron Suppression Test
 // -------------------------------------------------------------
