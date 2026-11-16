@@ -7,10 +7,13 @@ import {
   markCronLockCompleted,
   releaseCronLock,
   clearAllCronLocks,
+  executeNotificationDispatcher,
 } from '../src/lib/cronDispatcher.ts';
+import { getInMemoryMember, syncInMemoryMemberCache } from '../src/lib/db.ts';
 import {
   issueAutomaticBedtimeStrike,
   saveNightlyStrikeLog,
+  getNightlyStrikeLog,
 } from '../src/lib/strikes.ts';
 
 console.log('🧪 Starting Web Push Notification Engine & Cron Dispatcher Verification...\n');
@@ -363,6 +366,44 @@ await saveNightlyStrikeLog({
 const metaStrikeRes = await issueAutomaticBedtimeStrike(metaProtectedSleeper, strikeCycleDate, time10m);
 assert(metaStrikeRes.strikeIssued === false, 'Member with active metastrike receives 0 normal strikes');
 assert(metaStrikeRes.reason === 'metastrike_active', 'Reason indicates metastrike is active');
+
+// Case 6F: Member at 3 strikes limit receives 0 new strikes (capped)
+const cappedSleeper = {
+  ...cronTestSleeper,
+  id: 'cron-capped-sleeper',
+  strikes_used: 3,
+  strikes_count: 3,
+};
+const cappedStrikeRes = await issueAutomaticBedtimeStrike(cappedSleeper, strikeCycleDate, time10m);
+assert(cappedStrikeRes.strikeIssued === false, 'Member with 3 strikes receives 0 new strikes');
+assert(cappedStrikeRes.reason === 'already_at_max_strikes', 'Reason indicates already at max strikes');
+assert(cappedStrikeRes.strikesUsed === 3, 'Strikes used remains 3');
+
+// Case 6G: Dry-run safety: verify dry-run does not write strike logs or update member counts
+clearAllCronLocks();
+const dryRunMember = {
+  id: 'cron-dryrun-sleeper',
+  discord_username: 'DryRunFox',
+  discord_handle: '@dryrun',
+  timezone: 'UTC',
+  bedtime_local: '23:00',
+  wake_time_local: '07:00',
+  strikes_used: 0,
+  strikes_count: 0,
+  metastrikes_used: 0,
+  is_active: true,
+};
+syncInMemoryMemberCache(dryRunMember);
+const dryRunResult = await executeNotificationDispatcher({
+  dryRun: true,
+  forcedMemberId: dryRunMember.id,
+  testNowUtc: time10m,
+});
+assert(dryRunResult.autoStrikesDispatched === 1, 'Dry run previews 1 auto strike dispatched');
+const dryRunLog = await getNightlyStrikeLog(dryRunMember.id, strikeCycleDate);
+assert(dryRunLog === null, 'Dry run strictly avoided writing strike log to store');
+const dryRunMemAfter = getInMemoryMember(dryRunMember.id);
+assert(dryRunMemAfter?.strikes_used === 0, 'Dry run strictly preserved member strikes_used at 0');
 
 // 7. Test Summary
 console.log('\n-----------------------------------------------------------');

@@ -224,7 +224,7 @@ export async function updateMemberStrikeCounts(
   metastrikesUsed: number,
   cycleMonth: string,
   conditions?: Record<string, any>
-): Promise<void> {
+): Promise<{ success: boolean; data?: Member | null; error?: any }> {
   const clampedStrikes = Math.max(0, Math.min(3, strikesUsed));
   const clampedMetastrikes = Math.max(0, Math.min(3, metastrikesUsed));
 
@@ -252,45 +252,84 @@ export async function updateMemberStrikeCounts(
   }
 
   // Use updateMemberSafe for resilient Supabase update with auto-column stripping and schema cache mismatch recovery
-  try {
-    const { data } = await updateMemberSafe(
-      memberId,
-      {
-        strikes_used: clampedStrikes,
-        strikes_count: clampedStrikes,
-        metastrikes_used: clampedMetastrikes,
-        metastrikes_count: clampedMetastrikes,
-        strike_cycle_month: cycleMonth,
-        updated_at: DateTime.utc().toISO(),
-      },
-      conditions ? { conditions } : {}
-    );
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await updateMemberSafe(
+        memberId,
+        {
+          strikes_used: clampedStrikes,
+          strikes_count: clampedStrikes,
+          metastrikes_used: clampedMetastrikes,
+          metastrikes_count: clampedMetastrikes,
+          strike_cycle_month: cycleMonth,
+          updated_at: DateTime.utc().toISO(),
+        },
+        conditions ? { conditions } : {}
+      );
 
-    // If conditions were passed, only commit to memory if conditional DB write succeeded (or running offline)
-    if (conditions && (data || !isSupabaseConfigured)) {
-      memoryStore.memberCounts.set(memberId, {
-        strikes_used: clampedStrikes,
-        strikes_count: clampedStrikes,
-        metastrikes_used: clampedMetastrikes,
-        metastrikes_count: clampedMetastrikes,
-        strike_cycle_month: cycleMonth,
-      });
+      if (error) {
+        console.warn('Could not update member strike counts in DB:', error);
+        return { success: false, error };
+      }
 
-      const inMem = getInMemoryMember(memberId);
-      if (inMem) {
-        syncInMemoryMemberCache({
-          ...inMem,
+      if (conditions && !data) {
+        return { success: false, error: 'Condition mismatch during atomic update' };
+      }
+
+      // If conditions were passed, only commit to memory if conditional DB write succeeded
+      if (conditions && data) {
+        memoryStore.memberCounts.set(memberId, {
           strikes_used: clampedStrikes,
           strikes_count: clampedStrikes,
           metastrikes_used: clampedMetastrikes,
           metastrikes_count: clampedMetastrikes,
           strike_cycle_month: cycleMonth,
         });
+
+        const inMem = getInMemoryMember(memberId);
+        if (inMem) {
+          syncInMemoryMemberCache({
+            ...inMem,
+            strikes_used: clampedStrikes,
+            strikes_count: clampedStrikes,
+            metastrikes_used: clampedMetastrikes,
+            metastrikes_count: clampedMetastrikes,
+            strike_cycle_month: cycleMonth,
+          });
+        }
       }
+
+      return { success: true, data };
+    } catch (e) {
+      console.warn('Could not update member strike counts in DB:', e);
+      return { success: false, error: e };
     }
-  } catch (e) {
-    console.warn('Could not update member strike counts in DB:', e);
   }
+
+  // Offline / in-memory conditional update
+  if (conditions) {
+    memoryStore.memberCounts.set(memberId, {
+      strikes_used: clampedStrikes,
+      strikes_count: clampedStrikes,
+      metastrikes_used: clampedMetastrikes,
+      metastrikes_count: clampedMetastrikes,
+      strike_cycle_month: cycleMonth,
+    });
+
+    const inMem = getInMemoryMember(memberId);
+    if (inMem) {
+      syncInMemoryMemberCache({
+        ...inMem,
+        strikes_used: clampedStrikes,
+        strikes_count: clampedStrikes,
+        metastrikes_used: clampedMetastrikes,
+        metastrikes_count: clampedMetastrikes,
+        strike_cycle_month: cycleMonth,
+      });
+    }
+  }
+
+  return { success: true };
 }
 
 /**
@@ -712,12 +751,28 @@ export async function getRecentEligibleStrikeLogsBatch(
 /**
  * Upserts a nightly strike log in DB (with resilient fallback).
  */
-export async function saveNightlyStrikeLog(log: NightlyStrikeLog): Promise<NightlyStrikeLog> {
+export async function saveNightlyStrikeLog(
+  log: NightlyStrikeLog,
+  options?: { requireDurable?: boolean }
+): Promise<NightlyStrikeLog> {
   const key = getStrikeLogKey(log.target_member_id, log.sleep_cycle_date);
-  memoryStore.logs.set(key, log);
 
   if (isSupabaseConfigured) {
     try {
+      // Guard against automatic strike overwriting a metastrike row in DB
+      if (log.record_type === 'strike') {
+        const { data: existingRow } = await supabaseAdmin
+          .from('nightly_strike_logs')
+          .select('record_type')
+          .eq('target_member_id', log.target_member_id)
+          .eq('sleep_cycle_date', log.sleep_cycle_date)
+          .maybeSingle();
+
+        if (existingRow?.record_type === 'metastrike') {
+          throw new Error('Cycle is protected by an existing Metastrike');
+        }
+      }
+
       const payload = {
         id: log.id,
         target_member_id: log.target_member_id,
@@ -735,7 +790,11 @@ export async function saveNightlyStrikeLog(log: NightlyStrikeLog): Promise<Night
         .select('*')
         .single();
 
-      if (!error && data) {
+      if (error) {
+        if (options?.requireDurable) {
+          throw error;
+        }
+      } else if (data) {
         const persisted: NightlyStrikeLog = {
           id: data.id,
           target_member_id: data.target_member_id,
@@ -749,11 +808,15 @@ export async function saveNightlyStrikeLog(log: NightlyStrikeLog): Promise<Night
         memoryStore.logs.set(key, persisted);
         return persisted;
       }
-    } catch {
+    } catch (e) {
+      if (options?.requireDurable) {
+        throw e;
+      }
       // In-memory fallback already populated
     }
   }
 
+  memoryStore.logs.set(key, log);
   return log;
 }
 
@@ -864,16 +927,65 @@ export async function issueAutomaticBedtimeStrike(
     }
   }
 
-  // 3. Resolve member's monthly strike counts and increment by 1 (max 3)
+  // 3. Resolve member's monthly strike counts and verify not already capped
   const counts = await resolveMemberStrikeCounts(member, nowUtc);
-  const newStrikesUsed = Math.min(3, counts.strikes_used + 1);
+  if (counts.strikes_used >= 3) {
+    return {
+      success: true,
+      strikeIssued: false,
+      reason: 'already_at_max_strikes',
+      strikesUsed: counts.strikes_used,
+      error: 'Member has already reached the maximum limit of 3 strikes for this month.',
+    };
+  }
 
-  await updateMemberStrikeCounts(
+  const newStrikesUsed = counts.strikes_used + 1;
+
+  // Re-verify existing log immediately prior to commit (protect against concurrent metastrike)
+  const freshLog = await getNightlyStrikeLog(member.id, cycleDate);
+  if (freshLog?.record_type === 'metastrike') {
+    return {
+      success: true,
+      strikeIssued: false,
+      reason: 'metastrike_active',
+      log: freshLog,
+      error: 'Member is protected by an excused Metastrike for tonight.',
+    };
+  }
+
+  // Update member strike counts with conditional concurrency check
+  const updateRes = await updateMemberStrikeCounts(
     member.id,
     newStrikesUsed,
     counts.metastrikes_used,
-    counts.strike_cycle_month
+    counts.strike_cycle_month,
+    isSupabaseConfigured
+      ? {
+          strikes_used: counts.strikes_used,
+          metastrikes_used: counts.metastrikes_used,
+        }
+      : undefined
   );
+
+  if (!updateRes.success) {
+    // If conditional check failed, re-check if metastrike was applied concurrently
+    const conflictLog = await getNightlyStrikeLog(member.id, cycleDate);
+    if (conflictLog?.record_type === 'metastrike') {
+      return {
+        success: true,
+        strikeIssued: false,
+        reason: 'metastrike_active',
+        log: conflictLog,
+        error: 'Member is protected by an excused Metastrike for tonight.',
+      };
+    }
+    return {
+      success: false,
+      strikeIssued: false,
+      reason: 'db_update_failed',
+      error: updateRes.error ? `Failed to persist strike count: ${updateRes.error.message || updateRes.error}` : 'Failed to update member strike counts',
+    };
+  }
 
   // 4. Save nightly strike log
   const strikeLog: NightlyStrikeLog = {
@@ -887,14 +999,29 @@ export async function issueAutomaticBedtimeStrike(
     updated_at: nowUtc.toISO(),
   };
 
-  const saved = await saveNightlyStrikeLog(strikeLog);
-
-  return {
-    success: true,
-    strikeIssued: true,
-    log: saved,
-    strikesUsed: newStrikesUsed,
-  };
+  try {
+    const saved = await saveNightlyStrikeLog(strikeLog, { requireDurable: isSupabaseConfigured });
+    return {
+      success: true,
+      strikeIssued: true,
+      log: saved,
+      strikesUsed: newStrikesUsed,
+    };
+  } catch (err: any) {
+    // Rollback strike count on nightly log failure
+    await updateMemberStrikeCounts(
+      member.id,
+      counts.strikes_used,
+      counts.metastrikes_used,
+      counts.strike_cycle_month
+    );
+    return {
+      success: false,
+      strikeIssued: false,
+      reason: 'db_log_failed',
+      error: `Failed to persist nightly strike log: ${err?.message || err}`,
+    };
+  }
 }
 
 /**
@@ -1091,12 +1218,25 @@ export async function convertStrikeToMetastrike(
   const newStrikesUsed = Math.max(0, counts.strikes_used - 1);
   const newMetastrikesUsed = Math.min(3, counts.metastrikes_used + 1);
 
-  await updateMemberStrikeCounts(
+  const updateRes = await updateMemberStrikeCounts(
     member.id,
     newStrikesUsed,
     newMetastrikesUsed,
-    counts.strike_cycle_month
+    counts.strike_cycle_month,
+    isSupabaseConfigured
+      ? {
+          strikes_used: counts.strikes_used,
+          metastrikes_used: counts.metastrikes_used,
+        }
+      : undefined
   );
+
+  if (!updateRes.success) {
+    return {
+      success: false,
+      error: 'Could not convert strike due to concurrent count modification. Please retry.',
+    };
+  }
 
   const cleanReason = (reason || '').trim() || 'Retroactive Conversion';
 
@@ -1107,14 +1247,27 @@ export async function convertStrikeToMetastrike(
     updated_at: nowUtc.toISO(),
   };
 
-  const saved = await saveNightlyStrikeLog(updatedLog);
-
-  return {
-    success: true,
-    log: saved,
-    strikesUsed: newStrikesUsed,
-    metastrikesUsed: newMetastrikesUsed,
-  };
+  try {
+    const saved = await saveNightlyStrikeLog(updatedLog, { requireDurable: isSupabaseConfigured });
+    return {
+      success: true,
+      log: saved,
+      strikesUsed: newStrikesUsed,
+      metastrikesUsed: newMetastrikesUsed,
+    };
+  } catch (err: any) {
+    // Rollback strike counts on log persistence failure
+    await updateMemberStrikeCounts(
+      member.id,
+      counts.strikes_used,
+      counts.metastrikes_used,
+      counts.strike_cycle_month
+    );
+    return {
+      success: false,
+      error: `Failed to persist Metastrike conversion: ${err?.message || err}`,
+    };
+  }
 }
 
 /**

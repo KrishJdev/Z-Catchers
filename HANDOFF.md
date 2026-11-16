@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-16T17:07:00+05:30  
+> **Last Updated:** 2026-11-16T18:38:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `fc64a0b`  
+> **Latest Commit:** `c4c553d`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78)  
 > **Active Integration Pull Requests:** [#80 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/80) (`krish` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76)  
 > **Active Production Release Pull Request:** [#79 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/79) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 40/40 suites passed, 100% in 59.69s | `npm run build` clean, 28/28 routes prerendered)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 40/40 suites passed, 100% in 60.78s)
 
 ---
 
@@ -102,6 +102,17 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
        4. Member receives automatic strike at +10m, then applies metastrike before next bedtime -> normal strike removed and replaced with metastrike.
        5. Moderator manually adds/removes strikes via `/api/mod` -> state updates accurately.
      - Updated Section 5.6 of `PROJECT_SPEC.md` and Section 2.3 of `BACKEND_TZ_PWA_SPEC.md`.
+  5. **CodeRabbit Automated Review Remediation & System Hardening (`src/lib/sleepEngine.ts`, `src/lib/cronDispatcher.ts`, `src/lib/strikes.ts`, `src/app/api/members/route.ts`, `src/lib/db.ts`):**
+     - Resolved all 8 actionable findings raised by CodeRabbit on PR #80:
+       1. *Candidate Bedtime Offset Evaluation (`sleepEngine.ts`)*: Added offset `-1` to `getNextScheduledBedtime` and `getNextScheduledBedtimeAfter` candidate arrays `[-1, 0, 1, 2, 3, 4, 5, 6, 7]`, ensuring post-midnight bedtimes (e.g. 01:00) occurring tonight are evaluated relative to current local time (e.g. 00:30).
+       2. *Dry-Run Safety in Cron (`cronDispatcher.ts`)*: Ensured `options.dryRun` previews auto-strike dispatches in return results while strictly bypassing all state-mutating DB calls, lock acquisitions, push sends, and webhook dispatches.
+       3. *Resumption of Undelivered Alerts (`cronDispatcher.ts`)*: When a strike log already exists from a prior interrupted run (`existingStrikeLog?.record_type === 'strike'`), resumes pending personal push and community Discord webhook delivery without re-incrementing or re-issuing the strike.
+       4. *Atomic Strike Count Updates & Persistence Verification (`strikes.ts`)*: Updated `updateMemberStrikeCounts()` to return status and propagated DB failures, ensuring `issueAutomaticBedtimeStrike()` never logs strikes as successful if DB persistence failed.
+       5. *Rollback Protection on Nightly Log Failure (`strikes.ts`)*: If nightly strike log persistence fails after member counts are incremented, rolls back the count increment to maintain count/log consistency.
+       6. *Maximum Strikes Cap (`strikes.ts`)*: If a member already has 3 strikes (`counts.strikes_used >= 3`), `issueAutomaticBedtimeStrike()` rejects issuance with `strikeIssued: false, reason: 'already_at_max_strikes'`, preventing uncounted strikes from erasing earlier strikes upon Metastrike conversion.
+       7. *Concurrency Serialization & Metastrike Overwrite Guard (`strikes.ts`)*: Added conditional concurrency guards on `updateMemberStrikeCounts()` and strictly prevented `saveNightlyStrikeLog()` from overwriting an existing `metastrike` row with a `strike`.
+       8. *Roster Batch Lookup Optimization (`src/app/api/members/route.ts`)*: Passed the hydrated roster map as the third parameter to `getRecentEligibleStrikeLogsBatch()`.
+       9. *Test Suite Expansion (`scripts/test-push-and-cron.mjs`, `scripts/test-strikes-system.mjs`)*: Added Case 6F/6G and Test 2F/2G verifying dry-run non-mutation, max strikes cap (3), and midnight candidate offset evaluation. All 40 unit test suites pass cleanly.
 
 ### Phase 104: Production Release Pull Request #79 from `dev` to `main`
 * **Objective & Context:**

@@ -28,6 +28,7 @@ import {
   checkMonthlyStrikeReset,
   getCurrentStrikeMonth,
   getSleepCycleDate,
+  getNextScheduledBedtime,
 } from '../src/lib/sleepEngine.ts';
 import {
   recordStrikeVote,
@@ -153,6 +154,31 @@ async function run() {
   const peerVote = await recordStrikeVote(dummyMember, 'voter-alice', '2026-11-10', t10);
   assert(peerVote.success === false, 'Peer strike voting is rejected');
   assert(peerVote.error && peerVote.error.includes('disabled'), 'Returns peer voting disabled message');
+
+  // Test 2F: Member already at 3 strikes limit receives 0 new strikes (capped)
+  const maxStrikesMember = {
+    ...dummyMember,
+    id: 'test-max-strikes-sleeper',
+    strikes_used: 3,
+    strikes_count: 3,
+  };
+  const maxStrikeRes = await issueAutomaticBedtimeStrike(maxStrikesMember, '2026-11-10', t10);
+  assert(maxStrikeRes.strikeIssued === false, 'Member with 3 strikes receives 0 new strikes');
+  assert(maxStrikeRes.reason === 'already_at_max_strikes', 'Reason indicates already at max strikes');
+  assert(maxStrikeRes.strikesUsed === 3, 'Strikes used remains capped at 3');
+
+  // Test 2G: Next scheduled bedtime evaluation across midnight boundaries
+  const midnightMember = {
+    ...dummyMember,
+    id: 'test-midnight-sleeper',
+    bedtime_local: '01:00',
+    wake_time_local: '09:00',
+    timezone: 'UTC',
+  };
+  // At 00:30 UTC, next bedtime is 01:00 UTC today (derived from yesterday evening cycle offset -1)
+  const at0030 = DateTime.fromISO('2026-11-11T00:30:00.000Z');
+  const nextBedtime = getNextScheduledBedtime(midnightMember, at0030);
+  assert(nextBedtime.toFormat('yyyy-MM-dd HH:mm') === '2026-11-11 01:00', 'Next bedtime at 00:30 is 01:00 today, not tomorrow');
 
   console.log('\n--- 3. Pre-Next-Bedtime Metastrike Replacement Workflow ---');
   // Member currently has 1 strike from tonight

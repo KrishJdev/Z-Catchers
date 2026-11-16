@@ -158,7 +158,8 @@ export async function GET(request: Request) {
       ),
       getRecentEligibleStrikeLogsBatch(
         memberItems.map((item) => item.hydratedMember.id),
-        nowUtc
+        nowUtc,
+        new Map(memberItems.map((item) => [item.hydratedMember.id, item.hydratedMember]))
       ),
     ]);
 

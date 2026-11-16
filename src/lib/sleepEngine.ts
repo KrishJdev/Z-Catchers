@@ -1268,7 +1268,7 @@ export function getNextScheduledBedtime(
   const sleeperZone = DateTime.now().setZone(normalizedZone).isValid ? normalizedZone : 'UTC';
   const sleeperNow = nowUtc.setZone(sleeperZone);
 
-  const upcomingCandidates = [0, 1, 2, 3, 4, 5, 6, 7]
+  const upcomingCandidates = [-1, 0, 1, 2, 3, 4, 5, 6, 7]
     .map((offset) => {
       const nightDt = sleeperNow.plus({ days: offset }).startOf('day');
       return getNightScheduleDateTime(member, nightDt).bedtimeDateTime;
@@ -1290,7 +1290,7 @@ export function getNextScheduledBedtimeAfter(
   const sleeperZone = DateTime.now().setZone(normalizedZone).isValid ? normalizedZone : 'UTC';
   const refInZone = referenceBedtime.setZone(sleeperZone);
 
-  const upcomingCandidates = [0, 1, 2, 3, 4, 5, 6, 7]
+  const upcomingCandidates = [-1, 0, 1, 2, 3, 4, 5, 6, 7]
     .map((offset) => {
       const nightDt = refInZone.plus({ days: offset }).startOf('day');
       return getNightScheduleDateTime(member, nightDt).bedtimeDateTime;
