@@ -1,10 +1,10 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-16T00:38:00+05:30  
+> **Last Updated:** 2026-11-16T13:55:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `a809952`  
+> **Latest Commit:** `07b4549`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75)  
 > **Active Integration Pull Requests:** [#77 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/77) (`feat/issue-66-unified-pwa-push-onboarding` -> `dev`), [#78 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/78) (`krish` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76)  
@@ -69,6 +69,25 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 102: CodeRabbit Review Resolution on Unified PWA Install & Push Onboarding Card (#66, ZC-32) & Test Regression Pointing
+* **Objective & Context:**
+  - Evaluated and addressed automated CodeRabbit review findings on Pull Request #77 (`feat/issue-66-unified-pwa-push-onboarding` -> `dev`) and propagated all changes cleanly to `krish`.
+  - Addressed review findings regarding transient user gesture preservation for notification permission prompts, pointing regression tests directly to the canonical component implementation, and adding behavioral simulation for stale async state race conditions.
+* **Key Fixes & Enhancements:**
+  1. **Transient User Activation Preservation (`src/components/UnifiedOnboardingCard.tsx`):**
+     - Updated `handleEnablePushClick` to immediately invoke `Notification.requestPermission()` directly during the user click gesture before any asynchronous microtasks or service worker registration calls. This guarantees compliance with WebKit/iOS Safari and Chromium user-activation constraints, preventing notification prompt suppression.
+     - Added preemptive service worker registration in the component mount `useEffect` so that the service worker is warm and ready when the member taps "Enable Alerts".
+  2. **Canonical Component Inspection in Regression Tests (`scripts/test-phase1-pwa-push.mjs`, `scripts/test-ui-normalization-and-button-wrapping.mjs`):**
+     - Updated test assertions in Phase 1 PWA tests and UI touch-target normalization tests to inspect `src/components/UnifiedOnboardingCard.tsx` directly if present, eliminating dependence on comment assertions in `src/components/PwaBanner.tsx`.
+     - Removed redundant dummy comment tokens from `src/components/PwaBanner.tsx`, maintaining a clean re-export and alias module.
+  3. **Behavioral Stale Inspection Invalidation Simulation (`scripts/test-unified-pwa-push-onboarding.mjs`):**
+     - Added behavioral test suite verifying that an asynchronous in-flight subscription inspection that resolves with `true` after a newer parent state change to `false` cannot overwrite the updated disabled state, exercising the `inspectionTokenRef` token guard under race conditions.
+* **Verification & QA Status:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 40/40 test suites passed cleanly (100% pass rate in 82.27s).
+  - `npm run build`: Production build succeeded (28/28 routes prerendered).
+  - Pushed to `origin/feat/issue-66-unified-pwa-push-onboarding` under commit `9d8874b` and merged into `krish`.
 
 ### Phase 101: Strike & Metastrike Authorization Propagation, UI Responsiveness & Verification (GitHub #40, Jira ZC-26)
 * **Objective & Context:**
