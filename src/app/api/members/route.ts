@@ -117,16 +117,22 @@ export async function GET(request: Request) {
       const hydratedMember = hydrateMemberWeekendHours(activeMember);
 
       // Check-in & streak computation
-      const sleeperNow = nowUtc.setZone(toValidLuxonZone(hydratedMember.timezone));
-      const localDateStr = getSleepCycleDate(hydratedMember, nowUtc);
+      const sleeperZone = toValidLuxonZone(hydratedMember.timezone);
+      const sleeperNow = nowUtc.setZone(sleeperZone);
+      const yesterdayDate = sleeperNow.minus({ days: 1 }).startOf('day').toISODate()!;
       const memberCheckins = checkinsByMember.get(hydratedMember.id) || [];
+      const hasOpenYesterdayCheckin =
+        memberCheckins.includes(yesterdayDate) && !wokeUpSet.has(`${hydratedMember.id}_${yesterdayDate}`);
+
+      const memberIsInBed = hasOpenYesterdayCheckin || Boolean(hydratedMember.is_in_bed);
+      const localDateStr = getSleepCycleDate(hydratedMember, nowUtc, memberIsInBed);
       const is_woke_up = wokeUpSet.has(`${hydratedMember.id}_${localDateStr}`);
       const is_in_bed = memberCheckins.includes(localDateStr) && !is_woke_up;
       const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);
       const nag_assists_count = nagAssistsByMemberAndDate.get(`${hydratedMember.id}_${localDateStr}`) || 0;
 
       memberItems.push({
-        hydratedMember: { ...hydratedMember, is_woke_up },
+        hydratedMember: { ...hydratedMember, is_in_bed, is_woke_up },
         localDateStr,
         is_in_bed,
         is_woke_up,

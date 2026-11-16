@@ -540,7 +540,17 @@ export async function executeNotificationDispatcher(options: {
       continue;
     }
 
-    const localDate = getSleepCycleDate(member, nowUtc);
+    const sleeperZone = toValidLuxonZone(member.timezone);
+    const sleeperNow = nowUtc.setZone(sleeperZone);
+    const yesterdayDate = sleeperNow.minus({ days: 1 }).startOf('day').toISODate()!;
+    const hasYesterdayInBed =
+      (member.last_notified_cycle_date === yesterdayDate && member.last_notified_stage === 'IN_BED_EARLY') ||
+      hasBeenDispatched(member.id, 'IN_BED_EARLY', yesterdayDate);
+    const hasYesterdayWokeUp =
+      Boolean(member.last_wake_cycle_date === yesterdayDate || member.is_woke_up);
+    const isYesterdaySessionOpen = hasYesterdayInBed && !hasYesterdayWokeUp;
+
+    const localDate = getSleepCycleDate(member, nowUtc, isYesterdaySessionOpen || Boolean(member.is_in_bed));
     if (!localDate) continue;
 
     // Check if sleeper has checked in early via "I'm in Bed" Safe Button for tonight
@@ -770,7 +780,7 @@ export async function executeNotificationDispatcher(options: {
     // Automatically issues 1 normal strike if the member has neither checked in via in-bed
     // nor applied an excused Metastrike for this sleep cycle.
     const strikeLockKey = `notif:${member.id}:${localDate}:AUTO_BEDTIME_STRIKE`;
-    const isStrikeDue = diff >= 10;
+    const isStrikeDue = diff >= 10 && state.isOverdue;
     const isStrikeAlreadyLogged =
       hasBeenDispatched(member.id, 'AUTO_BEDTIME_STRIKE', localDate) ||
       inMemoryCronLocks.get(strikeLockKey)?.metadata?.completed === true;

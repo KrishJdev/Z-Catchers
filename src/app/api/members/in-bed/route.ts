@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     }
 
     const sleeperNow = DateTime.utc().setZone(toValidLuxonZone(member.timezone));
-    const cycleDate = getSleepCycleDate(member, DateTime.utc());
+    const yesterdayDate = sleeperNow.minus({ days: 1 }).startOf('day').toISODate()!;
 
     // Fetch member's recent check-ins and woke-up logs
     const { data: logs } = await supabaseAdmin
@@ -59,11 +59,16 @@ export async function GET(request: Request) {
     const checkinDates = (logs || [])
       .filter((l: { notification_type: string }) => l.notification_type === 'IN_BED_EARLY')
       .map((l: { local_date: string }) => l.local_date);
+    const wokeUpDates = (logs || [])
+      .filter((l: { notification_type: string }) => l.notification_type === 'WOKE_UP')
+      .map((l: { local_date: string }) => l.local_date);
+
+    const hasOpenYesterday =
+      checkinDates.includes(yesterdayDate) && !wokeUpDates.includes(yesterdayDate);
+
+    const cycleDate = getSleepCycleDate(member, DateTime.utc(), hasOpenYesterday || Boolean(member.is_in_bed));
     const isInBed = checkinDates.includes(cycleDate);
-    const isWokeUp = (logs || []).some(
-      (l: { notification_type: string; local_date: string }) =>
-        l.notification_type === 'WOKE_UP' && l.local_date === cycleDate
-    );
+    const isWokeUp = wokeUpDates.includes(cycleDate);
     const streakDays = calculateSleepStreak(checkinDates, sleeperNow);
 
     return NextResponse.json({

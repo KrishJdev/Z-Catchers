@@ -200,6 +200,55 @@ async function run() {
       'Transitions to today cycle (2026-11-13) once tonight wind-down begins'
     );
 
+    // 2B. Sleeping user 90 minutes past wake time (10:00 AM for 08:30 AM wake time)
+    const morning1000AmKolkata = DateTime.fromISO('2026-11-13T10:00:00', { zone: 'Asia/Kolkata' });
+    const cycleSleeping90m = resolveActiveSleepCycle(mockKrishMember, morning1000AmKolkata, true);
+    testAssert(
+      cycleSleeping90m.cycleEveningDate === '2026-11-12',
+      '(a) Sleeping member 90 minutes past wake time (10:00 AM) remains anchored to yesterday cycle'
+    );
+    const stateSleeping90m = computeMemberState(
+      { ...mockKrishMember, is_in_bed: true, is_woke_up: false },
+      'Asia/Kolkata',
+      morning1000AmKolkata.toUTC()
+    );
+    testAssert(stateSleeping90m.bucket === 'SLEEPING', '(a) Sleeping user 90m past wake time has bucket: SLEEPING');
+    testAssert(stateSleeping90m.status === 'SLEEPING', '(a) Sleeping user 90m past wake time has status: SLEEPING');
+    testAssert(stateSleeping90m.needsWakeUpLog === true, '(a) Sleeping user 90m past wake time has needsWakeUpLog: true');
+    testAssert(stateSleeping90m.isPastWakeTime === true, '(a) Sleeping user 90m past wake time has isPastWakeTime: true');
+    testAssert(stateSleeping90m.isSleepShieldActive === false, '(a) Sleeping user 90m past wake time has isSleepShieldActive: false');
+
+    // 2C. Overdue user 1 minute past wake time (08:31 AM for 08:30 AM wake time)
+    const morning0831AmKolkata = DateTime.fromISO('2026-11-13T08:31:00', { zone: 'Asia/Kolkata' });
+    const cycleOverdue1m = resolveActiveSleepCycle(
+      { ...mockKrishMember, is_in_bed: false, is_woke_up: false },
+      morning0831AmKolkata,
+      false
+    );
+    testAssert(
+      cycleOverdue1m.cycleEveningDate === '2026-11-13',
+      '(b) Overdue member 1 minute past wake time (08:31 AM) anchors to today cycle'
+    );
+    const stateOverdue1m = computeMemberState(
+      { ...mockKrishMember, is_in_bed: false, is_woke_up: false },
+      'Asia/Kolkata',
+      morning0831AmKolkata.toUTC()
+    );
+    testAssert(stateOverdue1m.bucket === 'AWAKE', '(b) Overdue user 1m past wake time automatically becomes AWAKE');
+    testAssert(stateOverdue1m.status === 'AWAKE', '(b) Overdue user 1m past wake time has status: AWAKE');
+    testAssert(stateOverdue1m.isOverdue === false, '(b) Overdue user 1m past wake time has isOverdue: false');
+    testAssert(stateOverdue1m.needsWakeUpLog === false, '(b) Overdue user 1m past wake time has needsWakeUpLog: false');
+
+    // Overdue user 1 minute BEFORE wake time (08:29 AM for 08:30 AM wake time)
+    const morning0829AmKolkata = DateTime.fromISO('2026-11-13T08:29:00', { zone: 'Asia/Kolkata' });
+    const stateOverdueBeforeWake = computeMemberState(
+      { ...mockKrishMember, is_in_bed: false, is_woke_up: false },
+      'Asia/Kolkata',
+      morning0829AmKolkata.toUTC()
+    );
+    testAssert(stateOverdueBeforeWake.bucket === 'BEDTIME_NOW', 'Overdue user 1m before wake time is in BEDTIME_NOW');
+    testAssert(stateOverdueBeforeWake.isOverdue === true, 'Overdue user 1m before wake time has isOverdue: true');
+
     // --------------------------------------------------------------------------
     // 3. Instant Wake-Up API Route (POST /api/members/wake-up: button)
     // --------------------------------------------------------------------------

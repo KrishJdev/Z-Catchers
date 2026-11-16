@@ -146,7 +146,7 @@ export function PinnedSelfActionBar({
                 className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full border-2 border-night-surface ${
                   isInBed ? 'bg-status-amber' : 'bg-status-sage'
                 }`}
-                title={isInBed ? 'Sleep Shield Active' : 'Awake'}
+                title={isInBed ? (isSleepShieldActive ? 'Sleep Shield Active' : 'In Bed • Past Wake Time') : 'Awake'}
               />
             </div>
 
@@ -158,7 +158,9 @@ export function PinnedSelfActionBar({
                 {isInBed ? (
                   <span className="flex items-center gap-1 font-medium text-status-amber truncate">
                     <Shield className="h-3 w-3 shrink-0 fill-status-amber/20" />
-                    <span className="truncate">Sleep Shield Active • Nags Muted</span>
+                    <span className="truncate">
+                      {isSleepShieldActive ? 'Sleep Shield Active • Nags Muted' : 'In Bed • Past Wake Time'}
+                    </span>
                   </span>
                 ) : (
                   <span className="text-cream-secondary truncate">

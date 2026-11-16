@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-17T03:33:00+05:30  
+> **Last Updated:** 2026-11-17T03:39:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `6cbfc9c`  
+> **Latest Commit:** `3527bdc`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82)  
 > **Active Integration Pull Requests:** None  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 41/41 suites passed, 100% in 52.80s | `npm run build` clean, 28/28 routes prerendered)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 41/41 suites passed, 100% in 50.64s)
 
 ---
 
@@ -69,6 +69,39 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 110: Scheduled Wake Time State Machine Alignment & Transition Audit
+* **Objective & Context:**
+  - Audited and resolved the state-machine conflict occurring when the current local time in a member's timezone passes their scheduled `wake_time`.
+  - Addressed premature auto-flipping to `AWAKE`: A user who clicked "I'm in Bed" and slept past their scheduled `wake_time` previously had their cycle prematurely rolled over or gated, hiding the "I woke up" button in `PinnedSelfActionBar.tsx` and `MemberCard.tsx` and preventing them from logging their wake-up time.
+  - Aligned overdue transition: An overdue member who never clicked "I'm in Bed" during the sleep cycle transitions cleanly from `BEDTIME_NOW` / `OVERDUE_NAG_NOW` to `AWAKE` the exact moment `wake_time` is reached.
+* **Scope of Changes & Key Enhancements:**
+  1. **Sleep Engine State Machine Alignment (`src/lib/sleepEngine.ts`):**
+     - Updated `resolveActiveSleepCycle`:
+       - Detects open in-bed sleep sessions via `isInBed`, `member.is_in_bed`, or DB stage `last_notified_stage === 'IN_BED_EARLY'`.
+       - For active sleeping members (`effectiveInBed && !hasWokeUpForYesterday`), yesterday's cycle remains active past scheduled `wake_time` until explicit wake-up or a 16-hour staleness safety cap (capped before today's wind-down).
+       - For members who never checked in (`!effectiveInBed`), yesterday's cycle terminates strictly at `ySched.wakeDateTime`, transitioning cleanly to today's upcoming cycle upon reaching scheduled wake time.
+       - For members who already woke up (`hasWokeUpForYesterday`), preserves a 4-hour post-wake window before rolling over.
+     - Updated `getSleepCycleDate`: Accepts optional `isInBed` parameter and passes `member.is_in_bed` to `resolveActiveSleepCycle` to prevent premature cycle rollover during roster queries.
+     - Updated `computeMemberState`: Ensures `effectiveInBed && !hasLoggedWakeUp && (diffMinutes >= -180 || isPastWakeTime)` retains members in `SLEEPING` (`statusText: "In Bed • Past Wake Time"`, `needsWakeUpLog: true`, `isSleepShieldActive: false`) past wake time.
+  2. **Roster & Session Endpoints (`src/app/api/members/route.ts`, `src/app/api/auth/me/route.ts`, `src/app/api/members/in-bed/route.ts`, `src/app/api/members/wake-up/route.ts`):**
+     - `/api/members`: Evaluates whether an open yesterday check-in exists (`memberCheckins.includes(yesterdayDate) && !wokeUpSet.has(...)`) and passes `memberIsInBed` to `getSleepCycleDate` so sleeping members are not prematurely marked awake.
+     - `/api/auth/me`: Queries logs across yesterday and today to accurately hydrate `is_in_bed` for sleeping users past wake time.
+     - `/api/members/in-bed`: GET endpoint uses multi-day check-in detection to preserve in-bed status past scheduled wake time.
+     - `/api/members/wake-up`: Passes `member.is_in_bed` into `getSleepCycleDate` to correctly anchor active cycle date when closing sleep records after scheduled wake time.
+  3. **Cron Dispatcher Safety (`src/lib/cronDispatcher.ts`):**
+     - Enhanced `getSleepCycleDate` invocation with multi-day session lookup to prevent daytime cycle misattribution.
+     - Guarded `AUTO_BEDTIME_STRIKE` with `diff >= 10 && state.isOverdue` so strikes are never issued once scheduled wake time passes or when a member is awake.
+  4. **Component Action Bar & Card Verification (`src/components/PinnedSelfActionBar.tsx`, `src/components/MemberCard.tsx`, `src/app/page.tsx`):**
+     - `PinnedSelfActionBar.tsx`: Verified "☀️ I'm Awake" button remains visible and actionable whenever in an active sleep session, and updated status indicator to display `"In Bed • Past Wake Time"` when past wake time.
+     - `MemberCard.tsx`: Verified that "☀️ I Woke Up" remains visible and actionable in both `SLEEPING` bucket and `AWAKE` bucket (when `needsWakeUpLog: true`), and non-viewers see `Wake Up Nag` past wake time.
+     - `page.tsx`: Updated Sleep Shield synchronization to evaluate `computeMemberState(currentUser, viewerTimezone).isSleepShieldActive` so Sleep Shield deactivates once wake time passes while keeping `currentUser.is_in_bed` active.
+  5. **Automated Unit Tests & Verification (`scripts/test-wake-up-nag.mjs`, `scripts/test-wake-up-durability-and-times.mjs`):**
+     - Added test assertions covering: (a) a sleeping user 90 minutes past scheduled wake_time still showing as sleeping with the wake-up action available (`bucket: 'SLEEPING'`, `status: 'SLEEPING'`, `needsWakeUpLog: true`, `isPastWakeTime: true`), and (b) an overdue user 1 minute past scheduled wake_time automatically becoming awake (`bucket: 'AWAKE'`, `status: 'AWAKE'`, `isOverdue: false`, `needsWakeUpLog: false`).
+     - Verified `node --import tsx scripts/test-wake-up-nag.mjs` passes cleanly.
+     - Verified `node --import tsx scripts/test-wake-up-durability-and-times.mjs` passes cleanly.
+     - Verified full unit test suite `npm run test:unit`: 41/41 suites passed (100% in 50.64s).
+     - Verified `npx tsc --noEmit`: 0 errors.
 
 ### Phase 109: Merged Feature Branch Cleanup & Repository Hygiene
 * **Objective & Context:**

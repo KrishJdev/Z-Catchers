@@ -561,9 +561,14 @@ export default function HomePage() {
   // Synchronize currentUser in_bed status to active Sleep Shield
   useEffect(() => {
     if (currentUser) {
-      setIsSleepShieldActive(Boolean(currentUser.is_in_bed));
+      if (currentUser.is_in_bed) {
+        const state = computeMemberState(currentUser, viewerTimezone);
+        setIsSleepShieldActive(Boolean(state.isSleepShieldActive));
+      } else {
+        setIsSleepShieldActive(false);
+      }
     }
-  }, [currentUser, currentUser?.is_in_bed]);
+  }, [currentUser, currentUser?.is_in_bed, viewerTimezone, tick]);
 
   // Personal Sleep Shield toggle handler for Header
   const handleToggleSleepShield = useCallback(async () => {

@@ -8,7 +8,7 @@ import {
   isModDiscordId,
 } from '@/lib/auth';
 import { DateTime } from 'luxon';
-import { getSleepCycleDate } from '@/lib/sleepEngine';
+import { getSleepCycleDate, toValidLuxonZone } from '@/lib/sleepEngine';
 
 /**
  * GET: Retrieve the authenticated session member's profile and perform rolling session renewal.
@@ -66,17 +66,31 @@ export async function GET(request: Request) {
     sanitized.is_moderator = effectiveIsMod;
 
     // Hydrate active sleep cycle in_bed and woke_up flags
-    const localDate = getSleepCycleDate(currentMember, DateTime.utc());
+    const sleeperZone = toValidLuxonZone(currentMember.timezone);
+    const sleeperNow = DateTime.utc().setZone(sleeperZone);
+    const yesterdayDate = sleeperNow.minus({ days: 1 }).startOf('day').toISODate()!;
+    const todayDate = sleeperNow.startOf('day').toISODate()!;
+
     const { data: logs } = await supabaseAdmin
       .from('notification_logs')
-      .select('notification_type')
+      .select('notification_type, local_date')
       .eq('member_id', currentMember.id)
-      .eq('local_date', localDate)
+      .in('local_date', [yesterdayDate, todayDate])
       .in('notification_type', ['IN_BED_EARLY', 'WOKE_UP']);
 
-    const types = (logs || []).map((l: { notification_type: string }) => l.notification_type);
-    sanitized.is_in_bed = types.includes('IN_BED_EARLY') && !types.includes('WOKE_UP');
-    sanitized.is_woke_up = types.includes('WOKE_UP');
+    const yesterdayTypes = (logs || [])
+      .filter((l: any) => l.local_date === yesterdayDate)
+      .map((l: any) => l.notification_type);
+    const hasOpenYesterday =
+      yesterdayTypes.includes('IN_BED_EARLY') && !yesterdayTypes.includes('WOKE_UP');
+
+    const localDate = getSleepCycleDate(currentMember, DateTime.utc(), hasOpenYesterday || Boolean(currentMember.is_in_bed));
+    const cycleTypes = (logs || [])
+      .filter((l: any) => l.local_date === localDate)
+      .map((l: any) => l.notification_type);
+
+    sanitized.is_in_bed = cycleTypes.includes('IN_BED_EARLY') && !cycleTypes.includes('WOKE_UP');
+    sanitized.is_woke_up = cycleTypes.includes('WOKE_UP');
 
     const response = NextResponse.json({
       authenticated: true,
