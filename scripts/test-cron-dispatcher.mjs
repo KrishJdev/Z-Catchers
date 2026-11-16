@@ -3,7 +3,17 @@ import path from 'path';
 import assert from 'assert';
 import { DateTime } from 'luxon';
 
-// 1. Auto-load .env.local if present
+// Ensure isolated offline testing mode before importing application modules.
+// Strip remote Supabase credentials so the test suite strictly operates on
+// isolated in-memory stores without reading or updating remote database records.
+process.env.NODE_ENV = 'test';
+process.env.PIN_SALT = process.env.PIN_SALT || 'test-salt-secret-12345';
+process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-session-secret-for-cron-dispatcher-suite-12345';
+process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://placeholder.supabase.co';
+process.env.SUPABASE_SERVICE_ROLE_KEY = '';
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'placeholder-anon-key';
+
+// Auto-load non-Supabase local secrets from .env.local if present (e.g. PIN_SALT)
 try {
   const envPath = path.resolve(process.cwd(), '.env.local');
   if (fs.existsSync(envPath)) {
@@ -15,6 +25,8 @@ try {
       if (eqIdx > 0) {
         const key = trimmed.slice(0, eqIdx).trim();
         const val = trimmed.slice(eqIdx + 1).trim();
+        // Skip Supabase credentials to enforce strict offline test isolation
+        if (key.includes('SUPABASE')) continue;
         if (!process.env[key]) {
           process.env[key] = val;
         }
@@ -23,13 +35,6 @@ try {
   }
 } catch {
   // Ignore
-}
-
-if (!process.env.PIN_SALT) {
-  process.env.PIN_SALT = 'test-salt-secret-12345';
-}
-if (!process.env.NODE_ENV) {
-  process.env.NODE_ENV = 'test';
 }
 
 import {

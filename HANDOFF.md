@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-16T20:22:00+05:30  
+> **Last Updated:** 2026-11-17T02:30:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `1a10b80`  
+> **Latest Commit:** `1de01f1`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80)  
 > **Active Integration Pull Requests:** [#82 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/82) (`krish` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79)  
 > **Active Production Release Pull Request:** [#81 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/81) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 41/41 suites passed, 100% in 59.75s | `npm run build` clean, 28/28 routes prerendered)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 41/41 suites passed, 100% in 50.90s | `npm run build` clean, 28/28 routes prerendered)
 
 ---
 
@@ -103,9 +103,15 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
   5. **Documentation Updates (`PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`):**
      - Updated Section 5.2 in `PROJECT_SPEC.md` to document manual-only transitions, the fallback rule, and the "Overdue / Past Bedtime" status bucket.
      - Updated Section 2.2 and 2.3 in `BACKEND_TZ_PWA_SPEC.md` to document the state machine rules and overdue bucket retention.
+  6. **CodeRabbit Automated Review Remediation on PR #82 (`BACKEND_TZ_PWA_SPEC.md`, `scripts/test-cron-dispatcher.mjs`, `src/lib/db.ts`, `src/app/api/members/in-bed/route.ts`, `scripts/test-wake-up-durability-and-times.mjs`):**
+     - *Spec Example Identifiers (`BACKEND_TZ_PWA_SPEC.md`)*: Fully documented fields on `MemberSchedule` (`isInBed`, `isWokeUp`, `wakeTimeLocal`) and derived `effectiveInBed` and `isPastWakeTime` before state selection so the spec code example has zero unresolved identifiers.
+     - *Test Offline Isolation (`scripts/test-cron-dispatcher.mjs`)*: Guaranteed strict offline test mode before importing application modules by stripping remote Supabase credentials, ensuring module-level initialization strictly points to in-memory fixtures.
+     - *In-Memory Fixture Persistence (`src/lib/db.ts`)*: In `updateMemberSafe`, when no database row matches and no error occurred (`!error && memoryMembers.has(memberId)`), persists changes to the in-memory fixture while preserving database updates and error handling.
+     - *In-Bed Safe Update Validation (`src/app/api/members/in-bed/route.ts`)*: Checked the results of each `updateMemberSafe` call in both check-in and cancel/wake-up paths, returning HTTP 500 when the update fails or returns no member. Guarded `notification_logs` query with `isSupabaseConfigured && !isTestMemberFixture(member.id)` during streak calculation.
+     - *Clock-Skew Resilience (`scripts/test-wake-up-durability-and-times.mjs`)*: Replaced ambiguous relative date in future wake test with deterministic future date (`'2099-01-01'`) ensuring clock-skew resilience across test environments.
 * **Verification & QA Status:**
   - `npx tsc --noEmit`: Clean (0 errors).
-  - `npm run test:unit`: 41/41 test suites passed cleanly (100% pass rate in 59.75s).
+  - `npm run test:unit`: 41/41 test suites passed cleanly (100% pass rate in 50.90s).
 
 ### Phase 106: Production Release Pull Request #81 from `dev` to `main`
 * **Pull Request:** [#81 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/81) (`dev` -> `main`)

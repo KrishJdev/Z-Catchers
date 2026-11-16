@@ -161,15 +161,23 @@ import { DateTime } from 'luxon';
 export interface MemberSchedule {
   id: string;
   discordUsername: string;
-  bedtimeLocal: string; // "23:30"
-  timezone: string;     // "America/New_York"
+  bedtimeLocal: string;     // "23:30"
+  wakeTimeLocal?: string;   // "07:00"
+  timezone: string;         // "America/New_York"
   journalUrl: string;
+  isInBed?: boolean;        // Active in-bed flag
+  isWokeUp?: boolean;       // Active woke-up flag
   // ... other fields
 }
 
 export type SleepBucket = 'BEDTIME_NOW' | 'OVERDUE' | 'OVERDUE_BEDTIME' | 'WINDING_DOWN' | 'SLEEPING' | 'AWAKE';
 
-export function computeMemberState(member: MemberSchedule, viewerTz: string, nowUtc = DateTime.utc()) {
+export function computeMemberState(
+  member: MemberSchedule,
+  viewerTz: string,
+  nowUtc = DateTime.utc(),
+  isInBedOverride?: boolean
+) {
   // 1. Manual-Only State Transitions & Rules:
   // - "Asleep" (SLEEPING) is entered STRICTLY when the member clicks "I'm in Bed" (effectiveInBed === true).
   // - "Awake" (AWAKE) is entered STRICTLY when the member clicks "Wake Up" (hasLoggedWakeUp === true), or
@@ -180,11 +188,14 @@ export function computeMemberState(member: MemberSchedule, viewerTz: string, now
   //   bedtime passes (currentLocalTime >= scheduledBedtime, diffMinutes >= 0).
   // - The 10-minute automated strike fires at diffMinutes >= 10, but the member stays in Overdue until
   //   checking in or reaching their scheduled wake time.
-  // 1. Parse sleeper's local bedtime today in their IANA zone
-  const [hours, minutes] = member.bedtimeLocal.split(':').map(Number);
+
+  // 1. Parse sleeper's local bedtime and wake time in their IANA zone
+  const [bHours, bMinutes] = member.bedtimeLocal.split(':').map(Number);
+  const wakeTime = member.wakeTimeLocal || '07:00';
+  const [wHours, wMinutes] = wakeTime.split(':').map(Number);
   const sleeperNow = nowUtc.setZone(member.timezone);
   
-  let bedtimeToday = sleeperNow.set({ hour: hours, minute: minutes, second: 0, millisecond: 0 });
+  let bedtimeToday = sleeperNow.set({ hour: bHours, minute: bMinutes, second: 0, millisecond: 0 });
   
   // Handle midnight boundary wrap: construct yesterday, today, and tomorrow instances to find the closest one
   const bedtimeYesterday = bedtimeToday.minus({ days: 1 });
@@ -198,15 +209,26 @@ export function computeMemberState(member: MemberSchedule, viewerTz: string, now
 
   const diffMinutes = sleeperNow.diff(targetBedtime, 'minutes').minutes; // negative = before bedtime, positive = after bedtime
 
+  // Derive target wake time relative to target bedtime
+  let targetWakeTime = targetBedtime.set({ hour: wHours, minute: wMinutes, second: 0, millisecond: 0 });
+  if (targetWakeTime <= targetBedtime) {
+    targetWakeTime = targetWakeTime.plus({ days: 1 });
+  }
+
+  // Derive check-in and wake-up status from member fields before evaluating buckets
+  const effectiveInBed = isInBedOverride !== undefined ? isInBedOverride : Boolean(member.isInBed);
+  const hasLoggedWakeUp = Boolean(member.isWokeUp);
+  const isPastWakeTime = sleeperNow >= targetWakeTime;
+
   let bucket: SleepBucket = 'AWAKE';
   let statusText = '';
   let isSleepShieldActive = false;
 
-  if (effectiveInBed) {
+  if (effectiveInBed && !hasLoggedWakeUp) {
     // Explicit in-bed click via /api/members/in-bed
     bucket = 'SLEEPING';
-    isSleepShieldActive = true;
-    statusText = isPastWakeTime ? 'In Bed • Past Wake Time' : 'Catching Z\'s (Asleep)';
+    isSleepShieldActive = !isPastWakeTime;
+    statusText = isPastWakeTime ? `In Bed • Past Wake Time (${wakeTime})` : 'Catching Z\'s (Asleep)';
   } else if (diffMinutes < 0 && diffMinutes >= -60) {
     bucket = 'WINDING_DOWN';
     statusText = `Bedtime in ${Math.abs(Math.floor(diffMinutes))}m`;
