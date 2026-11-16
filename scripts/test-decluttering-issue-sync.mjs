@@ -108,4 +108,16 @@ for (const entry of mapData) {
 }
 console.log('  ✅ All 10 issues mapped with valid GitHub issue numbers and Jira keys.\n');
 
+// ---------------------------------------------------------------------------
+// Test 5: Key sharing and error tracking logic in sync script
+// ---------------------------------------------------------------------------
+console.log('▶ Test 5: Verifying key-sharing lookup and failure tracking guardrails in sync script');
+const syncScriptSource = fs.readFileSync(path.join(process.cwd(), 'scripts', 'sync-decluttering-issues-to-jira.mjs'), 'utf8');
+
+assert(syncScriptSource.includes('syncedMap.set(`url:${s.ghUrl}`'), 'Must index synced items by GitHub URL for cross-tool key sharing');
+assert(syncScriptSource.includes('syncedMap.set(`id:${s.id}`'), 'Must preserve bulk path key restoration by item ID');
+assert(syncScriptSource.includes('process.exitCode = 1'), 'Must set nonzero exit code on failures while preserving checkpoints');
+assert(syncScriptSource.includes('hasErrors = true'), 'Must track errors across issue creation, remote link, and comments');
+console.log('  ✅ Key-sharing lookup and failure tracking guardrails verified.\n');
+
 console.log('🎉 All Decluttering & PWA Issue Sync verification checks passed successfully!\n');

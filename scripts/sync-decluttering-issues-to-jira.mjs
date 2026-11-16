@@ -220,31 +220,49 @@ export async function syncAllToJira() {
 
   const issuesList = JSON.parse(fs.readFileSync(mapFile, 'utf8'));
 
-  // Incorporate existing synced entries if any
+  // Incorporate existing synced entries and establish Jira key index
+  const syncedMap = new Map();
   if (fs.existsSync(finalMapFile)) {
     try {
       const syncedData = JSON.parse(fs.readFileSync(finalMapFile, 'utf8'));
       if (Array.isArray(syncedData)) {
-        const syncedMap = new Map();
         for (const s of syncedData) {
-          if (s && s.id != null) syncedMap.set(s.id, s);
-          if (s && s.ghUrl) syncedMap.set(s.ghUrl, s);
-        }
-        for (let i = 0; i < issuesList.length; i++) {
-          const item = issuesList[i];
-          const synced = syncedMap.get(item.id) || (item.ghUrl ? syncedMap.get(item.ghUrl) : null);
-          if (synced && synced.jiraKey) {
-            issuesList[i] = {
-              ...item,
-              jiraKey: item.jiraKey || synced.jiraKey,
-              jiraUrl: item.jiraUrl || synced.jiraUrl,
-              remoteLinked: item.remoteLinked ?? synced.remoteLinked,
-            };
+          if (s) {
+            if (s.id != null) syncedMap.set(`id:${s.id}`, s);
+            if (s.ghUrl) syncedMap.set(`url:${s.ghUrl}`, s);
+            if (s.ghNumber != null) syncedMap.set(`gh:${s.ghNumber}`, s);
           }
         }
       }
     } catch (e) {
       console.warn(`Could not read ${finalMapFile}:`, e.message);
+    }
+  }
+
+  // Also index any existing items in issuesList that already have a jiraKey
+  for (const item of issuesList) {
+    if (item && item.jiraKey) {
+      if (item.id != null) syncedMap.set(`id:${item.id}`, item);
+      if (item.ghUrl) syncedMap.set(`url:${item.ghUrl}`, item);
+      if (item.ghNumber != null) syncedMap.set(`gh:${item.ghNumber}`, item);
+    }
+  }
+
+  // Restore existing Jira keys before processing loop
+  for (let i = 0; i < issuesList.length; i++) {
+    const item = issuesList[i];
+    const synced =
+      (item.ghUrl ? syncedMap.get(`url:${item.ghUrl}`) : null) ||
+      (item.ghNumber != null ? syncedMap.get(`gh:${item.ghNumber}`) : null) ||
+      (item.id != null ? syncedMap.get(`id:${item.id}`) : null);
+
+    if (synced && synced.jiraKey) {
+      issuesList[i] = {
+        ...item,
+        jiraKey: item.jiraKey || synced.jiraKey,
+        jiraUrl: item.jiraUrl || synced.jiraUrl,
+        remoteLinked: item.remoteLinked ?? synced.remoteLinked,
+      };
     }
   }
 
@@ -256,6 +274,21 @@ export async function syncAllToJira() {
   for (let i = 0; i < issuesList.length; i++) {
     const item = { ...issuesList[i] };
 
+    // Establish Jira key sharing: look up by GitHub URL, GitHub number, or item ID
+    if (!item.jiraKey) {
+      const priorSync =
+        (item.ghUrl ? syncedMap.get(`url:${item.ghUrl}`) : null) ||
+        (item.ghNumber != null ? syncedMap.get(`gh:${item.ghNumber}`) : null) ||
+        (item.id != null ? syncedMap.get(`id:${item.id}`) : null);
+
+      if (priorSync && priorSync.jiraKey) {
+        item.jiraKey = priorSync.jiraKey;
+        item.jiraUrl = priorSync.jiraUrl || `https://${JIRA_DOMAIN}/browse/${priorSync.jiraKey}`;
+        item.remoteLinked = item.remoteLinked ?? priorSync.remoteLinked;
+        console.log(`[Item #${item.id}] Reusing established Jira key ${item.jiraKey} for GitHub #${item.ghNumber || item.id}`);
+      }
+    }
+
     // 1. Create Jira issue if not already created
     if (!item.jiraKey) {
       console.log(`[Item #${item.id}] Creating Jira issue for: "${item.title}"...`);
@@ -264,6 +297,11 @@ export async function syncAllToJira() {
         item.jiraKey = jiraResult.key;
         item.jiraUrl = `https://${JIRA_DOMAIN}/browse/${jiraResult.key}`;
         console.log(`   ✓ Created Jira issue: ${item.jiraKey} (${item.jiraUrl})`);
+
+        // Index newly created Jira issue in syncedMap immediately
+        if (item.id != null) syncedMap.set(`id:${item.id}`, item);
+        if (item.ghUrl) syncedMap.set(`url:${item.ghUrl}`, item);
+        if (item.ghNumber != null) syncedMap.set(`gh:${item.ghNumber}`, item);
 
         // Checkpoint immediately to prevent duplicate Jira issue creation if subsequent steps fail
         issuesList[i] = item;
@@ -288,6 +326,7 @@ export async function syncAllToJira() {
         console.log(`   ✓ Remote link status: ${linked ? 'SUCCESS' : 'FAILED'}`);
       } catch (linkErr) {
         hasErrors = true;
+        item.linkError = linkErr.message;
         console.warn(`   ⚠️ Remote link failed for ${item.jiraKey}:`, linkErr.message);
       }
     }
@@ -301,6 +340,7 @@ export async function syncAllToJira() {
         console.log(`   ✓ GitHub comment posted successfully.`);
       } catch (commentErr) {
         hasErrors = true;
+        item.commentError = commentErr.message;
         console.warn(`   ⚠️ Could not comment on GitHub #${item.ghNumber}:`, commentErr.message);
       }
     }
@@ -311,6 +351,12 @@ export async function syncAllToJira() {
     // Checkpoint
     fs.writeFileSync(mapFile, JSON.stringify(issuesList, null, 2), 'utf8');
     fs.writeFileSync(finalMapFile, JSON.stringify(synchedResults, null, 2), 'utf8');
+  }
+
+  // After saving successful checkpoints, set command exit status to nonzero if any operations failed
+  if (hasErrors) {
+    process.exitCode = 1;
+    console.warn(`\n⚠️ Synchronization finished with one or more warnings/failures.`);
   }
 
   console.log(`\n============================================================`);
@@ -333,8 +379,8 @@ const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolv
 if (isMain) {
   syncAllToJira()
     .then((results) => {
-      const anyFailed = results.some((r) => r.error || !r.jiraKey);
-      if (anyFailed) {
+      const anyFailed = results.some((r) => r.error || !r.jiraKey || r.linkError || r.commentError);
+      if (anyFailed || process.exitCode) {
         process.exitCode = 1;
       }
     })
