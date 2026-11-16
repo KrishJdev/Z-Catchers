@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member, getMemberByIdSafe } from '@/lib/db';
+import { supabaseAdmin, isSupabaseConfigured, Member, getMemberByIdSafe } from '@/lib/db';
 import { getRequestSessionMemberId, verifyPin, verifyModPasscode } from '@/lib/auth';
 import {
   useProactiveMetastrike,
@@ -86,14 +86,35 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2. Check session token (matching target member OR moderator role)
+    // 2. Check session token (matching target member OR live-verified moderator role)
     if (!isAuthorized && sessionMemberId) {
       if (sessionMemberId === member.id) {
         isAuthorized = true;
       } else {
-        const { data: sessionUser } = await getMemberByIdSafe(sessionMemberId);
+        // Enforce fail-closed live database verification for moderator privileges
+        let isSessionMod = false;
+        if (isSupabaseConfigured) {
+          try {
+            const { data: dbUser, error: dbErr } = await supabaseAdmin
+              .from('members')
+              .select('id, role, is_moderator, is_active')
+              .eq('id', sessionMemberId)
+              .maybeSingle();
 
-        if (sessionUser && sessionUser.is_active && (sessionUser.role === 'moderator' || sessionUser.is_moderator)) {
+            if (!dbErr && dbUser && dbUser.is_active && (dbUser.role === 'moderator' || dbUser.is_moderator)) {
+              isSessionMod = true;
+            }
+          } catch {
+            isSessionMod = false;
+          }
+        } else {
+          const { data: sessionUser } = await getMemberByIdSafe(sessionMemberId);
+          if (sessionUser && sessionUser.is_active && (sessionUser.role === 'moderator' || sessionUser.is_moderator)) {
+            isSessionMod = true;
+          }
+        }
+
+        if (isSessionMod) {
           isAuthorized = true;
           isModerator = true;
         }

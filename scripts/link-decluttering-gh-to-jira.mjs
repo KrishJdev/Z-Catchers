@@ -40,7 +40,6 @@ if (fs.existsSync(mapPath)) {
     if (match) {
       l.jiraKey = match.jira;
       l.jiraUrl = `https://krishjaiswal2182003.atlassian.net/browse/${match.jira}`;
-      l.remoteLinked = true;
     }
   }
   fs.writeFileSync(mapPath, JSON.stringify(list, null, 2), 'utf8');

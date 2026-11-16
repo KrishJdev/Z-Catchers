@@ -557,17 +557,15 @@ export async function createGitHubIssues() {
   const mapFile = path.join(process.cwd(), 'scripts', 'decluttering-issues-map.json');
   let existingMap = new Map();
   if (fs.existsSync(mapFile)) {
-    try {
-      const existingData = JSON.parse(fs.readFileSync(mapFile, 'utf8'));
-      if (Array.isArray(existingData)) {
-        for (const item of existingData) {
-          if (item && item.id != null) {
-            existingMap.set(item.id, item);
-          }
-        }
+    const rawData = fs.readFileSync(mapFile, 'utf8');
+    const existingData = JSON.parse(rawData);
+    if (!Array.isArray(existingData)) {
+      throw new Error(`Invalid map file structure in ${mapFile}: root must be an array.`);
+    }
+    for (const item of existingData) {
+      if (item && item.id != null) {
+        existingMap.set(item.id, item);
       }
-    } catch (e) {
-      console.warn(`Could not read existing map file ${mapFile}:`, e.message);
     }
   }
 

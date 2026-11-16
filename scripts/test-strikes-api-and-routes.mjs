@@ -1,10 +1,9 @@
 import assert from 'assert';
 import { DateTime } from 'luxon';
-import { syncInMemoryMemberCache } from '../src/lib/db.ts';
-import { createSessionToken } from '../src/lib/auth.ts';
-import { GET as getStrikes, POST as postStrikeVote } from '../src/app/api/members/strikes/route.ts';
-import { POST as postMetastrike } from '../src/app/api/members/strikes/metastrike/route.ts';
-import { POST as postModAction } from '../src/app/api/mod/route.ts';
+
+// Enforce offline in-memory test isolation before loading any database modules
+delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!process.env.SESSION_SECRET) {
   process.env.SESSION_SECRET = 'test-secret-at-least-32-chars-long-for-testing!!';
@@ -12,6 +11,14 @@ if (!process.env.SESSION_SECRET) {
 if (!process.env.MOD_SECRET_PASSCODE) {
   process.env.MOD_SECRET_PASSCODE = 'test-mod-secret-passcode';
 }
+
+// Dynamically import database and route handlers after environment isolation is sealed
+const { syncInMemoryMemberCache } = await import('../src/lib/db.ts');
+const { createSessionToken } = await import('../src/lib/auth.ts');
+const { computeMemberState } = await import('../src/lib/sleepEngine.ts');
+const { GET: getStrikes, POST: postStrikeVote } = await import('../src/app/api/members/strikes/route.ts');
+const { POST: postMetastrike } = await import('../src/app/api/members/strikes/metastrike/route.ts');
+const { POST: postModAction } = await import('../src/app/api/mod/route.ts');
 
 console.log('🧪 Starting Community Strikes & Metastrikes API Routes Verification...\n');
 
@@ -31,9 +38,13 @@ async function run() {
   const nowUtc = DateTime.utc();
   const currentMonth = nowUtc.toFormat('yyyy-MM');
 
-  // Overdue target: scheduled bedtime 30 minutes ago, wake time 8 hours later
+  // Overdue target (30m overdue): scheduled bedtime 30 minutes ago, wake time 8 hours later
   const pastBedtimeLocal = nowUtc.minus({ minutes: 30 }).toFormat('HH:mm');
   const futureWakeLocal = nowUtc.plus({ hours: 7, minutes: 30 }).toFormat('HH:mm');
+
+  // Overdue target (90m overdue past the initial 60m bedtime window)
+  const pastBedtime90mLocal = nowUtc.minus({ minutes: 90 }).toFormat('HH:mm');
+  const futureWake90mLocal = nowUtc.plus({ hours: 6, minutes: 30 }).toFormat('HH:mm');
 
   const voterAlice = {
     id: 'voter-alice-uuid-001',
@@ -96,9 +107,55 @@ async function run() {
     updated_at: nowUtc.toISO(),
   };
 
+  // Checked-in control: member scheduled 30m ago who safely checked in early
+  const targetDaveCheckedIn = {
+    id: 'target-dave-uuid-004',
+    discord_username: 'DaveCheckedIn',
+    discord_handle: 'dave#0004',
+    avatar_url: null,
+    journal_url: 'https://discord.com/channels/123456789/444444444',
+    bedtime_local: pastBedtimeLocal,
+    wake_time_local: futureWakeLocal,
+    timezone: 'UTC',
+    role: 'member',
+    is_active: true,
+    is_in_bed: true,
+    strikes_used: 0,
+    strikes_count: 0,
+    metastrikes_used: 0,
+    metastrikes_count: 0,
+    strike_cycle_month: currentMonth,
+    created_at: nowUtc.toISO(),
+    updated_at: nowUtc.toISO(),
+  };
+
+  // 90-minute overdue fixture (in the 60-480m overdue window)
+  const targetEve90mOverdue = {
+    id: 'target-eve-uuid-005',
+    discord_username: 'Eve90mOverdue',
+    discord_handle: 'eve#0005',
+    avatar_url: null,
+    journal_url: 'https://discord.com/channels/123456789/555555555',
+    bedtime_local: pastBedtime90mLocal,
+    wake_time_local: futureWake90mLocal,
+    timezone: 'UTC',
+    role: 'member',
+    is_active: true,
+    is_in_bed: false,
+    strikes_used: 0,
+    strikes_count: 0,
+    metastrikes_used: 0,
+    metastrikes_count: 0,
+    strike_cycle_month: currentMonth,
+    created_at: nowUtc.toISO(),
+    updated_at: nowUtc.toISO(),
+  };
+
   syncInMemoryMemberCache(voterAlice);
   syncInMemoryMemberCache(voterBob);
   syncInMemoryMemberCache(targetCharlie);
+  syncInMemoryMemberCache(targetDaveCheckedIn);
+  syncInMemoryMemberCache(targetEve90mOverdue);
 
   const aliceToken = createSessionToken(voterAlice.id);
   const bobToken = createSessionToken(voterBob.id);
@@ -163,9 +220,19 @@ async function run() {
     testAssert(resSelfVote.status === 400, 'POST rejects self-voting with 400');
     const selfVoteBody = await resSelfVote.json();
     testAssert(selfVoteBody.error.includes('strike yourself'), 'Self-voting error message mentions self-strike restriction');
+
+    // Checked-in control case: voting against a member who safely checked into bed must be rejected
+    const resCheckedInVote = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aliceToken}` },
+      body: JSON.stringify({ target_member_id: targetDaveCheckedIn.id }),
+    }));
+    testAssert(resCheckedInVote.status === 400, 'POST rejects strike voting against safely checked-in member with 400');
+    const checkedInBody = await resCheckedInVote.json();
+    testAssert(checkedInBody.error.includes('checked into bed'), 'Checked-in rejection explains member is checked in');
   }
 
-  // 4. Community 2-Vote Strike Workflow
+  // 4. Community 2-Vote Strike Workflow (30m Overdue Member)
   console.log('\n--- 4. Community 2-Vote Strike Workflow Execution ---');
   {
     // 1st Vote: Alice votes against overdue Charlie
@@ -206,6 +273,32 @@ async function run() {
     const dataAfterStrike = await resGetAfterStrike.json();
     testAssert(dataAfterStrike.is_strike_issued === true, 'GET reflects is_strike_issued: true for tonight');
     testAssert(dataAfterStrike.strikes_used >= 1, 'GET reflects updated strikes_used count');
+  }
+
+  // 4B. 90-Minute Overdue Fixture Verification (Issue #40 State Machine Rebalancing)
+  console.log('\n--- 4B. 90-Minute Overdue Fixture Verification ---');
+  {
+    const stateEve = computeMemberState(targetEve90mOverdue, targetEve90mOverdue.timezone, nowUtc, false);
+    testAssert(stateEve.status === 'OVERDUE_NAG_NOW', '90m overdue member without check-in has status: OVERDUE_NAG_NOW');
+    testAssert(stateEve.canVoteStrike === true, '90m overdue member has canVoteStrike: true');
+
+    const resVoteEve1 = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${aliceToken}` },
+      body: JSON.stringify({ target_member_id: targetEve90mOverdue.id }),
+    }));
+    testAssert(resVoteEve1.status === 200, '1st vote against 90m overdue member returns 200 OK');
+    const eve1Body = await resVoteEve1.json();
+    testAssert(eve1Body.strike_issued === false, '1st vote against 90m overdue member recorded (1/2)');
+
+    const resVoteEve2 = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bobToken}` },
+      body: JSON.stringify({ target_member_id: targetEve90mOverdue.id }),
+    }));
+    testAssert(resVoteEve2.status === 200, '2nd vote against 90m overdue member returns 200 OK');
+    const eve2Body = await resVoteEve2.json();
+    testAssert(eve2Body.strike_issued === true, '2nd vote against 90m overdue member officially issues a STRIKE');
   }
 
   // 5. Metastrike Retroactive Conversion & Proactive Protection

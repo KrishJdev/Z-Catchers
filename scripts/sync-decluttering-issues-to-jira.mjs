@@ -228,10 +228,11 @@ export async function syncAllToJira() {
         const syncedMap = new Map();
         for (const s of syncedData) {
           if (s && s.id != null) syncedMap.set(s.id, s);
+          if (s && s.ghUrl) syncedMap.set(s.ghUrl, s);
         }
         for (let i = 0; i < issuesList.length; i++) {
           const item = issuesList[i];
-          const synced = syncedMap.get(item.id);
+          const synced = syncedMap.get(item.id) || (item.ghUrl ? syncedMap.get(item.ghUrl) : null);
           if (synced && synced.jiraKey) {
             issuesList[i] = {
               ...item,
@@ -250,6 +251,7 @@ export async function syncAllToJira() {
   console.log(`Syncing ${issuesList.length} decluttering issues to Jira (${JIRA_DOMAIN}, Project ID: ${PROJECT_ID})...\n`);
 
   const synchedResults = [];
+  let hasErrors = false;
 
   for (let i = 0; i < issuesList.length; i++) {
     const item = { ...issuesList[i] };
@@ -262,8 +264,13 @@ export async function syncAllToJira() {
         item.jiraKey = jiraResult.key;
         item.jiraUrl = `https://${JIRA_DOMAIN}/browse/${jiraResult.key}`;
         console.log(`   ✓ Created Jira issue: ${item.jiraKey} (${item.jiraUrl})`);
+
+        // Checkpoint immediately to prevent duplicate Jira issue creation if subsequent steps fail
+        issuesList[i] = item;
+        fs.writeFileSync(mapFile, JSON.stringify(issuesList, null, 2), 'utf8');
       } catch (err) {
         console.error(`   ❌ Failed to create Jira issue for "${item.title}":`, err.message);
+        hasErrors = true;
         synchedResults.push({ ...item, error: err.message });
         continue;
       }
@@ -277,8 +284,10 @@ export async function syncAllToJira() {
       try {
         const linked = await linkGitHubToJira(item.jiraKey, item.ghUrl, item.ghNumber, item.title);
         item.remoteLinked = linked;
+        if (!linked) hasErrors = true;
         console.log(`   ✓ Remote link status: ${linked ? 'SUCCESS' : 'FAILED'}`);
       } catch (linkErr) {
+        hasErrors = true;
         console.warn(`   ⚠️ Remote link failed for ${item.jiraKey}:`, linkErr.message);
       }
     }
@@ -291,6 +300,7 @@ export async function syncAllToJira() {
         execSync(`gh issue comment ${item.ghNumber} --body "${comment}"`, { encoding: 'utf8' });
         console.log(`   ✓ GitHub comment posted successfully.`);
       } catch (commentErr) {
+        hasErrors = true;
         console.warn(`   ⚠️ Could not comment on GitHub #${item.ghNumber}:`, commentErr.message);
       }
     }
@@ -321,8 +331,15 @@ export async function syncAllToJira() {
 
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 if (isMain) {
-  syncAllToJira().catch((err) => {
-    console.error('Fatal sync error:', err);
-    process.exit(1);
-  });
+  syncAllToJira()
+    .then((results) => {
+      const anyFailed = results.some((r) => r.error || !r.jiraKey);
+      if (anyFailed) {
+        process.exitCode = 1;
+      }
+    })
+    .catch((err) => {
+      console.error('Fatal sync error:', err);
+      process.exit(1);
+    });
 }

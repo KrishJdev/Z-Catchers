@@ -748,7 +748,7 @@ export function MemberCard({
         {/* Action & Disclosure Zone: Quick Journal Link + Details Trigger */}
         <div className="flex items-center gap-2 w-full min-w-0 mt-auto pt-1">
           {/* Direct Discord Journal Deep Link */}
-          {isNagNow ? (
+          {isNagNow && bucket !== 'SLEEPING' ? (
             <a
               href={member.journal_url}
               target="_blank"
@@ -1186,9 +1186,11 @@ export function MemberCard({
                   href={member.journal_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={isNagNow || bucket === 'WINDING_DOWN' ? handleNagJournalClick : undefined}
+                  onClick={(isNagNow && bucket !== 'SLEEPING') || bucket === 'WINDING_DOWN' ? handleNagJournalClick : undefined}
                   className={`w-full h-11 min-h-[44px] flex items-center justify-center gap-2 rounded-xl font-semibold transition-all text-xs sm:text-sm px-3 whitespace-nowrap shadow-sm ${
-                    isNagNow
+                    bucket === 'SLEEPING'
+                      ? 'border border-night-border bg-night-elevated text-cream-secondary hover:text-cream-primary hover:border-night-border/80'
+                      : isNagNow
                       ? 'bg-status-coral text-night-bg hover:bg-status-coral/90 active:scale-[0.98]'
                       : bucket === 'WINDING_DOWN'
                       ? 'border border-status-amber/40 bg-night-elevated text-status-amber hover:bg-status-amber/15 active:scale-[0.98]'
@@ -1196,7 +1198,9 @@ export function MemberCard({
                   }`}
                 >
                   <span className="truncate">
-                    {isNagNow
+                    {bucket === 'SLEEPING'
+                      ? 'Quiet Note'
+                      : isNagNow
                       ? hasNagged
                         ? 'Nagged! Reopen Journal'
                         : 'Nag in Discord Journal'
@@ -1204,15 +1208,13 @@ export function MemberCard({
                       ? hasNagged
                         ? 'Noted! Reopen Journal'
                         : 'Say Goodnight in Journal'
-                      : bucket === 'SLEEPING'
-                      ? 'Quiet Note'
                       : 'Open Discord Journal'}
                   </span>
                   <ExternalLink className="h-4 w-4 shrink-0" />
                 </a>
 
                 {/* Bucket-Specific Secondary Actions */}
-                {isNagNow && (
+                {isNagNow && bucket !== 'SLEEPING' && (
                   <div className="flex items-center gap-2 w-full min-w-0">
                     {/* Nag Notif Button */}
                     {isEligibleForNagNotif && (
