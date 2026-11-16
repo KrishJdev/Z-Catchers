@@ -84,6 +84,11 @@ export function UnifiedOnboardingCard({
   }, [isPushGranted]);
 
   useEffect(() => {
+    // 0. Pre-register service worker on mount if supported so it is ready before user interaction
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      registerServiceWorker().catch(() => null);
+    }
+
     // 1. Detect standalone PWA execution mode via standard CSS display-mode and navigator.standalone
     const standaloneMode =
       window.matchMedia?.('(display-mode: standalone)').matches ||
@@ -209,28 +214,44 @@ export function UnifiedOnboardingCard({
   };
 
   // Handle push notification setup:
-  // Verifies service worker registration and bounds only the wait for SW readiness.
-  // If SW readiness fails or is unavailable, presents a recoverable error and restores the Enable Alerts action.
+  // Immediately requests Notification permission during the click gesture to preserve transient
+  // user activation in WebKit/iOS Safari & Chromium, verifies service worker registration,
+  // and bounds only the wait for SW readiness.
   const handleEnablePushClick = async () => {
     setPushErrorMessage(null);
 
     if (currentUser) {
       setIsEnablingPush(true);
       try {
-        // Verify service worker support in current browser
-        if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
-          setPushErrorMessage('Service workers are not supported by this browser.');
+        // Verify push support in current browser
+        if (!isPushSupported()) {
+          setPushErrorMessage('Push notifications are not supported by this browser.');
           setIsEnablingPush(false);
           return;
         }
 
-        // Verify or trigger service worker registration
+        // 1. Immediately request notification permission during user click gesture
+        // to preserve transient activation in WebKit/iOS Safari & Chromium
+        if (typeof Notification !== 'undefined') {
+          const perm = await Notification.requestPermission();
+          if (perm !== 'granted') {
+            setPushErrorMessage(
+              perm === 'denied'
+                ? 'Notifications are blocked in browser settings. Please enable them to receive alerts.'
+                : 'Notification permission was dismissed.'
+            );
+            setIsEnablingPush(false);
+            return;
+          }
+        }
+
+        // 2. Verify or trigger service worker registration
         const existingReg = await navigator.serviceWorker.getRegistration().catch(() => null);
         if (!existingReg) {
           await registerServiceWorker().catch(() => null);
         }
 
-        // Bounded wait for service worker readiness (at most 4000ms)
+        // 3. Bounded wait for service worker readiness (at most 4000ms)
         const isSwReady = await Promise.race([
           navigator.serviceWorker.ready.then(() => true).catch(() => false),
           new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 4000)),
@@ -242,7 +263,7 @@ export function UnifiedOnboardingCard({
           return;
         }
 
-        // Perform subscription without timeout on subscription itself
+        // 4. Perform subscription (permission is already granted) without timeout on subscription itself
         const result = await subscribeToPush({
           memberId: currentUser.id,
           notifyPersonal: true,
@@ -262,6 +283,7 @@ export function UnifiedOnboardingCard({
       } finally {
         setIsEnablingPush(false);
       }
+      return;
     }
 
     // Fall back to opening detailed Push modal if unauthenticated or manual preference tuning needed

@@ -145,11 +145,13 @@ async function run() {
     );
 
     // -------------------------------------------------------------
-    // 4. PwaBanner Component Verification
+    // 4. PwaBanner / UnifiedOnboardingCard Component Verification
     // -------------------------------------------------------------
-    console.log('\n--- 4. PwaBanner Component Verification ---');
+    console.log('\n--- 4. PwaBanner / UnifiedOnboardingCard Component Verification ---');
     const pwaBannerPath = path.resolve(process.cwd(), 'src/components/PwaBanner.tsx');
-    const pwaBannerContent = fs.readFileSync(pwaBannerPath, 'utf8');
+    const unifiedCardPath = path.resolve(process.cwd(), 'src/components/UnifiedOnboardingCard.tsx');
+    const targetPath = fs.existsSync(unifiedCardPath) ? unifiedCardPath : pwaBannerPath;
+    const pwaBannerContent = fs.readFileSync(targetPath, 'utf8');
     assert(
       pwaBannerContent.includes("(display-mode: standalone)") && pwaBannerContent.includes('.standalone'),
       'Detects standalone mode via matchMedia and navigator.standalone'
