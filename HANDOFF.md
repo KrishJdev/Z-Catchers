@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-16T13:55:00+05:30  
+> **Last Updated:** 2026-11-16T14:05:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `07b4549`  
+> **Latest Commit:** `25e1d3e`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75)  
 > **Active Integration Pull Requests:** [#77 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/77) (`feat/issue-66-unified-pwa-push-onboarding` -> `dev`), [#78 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/78) (`krish` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76)  
 > **Active Production Release Pull Request:** None  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 40/40 suites passed, 100% | `npm run build` clean, 28/28 routes prerendered)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 40/40 suites passed, 100% in 121.76s | `npm run build` clean, 28/28 routes prerendered)
 
 ---
 
@@ -69,6 +69,38 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 103: CodeRabbit Review Resolution across PR #78 (MemberCard, Metastrike Authorization, Test Isolation, Onboarding Tokens, and Issue Tooling)
+* **Objective & Context:**
+  - Evaluated and remediated automated CodeRabbit review findings across Pull Request #78 ([PR #78](https://github.com/KrishJdev/Z-Catchers/pull/78)) targeting base `dev` from head `krish`.
+  - Verified each finding directly against the active codebase, rejected invalid or instruction-like requests with clear rationale, and kept all code changes minimal and robust.
+* **Key Fixes & Enhancements:**
+  1. **Discord Journal Links & Strike Button Rendering (`src/components/MemberCard.tsx`):**
+     - Updated primary and sheet journal action links with `isNagNow && bucket !== 'SLEEPING'`, ensuring that members in the `SLEEPING` bucket consistently show the `Quiet Note` label and styling even when overdue.
+     - Fixed duplicate strike-voting button in the Sleeping details view by guarding the contextual actions with `{isNagNow && bucket !== 'SLEEPING' && (...)`, preserving the single strike-vote button exclusively in the Sleeping bucket action block.
+  2. **Fail-Closed Moderator Authorization for Metastrikes (`src/app/api/members/strikes/metastrike/route.ts`):**
+     - Replaced the cached `getMemberByIdSafe()` lookup with a live, fail-closed database query via `supabaseAdmin` when `isSupabaseConfigured` is active.
+     - Validates moderator permissions directly against Supabase (`role === 'moderator' || is_moderator === true`) and checks `is_active === true`, falling back to safe memory lookup only when Supabase is unconfigured (local test runs).
+  3. **Test Isolation & Enhanced Overdue Control Fixtures (`scripts/test-strikes-api-and-routes.mjs`):**
+     - Sealed environment variables (`delete process.env.NEXT_PUBLIC_SUPABASE_URL`, `delete process.env.SUPABASE_SERVICE_ROLE_KEY`) before dynamically importing `src/lib/db.ts` and route handlers.
+     - Added a checked-in control fixture (`targetDaveCheckedIn`, `is_in_bed: true`), asserting that strike votes against a member who safely checked into bed are rejected with HTTP 400.
+     - Added a 90-minute overdue fixture (`targetEve90mOverdue`), asserting status `OVERDUE_NAG_NOW`, `canVoteStrike: true`, and validating the complete 2-vote community strike flow.
+  4. **PWA Prompt Consumption, Palette Alignment & Health Sync (`src/components/UnifiedOnboardingCard.tsx`):**
+     - In `handleInstallClick`, moved `setInstallPrompt(null)` to run immediately after the native prompt is consumed (`await installPrompt.userChoice`), ensuring that the install prompt cannot be re-invoked whether the user accepts or dismisses.
+     - Replaced all non-compliant `emerald-*` success styling with approved Warm Dark `bg-status-sage/15 text-status-sage` and `bg-status-sage/10 text-status-sage` tokens per `DESIGN_SYSTEM.md`.
+     - In `inspectPushState`, awaited `syncPushSubscriptionHealth().catch(() => false)` before setting `isPushSubscribed(true)` and notifying parent components, preventing phantom active push states when only orphaned client-side endpoints exist.
+  5. **Issue Tooling & Script Robustness (`scripts/` & `.github/workflows/`):**
+     - In `scripts/link-decluttering-gh-to-jira.mjs`: Removed premature `l.remoteLinked = true` from the comment posting path so remote linking is only marked true upon actual Jira API remote link success.
+     - In `scripts/sync-decluttering-issues-to-jira.mjs`: Added GitHub URL lookup in `syncedMap` alongside ID; immediately checkpointed created Jira issue keys before starting cross-linking operations; updated execution to set a non-zero exit code if any issue creation or linking fails.
+     - In `scripts/create-and-sync-decluttering-issues.mjs`: Propagated read and JSON parse errors and asserted that parsed root data is an array before continuing, preventing corrupted map data from triggering duplicate issue generation.
+     - In `.github/workflows/jira-transition.yml`: Removed `|| true` failure suppression from the Jira issue transition loop, tracking failure status and exiting with 1 if any transition fails.
+     - In `scripts/test-unified-pwa-push-onboarding.mjs`: Added behavioral simulations for native install prompt dismissal/acceptance consumption and service worker readiness timeout races.
+  6. **Note on Pre-Merge Out-of-Scope Finding:**
+     - CodeRabbit noted that PR #78 contains PWA onboarding and decluttering changes alongside strikes accountability. Per repository Golden Operating Rule #1, `krish` is the single development integration branch where all work lands and gets verified before landing into `dev`. Splitting branches/PRs would violate repository workflow. The moderator authorization change (`role === 'moderator' || is_moderator === true`) is intentional and backward-compatible with legacy database records.
+* **Verification & QA Status:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: 40/40 test suites passed cleanly (100% pass rate in 121.76s).
+  - Pushed to `origin/krish` under commit `25e1d3e`.
 
 ### Phase 102: CodeRabbit Review Resolution on Unified PWA Install & Push Onboarding Card (#66, ZC-32) & Test Regression Pointing
 * **Objective & Context:**
