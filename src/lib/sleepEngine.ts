@@ -1489,11 +1489,6 @@ export function computeMemberState(
     status = 'OVERDUE_NAG_NOW';
     statusText = `Bedtime hit ${Math.floor(diffMinutes)}m ago — Nag them!`;
     canVoteStrike = true;
-  } else if (diffMinutes < 0 && diffMinutes >= -60) {
-    bucket = 'WINDING_DOWN';
-    status = 'WINDING_DOWN';
-    statusText = `Bedtime in ${Math.abs(Math.floor(diffMinutes))}m`;
-    canVoteStrike = false;
   } else if (diffMinutes > 60 && diffMinutes <= 480) {
     // Active sleep window (60m to 480m) without safe check-in:
     bucket = 'SLEEPING';

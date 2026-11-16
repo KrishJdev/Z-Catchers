@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member } from '@/lib/db';
+import { supabaseAdmin, Member, getMemberByIdSafe } from '@/lib/db';
 import { resolveMemberStrikeCounts, getNightlyStrikeLog, recordStrikeVote } from '@/lib/strikes';
 import { sendStrikeDiscordWebhook } from '@/lib/discordWebhook';
 import { getSleepCycleDate } from '@/lib/sleepEngine';
@@ -30,11 +30,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const { data: rawMember, error: memberErr } = await supabaseAdmin
-      .from('members')
-      .select('*')
-      .eq('id', memberId)
-      .single();
+    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(memberId);
 
     if (memberErr || !rawMember) {
       return NextResponse.json({ error: 'Member not found.' }, { status: 404 });
@@ -100,14 +96,9 @@ export async function POST(request: Request) {
     }
 
     // Verify session identity belongs to an existing active member
-    const { data: voterMember } = await supabaseAdmin
-      .from('members')
-      .select('id, is_active')
-      .eq('id', sessionVoterId)
-      .eq('is_active', true)
-      .maybeSingle();
+    const { data: voterMember } = await getMemberByIdSafe(sessionVoterId);
 
-    if (!voterMember) {
+    if (!voterMember || !voterMember.is_active) {
       return NextResponse.json(
         {
           error: 'Voter profile not found or inactive.',
@@ -141,14 +132,9 @@ export async function POST(request: Request) {
     await recordVoteAttemptPersistent(sessionVoterId);
 
     // Fetch target member
-    const { data: targetMember, error: targetErr } = await supabaseAdmin
-      .from('members')
-      .select('*')
-      .eq('id', targetMemberId)
-      .eq('is_active', true)
-      .single();
+    const { data: targetMember, error: targetErr } = await getMemberByIdSafe(targetMemberId);
 
-    if (targetErr || !targetMember) {
+    if (targetErr || !targetMember || !targetMember.is_active) {
       return NextResponse.json(
         { error: 'Target member not found or inactive.' },
         { status: 404 }

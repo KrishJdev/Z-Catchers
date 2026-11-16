@@ -6,6 +6,7 @@ import {
   getInMemoryMember,
   syncInMemoryMemberCache,
   sanitizeMemberPayload,
+  getMemberByIdSafe,
 } from './db.ts';
 import type { Member, NightlyStrikeLog, StrikeRecordType } from './db.ts';
 import { computeMemberState, checkMonthlyStrikeReset, getCurrentStrikeMonth, getSleepCycleDate } from './sleepEngine.ts';
@@ -790,7 +791,7 @@ export async function recordStrikeVote(
     };
   }
 
-  if (state.status !== 'OVERDUE_NAG_NOW') {
+  if (state.status !== 'OVERDUE_NAG_NOW' && !state.canVoteStrike) {
     return {
       success: false,
       error: 'Strike voting is only permitted when a member is overdue past their 5-minute bedtime grace period.',
@@ -1270,11 +1271,7 @@ export async function modAdjustStrikes(
     return { success: true };
   }
   try {
-    const { data: member } = await supabaseAdmin
-      .from('members')
-      .select('*')
-      .eq('id', memberId)
-      .single();
+    const { data: member } = await getMemberByIdSafe(memberId);
 
     if (!member) {
       return { success: false, error: 'Member not found.' };
@@ -1312,33 +1309,27 @@ export async function modClearStrikeLog(
       return { success: true };
     }
 
-    if (isSupabaseConfigured) {
-      const { data: rawMember } = await supabaseAdmin
-        .from('members')
-        .select('*')
-        .eq('id', memberId)
-        .single();
+    const { data: rawMember } = await getMemberByIdSafe(memberId);
 
-      if (rawMember) {
-        const member = rawMember as Member;
-        const counts = await resolveMemberStrikeCounts(member);
+    if (rawMember) {
+      const member = rawMember as Member;
+      const counts = await resolveMemberStrikeCounts(member);
 
-        let newStrikes = counts.strikes_used;
-        let newMetas = counts.metastrikes_used;
+      let newStrikes = counts.strikes_used;
+      let newMetas = counts.metastrikes_used;
 
-        if (existingLog.record_type === 'strike') {
-          newStrikes = Math.max(0, counts.strikes_used - 1);
-        } else if (existingLog.record_type === 'metastrike') {
-          newMetas = Math.max(0, counts.metastrikes_used - 1);
-        }
-
-        await updateMemberStrikeCounts(
-          memberId,
-          newStrikes,
-          newMetas,
-          counts.strike_cycle_month
-        );
+      if (existingLog.record_type === 'strike') {
+        newStrikes = Math.max(0, counts.strikes_used - 1);
+      } else if (existingLog.record_type === 'metastrike') {
+        newMetas = Math.max(0, counts.metastrikes_used - 1);
       }
+
+      await updateMemberStrikeCounts(
+        memberId,
+        newStrikes,
+        newMetas,
+        counts.strike_cycle_month
+      );
     } else {
       const counts = await resolveMemberStrikeCounts({ id: memberId } as Member);
       let newStrikes = counts.strikes_used;

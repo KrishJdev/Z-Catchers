@@ -533,3 +533,47 @@ export async function retryPendingUnsubscribe(): Promise<boolean> {
   }
   return false;
 }
+
+/**
+ * Detects whether the application is running in standalone PWA display mode.
+ * Evaluates both standard CSS display-mode media query and legacy iOS navigator.standalone.
+ */
+export function isStandaloneMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Boolean(
+    window.matchMedia?.('(display-mode: standalone)').matches ||
+      ('standalone' in window.navigator && Boolean((window.navigator as unknown as { standalone: boolean }).standalone))
+  );
+}
+
+/**
+ * Checks whether an active push subscription currently exists in the browser.
+ * Verifies that Service Workers, PushManager, and Notification permissions are active,
+ * and inspects pushManager.getSubscription().
+ */
+export async function hasActivePushSubscription(): Promise<boolean> {
+  if (!isPushSupported()) return false;
+  if (getNotificationPermission() !== 'granted') return false;
+  try {
+    const sub = await getExistingSubscription();
+    return sub !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Determines whether the unified setup onboarding card should be auto-dismissed.
+ * Automatically and permanently hides when both standalone mode and push notifications are active.
+ *
+ * @param isStandalone - Whether the client is executing in standalone PWA mode
+ * @param isPushSubscribed - Whether active Web Push notifications are enabled on this device
+ * @returns boolean indicating whether the card should be permanently auto-dismissed
+ */
+export function shouldAutoDismissOnboarding(
+  isStandalone: boolean,
+  isPushSubscribed: boolean
+): boolean {
+  return isStandalone && isPushSubscribed;
+}
+

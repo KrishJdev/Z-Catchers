@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
-import { PwaBanner } from '@/components/PwaBanner';
+import { UnifiedOnboardingCard } from '@/components/UnifiedOnboardingCard';
 import { StatusBucket } from '@/components/StatusBucket';
 import { MemberCard } from '@/components/MemberCard';
 import { FoxMascot } from '@/components/FoxMascot';
@@ -228,7 +228,11 @@ export default function HomePage() {
   // Fetch roster with offline localStorage snapshot caching and fallback
   const fetchRoster = useCallback(async () => {
     try {
-      const res = await fetch('/api/members');
+      const token = getStoredAuthToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/members', { headers });
       if (res.ok) {
         const json = await res.json();
         if (json.members) {
@@ -638,9 +642,13 @@ export default function HomePage() {
 
     // 2. Re-fetch roster and current member session in parallel
     try {
+      const token = getStoredAuthToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const [rosterRes, authRes] = await Promise.all([
-        fetch('/api/members'),
-        fetch('/api/auth/me'),
+        fetch('/api/members', { headers }),
+        fetch('/api/auth/me', { headers }),
       ]);
 
       if (rosterRes.ok) {
@@ -798,6 +806,31 @@ export default function HomePage() {
         });
       }
       setTimeout(() => setToastMessage(null), 4000);
+
+      // Optimistic roster update for immediate button response
+      setMembers((prev) =>
+        prev.map((m) => {
+          if (m.id !== targetMemberId) return m;
+          const strikeIssued = Boolean(json.strike_issued);
+          const updatedLog = json.log || {
+            id: 'optimistic_log',
+            target_member_id: targetMemberId,
+            sleep_cycle_date: json.sleep_cycle_date,
+            record_type: strikeIssued ? 'strike' : 'pending_vote',
+            voter_ids: [currentUser?.id || 'viewer_voter'],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          return {
+            ...m,
+            has_voted_strike: true,
+            tonight_strike_log: updatedLog,
+            strikes_used: typeof json.strikes_used === 'number' ? json.strikes_used : strikeIssued ? (m.strikes_used || 0) + 1 : m.strikes_used,
+            strikes_count: typeof json.strikes_count === 'number' ? json.strikes_count : strikeIssued ? (m.strikes_count || 0) + 1 : m.strikes_count,
+          };
+        })
+      );
+
       await fetchRoster();
     } catch (err) {
       console.error('Strike voting error:', err);
@@ -953,7 +986,12 @@ export default function HomePage() {
           </div>
         )}
 
-        <PwaBanner onEnablePush={handleOpenPushModal} isPushGranted={isPushEnabled} />
+        <UnifiedOnboardingCard
+          onEnablePush={handleOpenPushModal}
+          isPushGranted={isPushEnabled}
+          currentUser={currentUser}
+          onPushStateChanged={setIsPushEnabled}
+        />
 
         {/* Contextual Sleepy Fox Status Banner */}
         <section className="mb-6 rounded-2xl border border-night-border/80 bg-night-surface/90 p-4 shadow-lg backdrop-blur-sm sm:p-5">
