@@ -58,6 +58,49 @@ assert.strictEqual(statePastWake.needsWakeUpLog, true, 'needsWakeUpLog must be t
 assert(statePastWake.statusText.includes('Past Wake Time'), 'Status text must show Past Wake Time');
 console.log('✅ PASSED: Member past wake time has isPastWakeTime = true and Sleep Shield deactivated.');
 
+// (a) At 08:30 AM on 2026-11-13 (90 minutes PAST 07:00 AM wake time, in bed, not yet woke up)
+const wakePlus90mUtc = DateTime.fromISO('2026-11-13T08:30:00', { zone: 'UTC+05:30' }).toUTC();
+const stateWakePlus90m = computeMemberState(
+  { ...mockMember, is_in_bed: true, is_woke_up: false },
+  'GMT+05:30',
+  wakePlus90mUtc
+);
+
+assert.strictEqual(stateWakePlus90m.bucket, 'SLEEPING', 'Sleeping member 90 minutes past wake time remains in SLEEPING bucket');
+assert.strictEqual(stateWakePlus90m.status, 'SLEEPING', 'Sleeping member 90 minutes past wake time has SLEEPING status');
+assert.strictEqual(stateWakePlus90m.isPastWakeTime, true, 'isPastWakeTime must be true 90 minutes after wake time');
+assert.strictEqual(stateWakePlus90m.needsWakeUpLog, true, 'needsWakeUpLog must be true so wake-up action remains available');
+assert.strictEqual(stateWakePlus90m.isSleepShieldActive, false, 'Sleep Shield must deactivate once wake time passes');
+assert.strictEqual(stateWakePlus90m.isOverdue, false, 'Sleeping member is not overdue');
+assert(stateWakePlus90m.statusText.includes('Past Wake Time'), 'Status text must show Past Wake Time');
+console.log('✅ PASSED: (a) Sleeping user 90 minutes past scheduled wake_time still shows as sleeping with wake-up action available.');
+
+// (b) Overdue transition: At 06:59 AM (1 minute before wake time) vs 07:01 AM (1 minute after wake time)
+const wakeMinus1mUtc = DateTime.fromISO('2026-11-13T06:59:00', { zone: 'UTC+05:30' }).toUTC();
+const stateOverdueBeforeWake = computeMemberState(
+  { ...mockMember, is_in_bed: false, is_woke_up: false },
+  'GMT+05:30',
+  wakeMinus1mUtc
+);
+assert.strictEqual(stateOverdueBeforeWake.bucket, 'BEDTIME_NOW', 'Overdue member before wake time is in BEDTIME_NOW bucket');
+assert.strictEqual(stateOverdueBeforeWake.status, 'OVERDUE_NAG_NOW', 'Overdue member before wake time has OVERDUE_NAG_NOW status');
+assert.strictEqual(stateOverdueBeforeWake.isOverdue, true, 'isOverdue must be true before wake time');
+
+const wakePlus1mUtc = DateTime.fromISO('2026-11-13T07:01:00', { zone: 'UTC+05:30' }).toUTC();
+const stateOverdueAfterWake = computeMemberState(
+  { ...mockMember, is_in_bed: false, is_woke_up: false },
+  'GMT+05:30',
+  wakePlus1mUtc
+);
+assert.strictEqual(stateOverdueAfterWake.bucket, 'AWAKE', 'Overdue member 1 minute past wake time automatically becomes AWAKE');
+assert.strictEqual(stateOverdueAfterWake.status, 'AWAKE', 'Overdue member 1 minute past wake time has AWAKE status');
+assert.strictEqual(stateOverdueAfterWake.isOverdue, false, 'isOverdue must be false once wake time passes');
+assert.strictEqual(stateOverdueAfterWake.needsWakeUpLog, false, 'needsWakeUpLog must be false for user who never checked in');
+assert.strictEqual(stateOverdueAfterWake.isSleepShieldActive, false, 'isSleepShieldActive is false for awake member');
+assert.strictEqual(stateOverdueAfterWake.canVoteStrike, false, 'canVoteStrike is false');
+assert(stateOverdueAfterWake.statusText.startsWith('Awake'), 'Status text must show Awake for upcoming cycle');
+console.log('✅ PASSED: (b) Overdue user 1 minute past scheduled wake_time automatically becomes awake.');
+
 // At 07:15 AM when member has logged wake-up
 const stateLoggedWakeUp = computeMemberState(
   { ...mockMember, is_in_bed: false, is_woke_up: true },

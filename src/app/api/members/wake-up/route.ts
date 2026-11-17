@@ -125,7 +125,7 @@ export async function POST(request: Request) {
     const sleeperNow = nowUtc.setZone(sleeperZone);
 
     // 1. Resolve canonical active cycle date for the member
-    const canonicalCycleDate = getSleepCycleDate(member, nowUtc);
+    const canonicalCycleDate = getSleepCycleDate(member, nowUtc, member.is_in_bed);
     let activeCycleDate = canonicalCycleDate;
 
     // Check if member has an active IN_BED_EARLY check-in without a corresponding WOKE_UP log
@@ -167,6 +167,8 @@ export async function POST(request: Request) {
       if (daysDiff >= 0 && daysDiff <= 1) {
         activeCycleDate = member.last_notified_cycle_date;
       }
+    } else if (member.is_in_bed) {
+      activeCycleDate = canonicalCycleDate;
     }
 
     // 2. Resolve target cycle date
@@ -355,6 +357,9 @@ export async function POST(request: Request) {
 
     const memberUpdates: Record<string, any> = {
       updated_at: nowUtc.toISO(),
+      is_in_bed: false,
+      is_woke_up: true,
+      in_bed_at: existingInBedAt || null,
     };
 
     if (isNewerWake) {
@@ -390,6 +395,7 @@ export async function POST(request: Request) {
     const responseMember = updatedMember ? sanitizeMember(updatedMember) : sanitizeMember(member);
     responseMember.is_in_bed = false;
     responseMember.is_woke_up = true;
+    responseMember.in_bed_at = existingInBedAt || null;
     responseMember.last_woke_up_at = wokeUpUtcIso;
     responseMember.last_wake_cycle_date = targetCycleDate;
 

@@ -392,9 +392,17 @@ export default function HomePage() {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
+          const updatedWakeCycleDate = data.member?.last_wake_cycle_date || data.sleep_log?.cycle_date;
           setCurrentUser((prev) =>
             prev && prev.id === memberId
-              ? { ...prev, is_in_bed: false, is_woke_up: true, last_woke_up_at: data.sleep_log?.woke_up_at }
+              ? {
+                  ...prev,
+                  is_in_bed: false,
+                  is_woke_up: true,
+                  last_woke_up_at: data.sleep_log?.woke_up_at || data.member?.last_woke_up_at,
+                  last_wake_cycle_date: updatedWakeCycleDate || prev.last_wake_cycle_date,
+                  in_bed_at: data.member?.in_bed_at || data.sleep_log?.in_bed_at || prev.in_bed_at,
+                }
               : prev
           );
           setIsSleepShieldActive(false);
@@ -561,9 +569,14 @@ export default function HomePage() {
   // Synchronize currentUser in_bed status to active Sleep Shield
   useEffect(() => {
     if (currentUser) {
-      setIsSleepShieldActive(Boolean(currentUser.is_in_bed));
+      if (currentUser.is_in_bed) {
+        const state = computeMemberState(currentUser, viewerTimezone);
+        setIsSleepShieldActive(Boolean(state.isSleepShieldActive));
+      } else {
+        setIsSleepShieldActive(false);
+      }
     }
-  }, [currentUser, currentUser?.is_in_bed]);
+  }, [currentUser, currentUser?.is_in_bed, viewerTimezone, tick]);
 
   // Personal Sleep Shield toggle handler for Header
   const handleToggleSleepShield = useCallback(async () => {

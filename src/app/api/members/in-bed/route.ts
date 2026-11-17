@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     }
 
     const sleeperNow = DateTime.utc().setZone(toValidLuxonZone(member.timezone));
-    const cycleDate = getSleepCycleDate(member, DateTime.utc());
+    const yesterdayDate = sleeperNow.minus({ days: 1 }).startOf('day').toISODate()!;
 
     // Fetch member's recent check-ins and woke-up logs
     const { data: logs } = await supabaseAdmin
@@ -59,11 +59,16 @@ export async function GET(request: Request) {
     const checkinDates = (logs || [])
       .filter((l: { notification_type: string }) => l.notification_type === 'IN_BED_EARLY')
       .map((l: { local_date: string }) => l.local_date);
+    const wokeUpDates = (logs || [])
+      .filter((l: { notification_type: string }) => l.notification_type === 'WOKE_UP')
+      .map((l: { local_date: string }) => l.local_date);
+
+    const hasOpenYesterday =
+      checkinDates.includes(yesterdayDate) && !wokeUpDates.includes(yesterdayDate);
+
+    const cycleDate = getSleepCycleDate(member, DateTime.utc(), hasOpenYesterday || Boolean(member.is_in_bed));
     const isInBed = checkinDates.includes(cycleDate);
-    const isWokeUp = (logs || []).some(
-      (l: { notification_type: string; local_date: string }) =>
-        l.notification_type === 'WOKE_UP' && l.local_date === cycleDate
-    );
+    const isWokeUp = wokeUpDates.includes(cycleDate);
     const streakDays = calculateSleepStreak(checkinDates, sleeperNow);
 
     return NextResponse.json({
@@ -199,11 +204,15 @@ export async function POST(request: Request) {
           last_notified_stage: null,
           last_woke_up_at: nowUtc.toISO(),
           last_wake_cycle_date: localDate,
+          is_in_bed: false,
+          is_woke_up: true,
         });
       } else {
         updateRes = await updateMemberSafe(member.id, {
           last_woke_up_at: nowUtc.toISO(),
           last_wake_cycle_date: localDate,
+          is_in_bed: false,
+          is_woke_up: true,
         });
       }
 
@@ -298,6 +307,9 @@ export async function POST(request: Request) {
       last_notified_cycle_date: localDate,
       last_woke_up_at: null,
       last_wake_cycle_date: null,
+      is_in_bed: true,
+      is_woke_up: false,
+      in_bed_at: nowUtc.toISO(),
     });
 
     if (checkinUpdateRes.error || !checkinUpdateRes.data) {
