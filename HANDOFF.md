@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-17T18:25:00+05:30  
+> **Last Updated:** 2026-11-17T18:55:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `361c5c7`  
+> **Latest Commit:** `418fa67`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85)  
 > **Active Integration Pull Requests:** [#86 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/86) (`krish` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 41/41 suites passed, 100% in 80.88s)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 42/42 suites passed, 100% in 69.67s)
 
 ---
 
@@ -69,6 +69,61 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 113: State Synchronization & Cancellation Audit across APIs and UI Controls (GitHub Issue #67)
+* **Active Working Branch:** `krish`
+* **Objective & Context:**
+  - Audited and fixed state synchronization between `/api/members/in-bed`, `/api/members/cancel-pending`, `sleepEngine.ts`, and frontend status and action components (`PinnedSelfActionBar.tsx`, `MemberCard.tsx`, `StatusBucket.tsx`, `page.tsx`).
+  - Resolved stale state fields on member records (`is_woke_up: true`, lingering `in_bed_at` timestamps, uncleaned `sleep_logs` / `notification_logs`) that caused members who checked in early and clicked "Undo / Cancel" to get permanently locked into `AWAKE` ("Wide Awake • Rested") instead of returning to their live schedule status (`WINDING_DOWN` or `OVERDUE`).
+  - Guaranteed frontend and backend status parity across all 4 states (`awake`, `winding-down`, `overdue / bedtime-hit`, `sleeping`) for both `PinnedSelfActionBar.tsx` and compact `MemberCard.tsx`.
+* **Scope of Changes & Key Enhancements:**
+  1. **In-Bed API Route Cancellation Logic (`src/app/api/members/in-bed/route.ts`):**
+     - Completely decoupled `action === 'cancel'` from `action === 'wake_up'`. On `cancel`, explicitly deletes `IN_BED_EARLY` and `WOKE_UP` notification logs for the active cycle date.
+     - Deletes today's `sleep_logs` row via newly exported `deleteSleepLog(memberId, cycleDate)` in both in-memory cache and Supabase.
+     - Clears `is_in_bed: false`, `in_bed_at: null`, `is_woke_up: false`, and resets `last_notified_stage`, `last_notified_cycle_date`, `last_wake_cycle_date`, and `last_woke_up_at` if matching the active cycle.
+     - Accurately recalculates member streaks following check-in removal without marking the cycle as completed.
+  2. **Cancel-Pending Route State Purge (`src/app/api/members/cancel-pending/route.ts`):**
+     - Expanded to detect active in-bed check-ins alongside 48h schedule cooldown cancellations (`is_in_bed`, `in_bed_at`, `last_notified_stage`).
+     - Resets in-bed flags, purges today's `sleep_logs` entry, and deletes check-in notification logs while preserving 48h schedule cooldown cancellation and rate-limiting protections.
+  3. **Sleep Engine Horizon & Dynamic Status Resolution (`src/lib/sleepEngine.ts`):**
+     - Fixed `wakeDateTime` calculation in `getNightScheduleDateTime` by anchoring candidate wake time to `bedtimeBase` instead of `nightDate.plus({ days: 1 })`. Previously, daytime/afternoon schedules (`bH >= 12 && wH >= bH`) produced an unintended 31.5-hour horizon that distorted sleep cycle anchoring during UTC afternoon test executions.
+     - Verified `computeMemberState` recalculates live status dynamically without locking into `AWAKE`:
+       - Cancelling during wind-down window (e.g. 22:30 with 23:00 bedtime) -> returns to `WINDING_DOWN`.
+       - Cancelling past bedtime in grace (e.g. 23:03) -> returns to `BEDTIME_NOW` / `BEDTIME_GRACE`.
+       - Cancelling past bedtime in overdue (e.g. 23:45) -> returns to `BEDTIME_NOW` / `OVERDUE_NAG_NOW`.
+       - Cancelling during daytime (e.g. 14:00) -> returns to `AWAKE`.
+  4. **Database Sleep Log Purge Helper (`src/lib/db.ts`):**
+     - Exported `deleteSleepLog(memberId: string, cycleDate: string)` providing dual in-memory cache and Supabase deletion handling.
+     - Exported `clearKnownMemberColumns()` for test fixture isolation.
+  5. **Pinned Self-Action Bar Parity (`src/components/PinnedSelfActionBar.tsx`):**
+     - Wired `computeMemberState(currentUser, viewerTimezone, nowUtc)` directly to authoritative user state.
+     - Displays contextual controls across all 4 states:
+       - `sleeping`: Primary "☀️ I'm Awake" + Secondary "Undo / Cancel"
+       - `winding-down`: Primary "🛏️ I'm in Bed"
+       - `overdue / bedtime-hit`: Primary "🛏️ I'm in Bed (Late)"
+       - `awake` (in early check-in window `-180 <= diffMinutes < -60`): Primary "🛏️ Early Check-In"
+       - `awake` (normal daytime): Schedule / status info display
+  6. **Member Card Parity & Viewer Self-Actions (`src/components/MemberCard.tsx`):**
+     - Updated compact card bottom row for `isViewer` to display matching contextual primary action controls:
+       - `isInBed`: "☀️ I'm Awake" button + "Undo" action.
+       - `bucket === 'WINDING_DOWN'`: "🛏️ I'm in Bed" button.
+       - `isNagNow`: "🛏️ I'm in Bed (Late)" button.
+       - `bucket === 'AWAKE'` (within early check-in window): "🛏️ Early Check-In" button.
+       - `bucket === 'AWAKE'` (outside early window): Direct Discord Journal deep link.
+     - Preserved peer Discord journal deep links for other members (`Nag in Journal`, `Say Goodnight`, `Quiet Note`, `Journal`).
+     - Extracted `handleWakeUpClick` for seamless reuse across compact card view and progressive disclosure bottom sheet modal.
+  7. **Page-Level Rollback & Action Synchronization (`src/app/page.tsx`):**
+     - Updated `handleCancelInBed` and `handleCancelPending` optimistic rollbacks to reset `is_in_bed: false`, `is_woke_up: false`, `in_bed_at: null`, `last_wake_cycle_date: null`, and `setIsSleepShieldActive(false)`.
+     - Wired `onCancelInBed={handleCancelInBed}` into `PinnedSelfActionBar`.
+  8. **Automated Verification & Test Suites:**
+     - Created `scripts/test-state-sync-audit.mjs` verifying:
+       - Live clock recalculation across all 4 clock windows post-cancellation.
+       - `/api/members/in-bed` action=cancel resetting flags, cleaning notification logs, and deleting sleep logs.
+       - `/api/members/cancel-pending` resetting in-bed state, schedule cooldown, and purging sleep logs.
+       - Frontend component parity across `PinnedSelfActionBar.tsx`, `MemberCard.tsx`, and `page.tsx`.
+     - Registered `test-state-sync-audit.mjs` in `scripts/run-tests.mjs`.
+     - `npx tsc --noEmit`: Clean (0 errors).
+     - `npm run test:unit`: All 42/42 test suites passed cleanly (100% in 69.67s).
 
 ### Phase 112: Cross-Midnight Sleep Cycle Date Anchoring & Per-Day Weekly Schedule Resolution
 * **Feature Branch:** `fix/cross-midnight-cycle-anchoring` (branched from `krish`)

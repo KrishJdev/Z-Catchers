@@ -456,10 +456,21 @@ export default function HomePage() {
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
-        setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, is_in_bed: false, is_woke_up: true } : prev));
+        setCurrentUser((prev) =>
+          prev && prev.id === memberId
+            ? {
+                ...prev,
+                is_in_bed: false,
+                is_woke_up: false,
+                in_bed_at: null,
+                last_wake_cycle_date: null,
+                last_woke_up_at: null,
+              }
+            : prev
+        );
         setIsSleepShieldActive(false);
         setToastMessage({
-          text: data.message || 'Status updated from sleeping to awake.',
+          text: data.message || 'Check-in cancelled.',
           type: 'success',
         });
         await fetchRoster();
@@ -514,6 +525,9 @@ export default function HomePage() {
                 pending_weekend_wake_time_local: null,
                 pending_weekly_schedule: null,
                 pending_effective_at: null,
+                is_in_bed: false,
+                is_woke_up: false,
+                in_bed_at: null,
               }
             : prev
         );
@@ -529,8 +543,9 @@ export default function HomePage() {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
+          setIsSleepShieldActive(false);
           setToastMessage({
-            text: data.message || 'Pending schedule change cancelled successfully.',
+            text: data.message || 'Cancelled successfully.',
             type: 'success',
           });
           await fetchRoster();
@@ -1368,6 +1383,7 @@ export default function HomePage() {
           onCheckIn={handleCheckIn}
           onWakeUp={handleWakeUp}
           onCancelPending={handleCancelPending}
+          onCancelInBed={handleCancelInBed}
           isCheckingIn={isCheckingIn}
         />
       )}

@@ -4,6 +4,7 @@ import {
   Member,
   updateMemberSafe,
   upsertSleepLog,
+  deleteSleepLog,
   getMemberByIdSafe,
   isSupabaseConfigured,
   isTestMemberFixture,
@@ -201,7 +202,80 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to compute local date' }, { status: 500 });
     }
 
-    if (action === 'cancel' || action === 'wake_up') {
+    if (action === 'cancel') {
+      // 1. Remove check-in and woke-up logs for member's current local date
+      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+        await supabaseAdmin
+          .from('notification_logs')
+          .delete()
+          .eq('member_id', member.id)
+          .eq('notification_type', 'IN_BED_EARLY')
+          .eq('local_date', localDate);
+
+        await supabaseAdmin
+          .from('notification_logs')
+          .delete()
+          .eq('member_id', member.id)
+          .eq('notification_type', 'WOKE_UP')
+          .eq('local_date', localDate);
+      }
+
+      // 2. Remove today's sleep log entry from sleep_logs
+      await deleteSleepLog(member.id, localDate);
+
+      // 3. Reset member record state without falsely marking cycle as completed
+      const updatePayload: Record<string, unknown> = {
+        is_in_bed: false,
+        in_bed_at: null,
+        is_woke_up: false,
+        updated_at: nowUtc.toISO(),
+      };
+
+      if (member.last_notified_stage === 'IN_BED_EARLY' || member.last_notified_cycle_date === localDate) {
+        updatePayload.last_notified_stage = null;
+        updatePayload.last_notified_cycle_date = null;
+      }
+      if (member.last_wake_cycle_date === localDate) {
+        updatePayload.last_wake_cycle_date = null;
+        updatePayload.last_woke_up_at = null;
+      }
+
+      const updateRes = await updateMemberSafe(member.id, updatePayload);
+
+      if (updateRes.error || !updateRes.data) {
+        return NextResponse.json(
+          { error: updateRes.error?.message || 'Failed to update member state.' },
+          { status: 500 }
+        );
+      }
+
+      // 4. Recompute streak after cancellation
+      let checkinDates: string[] = [];
+      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+        const { data: logs } = await supabaseAdmin
+          .from('notification_logs')
+          .select('local_date')
+          .eq('member_id', member.id)
+          .eq('notification_type', 'IN_BED_EARLY')
+          .order('local_date', { ascending: false })
+          .limit(60);
+
+        checkinDates = (logs || []).map((l: { local_date: string }) => l.local_date);
+      }
+      const streakDays = calculateSleepStreak(checkinDates, sleeperNow);
+
+      return NextResponse.json({
+        success: true,
+        action: 'cancel',
+        is_in_bed: false,
+        is_woke_up: false,
+        streak_days: streakDays,
+        local_date: localDate,
+        message: 'Sleep state undone. Status restored based on current schedule.',
+      });
+    }
+
+    if (action === 'wake_up') {
       // Remove check-in for member's current local date
       if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
         const { error: delErr } = await supabaseAdmin
@@ -256,19 +330,16 @@ export async function POST(request: Request) {
           );
       }
 
-      // If action is explicit wake_up, record in sleep_logs
-      if (action === 'wake_up') {
-        await upsertSleepLog({
-          member_id: member.id,
-          cycle_date: localDate,
-          timezone: member.timezone,
-          woke_up_at: nowUtc.toISO(),
-          woke_up_local_time: sleeperNow.toFormat('HH:mm'),
-          wake_source: 'button',
-        });
-      }
+      await upsertSleepLog({
+        member_id: member.id,
+        cycle_date: localDate,
+        timezone: member.timezone,
+        woke_up_at: nowUtc.toISO(),
+        woke_up_local_time: sleeperNow.toFormat('HH:mm'),
+        wake_source: 'button',
+      });
 
-      // Recompute streak after cancellation
+      // Recompute streak after wake_up
       let checkinDates: string[] = [];
       if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
         const { data: logs } = await supabaseAdmin
@@ -285,11 +356,11 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        action: 'cancel',
+        action: 'wake_up',
         is_in_bed: false,
         is_woke_up: true,
         streak_days: streakDays,
-        message: 'Sleep state undone. Status updated to Awake and notifications restored.',
+        message: 'Status updated to Awake and notifications restored.',
       });
     }
 
