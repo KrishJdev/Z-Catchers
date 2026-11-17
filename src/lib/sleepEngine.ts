@@ -1243,7 +1243,7 @@ export function getNightScheduleDateTime(
     millisecond: 0,
   });
 
-  let wakeDateTime = nightDate.plus({ days: 1 }).set({
+  let wakeDateTime = bedtimeBase.set({
     hour: wH !== undefined && !isNaN(wH) ? wH : 7,
     minute: wM !== undefined && !isNaN(wM) ? wM : 0,
     second: 0,

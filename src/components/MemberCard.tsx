@@ -21,6 +21,7 @@ import {
   Calendar,
   ChevronDown,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import { formatTime12h, type MemberState } from '@/lib/sleepEngine';
@@ -273,7 +274,7 @@ export function MemberCard({
     triggerHaptic(15);
     if (!onCancelInBed) return;
     setOptimisticInBed(false);
-    setOptimisticWokeUp(true);
+    setOptimisticWokeUp(false);
     setCardError(null);
     try {
       await onCancelInBed(member.id);
@@ -282,6 +283,29 @@ export function MemberCard({
       setOptimisticWokeUp(false);
       setCardError('Failed to cancel check-in.');
       setTimeout(() => setCardError(null), 3000);
+    }
+  };
+
+  // Optimistic "I Woke Up" action
+  const handleWakeUpClick = async () => {
+    triggerHaptic(20);
+    const prevWokeUp = optimisticWokeUp;
+    const prevInBed = optimisticInBed;
+    setOptimisticWokeUp(true);
+    setOptimisticInBed(false);
+    try {
+      if (onWakeUp) {
+        const res = await onWakeUp(member.id, 'button');
+        if (res === false) {
+          setOptimisticWokeUp(prevWokeUp);
+          setOptimisticInBed(prevInBed);
+        }
+      } else if (onCancelInBed) {
+        await onCancelInBed(member.id);
+      }
+    } catch {
+      setOptimisticWokeUp(prevWokeUp);
+      setOptimisticInBed(prevInBed);
     }
   };
 
@@ -737,70 +761,162 @@ export function MemberCard({
           </div>
         </div>
 
-        {/* Action & Disclosure Zone: Quick Journal Link + Details Trigger */}
+        {/* Action & Disclosure Zone: Contextual Action / Journal Link + Details Trigger */}
         <div className="flex items-center gap-2 w-full min-w-0 mt-auto pt-1">
-          {/* Direct Discord Journal Deep Link */}
-          {isNagNow && bucket !== 'SLEEPING' ? (
-            <a
-              href={member.journal_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleNagJournalClick();
-              }}
-              className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl bg-status-coral font-semibold text-night-bg transition-all hover:bg-status-coral/90 active:scale-[0.98] text-xs px-3 whitespace-nowrap shadow-sm"
-              title={`Open ${member.discord_username}'s Discord journal to nag`}
-            >
-              <span className="truncate">{hasNagged ? 'Nagged! Reopen Journal' : 'Nag in Journal'}</span>
-              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-            </a>
-          ) : bucket === 'WINDING_DOWN' ? (
-            <a
-              href={member.journal_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleNagJournalClick();
-              }}
-              className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-night-elevated font-medium text-status-amber transition-colors hover:bg-status-amber/15 active:scale-[0.98] text-xs px-3 whitespace-nowrap shadow-sm"
-              title={`Open ${member.discord_username}'s Discord journal to say goodnight`}
-            >
-              <span className="truncate">{hasNagged ? 'Noted! Reopen Journal' : 'Say Goodnight'}</span>
-              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-            </a>
-          ) : bucket === 'SLEEPING' ? (
-            <a
-              href={member.journal_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 transition-colors px-3 whitespace-nowrap shadow-sm"
-              title="Open Discord journal to leave a quiet note"
-            >
-              <span className="truncate">
-                Quiet Note
-                <span className="sr-only"> (Leave quiet note)</span>
-              </span>
-              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-            </a>
+          {isViewer ? (
+            /* Viewer Self-Action Controls */
+            isInBed ? (
+              /* Viewer in bed (Sleeping / Resting): Wake up CTA + optional Undo */
+              <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                {onCancelInBed && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCancelInBedClick();
+                    }}
+                    disabled={isCheckingIn}
+                    className="h-11 min-h-[44px] px-2.5 flex items-center justify-center gap-1 rounded-xl border border-night-border bg-night-elevated text-xs font-semibold text-cream-secondary hover:text-cream-primary hover:border-status-amber/40 active:scale-95 transition-all shadow-sm shrink-0"
+                    title="Cancel in-bed check-in and restore active status"
+                    aria-label="Undo in-bed check-in"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 text-status-amber" />
+                    <span className="truncate hidden xs:inline">Undo</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleWakeUpClick();
+                  }}
+                  disabled={isCheckingIn}
+                  className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber text-night-bg px-3 text-xs font-bold hover:bg-status-amber/90 active:scale-95 transition-all shadow-sm whitespace-nowrap"
+                  title="Log wake-up right now"
+                  aria-label="I'm Awake check-in"
+                >
+                  <Sun className="h-4 w-4 shrink-0 fill-night-bg stroke-night-bg" />
+                  <span className="truncate">☀️ I&apos;m Awake</span>
+                </button>
+              </div>
+            ) : isNagNow || bucket === 'WINDING_DOWN' ? (
+              /* Viewer Winding Down or Overdue: In Bed CTA */
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCheckInClick();
+                }}
+                disabled={isCheckingIn}
+                className={`flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold text-night-bg shadow transition-transform active:scale-[0.98] whitespace-nowrap ${
+                  isNagNow
+                    ? 'bg-status-coral hover:bg-status-coral/90'
+                    : 'bg-status-amber hover:bg-status-amber/90'
+                }`}
+                title={isNagNow ? "I'm in Bed Now (Mute Nags)" : "I'm in Bed (Goodnight)"}
+                aria-label="I'm in Bed check-in"
+              >
+                <BedDouble className="h-4 w-4 shrink-0" />
+                <span className="truncate">
+                  {isNagNow ? "🛏️ I'm in Bed (Late)" : "🛏️ I'm in Bed"}
+                </span>
+              </button>
+            ) : bucket === 'AWAKE' && state.diffMinutes >= -180 && state.diffMinutes < -60 && onCheckIn ? (
+              /* Viewer Awake within Early Check-In window */
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCheckInClick();
+                }}
+                disabled={isCheckingIn}
+                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 text-status-amber px-3 text-xs font-semibold hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm whitespace-nowrap"
+                title="Check into bed early"
+                aria-label="Early check-in into bed"
+              >
+                <BedDouble className="h-4 w-4 shrink-0" />
+                <span className="truncate">🛏️ Early Check-In</span>
+              </button>
+            ) : (
+              /* Viewer Awake outside check-in windows: Direct Discord Journal Deep Link */
+              <a
+                href={member.journal_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 transition-colors px-3 whitespace-nowrap shadow-sm"
+                title="Open Discord Journal"
+              >
+                <span className="truncate">Journal</span>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+              </a>
+            )
           ) : (
-            <a
-              href={member.journal_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 transition-colors px-3 whitespace-nowrap shadow-sm"
-              title="Open Discord Journal"
-            >
-              <span className="truncate">Journal</span>
-              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-            </a>
+            /* Peer Members: Direct Discord Journal Deep Link */
+            isNagNow && bucket !== 'SLEEPING' ? (
+              <a
+                href={member.journal_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNagJournalClick();
+                }}
+                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl bg-status-coral font-semibold text-night-bg transition-all hover:bg-status-coral/90 active:scale-[0.98] text-xs px-3 whitespace-nowrap shadow-sm"
+                title={`Open ${member.discord_username}'s Discord journal to nag`}
+              >
+                <span className="truncate">{hasNagged ? 'Nagged! Reopen Journal' : 'Nag in Journal'}</span>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+              </a>
+            ) : bucket === 'WINDING_DOWN' ? (
+              <a
+                href={member.journal_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNagJournalClick();
+                }}
+                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-night-elevated font-medium text-status-amber transition-colors hover:bg-status-amber/15 active:scale-[0.98] text-xs px-3 whitespace-nowrap shadow-sm"
+                title={`Open ${member.discord_username}'s Discord journal to say goodnight`}
+              >
+                <span className="truncate">{hasNagged ? 'Noted! Reopen Journal' : 'Say Goodnight'}</span>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+              </a>
+            ) : bucket === 'SLEEPING' ? (
+              <a
+                href={member.journal_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 transition-colors px-3 whitespace-nowrap shadow-sm"
+                title="Open Discord journal to leave a quiet note"
+              >
+                <span className="truncate">
+                  Quiet Note
+                  <span className="sr-only"> (Leave quiet note)</span>
+                </span>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+              </a>
+            ) : (
+              <a
+                href={member.journal_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 transition-colors px-3 whitespace-nowrap shadow-sm"
+                title="Open Discord Journal"
+              >
+                <span className="truncate">Journal</span>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+              </a>
+            )
           )}
 
           {/* Compact Disclosure Trigger */}
@@ -1344,27 +1460,7 @@ export function MemberCard({
                           {/* Primary ☀️ I Woke Up Button */}
                           <button
                             type="button"
-                            onClick={async () => {
-                              triggerHaptic(20);
-                              const prevWokeUp = optimisticWokeUp;
-                              const prevInBed = optimisticInBed;
-                              setOptimisticWokeUp(true);
-                              setOptimisticInBed(false);
-                              try {
-                                if (onWakeUp) {
-                                  const res = await onWakeUp(member.id, 'button');
-                                  if (res === false) {
-                                    setOptimisticWokeUp(prevWokeUp);
-                                    setOptimisticInBed(prevInBed);
-                                  }
-                                } else if (onCancelInBed) {
-                                  await onCancelInBed(member.id);
-                                }
-                              } catch {
-                                setOptimisticWokeUp(prevWokeUp);
-                                setOptimisticInBed(prevInBed);
-                              }
-                            }}
+                            onClick={handleWakeUpClick}
                             disabled={isCheckingIn}
                             className="flex-1 min-w-[130px] h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber text-night-bg px-3 text-xs font-bold hover:bg-status-amber/90 active:scale-95 transition-all shadow-sm"
                             title="Log wake-up right now"

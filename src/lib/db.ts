@@ -918,3 +918,34 @@ export async function getMemberSleepLogs(
   const memoryData = getInMemorySleepLogs(memberId, startCycleDate, endCycleDate);
   return { data: memoryData, error: null };
 }
+
+/**
+ * Deletes a sleep log entry for a member and cycle date (used when cancelling/undoing an in-bed check-in).
+ * Synchronously purges from in-memory cache and Supabase.
+ */
+export async function deleteSleepLog(
+  memberId: string,
+  cycleDate: string
+): Promise<{ success: boolean; error: any }> {
+  const memKey = getSleepLogMemoryKey(memberId, cycleDate);
+  memorySleepLogs.delete(memKey);
+
+  if (isSupabaseConfigured && !isTestMemberFixture(memberId)) {
+    try {
+      const { error } = await supabaseAdmin
+        .from('sleep_logs')
+        .delete()
+        .eq('member_id', memberId)
+        .eq('cycle_date', cycleDate);
+      if (error) {
+        console.warn('[db] Supabase deleteSleepLog warning:', error.message);
+        return { success: false, error };
+      }
+    } catch (err: any) {
+      console.warn('[db] Supabase deleteSleepLog exception:', err.message);
+      return { success: false, error: err };
+    }
+  }
+
+  return { success: true, error: null };
+}
