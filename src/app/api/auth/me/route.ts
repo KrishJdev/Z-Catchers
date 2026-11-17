@@ -89,8 +89,9 @@ export async function GET(request: Request) {
       .filter((l: any) => l.local_date === localDate)
       .map((l: any) => l.notification_type);
 
-    sanitized.is_in_bed = cycleTypes.includes('IN_BED_EARLY') && !cycleTypes.includes('WOKE_UP');
-    sanitized.is_woke_up = cycleTypes.includes('WOKE_UP');
+    const isWokeUp = cycleTypes.includes('WOKE_UP') || currentMember.last_wake_cycle_date === localDate;
+    sanitized.is_woke_up = isWokeUp;
+    sanitized.is_in_bed = (cycleTypes.includes('IN_BED_EARLY') || Boolean(currentMember.is_in_bed)) && !isWokeUp;
 
     const response = NextResponse.json({
       authenticated: true,

@@ -496,7 +496,7 @@ export async function executeNotificationDispatcher(options: {
   // Helper to check idempotency / status log (O(1) in-memory lookup)
   const hasBeenDispatched = (
     memberId: string,
-    notificationType: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY' | 'AUTO_BEDTIME_STRIKE',
+    notificationType: 'WIND_DOWN_30M' | 'BEDTIME_HIT' | 'IN_BED_EARLY' | 'AUTO_BEDTIME_STRIKE' | 'WOKE_UP',
     localDate: string
   ): boolean => {
     return dispatchedSet.has(`${memberId}:${notificationType}:${localDate}`);
@@ -554,9 +554,13 @@ export async function executeNotificationDispatcher(options: {
     if (!localDate) continue;
 
     // Check if sleeper has checked in early via "I'm in Bed" Safe Button for tonight
-    const alreadyInBed =
+    const hasInBedEarly =
       (member.last_notified_cycle_date === localDate && member.last_notified_stage === 'IN_BED_EARLY') ||
       hasBeenDispatched(member.id, 'IN_BED_EARLY', localDate);
+    const hasWokeUpForLocalDate =
+      Boolean(member.last_wake_cycle_date === localDate || member.is_woke_up) ||
+      hasBeenDispatched(member.id, 'WOKE_UP', localDate);
+    const alreadyInBed = hasInBedEarly && !hasWokeUpForLocalDate;
 
     const state = computeMemberState(member, member.timezone, nowUtc, alreadyInBed);
     const diff = state.diffMinutes;
@@ -705,10 +709,15 @@ export async function executeNotificationDispatcher(options: {
 
           // Check if peer is in bed or sleep shielded
           const peerLocalDate = getSleepCycleDate(peer, nowUtc);
-          const peerInBed = peerLocalDate
+          const peerInBedEarly = peerLocalDate
             ? (peer.last_notified_cycle_date === peerLocalDate && peer.last_notified_stage === 'IN_BED_EARLY') ||
               hasBeenDispatched(peer.id, 'IN_BED_EARLY', peerLocalDate)
             : false;
+          const peerWokeUp = peerLocalDate
+            ? Boolean(peer.last_wake_cycle_date === peerLocalDate || peer.is_woke_up) ||
+              hasBeenDispatched(peer.id, 'WOKE_UP', peerLocalDate)
+            : false;
+          const peerInBed = peerInBedEarly && !peerWokeUp;
 
           const peerState = computeMemberState(peer, peer.timezone, nowUtc, peerInBed);
 

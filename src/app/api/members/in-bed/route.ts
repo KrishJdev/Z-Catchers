@@ -204,11 +204,15 @@ export async function POST(request: Request) {
           last_notified_stage: null,
           last_woke_up_at: nowUtc.toISO(),
           last_wake_cycle_date: localDate,
+          is_in_bed: false,
+          is_woke_up: true,
         });
       } else {
         updateRes = await updateMemberSafe(member.id, {
           last_woke_up_at: nowUtc.toISO(),
           last_wake_cycle_date: localDate,
+          is_in_bed: false,
+          is_woke_up: true,
         });
       }
 
@@ -303,6 +307,9 @@ export async function POST(request: Request) {
       last_notified_cycle_date: localDate,
       last_woke_up_at: null,
       last_wake_cycle_date: null,
+      is_in_bed: true,
+      is_woke_up: false,
+      in_bed_at: nowUtc.toISO(),
     });
 
     if (checkinUpdateRes.error || !checkinUpdateRes.data) {

@@ -126,7 +126,15 @@ export async function POST(request: Request) {
       .eq('local_date', cycleDate)
       .maybeSingle();
 
-    const isInBed = Boolean(inBedLog);
+    const { data: wokeUpLog } = await supabaseAdmin
+      .from('notification_logs')
+      .select('id')
+      .eq('member_id', targetMember.id)
+      .eq('notification_type', 'WOKE_UP')
+      .eq('local_date', cycleDate)
+      .maybeSingle();
+
+    const isInBed = Boolean(inBedLog) && !wokeUpLog && !Boolean(targetMember.last_wake_cycle_date === cycleDate);
 
     // Compute active member state
     const targetState = computeMemberState(targetMember, targetMember.timezone, nowUtc, isInBed);

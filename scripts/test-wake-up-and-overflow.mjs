@@ -99,6 +99,55 @@ assert.strictEqual(stateNeedsWakeUp.bucket, 'SLEEPING', 'Member in bed remains i
 assert.strictEqual(stateNeedsWakeUp.needsWakeUpLog, true, 'needsWakeUpLog is true when member is in bed and not woke up');
 console.log('✅ PASSED: In-bed member without wake-up logged exposes needsWakeUpLog: true.');
 
+// State F: Waking up 2 hours before scheduled wake_time and staying awake while clock is still before wake_time
+// Bedtime: 01:00 AM, Wake Time: 09:00 AM in GMT+05:30 (Cycle: 2026-11-11)
+// Wake-up logged at 07:00 AM (2h before 09:00 AM wake time)
+const timeEarlyWake0700Utc = DateTime.fromISO('2026-11-12T07:00:00', { zone: 'UTC+05:30' }).toUTC();
+const timeBeforeWake0730Utc = DateTime.fromISO('2026-11-12T07:30:00', { zone: 'UTC+05:30' }).toUTC();
+const stateEarlyWakeBeforeWakeTime = computeMemberState(
+  {
+    ...mockMember,
+    in_bed_at: '2026-11-12T01:00:00.000+05:30',
+    last_woke_up_at: timeEarlyWake0700Utc.toISO(),
+    last_wake_cycle_date: '2026-11-11',
+    is_in_bed: false,
+    is_woke_up: true,
+  },
+  'GMT+05:30',
+  timeBeforeWake0730Utc
+);
+assert.strictEqual(stateEarlyWakeBeforeWakeTime.bucket, 'AWAKE', 'Member waking up 2h before wake_time must be AWAKE at 07:30 AM');
+assert.strictEqual(stateEarlyWakeBeforeWakeTime.status, 'AWAKE', 'Status must be AWAKE');
+assert.strictEqual(stateEarlyWakeBeforeWakeTime.isOverdue, false, 'Must not be overdue while awake before wake_time');
+assert.strictEqual(stateEarlyWakeBeforeWakeTime.needsWakeUpLog, false, 'needsWakeUpLog must be false');
+console.log('✅ PASSED: Waking up 2 hours before wake_time stays cleanly AWAKE at 07:30 AM with no snap-back.');
+
+// State G: Check-in during winding-down, early wake-up before bedtime and wake_time
+// Checked in at 00:30 AM (T-30m), woke up at 00:45 AM (T-15m before 01:00 AM bedtime)
+const timeEarlyWindDownWakeUtc = DateTime.fromISO('2026-11-12T00:45:00', { zone: 'UTC+05:30' }).toUTC();
+const timeStillWindDownUtc = DateTime.fromISO('2026-11-12T00:50:00', { zone: 'UTC+05:30' }).toUTC();
+const timePastBedtimeUtc = DateTime.fromISO('2026-11-12T01:15:00', { zone: 'UTC+05:30' }).toUTC();
+
+const earlyWindDownWakeMember = {
+  ...mockMember,
+  in_bed_at: '2026-11-12T00:30:00.000+05:30',
+  last_woke_up_at: timeEarlyWindDownWakeUtc.toISO(),
+  last_wake_cycle_date: '2026-11-11',
+  is_in_bed: false,
+  is_woke_up: true,
+};
+
+// Check at 00:50 AM (still within the 60m wind-down window before 01:00 AM bedtime)
+const stateAt0050 = computeMemberState(earlyWindDownWakeMember, 'GMT+05:30', timeStillWindDownUtc);
+assert.strictEqual(stateAt0050.bucket, 'AWAKE', 'Member who woke up at 00:45 must NOT revert to WINDING_DOWN at 00:50');
+assert.strictEqual(stateAt0050.status, 'AWAKE', 'Status must be AWAKE at 00:50');
+
+// Check at 01:15 AM (after bedtime passes)
+const stateAt0115 = computeMemberState(earlyWindDownWakeMember, 'GMT+05:30', timePastBedtimeUtc);
+assert.strictEqual(stateAt0115.bucket, 'AWAKE', 'Member who completed sleep cycle must NOT revert to OVERDUE or SLEEPING after bedtime');
+assert.strictEqual(stateAt0115.isOverdue, false, 'isOverdue must be false after bedtime');
+console.log('✅ PASSED: Check-in during wind-down + early wake-up stays AWAKE across both wind-down and overdue windows.');
+
 // 2. MemberCard & Layout Overflow Verification
 console.log('\n--- 2. Leave Quiet Note Overflow Layout Verification ---');
 const memberCardContent = fs.readFileSync(path.join(process.cwd(), 'src/components/MemberCard.tsx'), 'utf8');

@@ -357,6 +357,9 @@ export async function POST(request: Request) {
 
     const memberUpdates: Record<string, any> = {
       updated_at: nowUtc.toISO(),
+      is_in_bed: false,
+      is_woke_up: true,
+      in_bed_at: existingInBedAt || null,
     };
 
     if (isNewerWake) {
@@ -392,6 +395,7 @@ export async function POST(request: Request) {
     const responseMember = updatedMember ? sanitizeMember(updatedMember) : sanitizeMember(member);
     responseMember.is_in_bed = false;
     responseMember.is_woke_up = true;
+    responseMember.in_bed_at = existingInBedAt || null;
     responseMember.last_woke_up_at = wokeUpUtcIso;
     responseMember.last_wake_cycle_date = targetCycleDate;
 

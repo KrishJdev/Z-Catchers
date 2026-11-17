@@ -355,6 +355,47 @@ async function run() {
   testAssert(stateInBedPastWake.bucket === 'SLEEPING', 'Member in bed past scheduled wake time remains in SLEEPING until clicking Wake Up');
   testAssert(stateInBedPastWake.needsWakeUpLog === true, 'needsWakeUpLog is TRUE while sleeping past wake time');
 
+  // Case 6: Early Wake-Up 2 Hours Before Scheduled Wake Time (e.g. 05:30 AM for 07:30 AM wake time)
+  // Bedtime: 23:30, Wake Time: 07:30. In bed on Nov 11 at 23:30, woke up on Nov 12 at 05:30 AM.
+  const timeWakeUp0530Utc = DateTime.fromISO('2026-11-12T05:30:00', { zone: testTz }).toUTC();
+  const timeStillBeforeWake0600Utc = DateTime.fromISO('2026-11-12T06:00:00', { zone: testTz }).toUTC();
+  const memberEarlyWakePreWakeTime = {
+    ...mockTestMember,
+    in_bed_at: '2026-11-11T23:30:00.000-05:00',
+    last_woke_up_at: timeWakeUp0530Utc.toISO(),
+    last_wake_cycle_date: '2026-11-11',
+    is_in_bed: false,
+    is_woke_up: true,
+  };
+  const stateEarlyWake0600 = computeMemberState(memberEarlyWakePreWakeTime, testTz, timeStillBeforeWake0600Utc, false);
+  testAssert(stateEarlyWake0600.bucket === 'AWAKE', 'Waking up 2h before wake_time stays in AWAKE bucket at 06:00 AM');
+  testAssert(stateEarlyWake0600.status === 'AWAKE', 'Status remains AWAKE at 06:00 AM');
+  testAssert(stateEarlyWake0600.isOverdue === false, 'isOverdue is false when awake before scheduled wake_time');
+  testAssert(stateEarlyWake0600.isSleepShieldActive === false, 'Sleep Shield is inactive');
+
+  // Case 7: Early Check-in During Wind-Down + Early Wake-Up Before Bedtime & Wake Time
+  // Bedtime: 23:30. Check-in at 23:00 (T - 30m). Wakes up at 23:15 (T - 15m before bedtime).
+  const timePreBedtimeWakeUtc = DateTime.fromISO('2026-11-12T23:15:00', { zone: testTz }).toUTC();
+  const timePreBedtimeCheckUtc = DateTime.fromISO('2026-11-12T23:20:00', { zone: testTz }).toUTC();
+  const timePostBedtimeCheckUtc = DateTime.fromISO('2026-11-12T23:45:00', { zone: testTz }).toUTC();
+  const memberWindDownEarlyWake = {
+    ...mockTestMember,
+    in_bed_at: '2026-11-12T23:00:00.000-05:00',
+    last_woke_up_at: timePreBedtimeWakeUtc.toISO(),
+    last_wake_cycle_date: '2026-11-12',
+    is_in_bed: false,
+    is_woke_up: true,
+  };
+  // Check at 23:20 (still in the wind-down window 10m before bedtime)
+  const stateWindDownEarlyWake = computeMemberState(memberWindDownEarlyWake, testTz, timePreBedtimeCheckUtc, false);
+  testAssert(stateWindDownEarlyWake.bucket === 'AWAKE', 'Member who woke up at T-15m does NOT revert to WINDING_DOWN at T-10m');
+  testAssert(stateWindDownEarlyWake.status === 'AWAKE', 'Status remains AWAKE during wind-down window');
+
+  // Check at 23:45 (15m after bedtime passes)
+  const statePostBedtimeWake = computeMemberState(memberWindDownEarlyWake, testTz, timePostBedtimeCheckUtc, false);
+  testAssert(statePostBedtimeWake.bucket === 'AWAKE', 'Member who completed sleep cycle does NOT revert to OVERDUE or SLEEPING after bedtime');
+  testAssert(statePostBedtimeWake.isOverdue === false, 'isOverdue is false for completed sleep cycle');
+
   // -------------------------------------------------------------
   // 6. UI Components & Touch UX Verification
   // -------------------------------------------------------------
