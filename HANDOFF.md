@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-17T16:08:00+05:30  
-> **Active Working Branch:** `krish`  
-> **Target Integration Branch:** `dev`  
+> **Last Updated:** 2026-11-17T16:25:00+05:30  
+> **Active Working Branch:** `fix/early-wakeup-snapback`  
+> **Target Integration Branch:** `krish`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `c4f7d3a`  
+> **Latest Commit:** `ee3c809`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82)  
 > **Active Integration Pull Requests:** [#84 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/84) (`krish` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 41/41 suites passed, 100% in 50.64s)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 41/41 suites passed, 100% in 94.93s)
 
 ---
 
@@ -69,6 +69,40 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 111: Early Wake-Up Snap-Back State Machine Fix & Cycle Completion Precedence
+* **Feature Branch:** `fix/early-wakeup-snapback` (branched from `krish`)
+* **Latest Commit:** `ee3c809`
+* **Objective & Context:**
+  - Fixed the "Early Wake-Up Snap-Back" bug where a user who clicked "I woke up" before their scheduled `wake_time` (or before a post-midnight bedtime) got forced back into `winding-down`, `sleeping`, or `overdue` on subsequent polls.
+  - Root cause analysis: When a member checked into bed early (e.g. during wind-down or after bedtime) and woke up before scheduled `wake_time`, `src/lib/sleepEngine.ts` evaluated `diffMinutes < 0 && diffMinutes >= -60` (WINDING_DOWN) or `diffMinutes >= 0 && !isPastWakeTime` (OVERDUE) without checking if the active sleep cycle had already been completed (`last_wake_cycle_date === activeCycle.cycleEveningDate` or a recorded wake-up timestamp after check-in). Furthermore, stale in-bed flags or API overrides could force an awake user back into bed.
+* **Scope of Changes & Key Enhancements:**
+  1. **Cycle Completion Precedence & Engine State Machine (`src/lib/sleepEngine.ts`):**
+     - **Cycle Completion Evaluation:** Added `hasCompletedCycle` logic determining if a member is not currently in bed (`!isInBed && !member.is_in_bed`) and either has `last_wake_cycle_date === activeCycle.cycleEveningDate` (with `member.is_woke_up` or wake timestamp) or has `last_woke_up_at` strictly newer than `in_bed_at` within the cycle window.
+     - **Precedence Rule #1:** Placed `if (hasCompletedCycle)` at the top of `computeMemberState`, returning `AWAKE` with `statusText: "Wide Awake • Rested"`, `isOverdue: false`, `isSleepShieldActive: false`, and `needsWakeUpLog: false` for the remainder of that scheduled window until the next evening's wind-down begins.
+     - **Guarded In-Bed Stage Override:** Guarded `effectiveInBed` with `!hasCompletedCycle` so stale database stages (`last_notified_stage === 'IN_BED_EARLY'`) or transient in-bed overrides cannot force an awake user back into bed.
+     - **Active Cycle Window Resolution:** Updated `resolveActiveSleepCycle` to recognize `isYesterdayWakeTimestamp`, retaining yesterday's cycle when resolving post-wake windows for early wake-ups.
+  2. **State Persistence & Mutual Exclusion (`src/app/api/members/wake-up/route.ts`, `src/app/api/members/in-bed/route.ts`, `src/app/api/members/route.ts`, `src/app/api/auth/me/route.ts`):**
+     - `/api/members/wake-up`: Persists `is_in_bed: false`, `is_woke_up: true`, and `in_bed_at: existingInBedAt || null` via `updateMemberSafe` and returns `in_bed_at` in the API response.
+     - `/api/members/in-bed`: On `check_in`, atomically sets `is_in_bed: true`, `is_woke_up: false`, `in_bed_at: nowUtc.toISO()`, and clears wake-up state (`last_woke_up_at: null`, `last_wake_cycle_date: null`). On `cancel` or `wake_up`, sets `is_in_bed: false`, `is_woke_up: true`.
+     - `/api/members`: Evaluates `is_woke_up` using both `wokeUpSet` and `member.last_wake_cycle_date === localDateStr`, computing `is_in_bed = (checkins || member.is_in_bed) && !is_woke_up` and passing `last_wake_cycle_date` to `hydratedMember`.
+     - `/api/auth/me`: Computes `isWokeUp = cycleTypes.includes('WOKE_UP') || currentMember.last_wake_cycle_date === localDate` and sets `sanitized.is_in_bed = ... && !isWokeUp`.
+  3. **Notification & Cron Safety (`src/app/api/members/nag-notif/route.ts`, `src/lib/cronDispatcher.ts`):**
+     - `/api/members/nag-notif`: Queries notification logs for `WOKE_UP` and checks `targetMember.last_wake_cycle_date === cycleDate` to ensure a sleeper who woke up is never nagged as in-bed.
+     - `src/lib/cronDispatcher.ts`: Updated `alreadyInBed` and `peerInBed` to disallow in-bed targeting if `WOKE_UP` was logged. Expanded `hasBeenDispatched` parameter union to include `'WOKE_UP'`.
+  4. **Optimistic UI Synchronization (`src/app/page.tsx`):**
+     - Preserves `last_wake_cycle_date` and `in_bed_at` on optimistic `currentUser` state upon successful `handleWakeUp`.
+  5. **Deterministic Re-Entry Guard:**
+     - Verified and ensured that if an early riser taps "I'm in Bed" again during the same window, `/api/members/in-bed` deletes any existing `WOKE_UP` notification log, sets `last_notified_stage = 'IN_BED_EARLY'`, clears `last_woke_up_at` and `last_wake_cycle_date`, and sets `is_in_bed: true` with a new `in_bed_at`, returning cleanly to `SLEEPING` with active Sleep Shield and leaving zero orphaned open logs.
+  6. **Automated Unit Tests & Verification:**
+     - `scripts/test-wind-down-awake-fix.mjs`: Added Test Case 7 (Early Wake-Up 2 Hours Before Scheduled Wake Time: verified at 05:05, 05:30, 06:45 for 07:00 wake_time), Test Case 8 (Check-In During Wind-Down + Early Wake-Up Before Bedtime: verified at 22:46 pre-bedtime, 23:05 post-bedtime grace, and 01:00 AM overnight), Test Case 9 (Post-Midnight Bedtime Early Check-In & Early Wake-Up: 02:00 AM bedtime / 10:00 AM wake_time verified at 01:46, 02:15, and 06:00 AM), and Test Case 10 (Re-Entry Guard: going back to bed at 06:00 AM re-enters `SLEEPING` with active Sleep Shield).
+     - `scripts/test-wake-up-and-overflow.mjs`: Added State F (Waking up 2h before wake_time stays `AWAKE` at 07:30 AM for 09:00 AM wake_time) and State G (Check-in during wind-down + early wake-up before bedtime stays `AWAKE` at 00:50 AM and 01:15 AM).
+     - `scripts/test-sleep-history-and-wakeup.mjs`: Added Case 6 (Early Wake-Up 2h before wake_time stays in `AWAKE` bucket at 06:00 AM) and Case 7 (Early check-in during wind-down + early wake-up before bedtime stays in `AWAKE` at 23:20 and 23:45).
+     - Verified `node scripts/test-wind-down-awake-fix.mjs` (all 10 suites passing).
+     - Verified `node scripts/test-wake-up-and-overflow.mjs` (all suites passing).
+     - Verified `node --import tsx scripts/test-sleep-history-and-wakeup.mjs` (all suites passing).
+     - Verified `npm run test:unit`: 41/41 suites passed (100% in 94.93s).
+     - Verified `npx tsc --noEmit`: 0 errors.
 
 ### Phase 110: Scheduled Wake Time State Machine Alignment & Transition Audit
 * **Pull Request:** [#84 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/84) (`krish` -> `dev`)
@@ -2503,7 +2537,7 @@ d:\Projects\Z Catchers\
 | **ZC-24** | **Medium (P2)** | PWA / Service Worker: Resolve `notificationclick` message dropping during tab navigation | `public/sw.js` | [#38](https://github.com/KrishJdev/Z-Catchers/issues/38) | **TODO** |
 | **ZC-25** | **Medium (P2)** | Backend: Remove `wake_time_local` default destructuring to prevent schedule overwrites | `src/app/api/members/update-schedule/route.ts` | [#39](https://github.com/KrishJdev/Z-Catchers/issues/39) | **TODO** |
 | **ZC-26** | **Medium (P3)** | State Machine: Reconcile Sleep Shield active vs `canVoteStrike` in 60-480m overdue window | `src/lib/sleepEngine.ts`, `src/components/MemberCard.tsx` | [#40](https://github.com/KrishJdev/Z-Catchers/issues/40) | **DONE** (Commits `7c0ae88`, `a809952`, `25e1d3e`, PR #78 merged into `dev`, included in PR #79 to `main`) |
-| **ZC-27** | **Low (P3)** | State Machine: Enforce mutual exclusion between `is_in_bed` and `is_woke_up` flags | `src/app/api/auth/me/route.ts`, `src/app/api/members/route.ts` | [#41](https://github.com/KrishJdev/Z-Catchers/issues/41) | **TODO** |
+| **ZC-27** | **Low (P3)** | State Machine: Enforce mutual exclusion between `is_in_bed` and `is_woke_up` flags | `src/app/api/auth/me/route.ts`, `src/app/api/members/route.ts` | [#41](https://github.com/KrishJdev/Z-Catchers/issues/41) | **DONE** (Resolved in Phase 111, commit `ee3c809` on `fix/early-wakeup-snapback`) |
 | **ZC-14** | **Low (P3)** | Security / ModDrawer: Avoid storing plaintext moderator passcode in `sessionStorage` | `src/components/ModDrawer.tsx` | [#42](https://github.com/KrishJdev/Z-Catchers/issues/42) | **TODO** |
 | **ZC-15** | **Low (P3)** | PWA / Cache: Implement versioned cache invalidation for `_next/static` assets in Service Worker | `public/sw.js` | [#43](https://github.com/KrishJdev/Z-Catchers/issues/43) | **TODO** |
 
@@ -2529,9 +2563,10 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Phase 107 Verification & Integration (PR #82):**
-   * Active Integration Pull Request [#82](https://github.com/KrishJdev/Z-Catchers/pull/82) (`krish` -> `dev`) opened for review.
-   * Promotes manual-only sleep state transitions, wake-up fallback rules, overdue / past bedtime section, and 41/41 unit test suites to `dev`.
+1. **Phase 111 Integration & Merge (`fix/early-wakeup-snapback` -> `krish`):**
+   * Early Wake-Up Snap-Back fix and Cycle Completion Precedence completed and verified on feature branch `fix/early-wakeup-snapback` (commit `ee3c809`).
+   * Merge `fix/early-wakeup-snapback` into `krish` and push to remote origin to update active PR [#84](https://github.com/KrishJdev/Z-Catchers/pull/84) (`krish` -> `dev`).
+   * Ensure CI/CD verification passes cleanly.
 
 2. **Production Release Deployment & Verification (PR #81):**
    * Review and merge Production Release Pull Request [#81](https://github.com/KrishJdev/Z-Catchers/pull/81) (`dev` -> `main`) to deploy Phase 105 & 106 to production.
