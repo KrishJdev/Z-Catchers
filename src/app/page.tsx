@@ -442,7 +442,7 @@ export default function HomePage() {
   );
 
   // Cancel "I'm in Bed" / Wake Up undo check-in handler
-  const handleCancelInBed = useCallback(async (memberId: string) => {
+  const handleCancelInBed = useCallback(async (memberId: string): Promise<boolean> => {
     try {
       setIsCheckingIn(true);
       const token = getStoredAuthToken();
@@ -474,14 +474,17 @@ export default function HomePage() {
           type: 'success',
         });
         await fetchRoster();
+        return true;
       } else if (res.status === 401) {
         router.push('/join');
+        return false;
       } else {
         const data = await res.json().catch(() => ({}));
         setToastMessage({
           text: data.error || 'Failed to undo sleep state.',
           type: 'error',
         });
+        return false;
       }
     } catch (err) {
       console.error('Failed to cancel check-in:', err);
@@ -489,6 +492,7 @@ export default function HomePage() {
         text: 'Network error undoing sleep state.',
         type: 'error',
       });
+      return false;
     } finally {
       setIsCheckingIn(false);
     }
@@ -508,6 +512,9 @@ export default function HomePage() {
               pending_weekend_wake_time_local: currentUser.pending_weekend_wake_time_local,
               pending_weekly_schedule: currentUser.pending_weekly_schedule,
               pending_effective_at: currentUser.pending_effective_at,
+              is_in_bed: currentUser.is_in_bed,
+              is_woke_up: currentUser.is_woke_up,
+              in_bed_at: currentUser.in_bed_at,
             }
           : null;
 
@@ -559,7 +566,13 @@ export default function HomePage() {
             text: data.error || 'Failed to cancel pending schedule change.',
             type: 'error',
           });
-          await fetchRoster();
+          try {
+            await fetchRoster();
+          } catch {
+            if (priorPending) {
+              setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, ...priorPending } : prev));
+            }
+          }
           return false;
         }
       } catch (err) {
@@ -572,7 +585,13 @@ export default function HomePage() {
           text: 'Network error cancelling pending schedule change.',
           type: 'error',
         });
-        await fetchRoster();
+        try {
+          await fetchRoster();
+        } catch {
+          if (priorPending) {
+            setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, ...priorPending } : prev));
+          }
+        }
         return false;
       } finally {
         setIsCheckingIn(false);
@@ -1385,6 +1404,7 @@ export default function HomePage() {
           onCancelPending={handleCancelPending}
           onCancelInBed={handleCancelInBed}
           isCheckingIn={isCheckingIn}
+          tick={tick}
         />
       )}
 
