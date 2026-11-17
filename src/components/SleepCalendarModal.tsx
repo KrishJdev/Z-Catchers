@@ -30,6 +30,7 @@ import {
   DayKey,
   DAY_KEYS,
   WEEKDAY_TO_DAY_KEY,
+  resolveActiveSleepCycleWindow,
 } from '@/lib/timezone';
 
 const DAY_LABELS: Record<DayKey, { short: string; full: string }> = {
@@ -321,8 +322,25 @@ export function SleepCalendarModal({
     const memberZone = toValidLuxonZone(timezone);
     const memberNow = DateTime.utc().setZone(memberZone);
     const currentLocalTimeFormatted = memberNow.toFormat('hh:mm a');
-    const todayWeekdayNumber = memberNow.weekday; // 1 = Mon ... 7 = Sun
-    const currentDayKey = (['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as DayKey[])[todayWeekdayNumber - 1];
+    
+    // Resolve active cycle dayKey consistently with the sleep engine
+    const effectiveMember: any = base || apiMember || { timezone };
+    let currentDayKey: DayKey;
+    if (
+      apiMember &&
+      (apiMember as any).active_day_key &&
+      (['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as DayKey[]).includes((apiMember as any).active_day_key)
+    ) {
+      currentDayKey = (apiMember as any).active_day_key;
+    } else {
+      try {
+        const activeWindow = resolveActiveSleepCycleWindow(effectiveMember, DateTime.utc(), isInBed);
+        currentDayKey = activeWindow.dayKey;
+      } catch {
+        const todayWeekdayNumber = memberNow.weekday; // 1 = Mon ... 7 = Sun
+        currentDayKey = (['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as DayKey[])[todayWeekdayNumber - 1] || 'mon';
+      }
+    }
 
     return {
       id,

@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-17T17:28:00+05:30  
+> **Last Updated:** 2026-11-17T17:53:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `8eadfb2`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82)  
-> **Active Integration Pull Requests:** [#84 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/84) (`krish` -> `dev`)  
+> **Latest Commit:** `b52858a`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84)  
+> **Active Integration Pull Requests:** [#85 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/85) (`krish` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 41/41 suites passed, 100% in 94.93s)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 41/41 suites passed, 100% in 80.88s)
 
 ---
 
@@ -69,6 +69,43 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 112: Cross-Midnight Sleep Cycle Date Anchoring & Per-Day Weekly Schedule Resolution
+* **Feature Branch:** `fix/cross-midnight-cycle-anchoring` (branched from `krish`)
+* **Latest Commit:** `df14a02`
+* **Objective & Context:**
+  - Standardized cross-midnight sleep cycle date anchoring and per-day `weekly_schedule` resolution across `sleepEngine.ts`, `timezone.ts`, `in-bed/route.ts`, `wake-up/route.ts`, `sleep-history/route.ts`, and `SleepCalendarModal.tsx`.
+  - Addressed schedule day lookup desynchronization: When a sleep cycle crosses midnight (e.g. Friday 23:00 to Saturday 07:00), the engine and UI on Saturday morning (00:00 to 07:00) remain strictly anchored to Friday evening's schedule window rather than prematurely switching to Saturday night's schedule at 00:00.
+  - Aligned post-midnight bedtimes: For bedtimes scheduled between 00:00 and 11:59 (e.g. 00:30 or 01:00 AM), the engine and calendar consistently agree that the cycle belongs to the preceding evening's day key (e.g. Monday evening / `mon`), preventing day-of-week mismatches.
+  - Resolved cross-midnight sleep history record matching: When `/api/members/in-bed` creates or updates an open sleep session before midnight (anchored to Day $D$) and `/api/members/wake-up` is called after midnight (Day $D+1$), the wake-up route locates and closes the active open cycle from Day $D$, preventing duplicate or orphaned rows for Day $D+1$.
+* **Scope of Changes & Key Enhancements:**
+  1. **Canonical Active Sleep Cycle Window Helper (`src/lib/sleepEngine.ts`, `src/lib/timezone.ts`):**
+     - Exported `ActiveSleepCycleWindow` interface providing: `cycleAnchorDate`, `cycleEveningDate`, `startTimestamp`, `bedtimeTimestamp`, `wakeTimestamp`, `targetBedtime`, `targetWakeTime`, `activeBedtimeLocal`, `activeWakeTimeLocal`, `isWeekendSchedule`, `isCustomScheduleToday`, `dayKey`, and `diffMinutes`.
+     - Standardized `resolveActiveSleepCycle()` and exported `resolveActiveSleepCycleWindow(member: Member, nowUtc?: DateTime, isInBed?: boolean): ActiveSleepCycleWindow`.
+     - Standardized `getSleepCycleDate()` to derive directly from `resolveActiveSleepCycleWindow(member, nowUtc, isInBed).cycleAnchorDate`.
+     - Re-exported `ActiveSleepCycleWindow`, `resolveActiveSleepCycleWindow`, and `getSleepCycleDate` from `src/lib/timezone.ts`.
+  2. **In-Bed API Route Harmonization (`src/app/api/members/in-bed/route.ts`):**
+     - Standardized cycle date computation across GET and POST using `resolveActiveSleepCycleWindow`.
+     - In check-in POST, computes `resolveActiveSleepCycleWindow(member, nowUtc, true)` and writes the resolved `cycleAnchorDate` to `notification_logs`, `member.last_notified_cycle_date`, and `sleep_logs.cycle_date`.
+     - Reuses `activeCheckinWindow.activeBedtimeLocal`, `activeWakeTimeLocal`, and `diffMinutes` directly.
+  3. **Wake-Up Record Matching & Open Session Priority (`src/app/api/members/wake-up/route.ts`):**
+     - When `cycleDate` is not passed in button wake-up mode, queries `sleep_logs` for an open sleep session (`!l.woke_up_at`) within the last 48 hours. If found, anchors `targetCycleDate` to that open session's `cycle_date` and reuses `matchedOpenLog`.
+     - Implemented fallback checks against `notification_logs` (`IN_BED_EARLY` without `WOKE_UP`), `member.last_notified_cycle_date`, and canonical `resolveActiveSleepCycleWindow()`.
+     - Added future bedtime safety guard: if canonical window bedtime is strictly in the future relative to `sleeperNow`, resolves to yesterday's cycle to avoid waking up into an unstarted future sleep session.
+     - Updates the existing Day $D$ row with `woke_up_at`, `woke_up_local_time`, and `duration_minutes`, eliminating duplicate Day $D+1$ rows.
+  4. **Sleep History API & Weekly Schedule Day Resolution (`src/app/api/members/sleep-history/route.ts`):**
+     - Exposes `active_cycle_date`, `active_day_key`, `active_bedtime_local`, and `active_wake_time_local` resolved from `resolveActiveSleepCycleWindow`.
+     - When synthesizing missing sleep log records from strike logs, resolves schedule targets via `getScheduleForDay(member, dateDt)` rather than raw base columns.
+  5. **Calendar Modal Highlight Synchronization (`src/components/SleepCalendarModal.tsx`):**
+     - Evaluates `currentDayKey` using `apiMember.active_day_key` or `resolveActiveSleepCycleWindow()`, ensuring morning and post-midnight hours highlight the governing evening cycle day key (e.g. `mon`) instead of calendar day of week.
+  6. **Automated Verification & Test Suites:**
+     - `scripts/test-weekly-schedule-resilience.mjs`: Added Section 8 verifying Friday 23:00 to Saturday 07:00 weekday-to-weekend cross-midnight transitions (Friday 22:30, Saturday 00:00, Saturday 06:30, Saturday 14:00). All passed cleanly.
+     - `scripts/test-in-bed-and-streaks.mjs`: Added Section 4 with 37 assertions testing cross-midnight transitions, status bucket evaluations, and post-midnight (00:30) bedtime day key resolution. All passed cleanly.
+     - `scripts/test-sleep-history-and-wakeup.mjs`: Added Section 3D testing cross-midnight in-bed check-in on Day $D$ and button wake-up on Day $D+1$, verifying Day $D$ row is updated and 0 duplicate rows are created on Day $D+1$. All passed cleanly.
+     - `node scripts/test-gmt-timezones.mjs`: All passed cleanly.
+     - `node --import tsx scripts/test-weekend-hours.mjs`: All passed cleanly.
+     - `npx tsc --noEmit`: Clean (0 errors).
+     - `npm run test:unit`: All 41/41 test suites passed cleanly (100% in 94.57s).
 
 ### Phase 111: Early Wake-Up Snap-Back State Machine Fix & Cycle Completion Precedence
 * **Feature Branch:** `fix/early-wakeup-snapback` (branched from `krish`)
@@ -2563,15 +2600,17 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Active Integration PR #84 Review & Merge (`krish` -> `dev`):**
-   * Active Integration Pull Request [#84](https://github.com/KrishJdev/Z-Catchers/pull/84) is open from `krish` into `dev`.
-   * Monitor GitHub Actions CI (`Build & Test Verification`) and Vercel preview deployment on PR #84.
-   * Verify all automated tests pass cleanly and CodeRabbit review items are addressed.
-   * Once approved, merge PR #84 into `dev`.
+1. **Active Integration PR #85 Review & Merge (`krish` -> `dev`):**
+   * Active Integration Pull Request [#85](https://github.com/KrishJdev/Z-Catchers/pull/85) is open from `krish` into `dev`.
+   * Standardizes cross-midnight cycle date anchoring and per-day `weekly_schedule` resolution across `sleepEngine.ts`, `timezone.ts`, `in-bed/route.ts`, `wake-up/route.ts`, `sleep-history/route.ts`, and `SleepCalendarModal.tsx`.
+   * All 41 unit test suites pass cleanly (`npm run test:unit`) and TypeScript compiler check is clean (`npx tsc --noEmit`).
+   * Monitor GitHub Actions CI (`Build & Test Verification`), Vercel preview deployment, and CodeRabbit review on PR #85.
+   * Once approved, merge PR #85 into `dev`.
 
 2. **Subsequent Production Release Deployment (`dev` -> `main`):**
    * Note: Prior releases up to PR [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83) and PR [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81) are merged into `main`.
-   * Once PR #84 is merged into `dev`, open the next production release pull request from `dev` to `main` to deploy Phase 110 wake-up transition fixes and Phase 111 cycle completion precedence to production.
+   * PR [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84) was successfully merged into `dev`.
+   * Once PR #85 is merged into `dev`, open the next production release pull request from `dev` to `main` to deploy Phase 110 wake-up transition fixes, Phase 111 cycle completion precedence, and Phase 112 cross-midnight anchoring to production.
 
 2. **Sprint 1 & Sprint 2 (Completed & Merged to `dev`, PR #79 to `main`):**
    * **ZC-28 / GH #62:** **COMPLETED** (PR [#72](https://github.com/KrishJdev/Z-Catchers/pull/72) merged into `dev`).

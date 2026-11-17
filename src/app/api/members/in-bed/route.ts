@@ -10,7 +10,12 @@ import {
 } from '@/lib/db';
 import { DateTime } from 'luxon';
 import { verifyPin, getRequestSessionMemberId, verifyModeratorAuthorization } from '@/lib/auth';
-import { calculateSleepStreak, getSleepCycleDate, resolveActiveSleepCycle } from '@/lib/sleepEngine';
+import {
+  calculateSleepStreak,
+  getSleepCycleDate,
+  resolveActiveSleepCycle,
+  resolveActiveSleepCycleWindow,
+} from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
 import {
   getClientIp,
@@ -66,7 +71,12 @@ export async function GET(request: Request) {
     const hasOpenYesterday =
       checkinDates.includes(yesterdayDate) && !wokeUpDates.includes(yesterdayDate);
 
-    const cycleDate = getSleepCycleDate(member, DateTime.utc(), hasOpenYesterday || Boolean(member.is_in_bed));
+    const activeCycle = resolveActiveSleepCycleWindow(
+      member,
+      DateTime.utc(),
+      hasOpenYesterday || Boolean(member.is_in_bed)
+    );
+    const cycleDate = activeCycle.cycleAnchorDate;
     const isInBed = checkinDates.includes(cycleDate);
     const isWokeUp = wokeUpDates.includes(cycleDate);
     const streakDays = calculateSleepStreak(checkinDates, sleeperNow);
@@ -177,7 +187,15 @@ export async function POST(request: Request) {
 
     const nowUtc = DateTime.utc();
     const sleeperNow = nowUtc.setZone(toValidLuxonZone(member.timezone));
-    const localDate = getSleepCycleDate(member, nowUtc);
+    
+    // Standardized Active Sleep Cycle Window Resolution
+    const activeCheckinWindow = resolveActiveSleepCycleWindow(member, nowUtc, true);
+    const localDate =
+      (action === 'cancel' || action === 'wake_up') &&
+      member.last_notified_stage === 'IN_BED_EARLY' &&
+      member.last_notified_cycle_date
+        ? member.last_notified_cycle_date
+        : activeCheckinWindow.cycleAnchorDate;
 
     if (!localDate) {
       return NextResponse.json({ error: 'Failed to compute local date' }, { status: 500 });
@@ -319,21 +337,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // Resolve active schedule for this sleep cycle to record targets & status in sleep_logs
-    const activeCycle = resolveActiveSleepCycle(member, sleeperNow, true);
+    // Record active schedule targets & status in sleep_logs
     await upsertSleepLog({
       member_id: member.id,
       cycle_date: localDate,
       timezone: member.timezone,
-      target_bedtime: activeCycle.activeBedtimeLocal,
-      target_wake_time: activeCycle.activeWakeTimeLocal,
+      target_bedtime: activeCheckinWindow.activeBedtimeLocal,
+      target_wake_time: activeCheckinWindow.activeWakeTimeLocal,
       in_bed_at: nowUtc.toISO(),
       in_bed_local_time: sleeperNow.toFormat('HH:mm'),
       woke_up_at: null,
       woke_up_local_time: null,
       wake_source: null,
       duration_minutes: null,
-      status: activeCycle.diffMinutes > 5 ? 'late' : 'on_time',
+      status: activeCheckinWindow.diffMinutes > 5 ? 'late' : 'on_time',
     });
 
     // Compute updated streak
