@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
+import { supabaseAdmin, Member, updateMemberSafe, getInMemorySleepLogs } from '@/lib/db';
 import {
   getRequestSession,
   createSessionToken,
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
 
     const { data: logs } = await supabaseAdmin
       .from('notification_logs')
-      .select('notification_type, local_date')
+      .select('notification_type, local_date, dispatched_at')
       .eq('member_id', currentMember.id)
       .in('local_date', [yesterdayDate, todayDate])
       .in('notification_type', ['IN_BED_EARLY', 'WOKE_UP']);
@@ -84,6 +84,25 @@ export async function GET(request: Request) {
     const hasOpenYesterday =
       yesterdayTypes.includes('IN_BED_EARLY') && !yesterdayTypes.includes('WOKE_UP');
 
+    // Hydrate active check-in timestamp before cycle resolution so stalenessLimit uses actual check-in time
+    const targetCycleCandidate = hasOpenYesterday ? yesterdayDate : todayDate;
+    const matchedLog = (logs || []).find(
+      (l: any) => l.local_date === targetCycleCandidate && l.notification_type === 'IN_BED_EARLY'
+    );
+    let activeInBedAt: string | null = matchedLog?.dispatched_at || null;
+    if (!activeInBedAt) {
+      const memLogs = getInMemorySleepLogs(currentMember.id, yesterdayDate, todayDate);
+      const matchMem = memLogs.find((m) => m.cycle_date === targetCycleCandidate && m.in_bed_at);
+      if (matchMem?.in_bed_at) {
+        activeInBedAt = matchMem.in_bed_at;
+      }
+    }
+
+    if (activeInBedAt) {
+      currentMember.in_bed_at = activeInBedAt;
+      sanitized.in_bed_at = activeInBedAt;
+    }
+
     const localDate = getSleepCycleDate(currentMember, DateTime.utc(), hasOpenYesterday || Boolean(currentMember.is_in_bed));
     const cycleTypes = (logs || [])
       .filter((l: any) => l.local_date === localDate)
@@ -92,6 +111,9 @@ export async function GET(request: Request) {
     const isWokeUp = cycleTypes.includes('WOKE_UP') || currentMember.last_wake_cycle_date === localDate;
     sanitized.is_woke_up = isWokeUp;
     sanitized.is_in_bed = (cycleTypes.includes('IN_BED_EARLY') || Boolean(currentMember.is_in_bed)) && !isWokeUp;
+    if (sanitized.is_woke_up) {
+      sanitized.in_bed_at = null;
+    }
 
     const response = NextResponse.json({
       authenticated: true,

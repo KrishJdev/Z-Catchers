@@ -116,7 +116,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
        - Detects open in-bed sleep sessions via `isInBed`, `member.is_in_bed`, or DB stage `last_notified_stage === 'IN_BED_EARLY'`.
        - For active sleeping members (`effectiveInBed && !hasWokeUpForYesterday`), yesterday's cycle remains active past scheduled `wake_time` until explicit wake-up or a 16-hour staleness safety cap (capped before today's wind-down).
        - For members who never checked in (`!effectiveInBed`), yesterday's cycle terminates strictly at `ySched.wakeDateTime`, transitioning cleanly to today's upcoming cycle upon reaching scheduled wake time.
-       - For members who already woke up (`hasWokeUpForYesterday`), preserves a 4-hour post-wake window before rolling over.
+       - For members who already woke up (`hasWokeUpForYesterday`), preserves a 4-hour post-wake window calculated from scheduled wake time (`ySched.wakeDateTime`) and capped at today's wind-down before rolling over.
      - Updated `getSleepCycleDate`: Accepts optional `isInBed` parameter and passes `member.is_in_bed` to `resolveActiveSleepCycle` to prevent premature cycle rollover during roster queries.
      - Updated `computeMemberState`: Ensures `effectiveInBed && !hasLoggedWakeUp && (diffMinutes >= -180 || isPastWakeTime)` retains members in `SLEEPING` (`statusText: "In Bed • Past Wake Time"`, `needsWakeUpLog: true`, `isSleepShieldActive: false`) past wake time.
   2. **Roster & Session Endpoints (`src/app/api/members/route.ts`, `src/app/api/auth/me/route.ts`, `src/app/api/members/in-bed/route.ts`, `src/app/api/members/wake-up/route.ts`):**
@@ -2563,14 +2563,15 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Phase 111 Integration & Merge (`fix/early-wakeup-snapback` -> `krish`):**
-   * Early Wake-Up Snap-Back fix and Cycle Completion Precedence completed and verified on feature branch `fix/early-wakeup-snapback` (commit `ee3c809`).
-   * Merge `fix/early-wakeup-snapback` into `krish` and push to remote origin to update active PR [#84](https://github.com/KrishJdev/Z-Catchers/pull/84) (`krish` -> `dev`).
-   * Ensure CI/CD verification passes cleanly.
+1. **Active Integration PR #84 Review & Merge (`krish` -> `dev`):**
+   * Active Integration Pull Request [#84](https://github.com/KrishJdev/Z-Catchers/pull/84) is open from `krish` into `dev`.
+   * Monitor GitHub Actions CI (`Build & Test Verification`) and Vercel preview deployment on PR #84.
+   * Verify all automated tests pass cleanly and CodeRabbit review items are addressed.
+   * Once approved, merge PR #84 into `dev`.
 
-2. **Production Release Deployment & Verification (PR #81):**
-   * Review and merge Production Release Pull Request [#81](https://github.com/KrishJdev/Z-Catchers/pull/81) (`dev` -> `main`) to deploy Phase 105 & 106 to production.
-   * Verify production deployment on Vercel and check that all cron dispatchers, PWA features, and strike accountability endpoints execute cleanly.
+2. **Subsequent Production Release Deployment (`dev` -> `main`):**
+   * Note: Prior releases up to PR [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83) and PR [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81) are merged into `main`.
+   * Once PR #84 is merged into `dev`, open the next production release pull request from `dev` to `main` to deploy Phase 110 wake-up transition fixes and Phase 111 cycle completion precedence to production.
 
 2. **Sprint 1 & Sprint 2 (Completed & Merged to `dev`, PR #79 to `main`):**
    * **ZC-28 / GH #62:** **COMPLETED** (PR [#72](https://github.com/KrishJdev/Z-Catchers/pull/72) merged into `dev`).
