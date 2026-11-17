@@ -240,6 +240,51 @@ async function run() {
   const oldCycleRes = await handleWakeUpPost(oldCycleReq);
   testAssert(oldCycleRes.status === 400, 'Cycle dates older than 7 days rejected with HTTP 400');
 
+  // 3D. Cross-Midnight In-Bed to Wake-Up Session Matching
+  console.log('\n--- 3D. Cross-Midnight In-Bed to Wake-Up Session Matching ---');
+  const sleeperNowTz = DateTime.utc().setZone(testTz);
+  const cycleD = sleeperNowTz.minus({ days: 1 }).startOf('day').toISODate();
+  const cycleDPlus1 = sleeperNowTz.startOf('day').toISODate();
+
+  // Create open session on Day D (e.g. checked in before midnight)
+  await upsertSleepLog({
+    member_id: testMemberId,
+    cycle_date: cycleD,
+    timezone: testTz,
+    target_bedtime: '23:30',
+    target_wake_time: '07:30',
+    in_bed_at: sleeperNowTz.minus({ days: 1 }).set({ hour: 23, minute: 30 }).toISO(),
+    in_bed_local_time: '23:30',
+    woke_up_at: null,
+    woke_up_local_time: null,
+    status: 'on_time',
+  });
+
+  // Call wake-up API after midnight on Day D+1 (mode: button, no cycleDate specified)
+  const crossMidnightWakeReq = new Request('http://localhost:3000/api/members/wake-up', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${validSessionToken}`,
+    },
+    body: JSON.stringify({
+      memberId: testMemberId,
+      mode: 'button',
+    }),
+  });
+  const crossMidnightWakeRes = await handleWakeUpPost(crossMidnightWakeReq);
+  const crossMidnightWakeJson = await crossMidnightWakeRes.json();
+
+  testAssert(crossMidnightWakeRes.status === 200, 'Cross-midnight wake-up returns HTTP 200');
+  testAssert(crossMidnightWakeJson.sleep_log?.cycle_date === cycleD, `Wake-up matched and closed active cycle from Day D (${cycleD})`);
+  testAssert(crossMidnightWakeJson.sleep_log?.woke_up_at !== null, 'Open session woke_up_at was populated');
+  testAssert(typeof crossMidnightWakeJson.duration_minutes === 'number', 'Duration was computed from Day D in-bed timestamp');
+
+  // Verify no duplicate row was created for Day D+1
+  const { data: dPlus1Logs } = await getMemberSleepLogs(testMemberId, cycleDPlus1, cycleDPlus1);
+  const dPlus1Log = (dPlus1Logs || []).find((l) => l.cycle_date === cycleDPlus1);
+  testAssert(!dPlus1Log, `Zero duplicate/orphaned rows created for Day D+1 (${cycleDPlus1})`);
+
   // -------------------------------------------------------------
   // 4. Sleep History API Route (GET /api/members/sleep-history)
   // -------------------------------------------------------------

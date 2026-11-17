@@ -1346,6 +1346,25 @@ export function getPreviousScheduledBedtime(
 }
 
 /**
+ * Canonical result describing an active sleep cycle window.
+ */
+export interface ActiveSleepCycleWindow {
+  cycleAnchorDate: string;
+  cycleEveningDate: string;
+  startTimestamp: DateTime;
+  bedtimeTimestamp: DateTime;
+  wakeTimestamp: DateTime;
+  targetBedtime: DateTime;
+  targetWakeTime: DateTime;
+  activeBedtimeLocal: string;
+  activeWakeTimeLocal: string;
+  isWeekendSchedule: boolean;
+  isCustomScheduleToday: boolean;
+  dayKey: DayKey;
+  diffMinutes: number;
+}
+
+/**
  * Resolves the active sleep cycle schedule and cycle night date for a member at a given moment in their timezone.
  *
  * Evaluation Order:
@@ -1360,17 +1379,7 @@ export function resolveActiveSleepCycle(
   member: Member,
   sleeperNow: DateTime,
   isInBed?: boolean
-): {
-  cycleEveningDate: string;
-  targetBedtime: DateTime;
-  targetWakeTime: DateTime;
-  activeBedtimeLocal: string;
-  activeWakeTimeLocal: string;
-  isWeekendSchedule: boolean;
-  isCustomScheduleToday: boolean;
-  dayKey: DayKey;
-  diffMinutes: number;
-} {
+): ActiveSleepCycleWindow {
   const yesterdayNight = sleeperNow.minus({ days: 1 }).startOf('day');
   const yesterdayCycleDate = yesterdayNight.toISODate()!;
   const ySched = getNightScheduleDateTime(member, yesterdayNight);
@@ -1433,7 +1442,11 @@ export function resolveActiveSleepCycle(
       ySched.bedtimeStr !== mondaySched.bedtime || ySched.wakeTimeStr !== mondaySched.wake_time;
 
     return {
+      cycleAnchorDate: yesterdayNight.toISODate()!,
       cycleEveningDate: yesterdayNight.toISODate()!,
+      startTimestamp: yStart,
+      bedtimeTimestamp: ySched.bedtimeDateTime,
+      wakeTimestamp: ySched.wakeDateTime,
       targetBedtime: ySched.bedtimeDateTime,
       targetWakeTime: ySched.wakeDateTime,
       activeBedtimeLocal: ySched.bedtimeStr,
@@ -1452,9 +1465,14 @@ export function resolveActiveSleepCycle(
   const mondaySched = getScheduleForDay(member, todayNight.set({ weekday: 1 }));
   const isCustomScheduleToday =
     tSched.bedtimeStr !== mondaySched.bedtime || tSched.wakeTimeStr !== mondaySched.wake_time;
+  const tStart = tSched.bedtimeDateTime.minus({ minutes: 180 });
 
   return {
+    cycleAnchorDate: todayNight.toISODate()!,
     cycleEveningDate: todayNight.toISODate()!,
+    startTimestamp: tStart,
+    bedtimeTimestamp: tSched.bedtimeDateTime,
+    wakeTimestamp: tSched.wakeDateTime,
     targetBedtime: tSched.bedtimeDateTime,
     targetWakeTime: tSched.wakeDateTime,
     activeBedtimeLocal: tSched.bedtimeStr,
@@ -1467,6 +1485,25 @@ export function resolveActiveSleepCycle(
 }
 
 /**
+ * Resolves the active sleep cycle window (start timestamp, bedtime timestamp, wake timestamp,
+ * and cycle anchor date string YYYY-MM-DD) for any given now timestamp and member timezone.
+ *
+ * Normalizes input time to the member's IANA timezone and evaluates active cycle precedence.
+ */
+export function resolveActiveSleepCycleWindow(
+  member: Member,
+  nowUtc = DateTime.utc(),
+  isInBed?: boolean
+): ActiveSleepCycleWindow {
+  const normalizedSleeperZone = toValidLuxonZone(member.timezone);
+  const sleeperZone = DateTime.now().setZone(normalizedSleeperZone).isValid
+    ? normalizedSleeperZone
+    : 'UTC';
+  const sleeperNow = nowUtc.setZone(sleeperZone);
+  return resolveActiveSleepCycle(member, sleeperNow, isInBed);
+}
+
+/**
  * Computes the canonical sleep cycle night date ("YYYY-MM-DD") for a member at a given moment.
  * Defined strictly by the local evening the sleep window begins.
  */
@@ -1475,13 +1512,12 @@ export function getSleepCycleDate(
   nowUtc = DateTime.utc(),
   isInBed?: boolean
 ): string {
-  const normalizedSleeperZone = toValidLuxonZone(member.timezone);
-  const sleeperZone = DateTime.now().setZone(normalizedSleeperZone).isValid
-    ? normalizedSleeperZone
-    : 'UTC';
-  const sleeperNow = nowUtc.setZone(sleeperZone);
-  const cycle = resolveActiveSleepCycle(member, sleeperNow, isInBed !== undefined ? isInBed : member.is_in_bed);
-  return cycle.cycleEveningDate;
+  const window = resolveActiveSleepCycleWindow(
+    member,
+    nowUtc,
+    isInBed !== undefined ? isInBed : member.is_in_bed
+  );
+  return window.cycleAnchorDate;
 }
 
 /**
