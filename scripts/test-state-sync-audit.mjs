@@ -290,10 +290,7 @@ async function testInBedRouteCancel() {
     if (table === 'sleep_logs') {
       const sleepDeleteBuilder = {
         eq: (col, val) => sleepDeleteBuilder,
-        then: (resolve) => {
-          deleteSleepLog(memberId, '2026-05-15');
-          return Promise.resolve({ data: null, error: null }).then(resolve);
-        },
+        then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
       };
       return {
         delete: () => sleepDeleteBuilder,
@@ -479,10 +476,7 @@ async function testCancelPendingRoute() {
     if (table === 'sleep_logs') {
       const sleepDeleteBuilder = {
         eq: (col, val) => sleepDeleteBuilder,
-        then: (resolve) => {
-          deleteSleepLog(memberId, '2026-05-15');
-          return Promise.resolve({ data: null, error: null }).then(resolve);
-        },
+        then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
       };
       return {
         delete: () => sleepDeleteBuilder,
@@ -541,6 +535,245 @@ async function testCancelPendingRoute() {
 }
 
 await testCancelPendingRoute();
+
+// -------------------------------------------------------------
+// Section 3.1: Schedule-Only Cancellation Preserves Completed Sleep History
+// -------------------------------------------------------------
+console.log('\n--- 3.1 Schedule-Only Cancellation Preserves Completed Sleep History ---');
+
+async function testCancelPendingScheduleOnlyPreservesCompletedSleep() {
+  clearKnownMemberColumns();
+  const memberId = 'member-preserve-sleep-test';
+  const hashedPin = hashPin('4321');
+  const token = createSessionToken(memberId);
+  let mockMember = {
+    id: memberId,
+    discord_username: 'PreserveFox',
+    passcode_hash: hashedPin,
+    timezone: 'America/New_York',
+    bedtime_local: '23:00',
+    wake_time_local: '07:00',
+    pending_bedtime_local: '00:00',
+    pending_wake_time_local: '08:00',
+    pending_timezone: 'America/New_York',
+    pending_weekend_bedtime_local: null,
+    pending_weekend_wake_time_local: null,
+    pending_weekly_schedule: null,
+    pending_effective_at: '2026-05-18T00:00:00Z',
+    is_active: true,
+    is_in_bed: false,
+    is_woke_up: true,
+    in_bed_at: '2026-05-15T22:30:00Z',
+    last_wake_cycle_date: '2026-05-15',
+    last_woke_up_at: '2026-05-16T07:00:00Z',
+    last_notified_stage: null,
+    last_notified_cycle_date: null,
+  };
+
+  syncInMemoryMemberCache(mockMember);
+
+  let notificationLogs = [
+    { id: '20', member_id: memberId, notification_type: 'IN_BED_EARLY', local_date: '2026-05-15' },
+    { id: '21', member_id: memberId, notification_type: 'WOKE_UP', local_date: '2026-05-15' },
+  ];
+
+  setInMemorySleepLog({
+    id: 'log-20',
+    member_id: memberId,
+    cycle_date: '2026-05-15',
+    in_bed_at: '2026-05-15T22:30:00Z',
+    wake_time_local: '07:00',
+    status: 'completed',
+  });
+
+  const origFrom = supabaseAdmin.from;
+  supabaseAdmin.from = (table) => {
+    if (table === 'members') {
+      return {
+        select: () => ({
+          eq: () => ({
+            single: async () => ({ data: mockMember, error: null }),
+            maybeSingle: async () => ({ data: mockMember, error: null }),
+          }),
+          limit: () => Promise.resolve({ data: [mockMember], error: null }),
+        }),
+        update: (fields) => {
+          Object.assign(mockMember, fields);
+          const updateBuilder = {
+            eq: () => updateBuilder,
+            is: () => updateBuilder,
+            select: () => updateBuilder,
+            single: async () => ({ data: mockMember, error: null }),
+            maybeSingle: async () => ({ data: mockMember, error: null }),
+            then: (resolve) => Promise.resolve({ data: mockMember, error: null }).then(resolve),
+          };
+          return updateBuilder;
+        },
+      };
+    }
+    if (table === 'notification_logs') {
+      const selectBuilder = {
+        eq: () => selectBuilder,
+        in: () => selectBuilder,
+        gte: () => selectBuilder,
+        order: () => selectBuilder,
+        limit: () => selectBuilder,
+        then: (resolve) => Promise.resolve({ data: notificationLogs, error: null }).then(resolve),
+      };
+      return {
+        select: () => selectBuilder,
+        delete: () => ({
+          eq: () => ({
+            eq: () => ({
+              eq: () => Promise.resolve({ data: null, error: null }),
+            }),
+          }),
+        }),
+      };
+    }
+    return origFrom.call(supabaseAdmin, table);
+  };
+
+  try {
+    const req = new Request('http://localhost:3000/api/members/cancel-pending', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ member_id: memberId }),
+    });
+
+    const res = await handleCancelPendingRoute(req);
+    testAssert(res.status === 200, 'cancel-pending returns 200 for completed sleeper');
+
+    const resData = await res.json();
+    testAssert(resData.is_woke_up === true, 'resData.is_woke_up returned from updatedMember (true, not hard-coded false)');
+    testAssert(resData.member.is_woke_up === true, 'resData.member.is_woke_up returned from updatedMember (true)');
+
+    // Pending schedule fields must be cleared
+    testAssert(mockMember.pending_bedtime_local === null, 'pending_bedtime_local cleared');
+    testAssert(mockMember.pending_effective_at === null, 'pending_effective_at cleared');
+
+    // Completed sleep history and wake metadata must be PRESERVED
+    testAssert(mockMember.is_woke_up === true, 'is_woke_up remains true');
+    testAssert(mockMember.in_bed_at === '2026-05-15T22:30:00Z', 'in_bed_at preserved');
+    testAssert(mockMember.last_wake_cycle_date === '2026-05-15', 'last_wake_cycle_date preserved');
+    testAssert(mockMember.last_woke_up_at === '2026-05-16T07:00:00Z', 'last_woke_up_at preserved');
+
+    // Sleep log must not be deleted
+    const sleepLogs = getInMemorySleepLogs().filter((l) => l.member_id === memberId && l.cycle_date === '2026-05-15');
+    testAssert(sleepLogs.length === 1, 'Completed sleep_logs entry preserved');
+  } finally {
+    supabaseAdmin.from = origFrom;
+  }
+}
+
+await testCancelPendingScheduleOnlyPreservesCompletedSleep();
+
+// -------------------------------------------------------------
+// Section 3.2: Cleanup Failures Return HTTP 500 in Both Route Handlers
+// -------------------------------------------------------------
+console.log('\n--- 3.2 Cleanup Failures Return HTTP 500 in Both Routes ---');
+
+async function testCleanupFailureReturns500() {
+  clearKnownMemberColumns();
+  const memberId = 'member-cleanup-fail-test';
+  const hashedPin = hashPin('4321');
+  const token = createSessionToken(memberId);
+  let mockMember = {
+    id: memberId,
+    discord_username: 'FailSafeFox',
+    passcode_hash: hashedPin,
+    timezone: 'America/New_York',
+    bedtime_local: '23:00',
+    wake_time_local: '07:00',
+    is_active: true,
+    is_in_bed: true,
+    is_woke_up: false,
+    in_bed_at: '2026-05-15T22:30:00Z',
+    last_notified_stage: 'IN_BED_EARLY',
+    last_notified_cycle_date: '2026-05-15',
+  };
+
+  syncInMemoryMemberCache(mockMember);
+
+  const origFrom = supabaseAdmin.from;
+  supabaseAdmin.from = (table) => {
+    if (table === 'members') {
+      return {
+        select: () => ({
+          eq: () => ({
+            single: async () => ({ data: mockMember, error: null }),
+            maybeSingle: async () => ({ data: mockMember, error: null }),
+          }),
+          limit: () => Promise.resolve({ data: [mockMember], error: null }),
+        }),
+        update: (fields) => {
+          Object.assign(mockMember, fields);
+          const updateBuilder = {
+            eq: () => updateBuilder,
+            is: () => updateBuilder,
+            select: () => updateBuilder,
+            single: async () => ({ data: mockMember, error: null }),
+            maybeSingle: async () => ({ data: mockMember, error: null }),
+            then: (resolve) => Promise.resolve({ data: mockMember, error: null }).then(resolve),
+          };
+          return updateBuilder;
+        },
+      };
+    }
+    if (table === 'notification_logs') {
+      return {
+        delete: () => {
+          const deleteBuilder = {
+            eq: () => deleteBuilder,
+            then: (resolve) => Promise.resolve({ data: null, error: { message: 'DB notification delete failure' } }).then(resolve),
+          };
+          return deleteBuilder;
+        },
+      };
+    }
+    if (table === 'sleep_logs') {
+      return {
+        delete: () => ({
+          eq: () => ({
+            eq: () => Promise.resolve({ data: null, error: null }),
+          }),
+        }),
+      };
+    }
+    return origFrom.call(supabaseAdmin, table);
+  };
+
+  try {
+    // 1. in-bed cancel with notification delete failure returns 500
+    const inBedReq = new Request('http://localhost:3000/api/members/in-bed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ memberId, action: 'cancel', pin: '4321' }),
+    });
+    const inBedRes = await handleInBedRoute(inBedReq);
+    testAssert(inBedRes.status === 500, '/api/members/in-bed returns 500 when notification cleanup fails');
+    testAssert(mockMember.is_in_bed === true, 'Member is_in_bed preserved on in-bed cleanup failure (retry path preserved)');
+
+    // 2. cancel-pending with notification delete failure returns 500
+    mockMember.is_in_bed = true;
+    mockMember.last_notified_stage = 'IN_BED_EARLY';
+    const cancelPendingReq = new Request('http://localhost:3000/api/members/cancel-pending', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ member_id: memberId, pin: '4321' }),
+    });
+    const cancelPendingRes = await handleCancelPendingRoute(cancelPendingReq);
+    testAssert(cancelPendingRes.status === 500, '/api/members/cancel-pending returns 500 when notification cleanup fails');
+    testAssert(mockMember.is_in_bed === true, 'Member is_in_bed preserved on cancel-pending cleanup failure (retry path preserved)');
+  } finally {
+    supabaseAdmin.from = origFrom;
+  }
+}
+
+await testCleanupFailureReturns500();
 
 // -------------------------------------------------------------
 // Section 4: Frontend vs. Backend Status & Action Parity
@@ -629,6 +862,48 @@ testAssert(
 testAssert(
   pageSource.includes('onCancelInBed={handleCancelInBed}'),
   'page.tsx wires handleCancelInBed into PinnedSelfActionBar'
+);
+
+// 4.6 PinnedSelfActionBar: time-state useMemo recomputes on page clock ticks
+testAssert(
+  /\[currentUser,\s*optimisticInBed,\s*tick\]/.test(pinnedBarSource),
+  'PinnedSelfActionBar userState useMemo includes tick alongside currentUser and optimisticInBed'
+);
+testAssert(
+  pageSource.includes('tick={tick}'),
+  'page.tsx passes tick value into PinnedSelfActionBar'
+);
+
+// 4.7 MemberCard: inspects boolean cancellation result and clears transient optimistic overrides
+testAssert(
+  memberCardSource.includes('const res = await onCancelInBed(member.id)') &&
+  memberCardSource.includes('if (res === false)'),
+  'MemberCard cancellation handler inspects boolean result from onCancelInBed'
+);
+testAssert(
+  memberCardSource.includes('setOptimisticInBed(null)') &&
+  memberCardSource.includes('setOptimisticWokeUp(null)'),
+  'MemberCard clears transient optimistic overrides when request settles'
+);
+
+// 4.8 page.tsx: captures and restores is_in_bed, is_woke_up, in_bed_at across failure paths
+testAssert(
+  /priorPending\s*=\s*[\s\S]*?is_in_bed:\s*currentUser\.is_in_bed/.test(pageSource) &&
+  /is_woke_up:\s*currentUser\.is_woke_up/.test(pageSource) &&
+  /in_bed_at:\s*currentUser\.in_bed_at/.test(pageSource),
+  'page.tsx captures is_in_bed, is_woke_up, and in_bed_at in priorPending'
+);
+testAssert(
+  pageSource.includes('handleCancelInBed = useCallback(async (memberId: string): Promise<boolean>'),
+  'page.tsx handleCancelInBed returns Promise<boolean> reflecting cancellation outcome'
+);
+testAssert(
+  /isScheduleOnly\s*\?[\s\S]*?is_in_bed:\s*priorPending\?\.is_in_bed[\s\S]*?:[\s\S]*?is_in_bed:\s*false/.test(pageSource),
+  'page.tsx handleCancelPending optimistic update conditionally retains sleep fields for schedule-only cancellations'
+);
+testAssert(
+  /res\.status === 401[\s\S]*?router\.push\('\/join'\)[\s\S]*?res\.status === 403[\s\S]*?else\s*\{[\s\S]*?await fetchRoster\(\)/.test(pageSource),
+  'page.tsx handleCancelInBed failure branch refreshes authoritative roster on partial-cancellation server error while distinguishing auth rejections'
 );
 
 // -------------------------------------------------------------

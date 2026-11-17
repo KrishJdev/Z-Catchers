@@ -20,6 +20,7 @@ export interface PinnedSelfActionBarProps {
   onCancelPending: (memberId: string) => Promise<boolean | void>;
   onCancelInBed?: (memberId: string) => Promise<boolean | void | void>;
   isCheckingIn?: boolean;
+  tick?: number;
 }
 
 /**
@@ -36,6 +37,7 @@ export function PinnedSelfActionBar({
   onCancelPending,
   onCancelInBed,
   isCheckingIn = false,
+  tick,
 }: PinnedSelfActionBarProps) {
   // Transient optimistic UI override while an action is in-flight
   const [optimisticInBed, setOptimisticInBed] = useState<boolean | null>(null);
@@ -50,7 +52,7 @@ export function PinnedSelfActionBar({
       DateTime.utc(),
       optimisticInBed !== null ? optimisticInBed : undefined
     );
-  }, [currentUser, optimisticInBed]);
+  }, [currentUser, optimisticInBed, tick]);
 
   const isInBed =
     optimisticInBed !== null
@@ -75,7 +77,7 @@ export function PinnedSelfActionBar({
       }
     }
     return Boolean(currentUser.pending_bedtime_local);
-  }, [currentUser.pending_effective_at, currentUser.pending_bedtime_local]);
+  }, [currentUser.pending_effective_at, currentUser.pending_bedtime_local, tick]);
 
   // Haptic feedback helper
   const triggerHaptic = (duration = 15) => {

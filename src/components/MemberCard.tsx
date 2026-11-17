@@ -35,7 +35,7 @@ interface MemberCardProps {
   isStarred?: boolean;
   onToggleStar?: (memberId: string) => void;
   onCheckIn?: (memberId: string) => Promise<boolean | void> | void;
-  onCancelInBed?: (memberId: string) => Promise<void>;
+  onCancelInBed?: (memberId: string) => Promise<boolean | void>;
   isCheckingIn?: boolean;
   onVoteStrike?: (targetMemberId: string) => Promise<void>;
   onOpenMetastrike?: (member: Member, mode: 'proactive' | 'convert_retroactive') => void;
@@ -277,12 +277,18 @@ export function MemberCard({
     setOptimisticWokeUp(false);
     setCardError(null);
     try {
-      await onCancelInBed(member.id);
+      const res = await onCancelInBed(member.id);
+      if (res === false) {
+        setCardError('Failed to cancel check-in.');
+        setTimeout(() => setCardError(null), 3000);
+      }
     } catch {
-      setOptimisticInBed(true);
-      setOptimisticWokeUp(false);
       setCardError('Failed to cancel check-in.');
       setTimeout(() => setCardError(null), 3000);
+    } finally {
+      // Clear transient optimistic overrides so the member is not erroneously left out of bed
+      setOptimisticInBed(null);
+      setOptimisticWokeUp(null);
     }
   };
 
@@ -301,7 +307,11 @@ export function MemberCard({
           setOptimisticInBed(prevInBed);
         }
       } else if (onCancelInBed) {
-        await onCancelInBed(member.id);
+        const res = await onCancelInBed(member.id);
+        if (res === false) {
+          setOptimisticWokeUp(prevWokeUp);
+          setOptimisticInBed(prevInBed);
+        }
       }
     } catch {
       setOptimisticWokeUp(prevWokeUp);

@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-17T18:56:00+05:30  
+> **Last Updated:** 2026-11-18T04:24:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `01e2532`  
-> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85)  
-> **Active Integration Pull Requests:** [#86 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/86) (`krish` -> `dev`)  
+> **Latest Commit:** `5b80e8d`  
+> **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86)  
+> **Active Integration Pull Requests:** [#87 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/87) (`krish` -> `dev`)  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 42/42 suites passed, 100% in 87.49s | GitHub Actions CI: 100% green on PR #86)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 42/42 suites passed, 100% in 66.20s | GitHub Actions CI: 100% green on PR #86 / running on PR #87)
 
 ---
 
@@ -69,6 +69,75 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 115: Cancellation Flow Transactional Safety & Partial Failure Reconciliation (PR #87 Review Audit)
+* **Active Working Branch:** `krish`
+* **Latest Commit:** `5b80e8d`
+* **Objective & Context:**
+  - Addressed code review feedback on PR #87 covering cancellation retry path preservation, dynamic sleep status responses, optimistic UI updates, and partial failure reconciliation.
+  - Verified and resolved four distinct review items across `/api/members/cancel-pending`, `/api/members/in-bed`, and `src/app/page.tsx`.
+* **Scope of Changes & Key Enhancements:**
+  1. **Cancellation Retry Path Preservation (`src/app/api/members/cancel-pending/route.ts` & `src/app/api/members/in-bed/route.ts`):**
+     - Relocated `if (cleanupError)` check to execute BEFORE `updateMemberSafe` in both `/api/members/cancel-pending` and `/api/members/in-bed`.
+     - Ensures that when sleep log or notification log deletion fails, the member's database record (including `is_in_bed`, `in_bed_at`, `last_notified_stage`, and `last_notified_cycle_date`) is left intact rather than prematurely wiped, preserving a clean retry path for clients.
+  2. **Dynamic Sleep State Response Flags (`src/app/api/members/cancel-pending/route.ts`):**
+     - Replaced hard-coded `is_in_bed: false, is_woke_up: false` in `/api/members/cancel-pending` response with dynamically resolved `resolvedIsInBed = Boolean(updatedMember.is_in_bed)` and `resolvedIsWokeUp = Boolean(updatedMember.is_woke_up)`.
+     - Preserves active check-in behavior (where fields are cleared by the update) while properly reflecting existing sleep flags for schedule-only cancellations.
+  3. **Partial Cancellation Reconciliation in In-Bed Flow (`src/app/page.tsx`):**
+     - Updated failure path of `handleCancelInBed` to refresh authoritative member state via `await fetchRoster()` when encountering server errors (e.g. 500) where cancellation may have been partially committed.
+     - Separated 401 (unauthorized) and 403 (forbidden) status checks to prevent rejected requests from triggering unnecessary reconciliation.
+  4. **Conditional Optimistic UI Update & Success-Path Error Handling (`src/app/page.tsx`):**
+     - Updated `handleCancelPending` optimistic UI state to clear `is_in_bed`, `is_woke_up`, and `in_bed_at` only when the server will clear them (`!isScheduleOnly`). Retained captured sleep fields for schedule-only cancellations.
+     - Refrained from copying `is_in_bed` or `is_woke_up` directly from response.
+     - Added `try { await fetchRoster(); } catch { ... }` in the success path of `handleCancelPending` to restore captured sleep fields in `currentUser` if roster re-fetch fails, preventing UI desynchronization.
+  5. **Test Suite Expansion & Verification (`scripts/test-state-sync-audit.mjs`):**
+     - Added assertions confirming member `is_in_bed` is preserved in DB on cleanup failures.
+     - Added assertions verifying dynamic sleep flags returned in cancel-pending responses for schedule-only cancellations.
+     - Added AST/regex assertions verifying `page.tsx` conditional sleep field retention and roster re-fetch on partial failure.
+* **Verification & Test Results:**
+  - `npx tsc --noEmit`: 0 errors.
+  - `node --import tsx scripts/test-state-sync-audit.mjs`: All assertions passed cleanly.
+  - `npm run test:unit`: 42/42 test suites passed cleanly (100% in 66.20s).
+
+### Phase 114: Cancellation Edge Case Hardening & Client State Recovery Resilience (PR Review Audit)
+* **Active Working Branch:** `krish`
+* **Latest Commit:** `e5e15a7`
+* **Objective & Context:**
+  - Addressed PR review audit findings across backend cancellation endpoints, test mocking, and frontend state synchronization.
+  - Ensured schedule-only cooldown cancellations strictly preserve completed sleep history and wake metadata instead of erroneously treating lingering `in_bed_at` values as active check-ins.
+  - Hardened cancellation cleanup across `/api/members/cancel-pending` and `/api/members/in-bed`, validating notification and sleep log deletion results and surfacing HTTP 500 without reporting success on partial failures, while keeping failures fully recoverable.
+  - Eliminated recursive nested mock invocation in test suites and hardened optimistic rollback logic in `page.tsx`, `MemberCard.tsx`, and `PinnedSelfActionBar.tsx`.
+* **Scope of Changes & Key Enhancements:**
+  1. **HANDOFF.md Production Release Instruction Clarification (`HANDOFF.md`):**
+     - Removed the conflicting "Release PR #86" reference from the production-release instruction in Section 7.
+     - Clarified that the next production release PR from `dev` to `main` should be opened after active integration PR #86 merges.
+  2. **Test State Sync Audit Non-Recursive Mocks & Expanded Coverage (`scripts/test-state-sync-audit.mjs`):**
+     - Removed recursive nested `deleteSleepLog` calls in both `sleep_logs` mock builders, having them resolve `{ data: null, error: null }` directly.
+     - Added unit tests for schedule-only cancellation preserving completed sleep history and wake metadata (`is_woke_up: true`, `in_bed_at`, `last_wake_cycle_date`, `last_woke_up_at`).
+     - Added unit tests verifying HTTP 500 error reporting when cleanup operations fail in both `/api/members/in-bed` and `/api/members/cancel-pending`.
+     - Added frontend component parity assertions verifying tick-reactivity, boolean result checking, and optimistic field rollback.
+  3. **In-Bed Cancellation Condition & Robust Cleanup (`src/app/api/members/cancel-pending/route.ts`):**
+     - Refined cancellation conditions: populated `member.in_bed_at` alone does not count as active check-in. In-bed cancellation requires an active, uncompleted check-in (`(is_in_bed || last_notified_stage === 'IN_BED_EARLY') && !is_woke_up`) or an explicit in-bed cancellation request (`isCancelInBedRequested`), and is disabled for schedule-only requests (`isScheduleOnly`).
+     - Schedule-only cancellations preserve `is_woke_up`, `in_bed_at`, `last_wake_cycle_date`, `last_woke_up_at`, `notification_logs`, and `sleep_logs`.
+     - Checks deletion results for `notification_logs` and `deleteSleepLog`, returning HTTP 500 without reporting success if cleanup fails.
+  4. **In-Bed Route Deletion Result Validation (`src/app/api/members/in-bed/route.ts`):**
+     - Added deletion result checking for `notification_logs` (both `IN_BED_EARLY` and `WOKE_UP`) and `deleteSleepLog`.
+     - Surfaced HTTP 500 without reporting success if cleanup fails, keeping state updates idempotent and recoverable upon retry.
+  5. **Pending Cancellation Recovery Flow (`src/app/page.tsx`):**
+     - Expanded `priorPending` capture to include `is_in_bed`, `is_woke_up`, and `in_bed_at` before optimistic UI clearing.
+     - Restored all three fields across both failure paths (request rejection and subsequent recovery roster fetch failure), ensuring `currentUser` and active Sleep Shield synchronization reflect server-rejected cancellations.
+     - Updated `handleCancelInBed` to return `Promise<boolean>` reflecting true on success and false on failure.
+     - Passed page `tick` value into `PinnedSelfActionBar`.
+  6. **Transient Optimistic Override Cleanup (`src/components/MemberCard.tsx`):**
+     - Updated `MemberCardProps` `onCancelInBed` signature to return `Promise<boolean | void>`.
+     - Updated `handleCancelInBedClick` to inspect the boolean result of `onCancelInBed` and display an error card feedback when false.
+     - Cleared transient optimistic overrides (`optimisticInBed: null, optimisticWokeUp: null`) in `finally` upon settlement, preventing members from being left shown as out of bed on cancellation failures.
+  7. **Pinned Self Action Bar Clock Reactivity (`src/components/PinnedSelfActionBar.tsx`):**
+     - Added `tick?: number` to `PinnedSelfActionBarProps`.
+     - Added `tick` to the dependency array of `userState` (and `hasPendingCooldown`) `useMemo`, ensuring live status bucket and button labels recalculate when the page clock ticks.
+* **Verification & Test Results:**
+  - `npx tsc --noEmit`: 0 errors.
+  - `npm run test:unit`: 42/42 test suites passed cleanly (100% in 56.51s).
 
 ### Phase 113: State Synchronization & Cancellation Audit across APIs and UI Controls (GitHub Issue #67)
 * **Active Working Branch:** `krish`
@@ -2660,7 +2729,7 @@ d:\Projects\Z Catchers\
    * Note: Prior releases up to PR [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83) and PR [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81) are merged into `main`.
    * PR [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84) and PR [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85) were successfully merged into `dev`.
    * `dev` is fully tested and ahead of `main` by all features from Phase 110 (wake-up transition fixes), Phase 111 (early wake-up cycle completion precedence), and Phase 112 (cross-midnight cycle anchoring & weekly schedule matching).
-   * Open the next Production Release Pull Request from `dev` to `main` (Release PR #86) to deploy these updates to production.
+   * Open the next Production Release Pull Request from `dev` to `main` after the active integration PR merges to deploy these updates to production.
 
 2. **Sprint 1 & Sprint 2 (Completed & Merged to `dev`, PR #79 to `main`):**
    * **ZC-28 / GH #62:** **COMPLETED** (PR [#72](https://github.com/KrishJdev/Z-Catchers/pull/72) merged into `dev`).

@@ -133,19 +133,79 @@ export async function POST(request: Request) {
         ? member.last_notified_cycle_date
         : activeCycle.cycleAnchorDate;
 
-    const isCancelInBedRequested =
-      action === 'in_bed' ||
-      action === 'cancel_in_bed' ||
-      action === 'cancel' ||
-      type === 'in_bed';
+    const isScheduleOnly = action === 'schedule' || type === 'schedule';
 
-    const hasInBedState = Boolean(
-      member.is_in_bed ||
-      member.in_bed_at ||
-      member.last_notified_stage === 'IN_BED_EARLY'
+    const isCancelInBedRequested =
+      !isScheduleOnly &&
+      (action === 'in_bed' ||
+        action === 'cancel_in_bed' ||
+        action === 'cancel' ||
+        type === 'in_bed');
+
+    // A populated member.in_bed_at alone does not count as an active check-in;
+    // only an active, uncompleted check-in (in-bed / early in-bed without wake-up) qualifies.
+    const isActiveUncompletedCheckin = Boolean(
+      (member.is_in_bed || member.last_notified_stage === 'IN_BED_EARLY') &&
+      !member.is_woke_up
     );
 
-    const shouldCancelInBed = isCancelInBedRequested || hasInBedState;
+    const shouldCancelInBed = isCancelInBedRequested || (!isScheduleOnly && isActiveUncompletedCheckin);
+
+    let cleanupError: any = null;
+    if (shouldCancelInBed) {
+      // 1. Clean up notification logs
+      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+        try {
+          const { error: earlyErr } = await supabaseAdmin
+            .from('notification_logs')
+            .delete()
+            .eq('member_id', member.id)
+            .eq('notification_type', 'IN_BED_EARLY')
+            .eq('local_date', localDate);
+
+          if (earlyErr) {
+            console.warn('[cancel-pending] Error deleting IN_BED_EARLY notification logs:', earlyErr);
+            cleanupError = earlyErr;
+          }
+        } catch (err) {
+          cleanupError = err;
+        }
+
+        try {
+          const { error: wokeErr } = await supabaseAdmin
+            .from('notification_logs')
+            .delete()
+            .eq('member_id', member.id)
+            .eq('notification_type', 'WOKE_UP')
+            .eq('local_date', localDate);
+
+          if (wokeErr && !cleanupError) {
+            console.warn('[cancel-pending] Error deleting WOKE_UP notification logs:', wokeErr);
+            cleanupError = wokeErr;
+          }
+        } catch (err) {
+          if (!cleanupError) cleanupError = err;
+        }
+      }
+
+      // 2. Clean up today's sleep history entry in sleep_logs
+      try {
+        const sleepLogRes = await deleteSleepLog(member.id, localDate);
+        if ((sleepLogRes.error || !sleepLogRes.success) && !cleanupError) {
+          console.warn('[cancel-pending] Error deleting sleep log:', sleepLogRes.error);
+          cleanupError = sleepLogRes.error || new Error('Failed to delete sleep log');
+        }
+      } catch (err) {
+        if (!cleanupError) cleanupError = err;
+      }
+    }
+
+    if (cleanupError) {
+      return NextResponse.json(
+        { error: 'Failed to clean up sleep records during cancellation.' },
+        { status: 500 }
+      );
+    }
 
     const updateFields: Record<string, unknown> = {
       pending_bedtime_local: null,
@@ -192,28 +252,6 @@ export async function POST(request: Request) {
       );
     }
 
-    if (shouldCancelInBed) {
-      // 1. Clean up notification logs
-      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
-        await supabaseAdmin
-          .from('notification_logs')
-          .delete()
-          .eq('member_id', member.id)
-          .eq('notification_type', 'IN_BED_EARLY')
-          .eq('local_date', localDate);
-
-        await supabaseAdmin
-          .from('notification_logs')
-          .delete()
-          .eq('member_id', member.id)
-          .eq('notification_type', 'WOKE_UP')
-          .eq('local_date', localDate);
-      }
-
-      // 2. Clean up today's sleep history entry in sleep_logs
-      await deleteSleepLog(member.id, localDate);
-    }
-
     // Recalculate streak
     let checkinDates: string[] = [];
     if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
@@ -234,18 +272,21 @@ export async function POST(request: Request) {
       ? 'Pending schedule change cancelled. Existing schedule remains active.'
       : 'Pending in-bed state cancelled. Status restored based on current schedule.';
 
+    const resolvedIsInBed = Boolean(updatedMember.is_in_bed);
+    const resolvedIsWokeUp = Boolean(updatedMember.is_woke_up);
+
     return NextResponse.json({
       success: true,
       message,
       member: sanitizeMember({
         ...(updatedMember as Member),
         streak_days: streakDays,
-        is_in_bed: false,
-        is_woke_up: false,
+        is_in_bed: resolvedIsInBed,
+        is_woke_up: resolvedIsWokeUp,
       }),
       streak_days: streakDays,
-      is_in_bed: false,
-      is_woke_up: false,
+      is_in_bed: resolvedIsInBed,
+      is_woke_up: resolvedIsWokeUp,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown server error';

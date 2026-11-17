@@ -442,7 +442,7 @@ export default function HomePage() {
   );
 
   // Cancel "I'm in Bed" / Wake Up undo check-in handler
-  const handleCancelInBed = useCallback(async (memberId: string) => {
+  const handleCancelInBed = useCallback(async (memberId: string): Promise<boolean> => {
     try {
       setIsCheckingIn(true);
       const token = getStoredAuthToken();
@@ -474,14 +474,31 @@ export default function HomePage() {
           type: 'success',
         });
         await fetchRoster();
+        return true;
       } else if (res.status === 401) {
         router.push('/join');
+        return false;
+      } else if (res.status === 403) {
+        const data = await res.json().catch(() => ({}));
+        setToastMessage({
+          text: data.error || 'Forbidden. Cannot modify bedtime status for another member.',
+          type: 'error',
+        });
+        return false;
       } else {
+        // Server failure where cancellation may have been partially committed:
+        // refresh authoritative member state before returning false.
+        try {
+          await fetchRoster();
+        } catch {
+          // ignore roster refresh failure
+        }
         const data = await res.json().catch(() => ({}));
         setToastMessage({
           text: data.error || 'Failed to undo sleep state.',
           type: 'error',
         });
+        return false;
       }
     } catch (err) {
       console.error('Failed to cancel check-in:', err);
@@ -489,6 +506,7 @@ export default function HomePage() {
         text: 'Network error undoing sleep state.',
         type: 'error',
       });
+      return false;
     } finally {
       setIsCheckingIn(false);
     }
@@ -508,12 +526,21 @@ export default function HomePage() {
               pending_weekend_wake_time_local: currentUser.pending_weekend_wake_time_local,
               pending_weekly_schedule: currentUser.pending_weekly_schedule,
               pending_effective_at: currentUser.pending_effective_at,
+              is_in_bed: currentUser.is_in_bed,
+              is_woke_up: currentUser.is_woke_up,
+              in_bed_at: currentUser.in_bed_at,
             }
           : null;
 
+      const isScheduleOnly = Boolean(
+        currentUser?.pending_bedtime_local ||
+        currentUser?.pending_effective_at ||
+        currentUser?.pending_weekly_schedule
+      );
+
       try {
         setIsCheckingIn(true);
-        // Instant optimistic UI update
+        // Instant optimistic UI update: clear sleep fields only if server will clear them (not schedule-only)
         setCurrentUser((prev) =>
           prev && prev.id === memberId
             ? {
@@ -525,9 +552,17 @@ export default function HomePage() {
                 pending_weekend_wake_time_local: null,
                 pending_weekly_schedule: null,
                 pending_effective_at: null,
-                is_in_bed: false,
-                is_woke_up: false,
-                in_bed_at: null,
+                ...(isScheduleOnly
+                  ? {
+                      is_in_bed: priorPending?.is_in_bed ?? prev.is_in_bed,
+                      is_woke_up: priorPending?.is_woke_up ?? prev.is_woke_up,
+                      in_bed_at: priorPending?.in_bed_at ?? prev.in_bed_at,
+                    }
+                  : {
+                      is_in_bed: false,
+                      is_woke_up: false,
+                      in_bed_at: null,
+                    }),
               }
             : prev
         );
@@ -543,12 +578,29 @@ export default function HomePage() {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
-          setIsSleepShieldActive(false);
+          if (!isScheduleOnly) {
+            setIsSleepShieldActive(false);
+          }
           setToastMessage({
             text: data.message || 'Cancelled successfully.',
             type: 'success',
           });
-          await fetchRoster();
+          try {
+            await fetchRoster();
+          } catch {
+            if (priorPending) {
+              setCurrentUser((prev) =>
+                prev && prev.id === memberId
+                  ? {
+                      ...prev,
+                      is_in_bed: priorPending.is_in_bed,
+                      is_woke_up: priorPending.is_woke_up,
+                      in_bed_at: priorPending.in_bed_at,
+                    }
+                  : prev
+              );
+            }
+          }
           return true;
         } else {
           // Restore prior pending fields immediately
@@ -559,7 +611,13 @@ export default function HomePage() {
             text: data.error || 'Failed to cancel pending schedule change.',
             type: 'error',
           });
-          await fetchRoster();
+          try {
+            await fetchRoster();
+          } catch {
+            if (priorPending) {
+              setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, ...priorPending } : prev));
+            }
+          }
           return false;
         }
       } catch (err) {
@@ -572,7 +630,13 @@ export default function HomePage() {
           text: 'Network error cancelling pending schedule change.',
           type: 'error',
         });
-        await fetchRoster();
+        try {
+          await fetchRoster();
+        } catch {
+          if (priorPending) {
+            setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, ...priorPending } : prev));
+          }
+        }
         return false;
       } finally {
         setIsCheckingIn(false);
@@ -1385,6 +1449,7 @@ export default function HomePage() {
           onCancelPending={handleCancelPending}
           onCancelInBed={handleCancelInBed}
           isCheckingIn={isCheckingIn}
+          tick={tick}
         />
       )}
 
