@@ -200,6 +200,13 @@ export async function POST(request: Request) {
       }
     }
 
+    if (cleanupError) {
+      return NextResponse.json(
+        { error: 'Failed to clean up sleep records during cancellation.' },
+        { status: 500 }
+      );
+    }
+
     const updateFields: Record<string, unknown> = {
       pending_bedtime_local: null,
       pending_wake_time_local: null,
@@ -245,13 +252,6 @@ export async function POST(request: Request) {
       );
     }
 
-    if (cleanupError) {
-      return NextResponse.json(
-        { error: 'Failed to clean up sleep records during cancellation.' },
-        { status: 500 }
-      );
-    }
-
     // Recalculate streak
     let checkinDates: string[] = [];
     if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
@@ -272,18 +272,21 @@ export async function POST(request: Request) {
       ? 'Pending schedule change cancelled. Existing schedule remains active.'
       : 'Pending in-bed state cancelled. Status restored based on current schedule.';
 
+    const resolvedIsInBed = Boolean(updatedMember.is_in_bed);
+    const resolvedIsWokeUp = Boolean(updatedMember.is_woke_up);
+
     return NextResponse.json({
       success: true,
       message,
       member: sanitizeMember({
         ...(updatedMember as Member),
         streak_days: streakDays,
-        is_in_bed: false,
-        is_woke_up: false,
+        is_in_bed: resolvedIsInBed,
+        is_woke_up: resolvedIsWokeUp,
       }),
       streak_days: streakDays,
-      is_in_bed: false,
-      is_woke_up: false,
+      is_in_bed: resolvedIsInBed,
+      is_woke_up: resolvedIsWokeUp,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown server error';

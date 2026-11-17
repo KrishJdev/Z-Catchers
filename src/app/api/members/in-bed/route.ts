@@ -268,18 +268,18 @@ export async function POST(request: Request) {
         updatePayload.last_woke_up_at = null;
       }
 
+      if (cleanupError) {
+        return NextResponse.json(
+          { error: 'Failed to clean up sleep records during cancellation.' },
+          { status: 500 }
+        );
+      }
+
       const updateRes = await updateMemberSafe(member.id, updatePayload);
 
       if (updateRes.error || !updateRes.data) {
         return NextResponse.json(
           { error: updateRes.error?.message || 'Failed to update member state.' },
-          { status: 500 }
-        );
-      }
-
-      if (cleanupError) {
-        return NextResponse.json(
-          { error: 'Failed to clean up sleep records during cancellation.' },
           { status: 500 }
         );
       }

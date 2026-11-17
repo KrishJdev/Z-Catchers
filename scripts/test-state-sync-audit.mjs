@@ -647,6 +647,10 @@ async function testCancelPendingScheduleOnlyPreservesCompletedSleep() {
     const res = await handleCancelPendingRoute(req);
     testAssert(res.status === 200, 'cancel-pending returns 200 for completed sleeper');
 
+    const resData = await res.json();
+    testAssert(resData.is_woke_up === true, 'resData.is_woke_up returned from updatedMember (true, not hard-coded false)');
+    testAssert(resData.member.is_woke_up === true, 'resData.member.is_woke_up returned from updatedMember (true)');
+
     // Pending schedule fields must be cleared
     testAssert(mockMember.pending_bedtime_local === null, 'pending_bedtime_local cleared');
     testAssert(mockMember.pending_effective_at === null, 'pending_effective_at cleared');
@@ -751,6 +755,7 @@ async function testCleanupFailureReturns500() {
     });
     const inBedRes = await handleInBedRoute(inBedReq);
     testAssert(inBedRes.status === 500, '/api/members/in-bed returns 500 when notification cleanup fails');
+    testAssert(mockMember.is_in_bed === true, 'Member is_in_bed preserved on in-bed cleanup failure (retry path preserved)');
 
     // 2. cancel-pending with notification delete failure returns 500
     mockMember.is_in_bed = true;
@@ -762,6 +767,7 @@ async function testCleanupFailureReturns500() {
     });
     const cancelPendingRes = await handleCancelPendingRoute(cancelPendingReq);
     testAssert(cancelPendingRes.status === 500, '/api/members/cancel-pending returns 500 when notification cleanup fails');
+    testAssert(mockMember.is_in_bed === true, 'Member is_in_bed preserved on cancel-pending cleanup failure (retry path preserved)');
   } finally {
     supabaseAdmin.from = origFrom;
   }
@@ -890,6 +896,14 @@ testAssert(
 testAssert(
   pageSource.includes('handleCancelInBed = useCallback(async (memberId: string): Promise<boolean>'),
   'page.tsx handleCancelInBed returns Promise<boolean> reflecting cancellation outcome'
+);
+testAssert(
+  /isScheduleOnly\s*\?[\s\S]*?is_in_bed:\s*priorPending\?\.is_in_bed[\s\S]*?:[\s\S]*?is_in_bed:\s*false/.test(pageSource),
+  'page.tsx handleCancelPending optimistic update conditionally retains sleep fields for schedule-only cancellations'
+);
+testAssert(
+  /res\.status === 401[\s\S]*?router\.push\('\/join'\)[\s\S]*?res\.status === 403[\s\S]*?else\s*\{[\s\S]*?await fetchRoster\(\)/.test(pageSource),
+  'page.tsx handleCancelInBed failure branch refreshes authoritative roster on partial-cancellation server error while distinguishing auth rejections'
 );
 
 // -------------------------------------------------------------
