@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Sun, BedDouble, Shield, RotateCcw, RefreshCw } from 'lucide-react';
+import { Sun, BedDouble, Shield, RotateCcw, RefreshCw, Clock } from 'lucide-react';
 import { DateTime } from 'luxon';
 import { Member } from '@/lib/db';
+import { computeMemberState } from '@/lib/sleepEngine';
 import { FoxMascot } from '@/components/FoxMascot';
 
 export interface PinnedSelfActionBarProps {
@@ -17,7 +18,9 @@ export interface PinnedSelfActionBarProps {
     cycleDate?: string
   ) => Promise<boolean | void>;
   onCancelPending: (memberId: string) => Promise<boolean | void>;
+  onCancelInBed?: (memberId: string) => Promise<boolean | void | void>;
   isCheckingIn?: boolean;
+  tick?: number;
 }
 
 /**
@@ -32,17 +35,34 @@ export function PinnedSelfActionBar({
   onCheckIn,
   onWakeUp,
   onCancelPending,
+  onCancelInBed,
   isCheckingIn = false,
+  tick,
 }: PinnedSelfActionBarProps) {
   // Transient optimistic UI override while an action is in-flight
   const [optimisticInBed, setOptimisticInBed] = useState<boolean | null>(null);
   const [isCancellingPending, setIsCancellingPending] = useState<boolean>(false);
+  const [isCancellingInBed, setIsCancellingInBed] = useState<boolean>(false);
 
-  // Authoritative props control display once actions settle; optimisticInBed only applies while in-flight
+  // Authoritative state computation via sleepEngine
+  const userState = useMemo(() => {
+    return computeMemberState(
+      currentUser,
+      currentUser.timezone,
+      DateTime.utc(),
+      optimisticInBed !== null ? optimisticInBed : undefined
+    );
+  }, [currentUser, optimisticInBed, tick]);
+
   const isInBed =
     optimisticInBed !== null
       ? optimisticInBed
-      : Boolean(currentUser.is_in_bed || isSleepShieldActive);
+      : (userState.bucket === 'SLEEPING' || Boolean((currentUser.is_in_bed || isSleepShieldActive) && !currentUser.is_woke_up));
+
+  const isWindingDown = !isInBed && userState.bucket === 'WINDING_DOWN';
+  const isOverdue = !isInBed && (userState.bucket === 'BEDTIME_NOW' || userState.isOverdue || userState.status === 'OVERDUE_NAG_NOW' || userState.status === 'BEDTIME_GRACE');
+  const isAwake = !isInBed && !isWindingDown && !isOverdue;
+  const isEarlyCheckInAllowed = isAwake && userState.diffMinutes >= -180 && userState.diffMinutes < -60;
 
   // Check if a 48h schedule change cooldown is active (reads authoritative props)
   const hasPendingCooldown = useMemo(() => {
@@ -57,7 +77,7 @@ export function PinnedSelfActionBar({
       }
     }
     return Boolean(currentUser.pending_bedtime_local);
-  }, [currentUser.pending_effective_at, currentUser.pending_bedtime_local]);
+  }, [currentUser.pending_effective_at, currentUser.pending_bedtime_local, tick]);
 
   // Haptic feedback helper
   const triggerHaptic = (duration = 15) => {
@@ -98,6 +118,24 @@ export function PinnedSelfActionBar({
       }
     } finally {
       // Clear optimistic override once settled so authoritative props govern state
+      setOptimisticInBed(null);
+    }
+  };
+
+  // Cancel in-bed / undo check-in handler
+  const handleCancelInBedClick = async () => {
+    triggerHaptic(15);
+    setIsCancellingInBed(true);
+    setOptimisticInBed(false);
+
+    try {
+      if (onCancelInBed) {
+        await onCancelInBed(currentUser.id);
+      } else {
+        await onCancelPending(currentUser.id);
+      }
+    } finally {
+      setIsCancellingInBed(false);
       setOptimisticInBed(null);
     }
   };
@@ -146,7 +184,7 @@ export function PinnedSelfActionBar({
                 className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full border-2 border-night-surface ${
                   isInBed ? 'bg-status-amber' : 'bg-status-sage'
                 }`}
-                title={isInBed ? 'Sleep Shield Active' : 'Awake'}
+                title={isInBed ? (isSleepShieldActive || userState.isSleepShieldActive ? 'Sleep Shield Active' : 'In Bed • Past Wake Time') : 'Awake'}
               />
             </div>
 
@@ -158,11 +196,21 @@ export function PinnedSelfActionBar({
                 {isInBed ? (
                   <span className="flex items-center gap-1 font-medium text-status-amber truncate">
                     <Shield className="h-3 w-3 shrink-0 fill-status-amber/20" />
-                    <span className="truncate">Sleep Shield Active • Nags Muted</span>
+                    <span className="truncate">
+                      {isSleepShieldActive || userState.isSleepShieldActive ? 'Sleep Shield Active • Nags Muted' : 'In Bed • Past Wake Time'}
+                    </span>
+                  </span>
+                ) : isWindingDown ? (
+                  <span className="text-status-amber font-medium truncate">
+                    Winding Down • Bedtime: <span className="font-mono text-cream-primary">{userState.activeBedtimeLocal || currentUser.bedtime_local}</span>
+                  </span>
+                ) : isOverdue ? (
+                  <span className="text-status-coral font-medium truncate">
+                    Past Bedtime • Bedtime was <span className="font-mono">{userState.activeBedtimeLocal || currentUser.bedtime_local}</span>
                   </span>
                 ) : (
                   <span className="text-cream-secondary truncate">
-                    Awake • Bedtime: <span className="font-mono text-cream-primary">{currentUser.bedtime_local}</span>
+                    Awake • Bedtime: <span className="font-mono text-cream-primary">{userState.activeBedtimeLocal || currentUser.bedtime_local}</span>
                   </span>
                 )}
               </div>
@@ -198,30 +246,53 @@ export function PinnedSelfActionBar({
             </button>
           )}
 
-          {/* Primary Action: Context-Aware Check-In */}
+          {/* Context-Aware Primary Controls */}
           {isInBed ? (
-            <button
-              type="button"
-              onClick={handleWakeUpClick}
-              disabled={isCheckingIn}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 min-h-[44px] min-w-[44px] px-4 py-2 rounded-xl border border-status-amber bg-status-amber text-night-bg text-xs sm:text-sm font-bold shadow-md hover:bg-status-amber/90 active:scale-95 transition-all whitespace-nowrap"
-              title="Log wake-up right now"
-              aria-label="I'm Awake check-in"
-            >
-              {isCheckingIn ? (
-                <RefreshCw className="h-4 w-4 animate-spin text-night-bg" />
-              ) : (
-                <Sun className="h-4 w-4 fill-night-bg stroke-night-bg" />
-              )}
-              <span>☀️ I&apos;m Awake</span>
-            </button>
-          ) : (
+            /* Sleeping: Primary "I'm Awake" + Secondary "Undo / Cancel" */
+            <>
+              <button
+                type="button"
+                onClick={handleCancelInBedClick}
+                disabled={isCheckingIn || isCancellingInBed}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl border border-night-border bg-night-elevated text-xs font-semibold text-cream-secondary hover:text-cream-primary hover:border-status-amber/40 active:scale-95 transition-all shadow-sm"
+                title="Undo in-bed check-in and restore active status"
+                aria-label="Cancel in-bed check-in"
+              >
+                {isCancellingInBed ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-status-amber" />
+                ) : (
+                  <RotateCcw className="h-3.5 w-3.5 text-status-amber" />
+                )}
+                <span className="truncate">Undo / Cancel</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleWakeUpClick}
+                disabled={isCheckingIn}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 min-h-[44px] min-w-[44px] px-4 py-2 rounded-xl border border-status-amber bg-status-amber text-night-bg text-xs sm:text-sm font-bold shadow-md hover:bg-status-amber/90 active:scale-95 transition-all whitespace-nowrap"
+                title="Log wake-up right now"
+                aria-label="I'm Awake check-in"
+              >
+                {isCheckingIn ? (
+                  <RefreshCw className="h-4 w-4 animate-spin text-night-bg" />
+                ) : (
+                  <Sun className="h-4 w-4 fill-night-bg stroke-night-bg" />
+                )}
+                <span>☀️ I&apos;m Awake</span>
+              </button>
+            </>
+          ) : isWindingDown || isOverdue || isEarlyCheckInAllowed ? (
+            /* Winding down, overdue, or allowed early window: Primary "I'm in Bed" CTA */
             <button
               type="button"
               onClick={handleCheckInClick}
               disabled={isCheckingIn}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 min-h-[44px] min-w-[44px] px-4 py-2 rounded-xl border border-status-amber/50 bg-status-amber text-night-bg text-xs sm:text-sm font-bold shadow-md hover:bg-status-amber/90 active:scale-95 transition-all whitespace-nowrap"
-              title="Check into bed and activate Sleep Shield"
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 min-h-[44px] min-w-[44px] px-4 py-2 rounded-xl text-night-bg text-xs sm:text-sm font-bold shadow-md active:scale-95 transition-all whitespace-nowrap ${
+                isOverdue
+                  ? 'border border-status-coral/50 bg-status-coral hover:bg-status-coral/90'
+                  : 'border border-status-amber/50 bg-status-amber hover:bg-status-amber/90'
+              }`}
+              title={isOverdue ? 'Late check-in into bed' : 'Check into bed and activate Sleep Shield'}
               aria-label="I'm in Bed check-in"
             >
               {isCheckingIn ? (
@@ -229,8 +300,22 @@ export function PinnedSelfActionBar({
               ) : (
                 <BedDouble className="h-4 w-4" />
               )}
-              <span>🛏️ I&apos;m in Bed</span>
+              <span>
+                {isOverdue
+                  ? "🛏️ I'm in Bed (Late)"
+                  : isEarlyCheckInAllowed
+                  ? "🛏️ Early Check-In"
+                  : "🛏️ I'm in Bed"}
+              </span>
             </button>
+          ) : (
+            /* Awake outside wind-down/sleep window: Schedule / status info display */
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-night-border/70 bg-night-elevated text-xs font-medium text-cream-secondary min-h-[44px]">
+                <Clock className="h-3.5 w-3.5 text-status-amber" />
+                <span className="truncate">Bedtime at {userState.activeBedtimeLocal || currentUser.bedtime_local}</span>
+              </div>
+            </div>
           )}
         </div>
       </div>

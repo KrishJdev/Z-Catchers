@@ -3,6 +3,8 @@ import {
   computeMemberState,
   calculateSleepStreak,
   getStreakMilestoneBadge,
+  resolveActiveSleepCycleWindow,
+  getSleepCycleDate,
 } from '../src/lib/sleepEngine.ts';
 import { createClient } from '@supabase/supabase-js';
 
@@ -239,6 +241,149 @@ if (!isSupabaseLive) {
     console.log('✅ Cleaned up test database record.');
   }
 }
+
+// -------------------------------------------------------------
+// 4. Weekday-to-Weekend Cross-Midnight Transition & Date Anchoring
+// -------------------------------------------------------------
+console.log('\n--- 4. Weekday-to-Weekend Cross-Midnight Transition & Date Anchoring ---');
+
+// Friday bedtime 23:00, wake 07:00; Saturday bedtime 01:00 (Sunday 01:00 AM), wake 09:30
+const variableMember = {
+  id: 'test-var-member',
+  discord_username: 'WeekendFox',
+  discord_handle: 'weekendfox',
+  avatar_url: null,
+  journal_url: 'https://discord.com/channels/123/456',
+  bedtime_local: '23:00',
+  wake_time_local: '07:00',
+  timezone: 'UTC',
+  weekly_schedule: {
+    mon: { bedtime: '23:00', wake_time: '07:00' },
+    tue: { bedtime: '23:00', wake_time: '07:00' },
+    wed: { bedtime: '23:00', wake_time: '07:00' },
+    thu: { bedtime: '23:00', wake_time: '07:00' },
+    fri: { bedtime: '23:00', wake_time: '07:00' },
+    sat: { bedtime: '01:00', wake_time: '09:30' },
+    sun: { bedtime: '23:00', wake_time: '07:00' },
+  },
+  role: 'member',
+  passcode_hash: null,
+  is_active: true,
+  is_in_bed: false,
+};
+
+// 4.1 Friday evening at 22:30 (30m before Friday 23:00 bedtime)
+const friEvening = DateTime.fromISO('2026-11-20T22:30:00.000Z', { zone: 'UTC' });
+const friEveningWindow = resolveActiveSleepCycleWindow(variableMember, friEvening);
+assert(friEveningWindow.cycleAnchorDate === '2026-11-20', 'Friday 22:30 cycleAnchorDate is 2026-11-20');
+assert(friEveningWindow.dayKey === 'fri', 'Friday 22:30 dayKey is fri');
+assert(friEveningWindow.activeBedtimeLocal === '23:00', 'Friday 22:30 activeBedtimeLocal is 23:00');
+assert(friEveningWindow.activeWakeTimeLocal === '07:00', 'Friday 22:30 activeWakeTimeLocal is 07:00');
+
+const friEveningState = computeMemberState(variableMember, 'UTC', friEvening);
+assert(friEveningState.bucket === 'WINDING_DOWN', 'Friday 22:30 bucket is WINDING_DOWN');
+assert(friEveningState.dayKey === 'fri', 'Friday 22:30 state dayKey is fri');
+
+// 4.2 Saturday at 00:00 (Midnight crossover!): Must continue evaluating against Friday night schedule
+const satMidnight = DateTime.fromISO('2026-11-21T00:00:00.000Z', { zone: 'UTC' });
+const satMidnightWindow = resolveActiveSleepCycleWindow(variableMember, satMidnight);
+assert(satMidnightWindow.cycleAnchorDate === '2026-11-20', 'Saturday 00:00 midnight crossover preserves Friday cycleAnchorDate 2026-11-20');
+assert(satMidnightWindow.dayKey === 'fri', 'Saturday 00:00 midnight crossover preserves Friday dayKey (fri)');
+assert(satMidnightWindow.activeBedtimeLocal === '23:00', 'Saturday 00:00 midnight crossover preserves Friday bedtime 23:00');
+assert(satMidnightWindow.activeWakeTimeLocal === '07:00', 'Saturday 00:00 midnight crossover preserves Friday wake_time 07:00');
+
+const satMidnightState = computeMemberState(variableMember, 'UTC', satMidnight, false);
+assert(satMidnightState.bucket === 'BEDTIME_NOW', 'Saturday 00:00 un-checked-in member is BEDTIME_NOW (overdue)');
+assert(satMidnightState.dayKey === 'fri', 'Saturday 00:00 state dayKey is fri, not sat');
+assert(satMidnightState.activeWakeTimeLocal === '07:00', 'Saturday 00:00 evaluates against Friday wake_time 07:00, not Saturday 09:30');
+
+// 4.3 Saturday at 02:00 AM: Still inside Friday night sleep window
+const sat0200 = DateTime.fromISO('2026-11-21T02:00:00.000Z', { zone: 'UTC' });
+const sat0200Window = resolveActiveSleepCycleWindow(variableMember, sat0200);
+assert(sat0200Window.cycleAnchorDate === '2026-11-20', 'Saturday 02:00 AM cycleAnchorDate is 2026-11-20');
+assert(sat0200Window.dayKey === 'fri', 'Saturday 02:00 AM dayKey is fri');
+
+// 4.4 Saturday at 06:30 AM: Active cycle remains Friday night, active wake_time remains 07:00
+const sat0630 = DateTime.fromISO('2026-11-21T06:30:00.000Z', { zone: 'UTC' });
+const sat0630Window = resolveActiveSleepCycleWindow(variableMember, sat0630);
+assert(sat0630Window.cycleAnchorDate === '2026-11-20', 'Saturday 06:30 AM cycleAnchorDate is 2026-11-20');
+assert(sat0630Window.dayKey === 'fri', 'Saturday 06:30 AM dayKey is fri');
+assert(sat0630Window.activeWakeTimeLocal === '07:00', 'Saturday 06:30 AM activeWakeTimeLocal is 07:00');
+
+// 4.5 Member checked in before midnight (Friday 22:45) and sleeping past midnight
+const satInBedState = computeMemberState(variableMember, 'UTC', sat0630, true);
+assert(satInBedState.bucket === 'SLEEPING', 'Saturday 06:30 checked-in member is SLEEPING');
+assert(satInBedState.isSleepShieldActive === true, 'Saturday 06:30 checked-in member Sleep Shield is ACTIVE');
+assert(satInBedState.dayKey === 'fri', 'Saturday 06:30 in-bed member dayKey is fri');
+
+// 4.6 Member sleeping past scheduled wake time (Saturday 07:30) while in bed
+const sat0730 = DateTime.fromISO('2026-11-21T07:30:00.000Z', { zone: 'UTC' });
+const satOverSleepState = computeMemberState(variableMember, 'UTC', sat0730, true);
+assert(satOverSleepState.bucket === 'SLEEPING', 'Saturday 07:30 sleeping past wake time remains in SLEEPING bucket');
+assert(satOverSleepState.statusText.includes('Past Wake Time'), 'Saturday 07:30 statusText shows Past Wake Time');
+assert(satOverSleepState.dayKey === 'fri', 'Saturday 07:30 sleeping past wake time retains Friday dayKey');
+
+// 4.7 Member woke up on Saturday morning (06:45 AM)
+const wokeUpFriNightMember = {
+  ...variableMember,
+  is_in_bed: false,
+  is_woke_up: true,
+  last_woke_up_at: '2026-11-21T06:45:00.000Z',
+  last_wake_cycle_date: '2026-11-20',
+};
+const satPostWakeState = computeMemberState(wokeUpFriNightMember, 'UTC', DateTime.fromISO('2026-11-21T06:45:00.000Z', { zone: 'UTC' }), false);
+assert(satPostWakeState.bucket === 'AWAKE', 'Saturday 06:45 after wake-up resolves to AWAKE');
+assert(satPostWakeState.statusText === 'Wide Awake • Rested', 'Saturday 06:45 statusText is Wide Awake • Rested');
+assert(satPostWakeState.isSleepShieldActive === false, 'Saturday 06:45 Sleep Shield is deactivated upon wake-up');
+
+// 4.8 Saturday daytime (14:00): Cleanly resolves to Saturday night upcoming cycle (bedtime 01:00 AM Sun)
+const satDaytime = DateTime.fromISO('2026-11-21T14:00:00.000Z', { zone: 'UTC' });
+const satDaytimeWindow = resolveActiveSleepCycleWindow(variableMember, satDaytime);
+assert(satDaytimeWindow.cycleAnchorDate === '2026-11-21', 'Saturday 14:00 daytime resolves to Saturday night cycle 2026-11-21');
+assert(satDaytimeWindow.dayKey === 'sat', 'Saturday 14:00 daytime dayKey is sat');
+assert(satDaytimeWindow.activeBedtimeLocal === '01:00', 'Saturday 14:00 daytime upcoming bedtime is 01:00');
+assert(satDaytimeWindow.activeWakeTimeLocal === '09:30', 'Saturday 14:00 daytime upcoming wake_time is 09:30');
+
+// 4.9 Post-midnight bedtime agreement (Tuesday 00:30 bedtime / Monday night anchor)
+const postMidnightMember = {
+  id: 'test-post-midnight-member',
+  discord_username: 'NightOwlFox',
+  timezone: 'UTC',
+  bedtime_local: '00:30',
+  wake_time_local: '08:00',
+  weekly_schedule: {
+    mon: { bedtime: '00:30', wake_time: '08:00' },
+    tue: { bedtime: '00:30', wake_time: '08:00' },
+    wed: { bedtime: '00:30', wake_time: '08:00' },
+    thu: { bedtime: '00:30', wake_time: '08:00' },
+    fri: { bedtime: '00:30', wake_time: '08:00' },
+    sat: { bedtime: '00:30', wake_time: '08:00' },
+    sun: { bedtime: '00:30', wake_time: '08:00' },
+  },
+  role: 'member',
+  is_active: true,
+  is_in_bed: false,
+};
+
+// Monday night at 23:45 (T-45m before Tuesday 00:30 bedtime)
+const monNight = DateTime.fromISO('2026-11-16T23:45:00.000Z', { zone: 'UTC' });
+const monNightWindow = resolveActiveSleepCycleWindow(postMidnightMember, monNight);
+assert(monNightWindow.cycleAnchorDate === '2026-11-16', 'Monday 23:45 for 00:30 bedtime anchors to Monday 2026-11-16');
+assert(monNightWindow.dayKey === 'mon', 'Monday 23:45 dayKey is mon');
+
+// Tuesday at 00:15 (T-15m before 00:30 bedtime, post-midnight)
+const tuePreBed = DateTime.fromISO('2026-11-17T00:15:00.000Z', { zone: 'UTC' });
+const tuePreBedWindow = resolveActiveSleepCycleWindow(postMidnightMember, tuePreBed);
+assert(tuePreBedWindow.cycleAnchorDate === '2026-11-16', 'Tuesday 00:15 (T-15m) anchors to Monday evening 2026-11-16');
+assert(tuePreBedWindow.dayKey === 'mon', 'Tuesday 00:15 dayKey is mon');
+assert(tuePreBedWindow.activeBedtimeLocal === '00:30', 'Tuesday 00:15 activeBedtimeLocal is 00:30');
+
+// Tuesday at 06:30 (morning before 08:00 wake_time)
+const tueMorning = DateTime.fromISO('2026-11-17T06:30:00.000Z', { zone: 'UTC' });
+const tueMorningWindow = resolveActiveSleepCycleWindow(postMidnightMember, tueMorning);
+assert(tueMorningWindow.cycleAnchorDate === '2026-11-16', 'Tuesday 06:30 morning anchors to Monday night cycle 2026-11-16');
+assert(tueMorningWindow.dayKey === 'mon', 'Tuesday 06:30 morning dayKey is mon');
+assert(tueMorningWindow.activeWakeTimeLocal === '08:00', 'Tuesday 06:30 morning activeWakeTimeLocal is 08:00');
 
 if (failed) {
   console.error('\n❌ SOME TESTS FAILED!');

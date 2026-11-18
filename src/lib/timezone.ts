@@ -29,6 +29,9 @@ import {
   getNextScheduledBedtimeAfter,
   getPreviousScheduledBedtime,
   resolveActiveSleepCycle,
+  type ActiveSleepCycleWindow,
+  resolveActiveSleepCycleWindow,
+  getSleepCycleDate,
 } from './sleepEngine';
 
 export {
@@ -62,4 +65,7 @@ export {
   getNextScheduledBedtimeAfter,
   getPreviousScheduledBedtime,
   resolveActiveSleepCycle,
+  type ActiveSleepCycleWindow,
+  resolveActiveSleepCycleWindow,
+  getSleepCycleDate,
 };

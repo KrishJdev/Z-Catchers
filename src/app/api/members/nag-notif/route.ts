@@ -126,7 +126,15 @@ export async function POST(request: Request) {
       .eq('local_date', cycleDate)
       .maybeSingle();
 
-    const isInBed = Boolean(inBedLog);
+    const { data: wokeUpLog } = await supabaseAdmin
+      .from('notification_logs')
+      .select('id')
+      .eq('member_id', targetMember.id)
+      .eq('notification_type', 'WOKE_UP')
+      .eq('local_date', cycleDate)
+      .maybeSingle();
+
+    const isInBed = Boolean(inBedLog) && !wokeUpLog && !Boolean(targetMember.last_wake_cycle_date === cycleDate);
 
     // Compute active member state
     const targetState = computeMemberState(targetMember, targetMember.timezone, nowUtc, isInBed);
@@ -224,7 +232,23 @@ export async function POST(request: Request) {
       pushTag = `nag-wakeup-${targetMember.id}`;
     } else {
       // BEDTIME NAG LOGIC:
-      // 4. CRITICAL SLEEP SHIELD GUARDRAIL:
+      // 4A. Target member has already completed their sleep cycle and woken up for tonight's cycle:
+      const hasCompletedTonightSleep = Boolean(
+        wokeUpLog ||
+        targetMember.last_wake_cycle_date === cycleDate
+      );
+      if (hasCompletedTonightSleep) {
+        return NextResponse.json(
+          {
+            success: false,
+            shieldActive: false,
+            error: `${targetMember.discord_username} has already completed their sleep cycle for tonight!`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // 4B. CRITICAL SLEEP SHIELD GUARDRAIL:
       // If shield is active, NEVER send notifications and notify sender that shield is on.
       const isShieldOn = Boolean(
         isInBed ||

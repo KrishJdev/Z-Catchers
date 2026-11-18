@@ -6,6 +6,8 @@ import {
   fetchAllNotificationLogs,
   updateMemberSafe,
   hydrateMemberWeekendHours,
+  isSupabaseConfigured,
+  getInMemorySleepLogs,
 } from '@/lib/db';
 import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate, getCurrentStrikeMonth } from '@/lib/sleepEngine';
 import { sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
@@ -46,21 +48,54 @@ export async function GET(request: Request) {
 
     // Query recent check-ins for streak calculation and today's status (paginated to avoid PostgREST row cap)
     const sixtyDaysAgo = nowUtc.minus({ days: 60 }).toISODate() || '2026-01-01';
-    const { data: inBedLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string }>((q) =>
-      q.select('member_id, local_date')
+    const twoDaysAgo = nowUtc.minus({ days: 2 }).toISODate() || '2026-01-01';
+    const { data: inBedLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string; dispatched_at?: string }>((q) =>
+      q.select('member_id, local_date, dispatched_at')
         .eq('notification_type', 'IN_BED_EARLY')
         .gte('local_date', sixtyDaysAgo)
     );
 
     const checkinsByMember = new Map<string, string[]>();
+    const checkinTimestampsByMemberAndDate = new Map<string, string>();
     for (const log of (inBedLogs || [])) {
       const dates = checkinsByMember.get(log.member_id) || [];
       dates.push(log.local_date);
       checkinsByMember.set(log.member_id, dates);
+      if (log.dispatched_at) {
+        checkinTimestampsByMemberAndDate.set(`${log.member_id}_${log.local_date}`, log.dispatched_at);
+      }
+    }
+
+    // Hydrate active check-in timestamps from durable sleep_logs table (or in-memory cache)
+    if (isSupabaseConfigured) {
+      try {
+        const { data: sleepLogsData } = await supabaseAdmin
+          .from('sleep_logs')
+          .select('member_id, cycle_date, in_bed_at')
+          .gte('cycle_date', twoDaysAgo)
+          .not('in_bed_at', 'is', null);
+        if (sleepLogsData) {
+          for (const s of sleepLogsData) {
+            if (s.in_bed_at) {
+              checkinTimestampsByMemberAndDate.set(`${s.member_id}_${s.cycle_date}`, s.in_bed_at);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[members] Warning querying sleep_logs for check-in timestamps:', err);
+      }
+    }
+
+    // Include in-memory sleep_logs for headless tests and offline fallbacks (only if not already populated from durable DB)
+    const memLogs = getInMemorySleepLogs();
+    for (const s of memLogs) {
+      const key = `${s.member_id}_${s.cycle_date}`;
+      if (s.in_bed_at && !checkinTimestampsByMemberAndDate.has(key)) {
+        checkinTimestampsByMemberAndDate.set(key, s.in_bed_at);
+      }
     }
 
     // Query recent woke-up logs to support manual awake / undo sleep transition
-    const twoDaysAgo = nowUtc.minus({ days: 2 }).toISODate() || '2026-01-01';
     const { data: wokeUpLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string }>((q) =>
       q.select('member_id, local_date')
         .eq('notification_type', 'WOKE_UP')
@@ -117,16 +152,56 @@ export async function GET(request: Request) {
       const hydratedMember = hydrateMemberWeekendHours(activeMember);
 
       // Check-in & streak computation
-      const sleeperNow = nowUtc.setZone(toValidLuxonZone(hydratedMember.timezone));
-      const localDateStr = getSleepCycleDate(hydratedMember, nowUtc);
+      const sleeperZone = toValidLuxonZone(hydratedMember.timezone);
+      const sleeperNow = nowUtc.setZone(sleeperZone);
+      const yesterdayDate = sleeperNow.minus({ days: 1 }).startOf('day').toISODate()!;
       const memberCheckins = checkinsByMember.get(hydratedMember.id) || [];
-      const is_woke_up = wokeUpSet.has(`${hydratedMember.id}_${localDateStr}`);
-      const is_in_bed = memberCheckins.includes(localDateStr) && !is_woke_up;
+      const hasOpenYesterdayCheckin =
+        memberCheckins.includes(yesterdayDate) && !wokeUpSet.has(`${hydratedMember.id}_${yesterdayDate}`);
+
+      const memberIsInBed = hasOpenYesterdayCheckin || Boolean(hydratedMember.is_in_bed);
+
+      // Hydrate active check-in timestamp before cycle resolution so stalenessLimit uses actual check-in time
+      const candidateCheckinCycle = hasOpenYesterdayCheckin ? yesterdayDate : sleeperNow.startOf('day').toISODate()!;
+      const recoveredInBedAt =
+        checkinTimestampsByMemberAndDate.get(`${hydratedMember.id}_${candidateCheckinCycle}`) ||
+        hydratedMember.in_bed_at ||
+        null;
+      if (memberIsInBed && recoveredInBedAt) {
+        hydratedMember.in_bed_at = recoveredInBedAt;
+      }
+
+      const localDateStr = getSleepCycleDate(hydratedMember, nowUtc, memberIsInBed);
+      const is_woke_up =
+        wokeUpSet.has(`${hydratedMember.id}_${localDateStr}`) ||
+        Boolean(hydratedMember.last_wake_cycle_date === localDateStr);
+      const inBedDt = hydratedMember.in_bed_at ? DateTime.fromISO(hydratedMember.in_bed_at, { zone: 'utc' }) : null;
+      const inBedMatchesCycle = Boolean(inBedDt && inBedDt.isValid && getSleepCycleDate(hydratedMember, inBedDt, true) === localDateStr);
+
+      const hasCheckinEvidenceForCycle =
+        memberCheckins.includes(localDateStr) ||
+        checkinTimestampsByMemberAndDate.has(`${hydratedMember.id}_${localDateStr}`) ||
+        (hydratedMember.last_notified_stage === 'IN_BED_EARLY' && hydratedMember.last_notified_cycle_date === localDateStr) ||
+        inBedMatchesCycle ||
+        (Boolean(hydratedMember.is_in_bed) && !hydratedMember.in_bed_at && !hydratedMember.last_notified_cycle_date);
+
+      const is_in_bed = hasCheckinEvidenceForCycle && !is_woke_up;
+
+      const activeInBedAt = is_in_bed
+        ? (checkinTimestampsByMemberAndDate.get(`${hydratedMember.id}_${localDateStr}`) || hydratedMember.in_bed_at || null)
+        : null;
+
       const streak_days = calculateSleepStreak(memberCheckins, sleeperNow);
       const nag_assists_count = nagAssistsByMemberAndDate.get(`${hydratedMember.id}_${localDateStr}`) || 0;
 
       memberItems.push({
-        hydratedMember: { ...hydratedMember, is_woke_up },
+        hydratedMember: {
+          ...hydratedMember,
+          is_in_bed,
+          is_woke_up,
+          in_bed_at: activeInBedAt,
+          last_wake_cycle_date: hydratedMember.last_wake_cycle_date || (is_woke_up ? localDateStr : null),
+        },
         localDateStr,
         is_in_bed,
         is_woke_up,

@@ -53,6 +53,7 @@ const UNIT_TESTS = [
   'test-unified-pwa-push-onboarding.mjs',
   'test-strikes-api-and-routes.mjs',
   'test-cron-dispatcher.mjs',
+  'test-state-sync-audit.mjs',
 ];
 
 // E2E tests: require live Supabase database or running network services

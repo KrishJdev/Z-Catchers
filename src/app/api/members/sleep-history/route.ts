@@ -3,7 +3,7 @@ import { supabaseAdmin, Member, getMemberSleepLogs, SleepLog, getMemberByIdSafe 
 import { DateTime } from 'luxon';
 import { toValidLuxonZone } from '@/lib/timezone';
 import { isDemoSeedMember, generateDemoSleepLogs } from '@/lib/demoSeed';
-import { calculateSleepStreak } from '@/lib/sleepEngine';
+import { calculateSleepStreak, resolveActiveSleepCycleWindow, getScheduleForDay } from '@/lib/sleepEngine';
 import { resolveMemberStrikeCounts } from '@/lib/strikes';
 
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -115,12 +115,14 @@ export async function GET(request: Request) {
             existing.status = strikeStatus;
             logMap.set(date, existing);
           } else {
+            const dateDt = DateTime.fromISO(date, { zone: memberTz }).startOf('day');
+            const daySched = getScheduleForDay(member, dateDt);
             logMap.set(date, {
               member_id: member.id,
               cycle_date: date,
               timezone: member.timezone,
-              target_bedtime: member.bedtime_local,
-              target_wake_time: member.wake_time_local,
+              target_bedtime: daySched.bedtime,
+              target_wake_time: daySched.wake_time,
               in_bed_at: null,
               in_bed_local_time: null,
               woke_up_at: null,
@@ -186,6 +188,7 @@ export async function GET(request: Request) {
     const streakDays = calculateSleepStreak(checkinDates, nowLocal);
     const nowUtc = DateTime.utc();
     const strikeCounts = await resolveMemberStrikeCounts(member, nowUtc);
+    const activeWindow = resolveActiveSleepCycleWindow(member, nowUtc, Boolean(member.is_in_bed));
 
     return NextResponse.json({
       member: {
@@ -200,6 +203,10 @@ export async function GET(request: Request) {
         weekly_schedule: member.weekly_schedule,
         weekend_bedtime_local: member.weekend_bedtime_local,
         weekend_wake_time_local: member.weekend_wake_time_local,
+        active_cycle_date: activeWindow.cycleAnchorDate,
+        active_day_key: activeWindow.dayKey,
+        active_bedtime_local: activeWindow.activeBedtimeLocal,
+        active_wake_time_local: activeWindow.activeWakeTimeLocal,
         journal_url: member.journal_url,
         role: member.role,
         is_in_bed: member.is_in_bed,

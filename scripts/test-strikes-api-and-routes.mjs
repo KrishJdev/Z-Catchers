@@ -2,18 +2,16 @@ import assert from 'assert';
 import { DateTime } from 'luxon';
 
 // Enforce offline in-memory test isolation before loading any database modules
-delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!process.env.SESSION_SECRET) {
-  process.env.SESSION_SECRET = 'test-secret-at-least-32-chars-long-for-testing!!';
-}
-if (!process.env.MOD_SECRET_PASSCODE) {
-  process.env.MOD_SECRET_PASSCODE = 'test-mod-secret-passcode';
-}
+process.env.NODE_ENV = 'test';
+process.env.PIN_SALT = process.env.PIN_SALT || 'test-salt-secret-12345';
+process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret-at-least-32-chars-long-for-testing!!';
+process.env.MOD_SECRET_PASSCODE = process.env.MOD_SECRET_PASSCODE || 'test-mod-secret-passcode';
+process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://placeholder.supabase.co';
+process.env.SUPABASE_SERVICE_ROLE_KEY = '';
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'placeholder-anon-key';
 
 // Dynamically import database and route handlers after environment isolation is sealed
-const { syncInMemoryMemberCache } = await import('../src/lib/db.ts');
+const { setInMemoryMember, syncInMemoryMemberCache } = await import('../src/lib/db.ts');
 const { createSessionToken } = await import('../src/lib/auth.ts');
 const { computeMemberState, getSleepCycleDate } = await import('../src/lib/sleepEngine.ts');
 const { GET: getStrikes, POST: postStrikeVote } = await import('../src/app/api/members/strikes/route.ts');
@@ -48,7 +46,7 @@ async function run() {
   const futureWake90mLocal = nowUtc.plus({ hours: 6, minutes: 30 }).toFormat('HH:mm');
 
   const voterAlice = {
-    id: 'voter-alice-uuid-001',
+    id: 'mem_voter_alice_001',
     discord_username: 'AliceVoter',
     discord_handle: 'alice#0001',
     avatar_url: null,
@@ -68,7 +66,7 @@ async function run() {
   };
 
   const voterBob = {
-    id: 'voter-bob-uuid-002',
+    id: 'mem_voter_bob_002',
     discord_username: 'BobVoter',
     discord_handle: 'bob#0002',
     avatar_url: null,
@@ -88,7 +86,7 @@ async function run() {
   };
 
   const targetCharlie = {
-    id: 'target-charlie-uuid-003',
+    id: 'mem_target_charlie_003',
     discord_username: 'CharlieSleeper',
     discord_handle: 'charlie#0003',
     avatar_url: null,
@@ -110,7 +108,7 @@ async function run() {
 
   // Checked-in control: member scheduled 30m ago who safely checked in early
   const targetDaveCheckedIn = {
-    id: 'target-dave-uuid-004',
+    id: 'mem_target_dave_004',
     discord_username: 'DaveCheckedIn',
     discord_handle: 'dave#0004',
     avatar_url: null,
@@ -132,7 +130,7 @@ async function run() {
 
   // 90-minute overdue fixture (in the 60-480m overdue window)
   const targetEve90mOverdue = {
-    id: 'target-eve-uuid-005',
+    id: 'mem_target_eve_005',
     discord_username: 'Eve90mOverdue',
     discord_handle: 'eve#0005',
     avatar_url: null,
@@ -152,11 +150,11 @@ async function run() {
     updated_at: nowUtc.toISO(),
   };
 
-  syncInMemoryMemberCache(voterAlice);
-  syncInMemoryMemberCache(voterBob);
-  syncInMemoryMemberCache(targetCharlie);
-  syncInMemoryMemberCache(targetDaveCheckedIn);
-  syncInMemoryMemberCache(targetEve90mOverdue);
+  setInMemoryMember(voterAlice);
+  setInMemoryMember(voterBob);
+  setInMemoryMember(targetCharlie);
+  setInMemoryMember(targetDaveCheckedIn);
+  setInMemoryMember(targetEve90mOverdue);
 
   const aliceToken = createSessionToken(voterAlice.id);
   const bobToken = createSessionToken(voterBob.id);
@@ -243,6 +241,7 @@ async function run() {
   // 5. Metastrike Retroactive Conversion & Proactive Protection
   console.log('\n--- 5. Metastrike Retroactive Conversion & Protection ---');
   {
+    const cycleDate = getSleepCycleDate(targetCharlie, nowUtc);
     // Charlie retroactively converts the strike to a Metastrike
     const resConvert = await postMetastrike(new Request('http://localhost:3000/api/members/strikes/metastrike', {
       method: 'POST',
@@ -251,8 +250,13 @@ async function run() {
         member_id: targetCharlie.id,
         action: 'convert_retroactive',
         reason: 'Family Emergency',
+        sleep_cycle_date: cycleDate,
       }),
     }));
+    if (resConvert.status !== 200) {
+      const errBody = await resConvert.clone().json().catch(() => ({}));
+      console.error(`❌ convert_retroactive returned ${resConvert.status}:`, errBody);
+    }
     testAssert(resConvert.status === 200, 'POST /api/members/strikes/metastrike conversion returns 200 OK');
     const convertBody = await resConvert.json();
     testAssert(convertBody.metastrikes_used >= 1, 'Metastrikes count incremented upon conversion');

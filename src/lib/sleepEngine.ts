@@ -1243,7 +1243,7 @@ export function getNightScheduleDateTime(
     millisecond: 0,
   });
 
-  let wakeDateTime = nightDate.plus({ days: 1 }).set({
+  let wakeDateTime = bedtimeBase.set({
     hour: wH !== undefined && !isNaN(wH) ? wH : 7,
     minute: wM !== undefined && !isNaN(wM) ? wM : 0,
     second: 0,
@@ -1346,6 +1346,25 @@ export function getPreviousScheduledBedtime(
 }
 
 /**
+ * Canonical result describing an active sleep cycle window.
+ */
+export interface ActiveSleepCycleWindow {
+  cycleAnchorDate: string;
+  cycleEveningDate: string;
+  startTimestamp: DateTime;
+  bedtimeTimestamp: DateTime;
+  wakeTimestamp: DateTime;
+  targetBedtime: DateTime;
+  targetWakeTime: DateTime;
+  activeBedtimeLocal: string;
+  activeWakeTimeLocal: string;
+  isWeekendSchedule: boolean;
+  isCustomScheduleToday: boolean;
+  dayKey: DayKey;
+  diffMinutes: number;
+}
+
+/**
  * Resolves the active sleep cycle schedule and cycle night date for a member at a given moment in their timezone.
  *
  * Evaluation Order:
@@ -1360,43 +1379,64 @@ export function resolveActiveSleepCycle(
   member: Member,
   sleeperNow: DateTime,
   isInBed?: boolean
-): {
-  cycleEveningDate: string;
-  targetBedtime: DateTime;
-  targetWakeTime: DateTime;
-  activeBedtimeLocal: string;
-  activeWakeTimeLocal: string;
-  isWeekendSchedule: boolean;
-  isCustomScheduleToday: boolean;
-  dayKey: DayKey;
-  diffMinutes: number;
-} {
-  const effectiveInBed = isInBed !== undefined ? isInBed : Boolean(member.is_in_bed);
-
-  // 1. Yesterday's cycle (initiated on sleeperNow.minus({ days: 1 }))
+): ActiveSleepCycleWindow {
   const yesterdayNight = sleeperNow.minus({ days: 1 }).startOf('day');
   const yesterdayCycleDate = yesterdayNight.toISODate()!;
-  const hasWokeUpForYesterday = Boolean(
-    member.is_woke_up ||
-    (member.last_wake_cycle_date && member.last_wake_cycle_date === yesterdayCycleDate)
-  );
   const ySched = getNightScheduleDateTime(member, yesterdayNight);
-
-  // Yesterday's active window starts when wind-down/curfew or early check-in begins (-180m before bedtime)
   const yStart = ySched.bedtimeDateTime.minus({ minutes: 180 });
-  // Yesterday's window ends when yesterday's wake window has elapsed
-  // If member is actively in bed without waking up, extend window up to 6 hours past wake time or 14 hours past bedtime
-  // If member has not logged wake-up, keep yesterday's cycle active past wake time (up to 4 hours post-wake or until today's wind-down)
+
+  const isYesterdayWakeTimestamp = Boolean(
+    member.last_woke_up_at &&
+    DateTime.fromISO(member.last_woke_up_at, { zone: sleeperNow.zone }).isValid &&
+    DateTime.fromISO(member.last_woke_up_at, { zone: sleeperNow.zone }) >= yStart &&
+    DateTime.fromISO(member.last_woke_up_at, { zone: sleeperNow.zone }) <= sleeperNow
+  );
+
+  const hasWokeUpForYesterday = Boolean(
+    member.last_wake_cycle_date === yesterdayCycleDate ||
+    isYesterdayWakeTimestamp ||
+    (member.is_woke_up && (!member.last_wake_cycle_date || member.last_wake_cycle_date === yesterdayCycleDate))
+  );
+
+  const hasDbInBedForYesterday = Boolean(
+    member.last_notified_stage === 'IN_BED_EARLY' &&
+    member.last_notified_cycle_date === yesterdayCycleDate &&
+    !hasWokeUpForYesterday
+  );
+
+  const effectiveInBed = isInBed !== undefined
+    ? isInBed
+    : (Boolean(member.is_in_bed) || hasDbInBedForYesterday);
+
   const todayNightForWindDown = sleeperNow.startOf('day');
   const tSchedForWindDown = getNightScheduleDateTime(member, todayNightForWindDown);
   const todayWindDownStart = tSchedForWindDown.bedtimeDateTime.minus({ minutes: 180 });
 
-  const postWakeWindow = ySched.wakeDateTime.plus({ hours: 4 });
-  const inBedEnd = effectiveInBed && !hasWokeUpForYesterday
-    ? todayWindDownStart
-    : postWakeWindow;
-  const maxYesterdayEnd = DateTime.max(postWakeWindow, inBedEnd);
-  const yEnd = DateTime.min(maxYesterdayEnd, todayWindDownStart);
+  // Calculate yesterday cycle end:
+  let yEnd: DateTime;
+  if (effectiveInBed && !hasWokeUpForYesterday) {
+    // Authoritative Requirement (Phase 110 & Phase 111 State Machine Alignment):
+    // An open check-in remains in the SLEEPING state past scheduled wake_time until an
+    // explicit "Wake Up" action is logged, allowing the sleeper to record their wake-up
+    // without premature auto-rollover.
+    // Staleness safeguard: If uncompleted, capped at 16 hours post check-in/bedtime
+    // or before today's wind-down window begins, but never earlier than scheduled wake_time.
+    // (Note: Elapsed-time expiry and scheduled-wake fallback apply strictly to members who never checked in).
+    const inBedRef = member.in_bed_at
+      ? DateTime.fromISO(member.in_bed_at, { zone: sleeperNow.zone })
+      : ySched.bedtimeDateTime;
+    const stalenessLimit = (inBedRef.isValid ? inBedRef : ySched.bedtimeDateTime).plus({ hours: 16 });
+    yEnd = DateTime.max(ySched.wakeDateTime, DateTime.min(stalenessLimit, todayWindDownStart));
+  } else if (hasWokeUpForYesterday) {
+    // Member woke up: keep yesterday's cycle active for post-wake window (up to 4 hours or until today's wind-down)
+    const postWakeWindow = ySched.wakeDateTime.plus({ hours: 4 });
+    yEnd = DateTime.min(postWakeWindow, todayWindDownStart);
+  } else {
+    // Member NEVER checked in during yesterday's cycle (was overdue / bedtime-hit):
+    // Yesterday's cycle terminates strictly the moment scheduled wake_time passes!
+    // Transitions cleanly to awake for today's upcoming cycle.
+    yEnd = ySched.wakeDateTime;
+  }
 
   if (sleeperNow >= yStart && sleeperNow < yEnd) {
     const diffMinutes = sleeperNow.diff(ySched.bedtimeDateTime, 'minutes').minutes;
@@ -1405,7 +1445,11 @@ export function resolveActiveSleepCycle(
       ySched.bedtimeStr !== mondaySched.bedtime || ySched.wakeTimeStr !== mondaySched.wake_time;
 
     return {
+      cycleAnchorDate: yesterdayNight.toISODate()!,
       cycleEveningDate: yesterdayNight.toISODate()!,
+      startTimestamp: yStart,
+      bedtimeTimestamp: ySched.bedtimeDateTime,
+      wakeTimestamp: ySched.wakeDateTime,
       targetBedtime: ySched.bedtimeDateTime,
       targetWakeTime: ySched.wakeDateTime,
       activeBedtimeLocal: ySched.bedtimeStr,
@@ -1424,9 +1468,14 @@ export function resolveActiveSleepCycle(
   const mondaySched = getScheduleForDay(member, todayNight.set({ weekday: 1 }));
   const isCustomScheduleToday =
     tSched.bedtimeStr !== mondaySched.bedtime || tSched.wakeTimeStr !== mondaySched.wake_time;
+  const tStart = tSched.bedtimeDateTime.minus({ minutes: 180 });
 
   return {
+    cycleAnchorDate: todayNight.toISODate()!,
     cycleEveningDate: todayNight.toISODate()!,
+    startTimestamp: tStart,
+    bedtimeTimestamp: tSched.bedtimeDateTime,
+    wakeTimestamp: tSched.wakeDateTime,
     targetBedtime: tSched.bedtimeDateTime,
     targetWakeTime: tSched.wakeDateTime,
     activeBedtimeLocal: tSched.bedtimeStr,
@@ -1439,17 +1488,39 @@ export function resolveActiveSleepCycle(
 }
 
 /**
- * Computes the canonical sleep cycle night date ("YYYY-MM-DD") for a member at a given moment.
- * Defined strictly by the local evening the sleep window begins.
+ * Resolves the active sleep cycle window (start timestamp, bedtime timestamp, wake timestamp,
+ * and cycle anchor date string YYYY-MM-DD) for any given now timestamp and member timezone.
+ *
+ * Normalizes input time to the member's IANA timezone and evaluates active cycle precedence.
  */
-export function getSleepCycleDate(member: Member, nowUtc = DateTime.utc()): string {
+export function resolveActiveSleepCycleWindow(
+  member: Member,
+  nowUtc = DateTime.utc(),
+  isInBed?: boolean
+): ActiveSleepCycleWindow {
   const normalizedSleeperZone = toValidLuxonZone(member.timezone);
   const sleeperZone = DateTime.now().setZone(normalizedSleeperZone).isValid
     ? normalizedSleeperZone
     : 'UTC';
   const sleeperNow = nowUtc.setZone(sleeperZone);
-  const cycle = resolveActiveSleepCycle(member, sleeperNow);
-  return cycle.cycleEveningDate;
+  return resolveActiveSleepCycle(member, sleeperNow, isInBed);
+}
+
+/**
+ * Computes the canonical sleep cycle night date ("YYYY-MM-DD") for a member at a given moment.
+ * Defined strictly by the local evening the sleep window begins.
+ */
+export function getSleepCycleDate(
+  member: Member,
+  nowUtc = DateTime.utc(),
+  isInBed?: boolean
+): string {
+  const window = resolveActiveSleepCycleWindow(
+    member,
+    nowUtc,
+    isInBed !== undefined ? isInBed : member.is_in_bed
+  );
+  return window.cycleAnchorDate;
 }
 
 /**
@@ -1524,18 +1595,81 @@ export function computeMemberState(
   let needsWakeUpLog = false;
   let isOverdue = false;
 
-  const effectiveInBed = isInBed !== undefined ? isInBed : Boolean(member.is_in_bed);
+  const isCycleDateWakeMatch = Boolean(
+    member.last_wake_cycle_date && member.last_wake_cycle_date === activeCycle.cycleEveningDate
+  );
+
+  let isWakeTimeAfterInBed = false;
+  let isWakeBelongingToCycle = false;
+  if (member.last_woke_up_at) {
+    const wakeDt = DateTime.fromISO(member.last_woke_up_at, { zone: sleeperZone });
+    if (wakeDt.isValid) {
+      const cycleStart = activeCycle.targetBedtime.minus({ minutes: 180 });
+      if (wakeDt >= cycleStart && wakeDt <= sleeperNow.plus({ minutes: 5 })) {
+        isWakeBelongingToCycle = true;
+      }
+      if (member.in_bed_at) {
+        const inBedDt = DateTime.fromISO(member.in_bed_at, { zone: sleeperZone });
+        if (inBedDt.isValid && wakeDt >= inBedDt) {
+          isWakeTimeAfterInBed = true;
+        }
+      }
+    }
+  }
+
+  // A sleep cycle is completed when the member checked in and subsequently woke up for this cycle,
+  // or explicitly logged a wake-up for this cycle date, and is not currently in bed.
+  const isWakeScopedToActiveCycle = Boolean(
+    isCycleDateWakeMatch ||
+    isWakeBelongingToCycle ||
+    (member.is_woke_up && (!member.last_wake_cycle_date || member.last_wake_cycle_date === activeCycle.cycleEveningDate))
+  );
+
+  const hasCompletedCycle = Boolean(
+    !isInBed &&
+    !member.is_in_bed &&
+    (
+      (isCycleDateWakeMatch && (member.is_woke_up || isWakeBelongingToCycle || Boolean(member.last_woke_up_at))) ||
+      (isWakeTimeAfterInBed && isWakeBelongingToCycle) ||
+      (diffMinutes >= 0 && isWakeScopedToActiveCycle && (!member.last_wake_cycle_date || member.last_wake_cycle_date === activeCycle.cycleEveningDate))
+    )
+  );
 
   const hasLoggedWakeUp = Boolean(
-    member.is_woke_up ||
-    (member.last_wake_cycle_date && member.last_wake_cycle_date === activeCycle.cycleEveningDate)
+    hasCompletedCycle ||
+    isCycleDateWakeMatch ||
+    (diffMinutes >= 0 && isWakeScopedToActiveCycle && (!member.last_wake_cycle_date || member.last_wake_cycle_date === activeCycle.cycleEveningDate))
   );
+
+  const hasDbInBedForActiveCycle = Boolean(
+    member.last_notified_stage === 'IN_BED_EARLY' &&
+    member.last_notified_cycle_date === activeCycle.cycleEveningDate &&
+    !hasCompletedCycle
+  );
+
+  const effectiveInBed = isInBed !== undefined
+    ? (isInBed && !hasCompletedCycle)
+    : (Boolean(member.is_in_bed) || hasDbInBedForActiveCycle);
 
   const isPastWakeTime = sleeperNow >= activeCycle.targetWakeTime;
 
-  // 1. If member has checked in via "I'm in Bed" Safe Button
-  // (Manual-Only trigger: member enters SLEEPING state strictly when clicking "I'm in Bed")
-  if (effectiveInBed && !hasLoggedWakeUp && diffMinutes >= -180) {
+  // 1. Cycle Completion Precedence:
+  // If member has already completed their sleep cycle for the active schedule window
+  // (they checked into bed and subsequently triggered "I woke up", or logged wake-up for this cycle),
+  // they MUST remain AWAKE for the remainder of that scheduled window.
+  // It must not re-enter winding-down, sleeping, or overdue until the next cycle's winding-down window begins.
+  if (hasCompletedCycle) {
+    bucket = 'AWAKE';
+    status = 'AWAKE';
+    statusText = 'Wide Awake • Rested';
+    isSleepShieldActive = false;
+    checkedInEarly = false;
+    canVoteStrike = false;
+    needsWakeUpLog = false;
+    isOverdue = false;
+  } else if (effectiveInBed && !hasLoggedWakeUp && (diffMinutes >= -180 || isPastWakeTime)) {
+    // 2. If member has checked in via "I'm in Bed" Safe Button
+    // (Manual-Only trigger: member enters SLEEPING state strictly when clicking "I'm in Bed")
     bucket = 'SLEEPING';
     status = 'SLEEPING';
     if (isPastWakeTime) {
@@ -1550,7 +1684,7 @@ export function computeMemberState(
     needsWakeUpLog = true;
     isOverdue = false;
   } else if (diffMinutes < 0 && diffMinutes >= -60) {
-    // 2. 1 to 60 minutes before bedtime: Winding down window (Preserved completely unchanged)
+    // 3. 1 to 60 minutes before bedtime: Winding down window (Preserved completely unchanged)
     bucket = 'WINDING_DOWN';
     status = 'WINDING_DOWN';
     statusText = `Bedtime in ${Math.abs(Math.floor(diffMinutes))}m`;
@@ -1560,7 +1694,7 @@ export function computeMemberState(
     needsWakeUpLog = false;
     isOverdue = false;
   } else if (hasLoggedWakeUp) {
-    // 3. Explicitly marked awake / woke up from sleep (Manual-Only trigger via "Wake Up" button)
+    // 4. Explicitly marked awake / woke up from sleep (Manual-Only trigger via "Wake Up" button)
     bucket = 'AWAKE';
     status = 'AWAKE';
     statusText = 'Wide Awake • Rested';
@@ -1570,7 +1704,7 @@ export function computeMemberState(
     needsWakeUpLog = false;
     isOverdue = false;
   } else if (diffMinutes >= 0 && !isPastWakeTime) {
-    // 4. Overdue / Past Bedtime Section:
+    // 5. Overdue / Past Bedtime Section:
     // Drops into Overdue the EXACT moment scheduled bedtime passes (diffMinutes >= 0) if not checked in.
     // Stays in Overdue from minute 0 onward until either manually checking in ("I'm in Bed")
     // or normal scheduled wake-up time passes. Never automatically transitions to Asleep!
