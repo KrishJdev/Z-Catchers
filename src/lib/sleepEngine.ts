@@ -1415,15 +1415,18 @@ export function resolveActiveSleepCycle(
   // Calculate yesterday cycle end:
   let yEnd: DateTime;
   if (effectiveInBed && !hasWokeUpForYesterday) {
-    // Member is actively sleeping (checked in via "I'm in Bed" and has not woken up):
-    // Stays in sleeping even after scheduled wake_time passes until manual wake-up
-    // or until a hard staleness safety cap (16 hours after in_bed_at or bedtime),
-    // strictly capped before today's wind-down window begins.
+    // Authoritative Requirement (Phase 110 & Phase 111 State Machine Alignment):
+    // An open check-in remains in the SLEEPING state past scheduled wake_time until an
+    // explicit "Wake Up" action is logged, allowing the sleeper to record their wake-up
+    // without premature auto-rollover.
+    // Staleness safeguard: If uncompleted, capped at 16 hours post check-in/bedtime
+    // or before today's wind-down window begins, but never earlier than scheduled wake_time.
+    // (Note: Elapsed-time expiry and scheduled-wake fallback apply strictly to members who never checked in).
     const inBedRef = member.in_bed_at
       ? DateTime.fromISO(member.in_bed_at, { zone: sleeperNow.zone })
       : ySched.bedtimeDateTime;
     const stalenessLimit = (inBedRef.isValid ? inBedRef : ySched.bedtimeDateTime).plus({ hours: 16 });
-    yEnd = DateTime.min(stalenessLimit, todayWindDownStart);
+    yEnd = DateTime.max(ySched.wakeDateTime, DateTime.min(stalenessLimit, todayWindDownStart));
   } else if (hasWokeUpForYesterday) {
     // Member woke up: keep yesterday's cycle active for post-wake window (up to 4 hours or until today's wind-down)
     const postWakeWindow = ySched.wakeDateTime.plus({ hours: 4 });

@@ -320,8 +320,11 @@ Resolves the active target bedtime and wake time for any given day in the member
 
 ### 3. Cross-Midnight Cycle Resolution (`resolveActiveSleepCycle`)
 Evaluates the member's current sleep cycle cleanly across midnight boundaries:
-1. **Yesterday's Cycle First:** Checks `sleeperNow.minus({ days: 1 })`. If `sleeperNow` is within the active sleep window initiated on the previous calendar day (from yesterday's `bedtime - 180m` until yesterday's `wake_time` or the 8-hour sleep shield window has elapsed), anchors evaluation to yesterday's cycle date and schedule.
-2. **Today's Cycle Second:** Once yesterday's wake window has elapsed, resolves today's cycle date and target schedule via `getScheduleForDay(member, sleeperNow)`.
+1. **Yesterday's Cycle First:** Checks `sleeperNow.minus({ days: 1 })`. Resolves yesterday's cycle if `sleeperNow` falls within yesterday's active window (`yStart = bedtime - 180m` to `yEnd`):
+   * **Actively Checked-In Members (`effectiveInBed && !hasWokeUp`):** An open check-in remains in `SLEEPING` past scheduled `wake_time` until an explicit "Wake Up" action is logged, or until a 16-hour staleness safety cap (capped before today's wind-down, but never earlier than `wake_time`).
+   * **Woken Members (`hasWokeUp`):** Retains yesterday's cycle for a 4-hour post-wake window (or until today's wind-down), remaining `AWAKE`.
+   * **Unchecked-In Members (`!effectiveInBed`):** Yesterday's cycle terminates strictly at scheduled `wake_time` (`yEnd = wakeDateTime`), transitioning overdue members directly to `AWAKE` for the daytime without ever marking them asleep.
+2. **Today's Cycle Second:** Once yesterday's wake window or staleness limit has elapsed, resolves today's cycle date and target schedule via `getScheduleForDay(member, sleeperNow)`.
 
 ### 4. Backward Compatibility & Flat Column Synchronization
 When saving a 7-day variable schedule via `/api/members/update-schedule` or `/api/mod`:
