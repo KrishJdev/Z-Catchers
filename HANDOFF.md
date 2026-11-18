@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-18T05:18:00+05:30  
+> **Last Updated:** 2026-11-18T16:15:00+05:30  
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `0ec621b`  
+> **Latest Commit:** `75bd79f`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87)  
 > **Active Integration Pull Requests:** None  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** [#88 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/88) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 42/42 suites passed, 100% in 56.21s | `npm run build` clean, 28/28 routes prerendered | GitHub Actions CI: Running on PR #88)
+> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 42/42 suites passed, 100% in 67.89s | `npm run build` clean, 28/28 routes prerendered | GitHub Actions CI: Running on PR #88)
 
 ---
 
@@ -69,6 +69,43 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 118: Remediation of CodeRabbit Review Feedback on Production Release PR #88
+* **Active Working Branch:** `krish`
+* **Latest Commit:** `75bd79f`
+* **Pull Request Target:** [#88 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/88) (`dev` -> `main`)
+* **Objective & Context:**
+  - Verified and addressed all 11 CodeRabbit review findings on Production Release PR #88 across routes, core engines, UI components, and unit test suites.
+  - Applied minimal, robust fixes adhering strictly to Luxon timezone calculations, touch target accessibility guidelines ($\ge 44$px), and mutual exclusion in sleep state machines.
+* **Scope of Remediations:**
+  1. **Sleep Log Wakeup Test Isolation (`scripts/test-sleep-history-and-wakeup.mjs`):**
+     - Recorded a pre-request Day D+1 sleep-log baseline count before calling cross-midnight wake-up.
+     - Updated the post-request assertion to verify that zero additional Day D+1 rows were created by the wake-up request (`postDPlus1Count === preDPlus1Count`).
+  2. **In-Bed Cancellation Guardrails (`src/app/api/members/cancel-pending/route.ts` & `scripts/test-state-sync-audit.mjs`):**
+     - Updated `shouldCancelInBed` decision so requests omitting explicit action/type retain schedule-only cancellation behavior and do not clear active sleep sessions.
+     - Updated integration tests to supply explicit `action: 'in_bed'` when testing in-bed check-in cancellation.
+  3. **Bedtime Nag Eligibility for Woken Members (`src/app/api/members/nag-notif/route.ts`):**
+     - Enforced early rejection in bedtime nag dispatch if target member has already woken up (`wokeUpLog` exists or `last_wake_cycle_date === cycleDate`), returning 400 even if Sleep Shield is inactive.
+  4. **Stale In-Bed Flag Leak Prevention & Durable Log Precedence (`src/app/api/members/route.ts` & `src/app/api/auth/me/route.ts`):**
+     - In `/api/members`, prevented memory cache logs from overwriting durable database entries in `checkinTimestampsByMemberAndDate`.
+     - In both `/api/members` and `/api/auth/me`, bound `is_in_bed` acceptance to valid check-in evidence matching `localDateStr` so stale stored database flags from prior days do not leak into today's state.
+  5. **Wake-Up Route Cycle Fallback Precedence (`src/app/api/members/wake-up/route.ts`):**
+     - Tracked lookup cycle matches and executed calendar fallback (`if (canonicalCycle.bedtimeTimestamp > sleeperNow) activeCycleDate = yesterday`) only when neither lookup matched, ensuring waking up without check-ins resolves to yesterday's cycle rather than marking tonight complete.
+  6. **Optimistic In-Bed Cancellation State Cleanup (`src/app/page.tsx`):**
+     - Updated `handleCancelInBed` optimistic state update to clear `last_notified_stage` and `last_notified_cycle_date` when `prev.last_notified_stage === 'IN_BED_EARLY'`, matching server-side reset logic.
+  7. **Touch Target Sizing & Safe Check-In Error Handling (`src/components/MemberCard.tsx`):**
+     - Added `min-w-[44px]` to the compact Undo button's className so its touch target remains $\ge 44$px when text is hidden.
+     - Inspected resolved value of `await onCheckIn(member.id)` in `handleCheckInClick`; cleared both optimistic overrides (`setOptimisticCheckedIn(false)` and `setOptimisticInBed(false)`) and displayed error feedback when explicitly returning `false`.
+  8. **Cron Dispatcher WOKE_UP Log Prefetch & Prior-Cycle Strike Scoping (`src/lib/cronDispatcher.ts`):**
+     - Included `'WOKE_UP'` in the notification prefetch query filter so `hasBeenDispatched` accurately recognizes logged wake-up notifications.
+     - Scoped `isStrikeDue` so prior-cycle wake flags do not suppress tonight's strike (`diff >= 10 && !alreadyInBed && !isWokeUpForTonight && (state.isOverdue || (!state.isPastWakeTime && !state.hasLoggedWakeUp))`).
+     - Added Check 3b to evaluate missed bedtime strikes for the prior cycle when cron resumes after scheduled wake during daytime.
+  9. **Active Cycle Wake Evidence Scoping (`src/lib/sleepEngine.ts`):**
+     - Scoped `hasCompletedCycle` and `hasLoggedWakeUp` to active cycle wake evidence (`!member.last_wake_cycle_date || member.last_wake_cycle_date === activeCycle.cycleEveningDate`).
+* **Verification & QA Results:**
+  - `npx tsc --noEmit`: Clean (0 errors).
+  - `npm run test:unit`: All 42/42 test suites passed cleanly (100% in 67.89s).
+  - `npm run build`: Production build succeeded (28/28 routes prerendered).
 
 ### Phase 117: Production Release Pull Request #88 from `dev` to `main` & Manual CodeRabbit Review Trigger
 * **Active Working Branch:** `krish`

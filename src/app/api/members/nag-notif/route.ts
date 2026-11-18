@@ -232,7 +232,23 @@ export async function POST(request: Request) {
       pushTag = `nag-wakeup-${targetMember.id}`;
     } else {
       // BEDTIME NAG LOGIC:
-      // 4. CRITICAL SLEEP SHIELD GUARDRAIL:
+      // 4A. Target member has already completed their sleep cycle and woken up for tonight's cycle:
+      const hasCompletedTonightSleep = Boolean(
+        wokeUpLog ||
+        targetMember.last_wake_cycle_date === cycleDate
+      );
+      if (hasCompletedTonightSleep) {
+        return NextResponse.json(
+          {
+            success: false,
+            shieldActive: false,
+            error: `${targetMember.discord_username} has already completed their sleep cycle for tonight!`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // 4B. CRITICAL SLEEP SHIELD GUARDRAIL:
       // If shield is active, NEVER send notifications and notify sender that shield is on.
       const isShieldOn = Boolean(
         isInBed ||

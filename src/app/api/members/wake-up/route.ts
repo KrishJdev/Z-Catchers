@@ -152,6 +152,8 @@ export async function POST(request: Request) {
 
     // Fallback: Check notification_logs if not matched via sleep_logs
     if (!matchedOpenLog) {
+      let matchedCycleFromLookup = false;
+
       if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
         try {
           const { data: recentInBed } = await supabaseAdmin
@@ -177,19 +179,25 @@ export async function POST(request: Request) {
 
               if (!wokeCheck || wokeCheck.length === 0) {
                 activeCycleDate = candidateCycle;
+                matchedCycleFromLookup = true;
               }
             }
           }
         } catch (err) {
           console.warn('[wake-up] Error querying recent check-in:', err);
         }
-      } else if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date) {
+      }
+
+      if (!matchedCycleFromLookup && member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date) {
         const candidateDt = DateTime.fromISO(member.last_notified_cycle_date, { zone: sleeperZone });
         const daysDiff = sleeperNow.startOf('day').diff(candidateDt.startOf('day'), 'days').days;
         if (daysDiff >= 0 && daysDiff <= 2) {
           activeCycleDate = member.last_notified_cycle_date;
+          matchedCycleFromLookup = true;
         }
-      } else {
+      }
+
+      if (!matchedCycleFromLookup) {
         // Fallback: Use shared helper. If resolved cycle's bedtime is strictly in the future relative to now,
         // the member is waking up from yesterday night's sleep cycle rather than tonight's upcoming cycle.
         if (canonicalCycle.bedtimeTimestamp > sleeperNow) {

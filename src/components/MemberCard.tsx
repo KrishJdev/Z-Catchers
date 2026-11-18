@@ -260,7 +260,13 @@ export function MemberCard({
     setOptimisticWokeUp(false);
     setCardError(null);
     try {
-      await onCheckIn(member.id);
+      const res = await onCheckIn(member.id);
+      if (res === false) {
+        setOptimisticInBed(false);
+        setOptimisticWokeUp(null);
+        setCardError('Check-in failed. Reverting status.');
+        setTimeout(() => setCardError(null), 3000);
+      }
     } catch {
       setOptimisticInBed(false);
       setOptimisticWokeUp(null);
@@ -786,7 +792,7 @@ export function MemberCard({
                       handleCancelInBedClick();
                     }}
                     disabled={isCheckingIn}
-                    className="h-11 min-h-[44px] px-2.5 flex items-center justify-center gap-1 rounded-xl border border-night-border bg-night-elevated text-xs font-semibold text-cream-secondary hover:text-cream-primary hover:border-status-amber/40 active:scale-95 transition-all shadow-sm shrink-0"
+                    className="h-11 min-h-[44px] min-w-[44px] px-2.5 flex items-center justify-center gap-1 rounded-xl border border-night-border bg-night-elevated text-xs font-semibold text-cream-secondary hover:text-cream-primary hover:border-status-amber/40 active:scale-95 transition-all shadow-sm shrink-0"
                     title="Cancel in-bed check-in and restore active status"
                     aria-label="Undo in-bed check-in"
                   >

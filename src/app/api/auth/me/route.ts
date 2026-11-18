@@ -110,7 +110,16 @@ export async function GET(request: Request) {
 
     const isWokeUp = cycleTypes.includes('WOKE_UP') || currentMember.last_wake_cycle_date === localDate;
     sanitized.is_woke_up = isWokeUp;
-    sanitized.is_in_bed = (cycleTypes.includes('IN_BED_EARLY') || Boolean(currentMember.is_in_bed)) && !isWokeUp;
+    const authInBedDt = currentMember.in_bed_at ? DateTime.fromISO(currentMember.in_bed_at, { zone: 'utc' }) : null;
+    const authInBedMatchesCycle = Boolean(authInBedDt && authInBedDt.isValid && getSleepCycleDate(currentMember, authInBedDt, true) === localDate);
+
+    const hasCheckinEvidence =
+      cycleTypes.includes('IN_BED_EARLY') ||
+      (currentMember.last_notified_stage === 'IN_BED_EARLY' && currentMember.last_notified_cycle_date === localDate) ||
+      authInBedMatchesCycle ||
+      (Boolean(currentMember.is_in_bed) && !currentMember.in_bed_at && !currentMember.last_notified_cycle_date);
+
+    sanitized.is_in_bed = hasCheckinEvidence && !isWokeUp;
     if (sanitized.is_woke_up) {
       sanitized.in_bed_at = null;
     }

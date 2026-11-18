@@ -142,14 +142,9 @@ export async function POST(request: Request) {
         action === 'cancel' ||
         type === 'in_bed');
 
-    // A populated member.in_bed_at alone does not count as an active check-in;
-    // only an active, uncompleted check-in (in-bed / early in-bed without wake-up) qualifies.
-    const isActiveUncompletedCheckin = Boolean(
-      (member.is_in_bed || member.last_notified_stage === 'IN_BED_EARLY') &&
-      !member.is_woke_up
-    );
-
-    const shouldCancelInBed = isCancelInBedRequested || (!isScheduleOnly && isActiveUncompletedCheckin);
+    // Only cancel active in-bed check-in session when an explicit in-bed cancellation was requested.
+    // Requests that omit action/type retain schedule-only cancellation behavior and preserve active check-in/sleep data.
+    const shouldCancelInBed = isCancelInBedRequested;
 
     let cleanupError: any = null;
     if (shouldCancelInBed) {

@@ -465,6 +465,12 @@ export default function HomePage() {
                 in_bed_at: null,
                 last_wake_cycle_date: null,
                 last_woke_up_at: null,
+                ...(prev.last_notified_stage === 'IN_BED_EARLY'
+                  ? {
+                      last_notified_stage: null,
+                      last_notified_cycle_date: null,
+                    }
+                  : {}),
               }
             : prev
         );
