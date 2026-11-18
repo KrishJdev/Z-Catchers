@@ -8,6 +8,7 @@ import {
   updateMemberSafe,
   hydrateMemberWeekendHours,
   getAllInMemoryMembers,
+  getMemberSleepLogs,
 } from '@/lib/db';
 import { checkCooldownPromotion, computeMemberState, getSleepCycleDate, getNightScheduleDateTime } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
@@ -543,9 +544,11 @@ export async function executeNotificationDispatcher(options: {
     const sleeperZone = toValidLuxonZone(member.timezone);
     const sleeperNow = nowUtc.setZone(sleeperZone);
     const yesterdayDate = sleeperNow.minus({ days: 1 }).startOf('day').toISODate()!;
+    const yesterdayInBedDt = member.in_bed_at ? DateTime.fromISO(member.in_bed_at, { zone: sleeperZone }) : null;
     const hasYesterdayInBed =
       (member.last_notified_cycle_date === yesterdayDate && member.last_notified_stage === 'IN_BED_EARLY') ||
-      hasBeenDispatched(member.id, 'IN_BED_EARLY', yesterdayDate);
+      hasBeenDispatched(member.id, 'IN_BED_EARLY', yesterdayDate) ||
+      Boolean(yesterdayInBedDt && yesterdayInBedDt.isValid && getSleepCycleDate(member, yesterdayInBedDt, true) === yesterdayDate);
     const hasYesterdayWokeUp =
       Boolean(member.last_wake_cycle_date === yesterdayDate || member.is_woke_up);
     const isYesterdaySessionOpen = hasYesterdayInBed && !hasYesterdayWokeUp;
@@ -914,7 +917,7 @@ export async function executeNotificationDispatcher(options: {
     // When dispatch runs during daytime (after yesterday's wake time and before tonight's bedtime),
     // check if yesterday's cycle missed bedtime without ever checking in, lacking both in-bed
     // and metastrike records, and hasn't yet been struck.
-    if (localDate !== yesterdayDate && !hasYesterdayInBed && !hasYesterdayWokeUp) {
+    if (localDate !== yesterdayDate && !hasYesterdayInBed && !hasYesterdayWokeUp && !member.is_in_bed) {
       const yesterdayNightDt = sleeperNow.minus({ days: 1 }).startOf('day');
       const yNightSched = getNightScheduleDateTime(member, yesterdayNightDt);
       const todayNightDt = sleeperNow.startOf('day');
@@ -936,23 +939,30 @@ export async function executeNotificationDispatcher(options: {
         if (yesterdayBedtimePassed10m && !isYesterdayStrikeLogged) {
           const yesterdayStrikeLog = await getNightlyStrikeLog(member.id, yesterdayDate);
           if (!yesterdayStrikeLog) {
-            if (options.dryRun) {
-              results.autoStrikesDispatched++;
-              results.details.autoStrikeRecipients.push(`${member.discord_username} (Prior Day)`);
-            } else {
-              const lockAcquired = await acquireCronLock(
-                yesterdayStrikeLockKey,
-                NOTIFICATION_LEASE_SECONDS,
-                { member_id: member.id, stage: 'AUTO_BEDTIME_STRIKE', local_date: yesterdayDate, state: 'processing', delivered_sub_ids: [] }
-              );
-              if (lockAcquired) {
-                const strikeResult = await issueAutomaticBedtimeStrike(member, yesterdayDate, nowUtc);
-                if (strikeResult.strikeIssued) {
-                  results.autoStrikesDispatched++;
-                  results.details.autoStrikeRecipients.push(`${member.discord_username} (Prior Day)`);
+            const { data: yLogs } = await getMemberSleepLogs(member.id, yesterdayDate, yesterdayDate);
+            const hasYesterdaySleepLog = (yLogs || []).some(
+              (l) => l.cycle_date === yesterdayDate && Boolean(l.in_bed_at)
+            );
+
+            if (!hasYesterdaySleepLog) {
+              if (options.dryRun) {
+                results.autoStrikesDispatched++;
+                results.details.autoStrikeRecipients.push(`${member.discord_username} (Prior Day)`);
+              } else {
+                const lockAcquired = await acquireCronLock(
+                  yesterdayStrikeLockKey,
+                  NOTIFICATION_LEASE_SECONDS,
+                  { member_id: member.id, stage: 'AUTO_BEDTIME_STRIKE', local_date: yesterdayDate, state: 'processing', delivered_sub_ids: [] }
+                );
+                if (lockAcquired) {
+                  const strikeResult = await issueAutomaticBedtimeStrike(member, yesterdayDate, nowUtc);
+                  if (strikeResult.strikeIssued) {
+                    results.autoStrikesDispatched++;
+                    results.details.autoStrikeRecipients.push(`${member.discord_username} (Prior Day)`);
+                  }
+                  await recordDispatch(member.id, 'AUTO_BEDTIME_STRIKE', yesterdayDate);
+                  await markCronLockCompleted(yesterdayStrikeLockKey, { member_id: member.id, stage: 'AUTO_BEDTIME_STRIKE', local_date: yesterdayDate });
                 }
-                await recordDispatch(member.id, 'AUTO_BEDTIME_STRIKE', yesterdayDate);
-                await markCronLockCompleted(yesterdayStrikeLockKey, { member_id: member.id, stage: 'AUTO_BEDTIME_STRIKE', local_date: yesterdayDate });
               }
             }
           }
