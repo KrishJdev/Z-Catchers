@@ -86,11 +86,12 @@ export async function GET(request: Request) {
       }
     }
 
-    // Include in-memory sleep_logs for headless tests and offline fallbacks
+    // Include in-memory sleep_logs for headless tests and offline fallbacks (only if not already populated from durable DB)
     const memLogs = getInMemorySleepLogs();
     for (const s of memLogs) {
-      if (s.in_bed_at) {
-        checkinTimestampsByMemberAndDate.set(`${s.member_id}_${s.cycle_date}`, s.in_bed_at);
+      const key = `${s.member_id}_${s.cycle_date}`;
+      if (s.in_bed_at && !checkinTimestampsByMemberAndDate.has(key)) {
+        checkinTimestampsByMemberAndDate.set(key, s.in_bed_at);
       }
     }
 
@@ -174,7 +175,17 @@ export async function GET(request: Request) {
       const is_woke_up =
         wokeUpSet.has(`${hydratedMember.id}_${localDateStr}`) ||
         Boolean(hydratedMember.last_wake_cycle_date === localDateStr);
-      const is_in_bed = (memberCheckins.includes(localDateStr) || Boolean(hydratedMember.is_in_bed)) && !is_woke_up;
+      const inBedDt = hydratedMember.in_bed_at ? DateTime.fromISO(hydratedMember.in_bed_at, { zone: 'utc' }) : null;
+      const inBedMatchesCycle = Boolean(inBedDt && inBedDt.isValid && getSleepCycleDate(hydratedMember, inBedDt, true) === localDateStr);
+
+      const hasCheckinEvidenceForCycle =
+        memberCheckins.includes(localDateStr) ||
+        checkinTimestampsByMemberAndDate.has(`${hydratedMember.id}_${localDateStr}`) ||
+        (hydratedMember.last_notified_stage === 'IN_BED_EARLY' && hydratedMember.last_notified_cycle_date === localDateStr) ||
+        inBedMatchesCycle ||
+        (Boolean(hydratedMember.is_in_bed) && !hydratedMember.in_bed_at && !hydratedMember.last_notified_cycle_date);
+
+      const is_in_bed = hasCheckinEvidenceForCycle && !is_woke_up;
 
       const activeInBedAt = is_in_bed
         ? (checkinTimestampsByMemberAndDate.get(`${hydratedMember.id}_${localDateStr}`) || hydratedMember.in_bed_at || null)

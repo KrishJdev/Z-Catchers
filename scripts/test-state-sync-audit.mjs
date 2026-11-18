@@ -499,7 +499,7 @@ async function testCancelPendingRoute() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ member_id: memberId, pin: '4321' }),
+      body: JSON.stringify({ member_id: memberId, pin: '4321', action: 'in_bed' }),
     });
 
     const res = await handleCancelPendingRoute(req);
@@ -763,7 +763,7 @@ async function testCleanupFailureReturns500() {
     const cancelPendingReq = new Request('http://localhost:3000/api/members/cancel-pending', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ member_id: memberId, pin: '4321' }),
+      body: JSON.stringify({ member_id: memberId, pin: '4321', action: 'in_bed' }),
     });
     const cancelPendingRes = await handleCancelPendingRoute(cancelPendingReq);
     testAssert(cancelPendingRes.status === 500, '/api/members/cancel-pending returns 500 when notification cleanup fails');

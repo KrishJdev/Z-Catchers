@@ -1616,20 +1616,26 @@ export function computeMemberState(
 
   // A sleep cycle is completed when the member checked in and subsequently woke up for this cycle,
   // or explicitly logged a wake-up for this cycle date, and is not currently in bed.
+  const isWakeScopedToActiveCycle = Boolean(
+    isCycleDateWakeMatch ||
+    isWakeBelongingToCycle ||
+    (member.is_woke_up && (!member.last_wake_cycle_date || member.last_wake_cycle_date === activeCycle.cycleEveningDate))
+  );
+
   const hasCompletedCycle = Boolean(
     !isInBed &&
     !member.is_in_bed &&
     (
       (isCycleDateWakeMatch && (member.is_woke_up || isWakeBelongingToCycle || Boolean(member.last_woke_up_at))) ||
       (isWakeTimeAfterInBed && isWakeBelongingToCycle) ||
-      (diffMinutes >= 0 && member.is_woke_up)
+      (diffMinutes >= 0 && isWakeScopedToActiveCycle && (!member.last_wake_cycle_date || member.last_wake_cycle_date === activeCycle.cycleEveningDate))
     )
   );
 
   const hasLoggedWakeUp = Boolean(
     hasCompletedCycle ||
     isCycleDateWakeMatch ||
-    (diffMinutes >= 0 && member.is_woke_up)
+    (diffMinutes >= 0 && isWakeScopedToActiveCycle && (!member.last_wake_cycle_date || member.last_wake_cycle_date === activeCycle.cycleEveningDate))
   );
 
   const hasDbInBedForActiveCycle = Boolean(

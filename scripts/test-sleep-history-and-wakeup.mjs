@@ -260,6 +260,10 @@ async function run() {
     status: 'on_time',
   });
 
+  // Record pre-request baseline for Day D+1
+  const { data: preDPlus1Logs } = await getMemberSleepLogs(testMemberId, cycleDPlus1, cycleDPlus1);
+  const preDPlus1Count = (preDPlus1Logs || []).filter((l) => l.cycle_date === cycleDPlus1).length;
+
   // Call wake-up API after midnight on Day D+1 (mode: button, no cycleDate specified)
   const crossMidnightWakeReq = new Request('http://localhost:3000/api/members/wake-up', {
     method: 'POST',
@@ -280,10 +284,10 @@ async function run() {
   testAssert(crossMidnightWakeJson.sleep_log?.woke_up_at !== null, 'Open session woke_up_at was populated');
   testAssert(typeof crossMidnightWakeJson.duration_minutes === 'number', 'Duration was computed from Day D in-bed timestamp');
 
-  // Verify no duplicate row was created for Day D+1
-  const { data: dPlus1Logs } = await getMemberSleepLogs(testMemberId, cycleDPlus1, cycleDPlus1);
-  const dPlus1Log = (dPlus1Logs || []).find((l) => l.cycle_date === cycleDPlus1);
-  testAssert(!dPlus1Log, `Zero duplicate/orphaned rows created for Day D+1 (${cycleDPlus1})`);
+  // Verify no duplicate/orphaned row was created for Day D+1 by this wake-up request
+  const { data: postDPlus1Logs } = await getMemberSleepLogs(testMemberId, cycleDPlus1, cycleDPlus1);
+  const postDPlus1Count = (postDPlus1Logs || []).filter((l) => l.cycle_date === cycleDPlus1).length;
+  testAssert(postDPlus1Count === preDPlus1Count, `Zero duplicate/orphaned rows created for Day D+1 (${cycleDPlus1})`);
 
   // -------------------------------------------------------------
   // 4. Sleep History API Route (GET /api/members/sleep-history)
