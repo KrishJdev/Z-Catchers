@@ -409,6 +409,7 @@ To ship ASAP without waiting on complex OAuth app verification:
 2. **Sleep Engine State Machine Integration:**
    * Once a member logs a wake-up for their active sleep cycle (`last_wake_cycle_date === activeCycleDate`), `computeMemberState` immediately resolves their bucket to `AWAKE` with `needsWakeUpLog: false` and `isSleepShieldActive: false`.
    * If a member checked in or is inside their sleep window without having logged wake-up yet, `computeMemberState` sets `needsWakeUpLog: true` to trigger the wake-up call to action.
+   * **Authoritative Checked-In Persistence:** An open check-in remains in the `SLEEPING` state past scheduled `wake_time` until an explicit wake-up action is logged (or a 16-hour staleness safety cap before next wind-down is reached), allowing members who sleep past their scheduled wake time to record wake-up without premature auto-rollover. Unchecked-in members transition directly to `AWAKE` at scheduled wake time.
 
 ### 5.8 Interactive Sleep & Wake History Calendar
 
