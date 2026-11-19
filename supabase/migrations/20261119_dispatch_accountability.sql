@@ -1,3 +1,28 @@
+-- Some deployed databases predate the durable dispatcher lock and nightly ledger.
+CREATE TABLE IF NOT EXISTS public.cron_locks (
+  lock_key text PRIMARY KEY,
+  locked_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  metadata jsonb DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_cron_locks_expires_at ON public.cron_locks (expires_at);
+ALTER TABLE public.cron_locks ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.cron_locks TO service_role;
+
+CREATE TABLE IF NOT EXISTS public.nightly_strike_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  target_member_id uuid NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+  sleep_cycle_date text NOT NULL,
+  record_type text NOT NULL CHECK (record_type IN ('pending_vote', 'strike', 'metastrike')),
+  voter_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+  reason text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (target_member_id, sleep_cycle_date)
+);
+ALTER TABLE public.nightly_strike_logs ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.nightly_strike_logs TO service_role;
+
 -- Older member schemas may have just one name for each monthly counter.
 ALTER TABLE public.members
   ADD COLUMN IF NOT EXISTS strikes_used integer NOT NULL DEFAULT 0 CHECK (strikes_used BETWEEN 0 AND 3),

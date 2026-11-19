@@ -12,10 +12,20 @@ try {
   await db.exec(localSchema);
   await db.exec(localSchema);
   assert.equal((await db.query('select id from members')).rows.length, 4);
-  await db.exec(`alter table members drop column strikes_count;
+  await db.exec(`drop function public.apply_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz);
+    drop function public.claim_manual_nag(uuid,text,date,timestamptz);
+    drop table public.cron_locks, public.nightly_strike_logs;
+    alter table members drop column strikes_count;
     create policy "Public can view active members" on members for select using (is_active);
     create policy "Public can register push subscriptions" on push_subscriptions for insert with check (true);`);
-  await db.exec(readFileSync('supabase/migrations/20261119_dispatch_accountability.sql', 'utf8'));
+  const migration = readFileSync('supabase/migrations/20261119_dispatch_accountability.sql', 'utf8');
+  await db.exec(migration);
+  await db.exec(migration);
+  await db.exec(`grant select, update on public.members to service_role;
+    grant select, insert, update on public.notification_logs to service_role;
+    grant select, insert on public.sleep_logs to service_role;
+    set role service_role;
+    insert into public.cron_locks(lock_key, expires_at) values ('upgrade-test', now());`);
   const { rows: [member] } = await db.query('select id from members limit 1');
   const claim = async at => (await db.query(
     "select claim_manual_nag($1,'MANUAL_NAG:OVERDUE:anon_target','2026-11-19',$2) as remaining",
@@ -45,12 +55,17 @@ try {
   await assert.rejects(apply('2026-11-19', 'metastrike', 'clear'), /changed/);
 
   // Force a failure in the second write. Both tables must retain the original state.
-  await db.exec('alter table members add constraint test_write_failure check (strikes_used = 0)');
+  await db.exec('reset role; alter table members add constraint test_write_failure check (strikes_used = 0); set role service_role');
   await assert.rejects(apply('2026-11-20', null, 'strike'), /test_write_failure/);
   const { rows } = await db.query("select * from nightly_strike_logs where sleep_cycle_date = '2026-11-20'");
   assert.equal(rows.length, 0);
-  await db.exec('grant select on members to anon; grant insert on push_subscriptions to anon; set role anon');
+  await db.exec(`reset role;
+    grant select on members, public.cron_locks, public.nightly_strike_logs to anon;
+    grant insert on push_subscriptions to anon;
+    set role anon`);
   assert.equal((await db.query('select id from members')).rows.length, 0);
+  assert.equal((await db.query('select lock_key from public.cron_locks')).rows.length, 0);
+  assert.equal((await db.query('select id from public.nightly_strike_logs')).rows.length, 0);
   await assert.rejects(db.query("insert into push_subscriptions(member_id, endpoint, p256dh_key, auth_key) values ($1,'test','test','test')", [member.id]), /row-level security/);
   await assert.rejects(apply('2026-11-21', null, 'strike'), /permission denied/);
   await db.exec(`reset role;
@@ -59,7 +74,7 @@ try {
     create function cron.schedule(text,text,text) returns void language sql as
       'insert into cron.jobs values ($1,$2,$3) on conflict (name) do update set command = excluded.command';
     create schema net; create function net.http_get(url text, headers jsonb, timeout_milliseconds integer)
-      returns text language sql as 'select url || chr(32) || (headers->>''Authorization'')';`);
+      returns jsonb language sql as 'select jsonb_build_object(''url'', url, ''headers'', headers, ''timeout'', timeout_milliseconds)';`);
   const schedule = readFileSync('supabase/schedule_dispatch.sql', 'utf8');
   await assert.rejects(db.exec(schedule), /Vault first/);
   await db.exec("insert into vault.decrypted_secrets values ('zcatchers_app_url','https://unit.invalid/'), ('zcatchers_cron_secret','fixture')");
@@ -68,8 +83,14 @@ try {
   const jobs = (await db.query('select * from cron.jobs')).rows;
   assert.equal(jobs.length, 1);
   assert.equal(jobs[0].schedule, '* * * * *');
-  assert.equal((await db.query(jobs[0].command)).rows[0].http_get,
-    'https://unit.invalid/api/cron/dispatch-notifications Bearer fixture');
+  const request = async () => (await db.query(jobs[0].command)).rows[0].http_get;
+  assert.deepEqual(await request(), {
+    url: 'https://unit.invalid/api/cron/dispatch-notifications',
+    headers: { Authorization: 'Bearer fixture' },
+    timeout: 55000,
+  });
+  await db.exec("insert into vault.decrypted_secrets values ('zcatchers_vercel_bypass','preview-fixture')");
+  assert.equal((await request()).headers['x-vercel-protection-bypass'], 'preview-fixture');
 } finally {
   await db.close();
 }
