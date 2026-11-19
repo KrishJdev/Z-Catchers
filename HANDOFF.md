@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-19T17:39:24+05:30
+> **Last Updated:** 2026-11-19T17:42:35+05:30
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -73,6 +73,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ### Rollout clarification
 
 - Confirmed that the implementation and its previous handoff remain local to `krish` at `9160512` and `f0aadaa`. Reviewed the migration, scheduler, and deployment credentials. Live activation and device verification are still TODO.
+- The existing production projects can host the rollout if the owner approves. Use the normal branch release flow, verify the migration and authenticated dry run, then enable the live job. Vercel REST access and a project-scoped Supabase Management API token can automate these steps. Production verification remains TODO.
 - GitHub access can push `krish` and open the test PR once authorized. Before automating the rest, confirm the test Vercel project and Supabase project ref and obtain authenticated access to their settings and SQL Editor. The test device owner verifies alert delivery.
 - Updated `HANDOFF.md` with test rollout checks. The existing TypeScript and 44-suite unit verification still applies to the implementation commit.
 
