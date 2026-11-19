@@ -21,11 +21,14 @@ const cronSecret = fixtureSecret();
 const bypassSecret = fixtureSecret();
 const modPasscode = fixtureSecret();
 const { publicKey, privateKey } = webpush.generateVAPIDKeys();
-const { API_URL, ANON_KEY, SERVICE_ROLE_KEY } = parseEnv(execFileSync(
+const localSupabase = parseEnv(execFileSync(
   'supabase', ['status', '--workdir', workdir, '-o', 'env'], { encoding: 'utf8' },
 ));
-assert.ok(ANON_KEY && SERVICE_ROLE_KEY, 'Supabase CLI must provide local API keys.');
-assert.equal(new URL(API_URL).origin, 'http://127.0.0.1:54321', 'Only the disposable CI Data API is supported.');
+const apiUrl = localSupabase.API_URL;
+const anonKey = localSupabase.ANON_KEY || localSupabase.PUBLISHABLE_KEY;
+const serviceKey = localSupabase.SERVICE_ROLE_KEY || localSupabase.SECRET_KEY;
+assert.ok(anonKey && serviceKey, 'Supabase CLI must provide local API keys.');
+assert.equal(new URL(apiUrl).origin, 'http://127.0.0.1:54321', 'Only the disposable CI Data API is supported.');
 
 function sql(input) {
   return execFileSync('docker', [
@@ -106,9 +109,9 @@ const relayOrigin = `https://${gateway}:${relay.address().port}`;
 
 const env = {
   ...process.env,
-  NEXT_PUBLIC_SUPABASE_URL: API_URL,
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON_KEY,
-  SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
+  NEXT_PUBLIC_SUPABASE_URL: apiUrl,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
+  SUPABASE_SERVICE_ROLE_KEY: serviceKey,
   NEXT_PUBLIC_VAPID_PUBLIC_KEY: publicKey,
   VAPID_PRIVATE_KEY: privateKey,
   VAPID_SUBJECT: 'mailto:notifications@example.test',
@@ -118,7 +121,7 @@ const env = {
   CRON_SECRET: cronSecret,
   MOD_SECRET_PASSCODE: modPasscode,
 };
-const db = createClient(API_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+const db = createClient(apiUrl, serviceKey, { auth: { persistSession: false } });
 let app;
 try {
   execFileSync(process.execPath, [nextCli, 'build'], { env, stdio: 'inherit' });

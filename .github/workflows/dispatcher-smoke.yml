@@ -40,7 +40,7 @@ jobs:
           cd "$DISPATCH_SMOKE_WORKDIR"
           supabase init
           sed -i 's/^project_id = .*/project_id = "zc_dispatch_smoke"/' supabase/config.toml
-          supabase start -x gotrue,realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor > supabase-start.log 2>&1 || {
+          supabase start -x realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor > supabase-start.log 2>&1 || {
             tail -n 50 supabase-start.log
             exit 1
           }
