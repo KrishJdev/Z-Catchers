@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-18T16:42:00+05:30  
+> **Last Updated:** 2026-11-19T17:14:07+05:30
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `f1e0946`  
+> **Latest implementation commit:** `9160512` on `krish`
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
 > **Active Integration Pull Requests:** None  
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
-> **Active Production Release Pull Request:** [#88 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/88) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 42/42 suites passed, 100% in 57.98s | `npm run build` clean, 28/28 routes prerendered | GitHub Actions CI: Running on PR #88)
+> **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
+> **Build Status:** Verified locally on `9160512`. `npx tsc --noEmit` passed, `npm run test:unit` passed all 44 suites in 85.55 seconds and `npm run build` passed (28/28 static pages generated).
 
 ---
 
@@ -30,12 +30,12 @@ In an international Discord server with members spanning US, Europe, India, and 
 3. **Anti-Dodge Governance (48-Hour Cooldown):** To prevent members from pushing back their bedtime right before midnight to avoid being nagged, any self-service schedule change is queued in a **48-hour pending state** before taking effect. Moderators can instantly override or approve pending changes via a passcode-protected drawer.
 4. **Sleep Shield Guarantee & Early Check-In ("I'm In Bed" Safe Button):**
    * Members heading to bed early can tap `"I'm in Bed"` to safely silence outgoing community nag notifications and personal bedtime alarms for that night.
-   * Awake members receive nag alerts to check on friends, but the system **never** sends notifications to anyone currently inside their personal 8-hour sleep window or who has safely checked in.
+   * Awake members receive nag alerts to check on friends, but unchecked-in members remain eligible after bedtime. Open check-ins and completed cycles within the eight-hour quiet window suppress automated pushes.
 5. **Sleep Consistency Streaks & Mascot Badges:** Consistent on-time bedtimes unlock celebratory Sleepy Fox milestone badges (Cozy Kit 🥉, Dream Fox 🥈, Night Guardian 🥇, Grand Slumber Fox 👑).
 6. **Buddy Watchlist System:** Members can star their closest friends (`⭐`) to filter the den down to their core accountability circle.
 7. **Automated Discord Channel Webhooks & Morning Slumber Digests:** Automated rich embeds dispatch directly into the community Discord channel at bedtime with sleep streaks, local times, and direct journal links, plus morning recap digests celebrating streak champions.
 8. **"Nagged!" Community Assist Counter:** Live count of how many friends tapped into Discord to nag each sleeper tonight (`"👥 3 friends checked in tonight 🦊"`).
-9. **Monthly Strikes & Metastrikes Accountability System:** Max 3 strikes and 3 excused passes per calendar month, 5-minute grace period after bedtime, 2-vote community verification, and automatic lazy monthly rollover.
+9. **Monthly Strikes & Metastrikes Accountability System:** Max 3 strikes and 3 excused passes per calendar month, 5-minute grace period, automatic missed-bedtime evaluation at +10 minutes, replacement before the next bedtime, and local monthly rollover.
 
 ---
 
@@ -51,7 +51,7 @@ In an international Discord server with members spanning US, Europe, India, and 
 | **Database** | Supabase (PostgreSQL) | Managed tables: `members`, `push_subscriptions`, `notification_logs`, `nightly_strike_logs` |
 | **Push Notifications** | Web Push API (`web-push` npm) | VAPID key pairs, multi-device support per member, service worker deep linking |
 | **Discord Webhooks** | Discord Incoming Webhooks API | Rich embeds with Warm Dark color tokens, Sleep Shield notices, journal thread deep links |
-| **Deployment & Cron** | Vercel Cron (`vercel.json`) | 1-minute automated trigger targeting `/api/cron/dispatch-notifications` |
+| **Deployment & Cron** | Supabase Cron setup script, Vercel daily cron, GitHub Actions fallback | The one-minute Supabase job requires operator installation. The last inspected Actions run skipped dispatch. |
 | **Issue Tracking** | Jira Software Cloud & GitHub | Project key `ZC`, two-way syncing and transition scripts |
 
 ---
@@ -69,6 +69,16 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 121 · Strike and reminder reliability review
+
+- The latest inspected fallback run exited successfully without calling the dispatcher because the repository lacked the `APP_URL` secret. Neither `APP_URL` nor `CRON_SECRET` appeared in the repository Actions secret list. The twelve inspected runs on November 15–19 were hours apart. Vercel's checked-in trigger runs daily at 00:00 UTC. [Skipped Actions run](https://github.com/KrishJdev/Z-Catchers/actions/runs/44459359981)
+- Added an installable one-minute Supabase schedule and made configuration, authentication and dispatch errors visible to callers. Temporary push failures retain successful device receipts for retry within the notification window.
+- Strikes, passes, conversions and moderator removals now change the nightly record and monthly counters together in PostgreSQL. Catch-up checks use dated sleep and wake evidence and the member's exact creation time. A failed strike write leaves the cycle eligible for retry.
+- Confirmed with the owner that an unchecked-in member may receive reminders and nags after bedtime. An open check-in silences alerts. A completed sleep cycle remains protected through its eight-hour quiet window. Community recipients also have the existing 15-minute pre-bedtime quiet period. Manual nags claim their cooldown atomically and report complete delivery failures.
+- Closed direct public reads of active member rows containing PIN hashes and direct public subscription inserts. Roster reads and subscription binding go through the application APIs. Reapplying the installation schema no longer adds another copy of the demo profiles.
+- Created `scripts/test-dispatch-recovery.mjs`, `scripts/test-nightly-strike-transaction.mjs`, `supabase/migrations/20261119_dispatch_accountability.sql`, `supabase/schedule_dispatch.sql`.
+- Modified `.github/workflows/cron-dispatcher.yml`, `AGENTS.md`, `AGENT_RULES.md`, `BACKEND_TZ_PWA_SPEC.md`, `PROJECT_SPEC.md`, `README.md`, `package-lock.json`, `package.json`, `scripts/run-tests.mjs`, `scripts/test-cron-dispatcher.mjs`, `scripts/test-wake-up-nag.mjs`, `src/app/api/cron/dispatch-notifications/route.ts`, `src/app/api/members/nag-notif/route.ts`, `src/components/PushModal.tsx`, `src/components/UnifiedOnboardingCard.tsx`, `src/lib/cronDispatcher.ts`, `src/lib/db.ts`, `src/lib/pushServer.ts`, `src/lib/strikes.ts`, `supabase/schema.sql`, `HANDOFF.md`.
 
 ### Phase 120: Missed-Bedtime Strike Flow Hardening for Daytime Dispatch
 * **Active Working Branch:** `krish`
@@ -2775,6 +2785,12 @@ d:\Projects\Z Catchers\
 
 ## 6. Current Status of Jira Tasks & Milestones
 
+| Review milestone | Status | Verification |
+|---|---|---|
+| Strike and reminder fixes on `krish` | DONE | Dispatcher retry tests, transactional PostgreSQL tests and project checks |
+| Test deployment and device delivery | TODO | Apply the migration, install the scheduler and verify an actual subscribed device |
+| Production rollout | TODO | Requires testing through `dev` before release via `main` |
+
 ### Active Backlog Tasks: Decluttering & PWA Enhancements (Phases 1–4, P0–P3)
 
 | Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
@@ -2831,11 +2847,10 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Subsequent Production Release Deployment (`dev` -> `main`):**
-   * Note: Prior releases up to PR [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83) and PR [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81) are merged into `main`.
-   * PR [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84) and PR [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85) were successfully merged into `dev`.
-   * `dev` is fully tested and ahead of `main` by all features from Phase 110 (wake-up transition fixes), Phase 111 (early wake-up cycle completion precedence), and Phase 112 (cross-midnight cycle anchoring & weekly schedule matching).
-   * Open the next Production Release Pull Request from `dev` to `main` after the active integration PR merges to deploy these updates to production.
+1. **Verify the scheduler and strike ledger in the test environment.**
+   - Apply `supabase/migrations/20261119_dispatch_accountability.sql` before serving the updated strike and nag routes. Use the test deployment's origin and token in Vault, then install `supabase/schedule_dispatch.sql` following the README. Configure matching GitHub Actions secrets if using the fallback.
+   - Observe several consecutive one-minute HTTP responses and a controlled test bedtime. Check for one pre-bed reminder, one bedtime alarm for an unchecked-in member, and one strike at or after +10 minutes. Repeat after check-in and confirm suppression. Verify a Metastrike replacement updates both the nightly record and the monthly counters.
+   - A production device, migration and scheduler installation were outside this branch-only review. Historical PR references below describe earlier work.
 
 2. **Sprint 1 & Sprint 2 (Completed & Merged to `dev`, PR #79 to `main`):**
    * **ZC-28 / GH #62:** **COMPLETED** (PR [#72](https://github.com/KrishJdev/Z-Catchers/pull/72) merged into `dev`).
