@@ -1,0 +1,54 @@
+name: Dispatcher integration
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - '.github/workflows/dispatcher-smoke.yml'
+      - 'scripts/test-dispatcher-ci.mjs'
+      - 'src/app/api/cron/**'
+      - 'src/lib/**'
+      - 'supabase/**'
+      - 'package*.json'
+
+permissions:
+  contents: read
+
+jobs:
+  dispatcher:
+    name: Supabase Cron and push smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DISPATCH_SMOKE_WORKDIR: ${{ runner.temp }}/zc-dispatch-smoke
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3
+        with:
+          version: '2.121.0'
+      - name: Start disposable Supabase
+        run: |
+          set -euo pipefail
+          mkdir -p "$DISPATCH_SMOKE_WORKDIR"
+          cd "$DISPATCH_SMOKE_WORKDIR"
+          supabase init
+          sed -i 's/^project_id = .*/project_id = "zc_dispatch_smoke"/' supabase/config.toml
+          supabase start -x gotrue,realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor > supabase-start.log 2>&1 || {
+            tail -n 50 supabase-start.log
+            exit 1
+          }
+      - name: Exercise real cron, HTTP, database and push transport
+        run: node scripts/test-dispatcher-ci.mjs
+      - name: Stop disposable Supabase
+        if: always()
+        run: |
+          if [ -f "$DISPATCH_SMOKE_WORKDIR/supabase/config.toml" ]; then
+            supabase stop --workdir "$DISPATCH_SMOKE_WORKDIR" --no-backup
+          fi
