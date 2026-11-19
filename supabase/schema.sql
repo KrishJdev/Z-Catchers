@@ -264,6 +264,8 @@ CREATE INDEX IF NOT EXISTS idx_rate_limit_entries_key_reset ON rate_limit_entrie
 CREATE INDEX IF NOT EXISTS idx_rate_limit_target_ip ON rate_limit_entries(target_member_id, ip_address);
 CREATE INDEX IF NOT EXISTS idx_rate_limits_expires_at ON public.rate_limits (expires_at);
 CREATE INDEX IF NOT EXISTS idx_cron_locks_expires_at ON public.cron_locks (expires_at);
+CREATE INDEX IF NOT EXISTS idx_cron_locks_pending_strike_alerts ON public.cron_locks (lock_key)
+  WHERE metadata->>'stage' = 'AUTO_BEDTIME_STRIKE' AND metadata->>'state' = 'processing';
 CREATE INDEX IF NOT EXISTS idx_sleep_logs_member_cycle ON public.sleep_logs (member_id, cycle_date DESC);
 
 -- Enable Realtime if supabase_realtime publication is used
@@ -386,6 +388,9 @@ DECLARE
   passes integer := 0;
 BEGIN
   SELECT * INTO STRICT m FROM public.members WHERE id = p_member_id FOR UPDATE;
+  IF p_month < m.strike_cycle_month THEN
+    RAISE SQLSTATE 'PT409' USING MESSAGE = 'The strike month advanced. Refresh the member and retry.';
+  END IF;
   SELECT * INTO nightly FROM public.nightly_strike_logs
     WHERE target_member_id = m.id AND sleep_cycle_date = p_cycle FOR UPDATE;
   IF nightly.record_type IS DISTINCT FROM p_previous_type THEN

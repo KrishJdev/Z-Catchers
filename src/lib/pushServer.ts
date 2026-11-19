@@ -1,5 +1,11 @@
 import webpush from 'web-push';
+import type { DateTime } from 'luxon';
 import { supabaseAdmin } from '@/lib/db';
+
+export function pushTtlBefore(deadline: DateTime, now: DateTime, maxSeconds: number): number {
+  if (!deadline.isValid || !now.isValid) return 0;
+  return Math.max(0, Math.min(maxSeconds, Math.floor(deadline.diff(now, 'seconds').seconds)));
+}
 
 const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || '';

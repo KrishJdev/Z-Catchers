@@ -7,6 +7,8 @@ on:
       - '.github/workflows/dispatcher-smoke.yml'
       - 'scripts/test-dispatcher-ci.mjs'
       - 'src/app/api/cron/**'
+      - 'src/app/api/members/nag-notif/**'
+      - 'src/app/api/members/strikes/metastrike/**'
       - 'src/lib/**'
       - 'supabase/**'
       - 'package*.json'

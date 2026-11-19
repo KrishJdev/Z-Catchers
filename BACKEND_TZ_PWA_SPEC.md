@@ -392,12 +392,14 @@ The one-minute Supabase job is installed separately with `supabase/schedule_disp
 1. **Window-Level Concurrency Lock:** Acquires `cron_window:<YYYY-MM-DDTHH:mm>` lock (55s TTL) in `public.cron_locks` to prevent duplicate concurrent runs between Vercel Cron and GitHub Actions fallback runners.
 2. Find all active members $M$ whose local time matches either **T-Minus 30 minutes** or **T-Minus 0 minutes**.
 3. **Per-Member Event Lock:** Acquires `notif:<member_id>:<date>:<event_type>` lock in `public.cron_locks` (five-minute processing lease) before sending. Record receipts for successful subscriptions, retain them on temporary failures and retry within the stage window. Complete the stage after all eligible destinations have succeeded or expired.
+   Receipt writes retry under the same lease. A later lease on the same worker merges accepted receipts held in memory with the ones in the database. A worker exit after provider acceptance and before the receipt is persisted can still cause duplicate delivery.
 4. **Personal Notification:** Send the personal reminder in the 30 minutes before bedtime. Send bedtime and strike alerts to unchecked-in members after bedtime. An open check-in silences the device. A completed cycle remains protected for the remainder of its eight-hour quiet window.
 5. **Community Nag Notification:** 
    * Query all members $C \neq M$ where `notify_community = true`.
    * Evaluate $C$'s sleep state using Algorithm 2.2.
    * **GUARDRAIL:** Exclude checked-in recipients, anyone within 15 minutes before bedtime, and members who have already slept during the current eight-hour quiet window. An overdue member who has not gone to bed remains eligible.
    * Dispatch push alert to remaining awake members containing $M$'s `journal_url`.
+6. **Push TTL:** Wind-down expires at the selected bedtime. Bedtime alerts and community nags can queue for up to five minutes and expire by the end of the 30-minute recovery window. The dispatcher checks current sleep history before each community push and limits delivery to the time before the recipient’s pre-bedtime quiet period. Strike alerts can queue for up to five minutes within a 30-minute alert window after the strike is committed. A missed strike alert can retry from its ledger entry without issuing another strike. Manual nags can queue for up to two minutes, bounded by the end of the selected wind-down or overdue window when applicable.
 
 ---
 

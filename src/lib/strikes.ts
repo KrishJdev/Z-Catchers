@@ -135,20 +135,28 @@ export async function resolveMemberStrikeCounts(
 
   const { reset, activeMember } = checkMonthlyStrikeReset(dummyMember, nowUtc);
 
-  if (reset) {
-    strikes_used = 0;
-    metastrikes_used = 0;
+  if (reset && strike_cycle_month < currentMonth) {
     const nextCycleMonth = activeMember.strike_cycle_month || currentMonth;
 
     // Keep memory store and Supabase in sync with aliases (strikes_used/strikes_count)
-    await updateMemberStrikeCounts(member.id, 0, 0, nextCycleMonth,
+    const result = await updateMemberStrikeCounts(member.id, 0, 0, nextCycleMonth,
       isSupabaseConfigured ? { strike_cycle_month: member.strike_cycle_month } : undefined);
 
+    if (result.success && (!isSupabaseConfigured || result.data?.strike_cycle_month === nextCycleMonth)) {
+      return { strikes_used: 0, metastrikes_used: 0, strike_cycle_month: nextCycleMonth, reset: true };
+    }
+    if (result.error) {
+      throw new Error(result.error.message || String(result.error));
+    }
+    const refreshed = await getMemberByIdSafe(member.id, { requireFresh: true });
+    if (refreshed.error || !refreshed.data) {
+      throw new Error(refreshed.error?.message || 'Could not verify the member’s strike counts after rollover.');
+    }
     return {
-      strikes_used: 0,
-      metastrikes_used: 0,
-      strike_cycle_month: nextCycleMonth,
-      reset: true,
+      strikes_used: Math.max(refreshed.data.strikes_used ?? 0, refreshed.data.strikes_count ?? 0),
+      metastrikes_used: Math.max(refreshed.data.metastrikes_used ?? 0, refreshed.data.metastrikes_count ?? 0),
+      strike_cycle_month: refreshed.data.strike_cycle_month || currentMonth,
+      reset: false,
     };
   }
 
@@ -273,7 +281,7 @@ export async function updateMemberStrikeCounts(
       }
 
       if (!data) {
-        return { success: false, error: 'No member matched the strike count update.' };
+        return { success: false, data: null };
       }
 
       // If conditions were passed, only commit to memory if conditional DB write succeeded
@@ -337,7 +345,8 @@ export async function updateMemberStrikeCounts(
  */
 export async function getNightlyStrikeLog(
   targetMemberId: string,
-  sleepCycleDate: string
+  sleepCycleDate: string,
+  options: { requireFresh?: boolean } = {}
 ): Promise<NightlyStrikeLog | null> {
   const key = getStrikeLogKey(targetMemberId, sleepCycleDate);
 
@@ -369,7 +378,9 @@ export async function getNightlyStrikeLog(
         // After a successful query, treat missing row as authoritative and do not fill from memory
         return null;
       }
-    } catch {
+      if (options.requireFresh) throw new Error(error.message);
+    } catch (error) {
+      if (options.requireFresh) throw error;
       // Fall back to memory store on exception
     }
   }
@@ -862,7 +873,12 @@ async function applyNightlyStrike(
     p_month: localNow.toFormat('yyyy-MM'), p_month_start: localNow.startOf('month').toUTC().toISO(),
   });
   if (error || !data) {
-    return { success: false, strikeIssued: false, error: error?.message || 'Missing strike transaction result.' };
+    return {
+      success: false,
+      strikeIssued: false,
+      reason: error?.code === 'PT409' ? 'stale_strike_cycle_month' : undefined,
+      error: error?.message || 'Missing strike transaction result.',
+    };
   }
   return { ...data, success: true, strikeIssued: type === 'strike' && Boolean(data.log) };
 }
@@ -1012,6 +1028,7 @@ export async function useProactiveMetastrike(
   log?: NightlyStrikeLog;
   metastrikesUsed?: number;
   strikesUsed?: number;
+  reason?: string;
   error?: string;
 }> {
   const counts = await resolveMemberStrikeCounts(member, nowUtc);
@@ -1051,7 +1068,10 @@ export async function useProactiveMetastrike(
     const result = await applyNightlyStrike(member, cycleDate, existingLog?.record_type ?? null,
       'metastrike', reason.trim() || 'Excused Night', nowUtc);
     // The API distinguishes a proactive pass from a conversion by this response shape.
-    return { success: result.success, log: result.log, metastrikesUsed: result.metastrikesUsed, error: result.error };
+    return {
+      success: result.success, log: result.log, metastrikesUsed: result.metastrikesUsed,
+      reason: result.reason, error: result.error,
+    };
   }
 
   await updateMemberStrikeCounts(
@@ -1105,6 +1125,7 @@ export async function convertStrikeToMetastrike(
   log?: NightlyStrikeLog;
   strikesUsed?: number;
   metastrikesUsed?: number;
+  reason?: string;
   error?: string;
 }> {
   const counts = await resolveMemberStrikeCounts(member, nowUtc);

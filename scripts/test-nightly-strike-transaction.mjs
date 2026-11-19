@@ -19,6 +19,19 @@ try {
     create policy "Public can view active members" on members for select using (is_active);
     create policy "Public can register push subscriptions" on push_subscriptions for insert with check (true);`);
   const migration = readFileSync('supabase/migrations/20261119_dispatch_accountability.sql', 'utf8');
+  const convertKeys = readFileSync('supabase/migrations/20261118_sleep_logs_member_uuid.sql', 'utf8');
+  await db.exec(`alter table public.sleep_logs drop constraint sleep_logs_member_id_fkey;
+    alter table public.sleep_logs alter column member_id type text using member_id::text;
+    insert into public.sleep_logs(member_id, cycle_date)
+      values ((select upper(id::text) from public.members limit 1), '2026-11-01'), ('legacy-orphan', '2026-11-02');`);
+  await assert.rejects(db.exec(migration), /requires sleep_logs.member_id to be UUID/);
+  await assert.rejects(db.exec(convertKeys), /invalid or orphan member IDs/);
+  assert.equal((await db.query('select member_id from public.sleep_logs')).rows.length, 2);
+  await db.exec("delete from public.sleep_logs where member_id = 'legacy-orphan'");
+  await db.exec(convertKeys);
+  await db.exec(convertKeys);
+  assert.equal((await db.query("select pg_typeof(member_id)::text as type from public.sleep_logs")).rows[0].type, 'uuid');
+  await assert.rejects(db.query("insert into public.sleep_logs(member_id, cycle_date) values (gen_random_uuid(), '2026-11-03')"), /foreign key/);
   await db.exec(migration);
   await db.exec(migration);
   await db.exec(`grant select, update on public.members to service_role;
@@ -30,7 +43,8 @@ try {
   const claim = async at => (await db.query(
     "select claim_manual_nag($1,'MANUAL_NAG:OVERDUE:anon_target','2026-11-19',$2) as remaining",
     [member.id, at])).rows[0].remaining;
-  assert.deepEqual(await Promise.all([claim('2026-11-19T23:00Z'), claim('2026-11-19T23:00Z')]), [0, 900]);
+  assert.equal(await claim('2026-11-19T23:00Z'), 0);
+  assert.equal(await claim('2026-11-19T23:00Z'), 900);
   assert.equal(await claim('2026-11-19T23:14:59Z'), 1);
   assert.equal(await claim('2026-11-19T23:15Z'), 0);
   const apply = async (cycle, previous, type) => {
@@ -40,6 +54,10 @@ try {
     return row.result;
   };
   assert.equal((await apply('2026-11-16', null, 'strike')).strikesUsed, 1);
+  await assert.rejects(db.query(
+    "select apply_nightly_strike($1,'2026-10-31','2026-10',null,'strike','test','2026-10-31 23:50Z','2026-10-01 00:00Z')",
+    [member.id]), { code: 'PT409' });
+  assert.equal((await db.query('select strikes_used from members where id = $1', [member.id])).rows[0].strikes_used, 1);
   await assert.rejects(apply('2026-11-16', null, 'strike'), /changed/);
   const converted = await apply('2026-11-16', 'strike', 'metastrike');
   assert.equal(converted.strikesUsed, 0);
@@ -59,6 +77,12 @@ try {
   await assert.rejects(apply('2026-11-20', null, 'strike'), /test_write_failure/);
   const { rows } = await db.query("select * from nightly_strike_logs where sleep_cycle_date = '2026-11-20'");
   assert.equal(rows.length, 0);
+  await db.exec('reset role; alter table members drop constraint test_write_failure; set role service_role');
+  const { rows: [{ result: december }] } = await db.query(
+    "select apply_nightly_strike($1,'2026-12-01','2026-12',null,'strike','test','2026-12-01 00:10Z','2026-12-01 00:00Z') as result",
+    [member.id]);
+  assert.equal(december.strikesUsed, 1);
+  assert.equal(december.metastrikesUsed, 0);
   await db.exec(`reset role;
     grant select on members, public.cron_locks, public.nightly_strike_logs to anon;
     grant insert on push_subscriptions to anon;

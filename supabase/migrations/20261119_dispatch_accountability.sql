@@ -1,3 +1,15 @@
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'sleep_logs'
+      AND column_name = 'member_id' AND data_type = 'uuid'
+  ) THEN
+    RAISE EXCEPTION 'Dispatcher migration requires sleep_logs.member_id to be UUID. Apply 20261118_sleep_logs_member_uuid.sql to legacy text keys first.';
+  END IF;
+END;
+$$;
+
 -- Some deployed databases predate the durable dispatcher lock and nightly ledger.
 CREATE TABLE IF NOT EXISTS public.cron_locks (
   lock_key text PRIMARY KEY,
@@ -6,6 +18,8 @@ CREATE TABLE IF NOT EXISTS public.cron_locks (
   metadata jsonb DEFAULT '{}'::jsonb
 );
 CREATE INDEX IF NOT EXISTS idx_cron_locks_expires_at ON public.cron_locks (expires_at);
+CREATE INDEX IF NOT EXISTS idx_cron_locks_pending_strike_alerts ON public.cron_locks (lock_key)
+  WHERE metadata->>'stage' = 'AUTO_BEDTIME_STRIKE' AND metadata->>'state' = 'processing';
 ALTER TABLE public.cron_locks ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.cron_locks TO service_role;
 
@@ -48,6 +62,9 @@ DECLARE
   passes integer := 0;
 BEGIN
   SELECT * INTO STRICT m FROM public.members WHERE id = p_member_id FOR UPDATE;
+  IF p_month < m.strike_cycle_month THEN
+    RAISE SQLSTATE 'PT409' USING MESSAGE = 'The strike month advanced. Refresh the member and retry.';
+  END IF;
   SELECT * INTO nightly FROM public.nightly_strike_logs
     WHERE target_member_id = m.id AND sleep_cycle_date = p_cycle FOR UPDATE;
   IF nightly.record_type IS DISTINCT FROM p_previous_type THEN

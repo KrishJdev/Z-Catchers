@@ -312,7 +312,7 @@ Run a scheduled check every **1 minute** (or 5 minutes):
 
      * Record in `notification_logs`.
 
-   * **Check 2: Is** $M$ **at T-Minus 0 Minutes (`BEDTIME_HIT`)?** (Allow a 0–30 minute delivery window so cron jitter never misses a trigger, protected by the unique constraint in `notification_logs`).
+   * **Check 2: Is** $M$ **at T-Minus 0 Minutes (`BEDTIME_HIT`)?** A run within 0–30 minutes after bedtime can recover a missed trigger. Runs after that window cannot send the alert. The unique constraint in `notification_logs` deduplicates completed stages.
 
      * Check `notification_logs` for `(M.id, 'BEDTIME_HIT', M.local_date)`. If not sent:
 

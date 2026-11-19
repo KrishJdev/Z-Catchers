@@ -69,6 +69,7 @@ function setupCertificate() {
 }
 
 sql(readFileSync('supabase/schema.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261118_sleep_logs_member_uuid.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261119_dispatch_accountability.sql', 'utf8'));
 sql(`
   UPDATE public.members SET is_active = false;

@@ -191,7 +191,7 @@ export async function fetchAllNotificationLogs<T = any>(
 }
 
 export async function fetchAllRows<T>(
-  table: 'notification_logs' | 'sleep_logs' | 'members' | 'push_subscriptions',
+  table: 'notification_logs' | 'sleep_logs' | 'members' | 'push_subscriptions' | 'cron_locks',
   builderFn: (query: any) => any,
   pageSize = 1000
 ): Promise<{ data: T[]; error: any }> {
@@ -201,12 +201,13 @@ export async function fetchAllRows<T>(
 
   let page = 0;
   const allRows: T[] = [];
+  const primaryKey = table === 'cron_locks' ? 'lock_key' : 'id';
 
   while (true) {
     const from = page * pageSize;
     const to = from + pageSize - 1;
     const baseQuery = supabaseAdmin.from(table);
-    const query = builderFn(baseQuery).order('id', { ascending: true }).range(from, to);
+    const query = builderFn(baseQuery).order(primaryKey, { ascending: true }).range(from, to);
 
     const { data, error } = (await query) as { data: T[] | null; error: any };
     if (error) {
@@ -711,8 +712,10 @@ export function clearInMemoryMembers(): void {
 /**
  * Safely fetches a member by ID, checking live Supabase first and falling back to in-memory store.
  */
-export async function getMemberByIdSafe(memberId: string): Promise<{ data: Member | null; error: any }> {
-  if (isTestMemberFixture(memberId)) {
+export async function getMemberByIdSafe(
+  memberId: string, options: { requireFresh?: boolean } = {}
+): Promise<{ data: Member | null; error: any }> {
+  if (!options.requireFresh && isTestMemberFixture(memberId)) {
     const inMem = memoryMembers.get(memberId);
     if (inMem) {
       return { data: inMem, error: null };
@@ -728,7 +731,7 @@ export async function getMemberByIdSafe(memberId: string): Promise<{ data: Membe
         .maybeSingle();
 
       if (!error && data) {
-        const hydrated = hydrateMemberWeekendHours(data as Member);
+        const hydrated = options.requireFresh ? data as Member : hydrateMemberWeekendHours(data as Member);
         memoryMembers.set(memberId, hydrated);
         return { data: hydrated, error: null };
       }
@@ -736,7 +739,9 @@ export async function getMemberByIdSafe(memberId: string): Promise<{ data: Membe
         memoryMembers.delete(memberId);
         return { data: null, error: new Error('Member not found') };
       }
+      if (options.requireFresh) return { data: null, error };
     } catch (err: any) {
+      if (options.requireFresh) return { data: null, error: err };
       console.warn('[db] Supabase getMemberByIdSafe exception:', err.message);
     }
   }

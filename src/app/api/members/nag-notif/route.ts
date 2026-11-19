@@ -3,7 +3,7 @@ import { supabaseAdmin, Member } from '@/lib/db';
 import { getRequestSessionMemberId } from '@/lib/auth';
 import { DateTime } from 'luxon';
 import { computeMemberState, getNightScheduleDateTime, getSleepCycleDate, toValidLuxonZone } from '@/lib/sleepEngine';
-import { sendPushNotification } from '@/lib/pushServer';
+import { pushTtlBefore, sendPushNotification } from '@/lib/pushServer';
 
 /**
  * Request body for manual nag notifications.
@@ -161,6 +161,7 @@ export async function POST(request: Request) {
     let pushTitle = '';
     let pushBody = '';
     let pushTag = '';
+    let pushDeadline: DateTime | undefined;
 
     if (isWakeUpNag) {
       // WAKE UP NAG LOGIC:
@@ -260,6 +261,9 @@ export async function POST(request: Request) {
       // 6. 15-minute anti-spam cooldown per sender per stage (WIND_DOWN vs OVERDUE)
       const stage = targetState.diffMinutes < 0 ? 'WIND_DOWN' : 'OVERDUE';
       nagLogType = `MANUAL_NAG:${stage}:${helperKey}`;
+      const night = DateTime.fromISO(cycleDate, { zone: toValidLuxonZone(targetMember.timezone) });
+      const bedtime = getNightScheduleDateTime(targetMember, night).bedtimeDateTime;
+      pushDeadline = stage === 'WIND_DOWN' ? bedtime : bedtime.plus({ hours: 8 });
 
       pushTitle = stage === 'WIND_DOWN' ? '🌙 Winding Down Reminder' : "⏰ Time to Catch Some Z's!";
       pushBody =
@@ -305,6 +309,8 @@ export async function POST(request: Request) {
 
     // 10. Dispatch Web Push notification to registered devices
     for (const sub of activeSubs) {
+      const ttl = pushDeadline ? pushTtlBefore(pushDeadline, DateTime.utc(), 120) : 120;
+      if (ttl < 1) break;
       const pushResult = await sendPushNotification(
         {
           endpoint: sub.endpoint,
@@ -319,7 +325,7 @@ export async function POST(request: Request) {
           url: targetMember.journal_url || '/',
           tag: pushTag,
         },
-        0
+        ttl
       );
 
       if (pushResult.success) {
