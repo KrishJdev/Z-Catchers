@@ -19,8 +19,6 @@ jobs:
     name: Supabase Cron and push smoke test
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      DISPATCH_SMOKE_WORKDIR: ${{ runner.temp }}/zc-dispatch-smoke
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +34,8 @@ jobs:
       - name: Start disposable Supabase
         run: |
           set -euo pipefail
+          DISPATCH_SMOKE_WORKDIR="$RUNNER_TEMP/zc-dispatch-smoke"
+          printf 'DISPATCH_SMOKE_WORKDIR=%s\n' "$DISPATCH_SMOKE_WORKDIR" >> "$GITHUB_ENV"
           mkdir -p "$DISPATCH_SMOKE_WORKDIR"
           cd "$DISPATCH_SMOKE_WORKDIR"
           supabase init
@@ -49,6 +49,6 @@ jobs:
       - name: Stop disposable Supabase
         if: always()
         run: |
-          if [ -f "$DISPATCH_SMOKE_WORKDIR/supabase/config.toml" ]; then
+          if [ -n "${DISPATCH_SMOKE_WORKDIR:-}" ] && [ -f "$DISPATCH_SMOKE_WORKDIR/supabase/config.toml" ]; then
             supabase stop --workdir "$DISPATCH_SMOKE_WORKDIR" --no-backup
           fi
