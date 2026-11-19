@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-19T18:18:37+05:30
+> **Last Updated:** 2026-11-19T18:31:56+05:30
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest implementation commit:** `9160512` on `krish`
+> **Latest implementation commit:** `ee17ed9` on `krish`
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active Integration Pull Requests:** None  
+> **Active Integration Pull Requests:** [#95](https://github.com/KrishJdev/Z-Catchers/pull/95) is open as a draft from `krish` into `dev`. Hosted scheduler and push verification are pending.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
-> **Build Status:** Verified locally on `9160512`. `npx tsc --noEmit` passed, `npm run test:unit` passed all 44 suites in 85.55 seconds and `npm run build` passed (28/28 static pages generated).
+> **Build Status:** Verified locally on the implementation in `ee17ed9`. `npx tsc --noEmit` passed, `npm run test:unit` passed all 44 suites, and `npm run build` generated 28 static pages. The protected Vercel preview built successfully. GitHub CI results are attached to PR #95.
 
 ---
 
@@ -69,6 +69,22 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 122 · Review for integration into dev
+
+- Compared `krish` with `origin/dev` and opened [draft PR #95](https://github.com/KrishJdev/Z-Catchers/pull/95).
+- Inspected Vercel and Supabase through their APIs. The protected Vercel preview built successfully. The Vercel project had no `CRON_SECRET` and the accessible Supabase project was production, with no test branch, `cron_locks`, `nightly_strike_logs`, dispatcher RPCs, `pg_cron`, or `pg_net`. The token returned HTTP 403 for organization access. Cloud inspection was read-only.
+- Updated `supabase/migrations/20261119_dispatch_accountability.sql` to create missing tables idempotently with RLS and service-role permissions. Updated `scripts/test-nightly-strike-transaction.mjs` to cover upgrades from the older schema, service-role writes, denied public reads, and the two scheduler header configurations.
+- Updated `supabase/schedule_dispatch.sql` and `README.md` for deployment access on a protected preview. Updated `.github/workflows/cron-dispatcher.yml` so scheduled fallback dispatch waits for the two GitHub secrets and manual runs surface missing configuration.
+- Verified the dashboard locally at 390 px and 1,440 px with fixture schedules in Kolkata, Tokyo, London, and New York. Both showed the Fox mascot without horizontal overflow. The roster displayed one column on mobile and three on desktop.
+- Files changed during the review were `.github/workflows/cron-dispatcher.yml`, `README.md`, `scripts/test-nightly-strike-transaction.mjs`, `supabase/migrations/20261119_dispatch_accountability.sql`, `supabase/schedule_dispatch.sql`, and `HANDOFF.md`.
+
+| Milestone | Status |
+|---|---|
+| Legacy Supabase upgrade and automated verification | DONE |
+| Integration PR and Vercel preview build | DONE |
+| Isolated Supabase staging setup and authenticated scheduler smoke test | TODO |
+| Subscribed-device reminder, strike, and Sleep Shield verification | TODO |
 
 ### Production project references
 
@@ -2829,7 +2845,7 @@ d:\Projects\Z Catchers\
 | **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) / [#47](https://github.com/KrishJdev/Z-Catchers/issues/47) | **DONE** |
 | **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) / [#48](https://github.com/KrishJdev/Z-Catchers/issues/48) | **DONE** |
 | **ZC-20** | **High (P1)** | Security: Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded | `src/app/api/members/update-schedule/route.ts` | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | **DONE** |
-| **ZC-21** | **Medium (P2)** | PWA / Notifications: Prevent race condition by recording nag deduplication before sending push | `src/app/api/members/nag-notif/route.ts` | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | **TODO** |
+| **ZC-21** | **Medium (P2)** | PWA / Notifications: Prevent race condition by recording nag deduplication before sending push | `src/app/api/members/nag-notif/route.ts` | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | **IN PROGRESS** (Atomic claim covered by unit tests. Hosted verification pending in draft PR #95.) |
 | **ZC-22** | **Medium (P2)** | PWA / Push: Add Authorization Bearer header to push test and unsubscribe requests | `src/components/PushModal.tsx`, `src/lib/pushClient.ts` | [#36](https://github.com/KrishJdev/Z-Catchers/issues/36) | **DONE** |
 | **ZC-23** | **Medium (P2)** | Backend: Align nag-assist date calculation with `getSleepCycleDate()` | `src/app/api/members/nag-assist/route.ts` | [#37](https://github.com/KrishJdev/Z-Catchers/issues/37) | **TODO** |
 | **ZC-24** | **Medium (P2)** | PWA / Service Worker: Resolve `notificationclick` message dropping during tab navigation | `public/sw.js` | [#38](https://github.com/KrishJdev/Z-Catchers/issues/38) | **TODO** |
@@ -2862,11 +2878,11 @@ d:\Projects\Z Catchers\
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
 1. **Verify the scheduler and strike ledger in the test environment.**
-   - Apply `supabase/migrations/20261119_dispatch_accountability.sql` before serving the updated strike and nag routes. Use the test deployment's origin and token in Vault, then install `supabase/schedule_dispatch.sql` following the README. Configure matching GitHub Actions secrets if using the fallback.
-   - Deploy the reviewed commit to the test environment using its Supabase project and a stable HTTPS origin. Confirm the dispatcher accepts an authenticated `GET /api/cron/dispatch-notifications?dry_run=true` before installing the live job. A protected Vercel preview needs the automation header in the scheduled request.
+   - Obtain access to an isolated Supabase staging project and add its URL and keys as branch-specific overrides for the Vercel test preview. Add a staging-only `CRON_SECRET` for that preview. The current token only exposed the production database.
+   - Apply `supabase/migrations/20261119_dispatch_accountability.sql` to an existing staging database, or initialize a blank staging database with `supabase/schema.sql`. Confirm the dispatcher accepts an authenticated `GET /api/cron/dispatch-notifications?dry_run=true`. Set the staging origin and tokens in the staging Vault as documented in the README, including `zcatchers_vercel_bypass` for the protected preview, then install `supabase/schedule_dispatch.sql`.
    - Compare Supabase job history with the dispatcher HTTP results. The asynchronous HTTP request can be queued successfully even if the endpoint later rejects it.
    - Observe several consecutive one-minute HTTP responses and a controlled test bedtime. Check for one pre-bed reminder, one bedtime alarm for an unchecked-in member, and one strike at or after +10 minutes. Repeat after check-in and confirm suppression. Verify a Metastrike replacement updates both the nightly record and the monthly counters.
-   - A production device, migration and scheduler installation were outside this branch-only review. Historical PR references below describe earlier work.
+   - Record the hosted results in PR #95 and move it out of draft when staging verification passes.
 
 2. **Sprint 1 & Sprint 2 (Completed & Merged to `dev`, PR #79 to `main`):**
    * **ZC-28 / GH #62:** **COMPLETED** (PR [#72](https://github.com/KrishJdev/Z-Catchers/pull/72) merged into `dev`).
