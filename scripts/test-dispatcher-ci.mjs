@@ -57,8 +57,14 @@ function setupCertificate() {
     'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=Z Catchers CI',
     '-addext', `subjectAltName=IP:${gateway}`, '-keyout', keyPath, '-out', certPath,
   ]);
-  execFileSync('docker', ['cp', certPath, `${container}:/usr/local/share/ca-certificates/zc-smoke.crt`]);
-  execFileSync('docker', ['exec', '-u', 'root', container, 'update-ca-certificates']);
+  // The local Postgres image ships Alpine's CA bundle without update-ca-certificates.
+  execFileSync('docker', ['exec', '-i', '-u', 'root', container, 'sh', '-ec', [
+    'bundle=/etc/ssl/certs/ca-certificates.crt',
+    'cp "$bundle" /tmp/zc-smoke-ca.pem',
+    'cat >> /tmp/zc-smoke-ca.pem',
+    'chmod 644 /tmp/zc-smoke-ca.pem',
+    'mv /tmp/zc-smoke-ca.pem "$bundle"',
+  ].join('\n')], { input: readFileSync(certPath) });
   return { gateway, certPath, keyPath };
 }
 
@@ -203,6 +209,17 @@ try {
     SELECT sleep_cycle_date, record_type, strikes_used, strikes_count
     FROM public.nightly_strike_logs JOIN public.members ON target_member_id = members.id
   `), `${cycle}|strike|1|1`);
+  const nag = () => fetch(appOrigin + '/api/members/nag-notif', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_member_id: memberId('overdue') }),
+  });
+  const outcomes = await Promise.all([nag(), nag()]);
+  const statuses = outcomes.map(response => response.status).sort();
+  assert.deepEqual(statuses, [200, 429], JSON.stringify(await Promise.all(outcomes.map(response => response.json()))));
+  assert.equal(pushes.length, 5);
+  assert.equal(pushes.at(-1), 'overdue');
+
   const metastrike = await fetch(appOrigin + '/api/members/strikes/metastrike', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-mod-passcode': modPasscode },
@@ -215,7 +232,7 @@ try {
     SELECT record_type, strikes_used, strikes_count, metastrikes_used, metastrikes_count
     FROM public.nightly_strike_logs JOIN public.members ON target_member_id = members.id
   `), 'metastrike|0|0|1|1');
-  console.log('Verified two authenticated cron runs, encrypted push delivery, Sleep Shield, and strike replacement.');
+  console.log('Verified two authenticated cron runs, encrypted pushes, Sleep Shield, atomic nag cooldown, and strike replacement.');
 } finally {
   app?.kill();
   await new Promise(resolve => relay.close(resolve));
