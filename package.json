@@ -22,6 +22,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.17",
     "@types/luxon": "^3.4.2",
     "@types/node": "^22.13.1",
     "@types/react": "^19.0.8",

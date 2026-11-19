@@ -187,6 +187,14 @@ export async function fetchAllNotificationLogs<T = any>(
   builderFn: (query: any) => any,
   pageSize = 1000
 ): Promise<{ data: T[]; error: any }> {
+  return fetchAllRows<T>('notification_logs', builderFn, pageSize);
+}
+
+export async function fetchAllRows<T>(
+  table: 'notification_logs' | 'sleep_logs' | 'members' | 'push_subscriptions',
+  builderFn: (query: any) => any,
+  pageSize = 1000
+): Promise<{ data: T[]; error: any }> {
   if (!isSupabaseConfigured) {
     return { data: [], error: null };
   }
@@ -197,7 +205,7 @@ export async function fetchAllNotificationLogs<T = any>(
   while (true) {
     const from = page * pageSize;
     const to = from + pageSize - 1;
-    const baseQuery = supabaseAdmin.from('notification_logs');
+    const baseQuery = supabaseAdmin.from(table);
     const query = builderFn(baseQuery).order('id', { ascending: true }).range(from, to);
 
     const { data, error } = (await query) as { data: T[] | null; error: any };
@@ -546,7 +554,7 @@ export async function updateMemberSafe(
     const hydrated = hydrateMemberWeekendHours(data as unknown as Member);
     memoryMembers.set(memberId, hydrated);
     return { data: hydrated, error };
-  } else if (!isSupabaseConfigured || (!error && memoryMembers.has(memberId))) {
+  } else if (!isSupabaseConfigured || (!error && isTestMemberFixture(memberId) && memoryMembers.has(memberId))) {
     // When no database row matches and no error occurred, persist changes to the in-memory fixture
     const existing = memoryMembers.get(memberId);
     if (existing) {

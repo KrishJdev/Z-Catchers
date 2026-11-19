@@ -53,6 +53,8 @@ const UNIT_TESTS = [
   'test-unified-pwa-push-onboarding.mjs',
   'test-strikes-api-and-routes.mjs',
   'test-cron-dispatcher.mjs',
+  'test-dispatch-recovery.mjs',
+  'test-nightly-strike-transaction.mjs',
   'test-state-sync-audit.mjs',
 ];
 

@@ -65,7 +65,8 @@ export async function GET(request: Request) {
       dryRun,
       forcedMemberId,
     });
-    return NextResponse.json({ success: true, ...results });
+    const success = results.details.errors.length === 0;
+    return NextResponse.json({ success, ...results }, { status: success ? 200 : 503 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown cron error';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -96,7 +97,8 @@ export async function POST(request: Request) {
       forcedMemberId: body.member_id,
     });
 
-    return NextResponse.json({ success: true, ...results });
+    const success = results.details.errors.length === 0;
+    return NextResponse.json({ success, ...results }, { status: success ? 200 : 503 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown cron error';
     return NextResponse.json({ error: message }, { status: 500 });

@@ -7,6 +7,7 @@ import { DateTime } from 'luxon';
 // Strip remote Supabase credentials so the test suite strictly operates on
 // isolated in-memory stores without reading or updating remote database records.
 process.env.NODE_ENV = 'test';
+process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'disabled-in-unit-tests';
 process.env.PIN_SALT = process.env.PIN_SALT || 'test-salt-secret-12345';
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-session-secret-for-cron-dispatcher-suite-12345';
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://placeholder.supabase.co';

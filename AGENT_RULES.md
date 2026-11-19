@@ -61,7 +61,7 @@ z-catchers/
 * **REQUIRED:** Centralize all time math inside `src/lib/sleepEngine.ts`. Components and API routes must call `computeMemberState()` rather than duplicating date logic.
 
 ### 3.2 The "Sleep Shield" Notification Rule
-* **FORBIDDEN:** Never send a community "nag someone else" push notification to a user whose own `isSleepShieldActive` flag is `true` (between $0$ and $480$ minutes after their personal bedtime, or within $15$ minutes before their bedtime).
+* **REQUIRED:** Suppress community pushes during the 15 minutes before the recipient’s bedtime. After bedtime, unchecked-in members may receive personal reminders, strike alerts and nags. An open check-in silences pushes, and a completed sleep cycle remains protected through the eight-hour quiet window.
 * **REQUIRED:** Every cron dispatch must log `(member_id, notification_type, local_date)` in `notification_logs` with a `UNIQUE` constraint to guarantee idempotency and prevent double-pinging users.
 
 ### 3.3 The 48-Hour Cooldown Governance Rule

@@ -207,8 +207,8 @@ console.log('\n--- 4. 15-Minute Cooldown & In-Button Countdown Verification ---'
 
 // Server-side cooldown validation
 assert(
-  nagRouteContent.includes('15 * 60') && nagRouteContent.includes('cooldownTotalSeconds'),
-  'nag-notif route must enforce 15-minute (900s) cooldown'
+  nagRouteContent.includes("rpc('claim_manual_nag'"),
+  'nag-notif route must use the database cooldown claim tested in test-nightly-strike-transaction'
 );
 assert(
   nagRouteContent.includes('cooldownSeconds') && nagRouteContent.includes('cooldownMinutes'),

@@ -319,7 +319,7 @@ export function PushModal({
               <div>
                 <p className="font-semibold text-status-amber">Log In Required for Sleep Shield</p>
                 <p className="text-[11px] text-cream-secondary mt-0.5">
-                  Link alerts to your community profile to silence bedtime alarms while you are sleeping.
+                  Link this device to your profile to receive reminders for your schedule.
                 </p>
                 {onOpenLogin && (
                   <button
@@ -353,10 +353,10 @@ export function PushModal({
             <div>
               <p className="text-xs font-semibold text-cream-primary flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5 text-status-amber" />
-                <span>Personal Wind-Down & Bedtime Alarms</span>
+                <span>Personal Wind-Down &amp; Bedtime Reminders</span>
               </p>
               <p className="text-[11px] text-cream-secondary mt-0.5">
-                Alerts 30m before your bedtime and the moment your bedtime hits.
+                Get a wind-down reminder and a bedtime alert. Checking in silences alerts for the night.
               </p>
             </div>
           </label>
@@ -387,7 +387,7 @@ export function PushModal({
             <div>
               <p className="font-semibold text-cream-primary">Sleep Shield Guarantee</p>
               <p className="text-[11px] leading-relaxed mt-0.5">
-                We strictly silence outgoing community nag alerts during your personal 8-hour sleep window or whenever you tap &ldquo;I&apos;m in Bed&rdquo;.
+                Tap &ldquo;I&apos;m in Bed&rdquo; to silence nags. If you stay up past bedtime without checking in, reminders continue.
               </p>
             </div>
           </div>

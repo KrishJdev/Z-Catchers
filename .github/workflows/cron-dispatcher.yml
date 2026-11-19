@@ -15,13 +15,10 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          if [ -z "$APP_URL" ]; then
-            echo "APP_URL secret is not set. Skipping external cron dispatch."
-            exit 0
-          fi
-          echo "Dispatching cron to $APP_URL/api/cron/dispatch-notifications..."
-          AUTH_HEADER=""
-          if [ -n "$CRON_SECRET" ]; then
-            AUTH_HEADER="-H \"Authorization: Bearer $CRON_SECRET\""
-          fi
-          eval curl -s -S -X GET "$APP_URL/api/cron/dispatch-notifications" $AUTH_HEADER
+          set -euo pipefail
+          : "${APP_URL:?Set the APP_URL Actions secret to the deployment origin}"
+          : "${CRON_SECRET:?Set the CRON_SECRET Actions secret to match the deployment}"
+          response=$(curl --fail --silent --show-error --proto '=https' --max-time 120 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "${APP_URL%/}/api/cron/dispatch-notifications")
+          jq -e '.success == true and (.details.errors | length == 0)' <<< "$response"

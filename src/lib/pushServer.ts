@@ -35,7 +35,8 @@ export interface PushSubscriptionData {
  */
 export async function sendPushNotification(
   subscription: PushSubscriptionData,
-  payload: PushPayload
+  payload: PushPayload,
+  ttlSeconds?: number
 ): Promise<{ success: boolean; statusCode?: number; error?: string; pruned?: boolean }> {
   try {
     const res = await webpush.sendNotification(
@@ -46,7 +47,8 @@ export async function sendPushNotification(
           auth: subscription.keys.auth,
         },
       },
-      JSON.stringify(payload)
+      JSON.stringify(payload),
+      ttlSeconds === undefined ? undefined : { TTL: ttlSeconds }
     );
 
     return {

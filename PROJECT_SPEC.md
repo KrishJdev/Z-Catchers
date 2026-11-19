@@ -9,7 +9,7 @@
 >
 > 2. **Zero Timezone Hallucinations:** Never store bedtimes as static UTC timestamps or raw hour offsets (which break during Daylight Saving Time). Always store a member's bedtime as a local 24-hour time string (`HH:mm`, e.g., `"23:30"`) paired with an IANA Timezone identifier (e.g., `"America/New_York"`, `"Asia/Kolkata"`).
 >
-> 3. **Sleep Shield Guarantee:** Never dispatch a "nag someone else" push notification to a user who is currently inside their own sleep window (8 hours following their personal bedtime).
+> 3. **Sleep Shield Guarantee:** Never dispatch a "nag someone else" push notification to a checked-in sleeper. A member still overdue without a check-in can receive notifications and nags after bedtime.
 >
 > 4. **Aesthetic & Brand Mandate:** This app is viewed late at night. Do **not** use bright white (`#FFFFFF`), harsh neon blues, or jarring light-mode defaults. Strictly enforce the **Warm Dark / Low-Blue-Light** palette and integrate the cozy, minimalist **Sleepy Fox mascot** defined in Section 3.
 >
@@ -29,17 +29,17 @@ Members of an international Discord community want to keep each other accountabl
 
    * **T-Minus 30 Mins (Wind-Down):** The sleeper receives a gentle personal push notification to start winding down.
 
-   * **T-Minus 0 Mins (Bedtime Hit / Nag Trigger):** The sleeper gets a "Go to Bed" notification, AND all **currently awake** community members get a push notification: *"It's \[Name\]'s bedtime! Go nag them in their journal."*
+   * **T-Minus 0 Mins (Bedtime Hit / Nag Trigger):** An unchecked-in sleeper receives a personal bedtime alert. Eligible awake community members receive a push notification: *"It's \[Name\]'s bedtime! Go nag them in their journal."*
 
 4. **The Action (Discord Redirect):** Tapping the notification or the member's card opens their specific Discord Journal thread directly in the Discord app so friends can tell them goodnight or nag them off their screens.
 
 5. **Anti-Cheat Governance (48-Hour Cooldown):** To stop members from pushing their bedtime back 5 minutes before midnight to dodge nagging, any self-service schedule edit enters a **48-hour pending state** before becoming active. Moderators can add/remove members or override changes immediately.
 
 6. **Monthly Strikes & Metastrikes Accountability System:**
-   * **Strikes (Max 3 per month):** Issued when a member goes to bed more than 5 minutes past their scheduled bedtime without a valid excuse.
+   * **Strikes (Max 3 per month):** The dispatcher issues one strike for a missed check-in starting ten minutes after the scheduled bedtime.
    * **Metastrikes (Max 3 per month):** Excused passes used for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
    * **Monthly Reset:** Both Strikes and Metastrikes reset to 0 used (3 remaining) on the 1st of every calendar month via lazy evaluation.
-   * **No Auto-Strikes:** Because sleep check-ins happen in Discord journal threads, the app **never** auto-assigns a strike based on app inactivity. Instead, it utilizes a **2-Vote Community Verification system** paired with self-service Metastrike passes.
+   * **Nightly evidence:** An in-app check-in, completed sleep log or Metastrike protects that cycle. See section 5.6 for the automatic strike and replacement rules.
 
 ## 2. Recommended Tech Stack (For Antigravity Execution)
 
@@ -183,9 +183,9 @@ CREATE TABLE notification_logs (
 );
 ```
 
-### 4.4 `nightly_strike_logs` Table (Community 2-Vote Strike & Metastrike Passes)
+### 4.4 `nightly_strike_logs` Table (Automatic Strikes & Metastrike Passes)
 
-Tracks per-night strike votes and excused metastrike passes enforced in the target member's local IANA timezone.
+Tracks automatic strikes and excused metastrike passes enforced in the target member's local IANA timezone.
 
 ```sql
 CREATE TABLE nightly_strike_logs (
@@ -312,23 +312,17 @@ Run a scheduled check every **1 minute** (or 5 minutes):
 
      * Record in `notification_logs`.
 
-   * **Check 2: Is** $M$ **at T-Minus 0 Minutes (`BEDTIME_HIT`)?** (Allow a 0–4 minute grace window so cron jitter never misses a trigger, protected by the unique constraint in `notification_logs`).
+   * **Check 2: Is** $M$ **at T-Minus 0 Minutes (`BEDTIME_HIT`)?** (Allow a 0–30 minute delivery window so cron jitter never misses a trigger, protected by the unique constraint in `notification_logs`).
 
      * Check `notification_logs` for `(M.id, 'BEDTIME_HIT', M.local_date)`. If not sent:
 
-     * **Dispatch A (To the Sleeper** $M$**):**
+     * Send the personal bedtime alarm if the sleeper has not checked in or completed the cycle. Checked-in members are protected.
 
-       * Title: `"🌙 Time to Catch Some Z's!"`
-
-       * Body: `"It's ${M.bedtime_local}. Head to your Discord journal and check in for the night."`
-
-       * URL: `M.journal_url`
-
-     * **Dispatch B (To the Community — Filtered by Sleep Shield):**
+     * **Community notifications**
 
        * Query all other active members $C \neq M$ who have `notify_community = true`.
 
-       * **CRITICAL FILTER:** Evaluate every recipient $C$'s current status using Algorithm 5.2. If $C$ is currently in status `SLEEPING` (or within 15 minutes before their own bedtime), **SKIP** $C$. Do not wake sleeping members!
+       * **CRITICAL FILTER:** Evaluate every recipient $C$'s current status using Algorithm 5.2. If $C$ has an open check-in, has already slept this cycle and is within the eight-hour quiet window, or is within 15 minutes before their own bedtime, **SKIP** $C$. Do not wake sleeping members!
 
        * Send Web Push to all remaining **awake** recipients:
 
@@ -471,7 +465,7 @@ To ship ASAP without waiting on complex OAuth app verification:
 
 * [x] **Sleep Consistency Streaks:** Track consecutive days a member checks in on time without using schedule changes.
 
-* [x] **Monthly Strikes & Metastrikes Accountability System:** 3 strikes max, 3 excused metastrikes max, 5-minute grace period (`BEDTIME_GRACE`), 2-vote community verification (`OVERDUE_NAG_NOW`), retroactive 24h conversion, and moderator controls.
+* [x] **Monthly Strikes & Metastrikes Accountability System:** 3 strikes max, 3 excused metastrikes max, 5-minute grace period (`BEDTIME_GRACE`), automatic evaluation at +10 minutes, replacement before the next bedtime, and moderator controls.
 
 * [x] **7-Day Variable Sleep Schedule Engine:** Full `mon` through `sun` custom routine support stored in `weekly_schedule JSONB`, with cross-midnight cycle resolution, fallback synchronization to flat columns, 48-hour cooldown enforcement, and 3-mode mobile-friendly schedule editor (Every Day, Weekdays/Weekends, Custom Per Day).
 

@@ -6,7 +6,7 @@
 
 ## 1. Complete Database Schema (PostgreSQL / Supabase)
 
-Execute these SQL statements to set up the relational tables. All timestamps must be stored in UTC (`TIMESTAMPTZ`), while local bedtimes are stored as strict `HH:mm` strings paired with IANA timezones.
+Use the current schema for new installations and the versioned migrations when upgrading. The excerpts below describe the data model. Timestamps use `TIMESTAMPTZ`. Local bedtimes use strict `HH:mm` strings paired with IANA timezones. [Installation schema](./supabase/schema.sql) · [Migrations](./supabase/migrations/)
 
 ```sql
 -- 1. Members Table (Profiles, Schedules, and 48-Hour Cooldown State Machine)
@@ -71,7 +71,7 @@ CREATE TABLE notification_logs (
   UNIQUE(member_id, notification_type, local_date)
 );
 
--- 4. Nightly Strike Logs Table (Community 2-Vote Strike & Metastrike Passes)
+-- 4. Nightly Strike Logs Table (Automatic Strikes & Metastrike Passes)
 CREATE TABLE nightly_strike_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   target_member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
@@ -281,6 +281,8 @@ The accountability system ensures members adhere to their bedtimes with automate
   * **Overdue Bucket Retention:** The member remains in the "Overdue / Past Bedtime" section after receiving the strike until they either explicitly log "I'm in Bed" (which transitions them to `SLEEPING`) or their scheduled wake-up time passes (which transitions them directly to `AWAKE` via the fallback rule).
   * **Idempotency:** Automatic strikes are tracked via `AUTO_BEDTIME_STRIKE` in `notification_logs` and `nightly_strike_logs`, ensuring at most 1 automatic strike per sleep cycle across repeated cron passes.
 
+The Supabase service role calls `apply_nightly_strike` to change a nightly record and its monthly counters in one transaction. The function locks the member, checks the expected record type and rechecks durable check-in evidence before issuing a strike. A failed write leaves the cycle available for retry.
+
 #### 3. Metastrike Prevention & Pre-Next-Bedtime Replacement Workflows
 * **Proactive Metastrike (Applied before +10m Cutoff):** Member taps `"Use Metastrike Tonight"` on their own card and selects or types a reason. Consumes 1 Metastrike (`metastrikes_used + 1`), sets `record_type = 'metastrike'` for tonight's `sleep_cycle_date`, and locks the cycle against automatic normal strikes with a `"Protected by Metastrike: [Reason]"` shield badge.
 * **Pre-Next-Bedtime Replacement Window:** If a member receives an automatic normal strike at +10 minutes, they can apply a Metastrike at any point—all the way until their next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`), including the next morning or afternoon. Doing so decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` from `'strike'` to `'metastrike'`. Once the next scheduled bedtime arrives, this replacement window expires.
@@ -385,16 +387,16 @@ self.addEventListener('notificationclick', function(event) {
 ```
 
 ### 3.2 Notification Dispatcher Logic (Canonical Cron Endpoint: `/api/cron/dispatch-notifications`)
-When the background cron job runs every minute, it enforces the **Sleep Shield** and distributed idempotency:
+The one-minute Supabase job is installed separately with `supabase/schedule_dispatch.sql`. Vercel is configured for a daily run and GitHub Actions provides a best-effort fallback. Each invocation enforces the **Sleep Shield** and distributed idempotency:
 
 1. **Window-Level Concurrency Lock:** Acquires `cron_window:<YYYY-MM-DDTHH:mm>` lock (55s TTL) in `public.cron_locks` to prevent duplicate concurrent runs between Vercel Cron and GitHub Actions fallback runners.
 2. Find all active members $M$ whose local time matches either **T-Minus 30 minutes** or **T-Minus 0 minutes**.
-3. **Per-Member Event Lock:** Acquires `notif:<member_id>:<date>:<event_type>` lock in `public.cron_locks` (24h TTL) before dispatching notifications or webhooks.
-4. **Personal Notification:** Send wind-down or bedtime hit push to $M$.
+3. **Per-Member Event Lock:** Acquires `notif:<member_id>:<date>:<event_type>` lock in `public.cron_locks` (five-minute processing lease) before sending. Record receipts for successful subscriptions, retain them on temporary failures and retry within the stage window. Complete the stage after all eligible destinations have succeeded or expired.
+4. **Personal Notification:** Send the personal reminder in the 30 minutes before bedtime. Send bedtime and strike alerts to unchecked-in members after bedtime. An open check-in silences the device. A completed cycle remains protected for the remainder of its eight-hour quiet window.
 5. **Community Nag Notification:** 
    * Query all members $C \neq M$ where `notify_community = true`.
    * Evaluate $C$'s sleep state using Algorithm 2.2.
-   * **GUARDRAIL:** If $C$'s `isSleepShieldActive` is `true`, **exclude $C$ from the recipient list**.
+   * **GUARDRAIL:** Exclude checked-in recipients, anyone within 15 minutes before bedtime, and members who have already slept during the current eight-hour quiet window. An overdue member who has not gone to bed remains eligible.
    * Dispatch push alert to remaining awake members containing $M$'s `journal_url`.
 
 ---
