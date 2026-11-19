@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-19T17:14:07+05:30
+> **Last Updated:** 2026-11-19T17:37:18+05:30
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -69,6 +69,11 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Rollout clarification
+
+- Confirmed that the implementation and its previous handoff remain local to `krish` at `9160512` and `f0aadaa`. Reviewed the migration, scheduler, and deployment credentials. Live activation and device verification are still TODO.
+- Updated `HANDOFF.md` with test rollout checks. The existing TypeScript and 44-suite unit verification still applies to the implementation commit.
 
 ### Phase 121 · Strike and reminder reliability review
 
@@ -2849,6 +2854,8 @@ d:\Projects\Z Catchers\
 
 1. **Verify the scheduler and strike ledger in the test environment.**
    - Apply `supabase/migrations/20261119_dispatch_accountability.sql` before serving the updated strike and nag routes. Use the test deployment's origin and token in Vault, then install `supabase/schedule_dispatch.sql` following the README. Configure matching GitHub Actions secrets if using the fallback.
+   - Deploy the reviewed commit to the test environment using its Supabase project and a stable HTTPS origin. Confirm the dispatcher accepts an authenticated `GET /api/cron/dispatch-notifications?dry_run=true` before installing the live job. A protected Vercel preview needs the automation header in the scheduled request.
+   - Compare Supabase job history with the dispatcher HTTP results. The asynchronous HTTP request can be queued successfully even if the endpoint later rejects it.
    - Observe several consecutive one-minute HTTP responses and a controlled test bedtime. Check for one pre-bed reminder, one bedtime alarm for an unchecked-in member, and one strike at or after +10 minutes. Repeat after check-in and confirm suppression. Verify a Metastrike replacement updates both the nightly record and the monthly counters.
    - A production device, migration and scheduler installation were outside this branch-only review. Historical PR references below describe earlier work.
 
