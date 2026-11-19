@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-19T17:42:35+05:30
+> **Last Updated:** 2026-11-19T18:18:37+05:30
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -69,6 +69,13 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Production project references
+
+- Production site [z-catchers.vercel.app](https://z-catchers.vercel.app/) · Vercel project ID `prj_VRuKjjYf82CbGSVmx2pycP86mgtl`.
+- Supabase project ref `shmcmieqytyegbeyemkn` · Organization ID `yoekbzhlsbvynmsxpiua`. [Project dashboard](https://supabase.com/dashboard/project/shmcmieqytyegbeyemkn)
+- On this Windows account, the encrypted API credentials are at `%LOCALAPPDATA%\ZCatchersollout-credentials.xml`. Use `Import-Clixml` to load `VercelToken` and `SupabaseToken` without printing their values. Both tokens require live permission checks before rollout.
+- This update modified only `HANDOFF.md` in Git. Local credential storage was verified. Production rollout remains TODO, and the previously recorded implementation checks still apply.
 
 ### Rollout clarification
 
