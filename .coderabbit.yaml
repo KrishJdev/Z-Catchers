@@ -52,7 +52,8 @@ reviews:
         Enforce the 48-Hour Cooldown anti-dodge governance rule: regular member schedule updates
         must write to pending_bedtime_local, pending_timezone, and pending_effective_at (NOW + 48 hours).
         Regular members must NEVER directly overwrite bedtime_local or timezone.
-        Verify 4-digit PIN authentication.
+        Require a verified member session for manual push nags. Follow the authentication rules
+        in PROJECT_SPEC.md for other member mutations.
         Validate Discord journal URLs with the regex:
         ^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$
 
@@ -64,8 +65,10 @@ reviews:
 
     - path: "src/app/api/cron/**"
       instructions: >
-        Strictly enforce the Sleep Shield rule: never dispatch nag notifications to any member
-        currently inside their 8-hour sleep window or within 15 minutes before bedtime.
+        Enforce Sleep Shield for open check-ins and completed sleep cycles within the eight-hour
+        quiet window. Suppress community pushes within 15 minutes before the recipient's bedtime.
+        Members who have not checked in remain eligible for personal reminders and community nags
+        after bedtime. Verify these rules in the cron route and src/lib/cronDispatcher.ts.
         Ensure all notification dispatches record to notification_logs with (member_id, notification_type, local_date)
         unique constraint to guarantee idempotency and prevent duplicate alerts.
 

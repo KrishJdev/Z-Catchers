@@ -141,8 +141,9 @@ assert(elseBranchIndex !== -1, "MemberCard must handle bucket === 'SLEEPING'");
 
 // Non-viewers must see Wake Up Nag when past wake time, and Shield On otherwise
 assert(
-  memberCardContent.includes('state.isPastWakeTime ?'),
-  'MemberCard must conditionally render Wake Up Nag when state.isPastWakeTime is true'
+  memberCardContent.includes('state.isPastWakeTime && canSendPushNag ?') &&
+    memberCardContent.includes('const canSendPushNag = Boolean(currentMemberId) && !isViewer;'),
+  'MemberCard must offer Wake Up Nag after wake time to signed-in peers only'
 );
 
 // Verify check-in banner is viewer-only
@@ -207,8 +208,8 @@ console.log('\n--- 4. 15-Minute Cooldown & In-Button Countdown Verification ---'
 
 // Server-side cooldown validation
 assert(
-  nagRouteContent.includes('15 * 60') && nagRouteContent.includes('cooldownTotalSeconds'),
-  'nag-notif route must enforce 15-minute (900s) cooldown'
+  nagRouteContent.includes("rpc('claim_manual_nag'"),
+  'nag-notif route must use the database cooldown claim tested in test-nightly-strike-transaction'
 );
 assert(
   nagRouteContent.includes('cooldownSeconds') && nagRouteContent.includes('cooldownMinutes'),

@@ -355,6 +355,7 @@ export function SleepCalendarModal({
       streak,
       strikesUsed,
       metastrikesUsed,
+      strikeCountsUnavailable: !apiMember && Boolean(base?.strike_counts_unavailable),
       weeklySchedule,
       journalUrl,
       role,
@@ -605,16 +606,20 @@ export function SleepCalendarModal({
             </div>
 
             {/* Strikes & Meta Indicators */}
-            <div className="flex items-center gap-3 text-[11px]">
-              <span className="flex items-center gap-1 font-semibold text-status-coral">
-                <Zap className="h-3 w-3 fill-status-coral text-status-coral" />
-                <span>Strikes: {resolvedProfile.strikesUsed}/3</span>
-              </span>
-              <span className="flex items-center gap-1 font-semibold text-status-amber">
-                <Shield className="h-3 w-3 fill-status-amber/20 text-status-amber" />
-                <span>Meta: {resolvedProfile.metastrikesUsed}/3</span>
-              </span>
-            </div>
+            {resolvedProfile.strikeCountsUnavailable ? (
+              <span className="text-[11px] text-cream-secondary">Strike and pass counts unavailable</span>
+            ) : (
+              <div className="flex items-center gap-3 text-[11px]">
+                <span className="flex items-center gap-1 font-semibold text-status-coral">
+                  <Zap className="h-3 w-3 fill-status-coral text-status-coral" />
+                  <span>Strikes: {resolvedProfile.strikesUsed}/3</span>
+                </span>
+                <span className="flex items-center gap-1 font-semibold text-status-amber">
+                  <Shield className="h-3 w-3 fill-status-amber/20 text-status-amber" />
+                  <span>Meta: {resolvedProfile.metastrikesUsed}/3</span>
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Profile Section Tabs */}

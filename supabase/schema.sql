@@ -264,6 +264,8 @@ CREATE INDEX IF NOT EXISTS idx_rate_limit_entries_key_reset ON rate_limit_entrie
 CREATE INDEX IF NOT EXISTS idx_rate_limit_target_ip ON rate_limit_entries(target_member_id, ip_address);
 CREATE INDEX IF NOT EXISTS idx_rate_limits_expires_at ON public.rate_limits (expires_at);
 CREATE INDEX IF NOT EXISTS idx_cron_locks_expires_at ON public.cron_locks (expires_at);
+CREATE INDEX IF NOT EXISTS idx_cron_locks_pending_strike_alerts ON public.cron_locks (lock_key)
+  WHERE metadata->>'stage' = 'AUTO_BEDTIME_STRIKE' AND metadata->>'state' = 'processing';
 CREATE INDEX IF NOT EXISTS idx_sleep_logs_member_cycle ON public.sleep_logs (member_id, cycle_date DESC);
 
 -- Enable Realtime if supabase_realtime publication is used
@@ -288,24 +290,22 @@ ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cron_locks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sleep_logs ENABLE ROW LEVEL SECURITY;
 
--- Members: Public read for active members (for community roster view)
+-- Only the roster API projects safe member fields.
 DROP POLICY IF EXISTS "Public can view active members" ON members;
-CREATE POLICY "Public can view active members" ON members
-  FOR SELECT USING (is_active = true);
+
 
 -- Members: Service role has full access for backend API operations
 DROP POLICY IF EXISTS "Service role full access on members" ON members;
 CREATE POLICY "Service role full access on members" ON members
   FOR ALL USING (auth.role() = 'service_role');
 
--- Push Subscriptions: Service role full access & public insert
+-- Push subscriptions are bound to a member by the authenticated API.
 DROP POLICY IF EXISTS "Service role full access on push_subscriptions" ON push_subscriptions;
 CREATE POLICY "Service role full access on push_subscriptions" ON push_subscriptions
   FOR ALL USING (auth.role() = 'service_role');
 
 DROP POLICY IF EXISTS "Public can register push subscriptions" ON push_subscriptions;
-CREATE POLICY "Public can register push subscriptions" ON push_subscriptions
-  FOR INSERT WITH CHECK (true);
+
 
 -- Notification Logs: Service role only (internal to notification dispatcher)
 DROP POLICY IF EXISTS "Service role full access on notification_logs" ON notification_logs;
@@ -365,9 +365,178 @@ $$ LANGUAGE plpgsql;
 -- Seed Initial Demo Members (Cross-Timezone Community)
 -- ==============================================================================
 INSERT INTO members (discord_username, discord_handle, avatar_url, journal_url, bedtime_local, wake_time_local, timezone, weekend_bedtime_local, weekend_wake_time_local, role)
-VALUES
+SELECT seed.* FROM (VALUES
   ('Aoi', 'aoi_jp', 'https://api.dicebear.com/7.x/bottts/svg?seed=Aoi', 'https://discord.com/channels/123456789/987654321', '23:30', '07:30', 'Asia/Tokyo', '00:30', '09:00', 'member'),
   ('SarahK', 'sarah_ny', 'https://api.dicebear.com/7.x/bottts/svg?seed=SarahK', 'https://discord.com/channels/123456789/987654322', '22:45', '06:45', 'America/New_York', '23:45', '08:30', 'member'),
   ('Marcus', 'marcus_ldn', 'https://api.dicebear.com/7.x/bottts/svg?seed=Marcus', 'https://discord.com/channels/123456789/987654323', '23:00', '07:00', 'Europe/London', NULL, NULL, 'moderator'),
   ('Arjun', 'arjun_in', 'https://api.dicebear.com/7.x/bottts/svg?seed=Arjun', 'https://discord.com/channels/123456789/987654324', '00:15', '08:00', 'Asia/Kolkata', '01:30', '09:30', 'member')
+) AS seed (discord_username, discord_handle, avatar_url, journal_url, bedtime_local, wake_time_local, timezone, weekend_bedtime_local, weekend_wake_time_local, role)
+WHERE NOT EXISTS (SELECT FROM members existing WHERE existing.journal_url = seed.journal_url)
 ON CONFLICT DO NOTHING;
+
+-- Commit the nightly record and both counter aliases in one transaction.
+-- A stale caller must re-read the member and the cycle before trying again.
+CREATE OR REPLACE FUNCTION public.apply_nightly_strike(
+  p_member_id uuid, p_cycle text, p_month text, p_previous_type text,
+  p_type text, p_reason text, p_now timestamptz, p_month_start timestamptz
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+DECLARE
+  m public.members%ROWTYPE;
+  nightly public.nightly_strike_logs%ROWTYPE;
+  strikes integer := 0;
+  passes integer := 0;
+BEGIN
+  SELECT * INTO STRICT m FROM public.members WHERE id = p_member_id FOR UPDATE;
+  IF p_month < m.strike_cycle_month THEN
+    RAISE SQLSTATE 'PT409' USING MESSAGE = 'The strike month advanced. Refresh the member and retry.';
+  END IF;
+  SELECT * INTO nightly FROM public.nightly_strike_logs
+    WHERE target_member_id = m.id AND sleep_cycle_date = p_cycle FOR UPDATE;
+  IF nightly.record_type IS DISTINCT FROM p_previous_type THEN
+    RAISE EXCEPTION 'The nightly record changed. Refresh and retry.';
+  END IF;
+  IF m.strike_cycle_month IS NULL OR m.strike_cycle_month = p_month THEN
+    strikes := greatest(m.strikes_used, m.strikes_count);
+    passes := greatest(m.metastrikes_used, m.metastrikes_count);
+  END IF;
+  IF p_type = 'strike' THEN
+    IF nightly.record_type IN ('strike', 'metastrike') THEN
+      RAISE EXCEPTION 'This cycle already has a strike or pass.';
+    END IF;
+    IF (m.last_notified_stage = 'IN_BED_EARLY' AND m.last_notified_cycle_date = p_cycle)
+       OR m.last_wake_cycle_date = p_cycle
+       OR EXISTS (SELECT FROM public.notification_logs WHERE member_id = m.id
+         AND local_date = p_cycle::date AND notification_type IN ('IN_BED_EARLY', 'WOKE_UP'))
+       OR EXISTS (SELECT FROM public.sleep_logs WHERE member_id = m.id
+         AND cycle_date = p_cycle AND (in_bed_at IS NOT NULL OR woke_up_at IS NOT NULL)) THEN
+      RETURN jsonb_build_object('reason', 'already_checked_in');
+    END IF;
+    IF strikes >= 3 THEN RETURN jsonb_build_object('reason', 'already_at_max_strikes'); END IF;
+    strikes := strikes + 1;
+  ELSIF p_type = 'metastrike' THEN
+    IF nightly.record_type = 'metastrike' THEN RAISE EXCEPTION 'This cycle already has a pass.'; END IF;
+    IF passes >= 3 THEN RAISE EXCEPTION 'You have used all 3 Metastrikes for this month.'; END IF;
+    passes := passes + 1;
+    IF nightly.record_type = 'strike' AND nightly.updated_at >= p_month_start THEN
+      strikes := greatest(0, strikes - 1);
+    END IF;
+  ELSIF p_type = 'clear' THEN
+    IF nightly.updated_at >= p_month_start THEN
+      IF nightly.record_type = 'strike' THEN strikes := greatest(0, strikes - 1); END IF;
+      IF nightly.record_type = 'metastrike' THEN passes := greatest(0, passes - 1); END IF;
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'Invalid nightly record type.';
+  END IF;
+
+  IF p_type = 'clear' THEN
+    DELETE FROM public.nightly_strike_logs WHERE id = nightly.id;
+  ELSE
+    INSERT INTO public.nightly_strike_logs (target_member_id, sleep_cycle_date, record_type, reason, created_at, updated_at)
+      VALUES (m.id, p_cycle, p_type, p_reason, p_now, p_now)
+      ON CONFLICT (target_member_id, sleep_cycle_date) DO UPDATE
+      SET record_type = excluded.record_type, reason = excluded.reason, updated_at = excluded.updated_at
+      RETURNING * INTO nightly;
+  END IF;
+  UPDATE public.members SET strikes_used = strikes, strikes_count = strikes,
+    metastrikes_used = passes, metastrikes_count = passes,
+    strike_cycle_month = p_month, updated_at = p_now WHERE id = m.id;
+  RETURN jsonb_build_object('log', to_jsonb(nightly), 'strikesUsed', strikes, 'metastrikesUsed', passes);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.apply_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apply_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz) TO service_role;
+
+-- Claim one manual nag per sender, target, stage and 15-minute interval.
+CREATE OR REPLACE FUNCTION public.claim_manual_nag(
+  p_member_id uuid, p_type text, p_cycle date, p_now timestamptz
+) RETURNS integer LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+DECLARE
+  previous_at timestamptz;
+BEGIN
+  INSERT INTO public.notification_logs(member_id, notification_type, local_date, dispatched_at)
+    VALUES (p_member_id, p_type, p_cycle, p_now)
+    ON CONFLICT (member_id, notification_type, local_date) DO UPDATE
+    SET dispatched_at = excluded.dispatched_at
+    WHERE notification_logs.dispatched_at <= p_now - interval '15 minutes';
+  IF FOUND THEN RETURN 0; END IF;
+
+  SELECT dispatched_at INTO previous_at FROM public.notification_logs
+    WHERE member_id = p_member_id AND notification_type = p_type AND local_date = p_cycle;
+  RETURN greatest(1, ceil(extract(epoch FROM previous_at + interval '15 minutes' - p_now))::integer);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.claim_manual_nag(uuid,text,date,timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_manual_nag(uuid,text,date,timestamptz) TO service_role;
+
+-- Keep receipts that arrived after the worker read the expired lease.
+CREATE OR REPLACE FUNCTION public.renew_cron_lease(
+  p_key text, p_previous_locked_at timestamptz, p_locked_at timestamptz,
+  p_expires_at timestamptz, p_metadata jsonb
+) RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path = '' AS $$
+  UPDATE public.cron_locks AS lease SET
+    locked_at = p_locked_at,
+    expires_at = p_expires_at,
+    metadata = p_metadata || jsonb_build_object('delivered_sub_ids', (
+      SELECT coalesce(jsonb_agg(DISTINCT receipt), '[]'::jsonb)
+      FROM jsonb_array_elements(
+        coalesce(lease.metadata->'delivered_sub_ids', '[]'::jsonb) ||
+        coalesce(p_metadata->'delivered_sub_ids', '[]'::jsonb)
+      ) AS receipts(receipt)
+    ))
+  WHERE lease.lock_key = p_key AND lease.locked_at = p_previous_locked_at
+    AND lease.expires_at <= p_locked_at AND lease.expires_at <= clock_timestamp()
+    AND lease.metadata->'completed' IS DISTINCT FROM 'true'::jsonb
+  RETURNING lease.metadata;
+$$;
+REVOKE ALL ON FUNCTION public.renew_cron_lease(text,timestamptz,timestamptz,timestamptz,jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.renew_cron_lease(text,timestamptz,timestamptz,timestamptz,jsonb) TO service_role;
+
+-- Seal the captured lease and write its audit in the same transaction.
+CREATE OR REPLACE FUNCTION public.complete_cron_stage(
+  p_key text, p_locked_at timestamptz, p_metadata jsonb
+) RETURNS boolean LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+DECLARE
+  completed_at timestamptz;
+  stage text;
+  cycle text;
+  target_id uuid;
+BEGIN
+  PERFORM FROM public.cron_locks
+    WHERE lock_key = p_key AND locked_at = p_locked_at FOR UPDATE;
+  IF NOT FOUND THEN RETURN false; END IF;
+  completed_at := clock_timestamp();
+
+  UPDATE public.cron_locks SET
+    expires_at = completed_at + interval '24 hours',
+    metadata = metadata || p_metadata || jsonb_build_object(
+      'completed', true, 'state', 'completed', 'completed_at', completed_at
+    )
+    WHERE lock_key = p_key AND locked_at = p_locked_at AND expires_at > completed_at
+      AND metadata->'completed' IS DISTINCT FROM 'true'::jsonb
+    RETURNING metadata->>'stage', metadata->>'local_date', (metadata->>'member_id')::uuid
+    INTO stage, cycle, target_id;
+  IF NOT FOUND THEN RETURN false; END IF;
+  IF stage IS NULL OR stage NOT IN ('WIND_DOWN_30M', 'BEDTIME_HIT', 'AUTO_BEDTIME_STRIKE') THEN
+    RAISE EXCEPTION 'Invalid notification stage.';
+  END IF;
+
+  INSERT INTO public.notification_logs(member_id, notification_type, local_date, dispatched_at)
+    VALUES (target_id, stage, cycle::date, completed_at)
+    ON CONFLICT (member_id, notification_type, local_date) DO NOTHING;
+
+  IF stage <> 'AUTO_BEDTIME_STRIKE' AND p_metadata->>'delivery_outcome' = 'complete' THEN
+    UPDATE public.members SET last_notified_stage = stage, last_notified_cycle_date = cycle
+      WHERE id = target_id AND (
+        last_notified_cycle_date IS NULL OR last_notified_cycle_date < cycle OR
+        (last_notified_cycle_date = cycle AND
+          last_notified_stage IS DISTINCT FROM 'IN_BED_EARLY' AND
+          (stage = 'BEDTIME_HIT' OR last_notified_stage IS DISTINCT FROM 'BEDTIME_HIT'))
+      );
+  END IF;
+  RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.complete_cron_stage(text,timestamptz,jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.complete_cron_stage(text,timestamptz,jsonb) TO service_role;

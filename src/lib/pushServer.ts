@@ -1,5 +1,11 @@
 import webpush from 'web-push';
+import type { DateTime } from 'luxon';
 import { supabaseAdmin } from '@/lib/db';
+
+export function pushTtlBefore(deadline: DateTime, now: DateTime, maxSeconds: number): number {
+  if (!deadline.isValid || !now.isValid) return 0;
+  return Math.max(0, Math.min(maxSeconds, Math.floor(deadline.diff(now, 'seconds').seconds)));
+}
 
 const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || '';
@@ -35,7 +41,8 @@ export interface PushSubscriptionData {
  */
 export async function sendPushNotification(
   subscription: PushSubscriptionData,
-  payload: PushPayload
+  payload: PushPayload,
+  ttlSeconds?: number
 ): Promise<{ success: boolean; statusCode?: number; error?: string; pruned?: boolean }> {
   try {
     const res = await webpush.sendNotification(
@@ -46,7 +53,8 @@ export async function sendPushNotification(
           auth: subscription.keys.auth,
         },
       },
-      JSON.stringify(payload)
+      JSON.stringify(payload),
+      ttlSeconds === undefined ? undefined : { TTL: ttlSeconds }
     );
 
     return {

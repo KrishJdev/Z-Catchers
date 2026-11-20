@@ -88,6 +88,7 @@ export interface Member {
   created_at: string;
   updated_at: string;
   // Dynamic runtime properties (hydrated by /api/members)
+  strike_counts_unavailable?: boolean;
   is_in_bed?: boolean;
   is_woke_up?: boolean;
   in_bed_at?: string | null;
@@ -181,9 +182,19 @@ export interface CronLockRow {
 
 /**
  * Safely fetches all rows matching a query despite PostgREST's default 1000-row cap,
- * paging through results using .range(from, to).
+ * paging by primary key so deletions cannot shift subsequent pages.
  */
 export async function fetchAllNotificationLogs<T = any>(
+  columns: string,
+  builderFn: (query: any) => any,
+  pageSize = 1000
+): Promise<{ data: T[]; error: any }> {
+  return fetchAllRows<T>('notification_logs', columns, builderFn, pageSize);
+}
+
+export async function fetchAllRows<T>(
+  table: 'notification_logs' | 'sleep_logs' | 'members' | 'push_subscriptions' | 'cron_locks',
+  columns: string,
   builderFn: (query: any) => any,
   pageSize = 1000
 ): Promise<{ data: T[]; error: any }> {
@@ -191,16 +202,17 @@ export async function fetchAllNotificationLogs<T = any>(
     return { data: [], error: null };
   }
 
-  let page = 0;
+  let cursor: string | undefined;
   const allRows: T[] = [];
+  const primaryKey = table === 'cron_locks' ? 'lock_key' : 'id';
+  const projection = columns === '*' ? columns : `${primaryKey}, ${columns}`;
 
   while (true) {
-    const from = page * pageSize;
-    const to = from + pageSize - 1;
-    const baseQuery = supabaseAdmin.from('notification_logs');
-    const query = builderFn(baseQuery).order('id', { ascending: true }).range(from, to);
+    const baseQuery = supabaseAdmin.from(table).select(projection);
+    let query = builderFn(baseQuery).order(primaryKey, { ascending: true }).limit(pageSize);
+    if (cursor !== undefined) query = query.gt(primaryKey, cursor);
 
-    const { data, error } = (await query) as { data: T[] | null; error: any };
+    const { data, error } = (await query) as { data: (T & Partial<Record<typeof primaryKey, string>>)[] | null; error: any };
     if (error) {
       return { data: allRows, error };
     }
@@ -208,10 +220,11 @@ export async function fetchAllNotificationLogs<T = any>(
       break;
     }
     allRows.push(...data);
-    if (data.length < pageSize) {
-      break;
+    const key = data[data.length - 1][primaryKey];
+    if (typeof key !== 'string' || key === cursor) {
+      return { data: allRows, error: new Error(`Invalid pagination cursor for ${table}.`) };
     }
-    page++;
+    cursor = key;
   }
 
   return { data: allRows, error: null };
@@ -546,7 +559,7 @@ export async function updateMemberSafe(
     const hydrated = hydrateMemberWeekendHours(data as unknown as Member);
     memoryMembers.set(memberId, hydrated);
     return { data: hydrated, error };
-  } else if (!isSupabaseConfigured || (!error && memoryMembers.has(memberId))) {
+  } else if (!isSupabaseConfigured || (!error && isTestMemberFixture(memberId) && memoryMembers.has(memberId))) {
     // When no database row matches and no error occurred, persist changes to the in-memory fixture
     const existing = memoryMembers.get(memberId);
     if (existing) {
@@ -703,8 +716,10 @@ export function clearInMemoryMembers(): void {
 /**
  * Safely fetches a member by ID, checking live Supabase first and falling back to in-memory store.
  */
-export async function getMemberByIdSafe(memberId: string): Promise<{ data: Member | null; error: any }> {
-  if (isTestMemberFixture(memberId)) {
+export async function getMemberByIdSafe(
+  memberId: string, options: { requireFresh?: boolean } = {}
+): Promise<{ data: Member | null; error: any }> {
+  if (!options.requireFresh && isTestMemberFixture(memberId)) {
     const inMem = memoryMembers.get(memberId);
     if (inMem) {
       return { data: inMem, error: null };
@@ -720,7 +735,7 @@ export async function getMemberByIdSafe(memberId: string): Promise<{ data: Membe
         .maybeSingle();
 
       if (!error && data) {
-        const hydrated = hydrateMemberWeekendHours(data as Member);
+        const hydrated = options.requireFresh ? data as Member : hydrateMemberWeekendHours(data as Member);
         memoryMembers.set(memberId, hydrated);
         return { data: hydrated, error: null };
       }
@@ -728,7 +743,9 @@ export async function getMemberByIdSafe(memberId: string): Promise<{ data: Membe
         memoryMembers.delete(memberId);
         return { data: null, error: new Error('Member not found') };
       }
+      if (options.requireFresh) return { data: null, error };
     } catch (err: any) {
+      if (options.requireFresh) return { data: null, error: err };
       console.warn('[db] Supabase getMemberByIdSafe exception:', err.message);
     }
   }
