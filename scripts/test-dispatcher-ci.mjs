@@ -308,7 +308,6 @@ try {
   await post('/api/members/strikes/metastrike', regularCookie, {
     member_id: regularId, action: 'convert_retroactive', sleep_cycle_date: cycle, reason: 'CI fixture',
   });
-  assert.equal(metastrike.status, 200, await metastrike.text());
   assert.equal(sql(`
     SELECT record_type, strikes_used, strikes_count, metastrikes_used, metastrikes_count
     FROM public.nightly_strike_logs JOIN public.members ON target_member_id = members.id
@@ -325,7 +324,7 @@ try {
   const join = new URL(callback.headers.get('location'));
   assert.equal(join.origin + join.pathname, appOrigin + '/join');
   const { member: newcomer } = await post('/api/auth/claim-profile', cookieFrom(callback, 'zcatchers_claim_token'), {
-    ...profile, claim_token: join.searchParams.get('claim_token'), option: 'new',
+    ...profile, timezone: 'UTC', claim_token: join.searchParams.get('claim_token'), option: 'new',
   }, 201);
   const newcomerCookie = await signIn('newcomer', newcomer.id, false, 'member');
   const proactive = await post('/api/members/strikes/metastrike', newcomerCookie, { member_id: newcomer.id });
