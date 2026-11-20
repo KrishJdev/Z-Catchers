@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-18T16:42:00+05:30  
+> **Last Updated:** 2026-11-20T18:30:15+05:30
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest Commit:** `f1e0946`  
+> **Latest implementation commit:** `cde52f4` on `krish`
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active Integration Pull Requests:** None  
+> **Active Integration Pull Requests:** [#95](https://github.com/KrishJdev/Z-Catchers/pull/95) is ready for review from `krish` into `dev`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
-> **Active Production Release Pull Request:** [#88 [OPEN]](https://github.com/KrishJdev/Z-Catchers/pull/88) (`dev` -> `main`)  
-> **Build Status:** Passing (`npx tsc --noEmit` clean, 0 errors | `npm run test:unit` clean, 42/42 suites passed, 100% in 57.98s | `npm run build` clean, 28/28 routes prerendered | GitHub Actions CI: Running on PR #88)
+> **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
+> **Build Status:** On `cde52f4`, `npx tsc --noEmit`, `npm run test:unit` (44 suites), and `npm run build` passed locally. See [PR #95 checks](https://github.com/KrishJdev/Z-Catchers/pull/95/checks) for hosted results.
 
 ---
 
@@ -30,12 +30,12 @@ In an international Discord server with members spanning US, Europe, India, and 
 3. **Anti-Dodge Governance (48-Hour Cooldown):** To prevent members from pushing back their bedtime right before midnight to avoid being nagged, any self-service schedule change is queued in a **48-hour pending state** before taking effect. Moderators can instantly override or approve pending changes via a passcode-protected drawer.
 4. **Sleep Shield Guarantee & Early Check-In ("I'm In Bed" Safe Button):**
    * Members heading to bed early can tap `"I'm in Bed"` to safely silence outgoing community nag notifications and personal bedtime alarms for that night.
-   * Awake members receive nag alerts to check on friends, but the system **never** sends notifications to anyone currently inside their personal 8-hour sleep window or who has safely checked in.
+   * Awake members receive nag alerts to check on friends, but unchecked-in members remain eligible after bedtime. Open check-ins and completed cycles within the eight-hour quiet window suppress automated pushes.
 5. **Sleep Consistency Streaks & Mascot Badges:** Consistent on-time bedtimes unlock celebratory Sleepy Fox milestone badges (Cozy Kit 🥉, Dream Fox 🥈, Night Guardian 🥇, Grand Slumber Fox 👑).
 6. **Buddy Watchlist System:** Members can star their closest friends (`⭐`) to filter the den down to their core accountability circle.
 7. **Automated Discord Channel Webhooks & Morning Slumber Digests:** Automated rich embeds dispatch directly into the community Discord channel at bedtime with sleep streaks, local times, and direct journal links, plus morning recap digests celebrating streak champions.
 8. **"Nagged!" Community Assist Counter:** Live count of how many friends tapped into Discord to nag each sleeper tonight (`"👥 3 friends checked in tonight 🦊"`).
-9. **Monthly Strikes & Metastrikes Accountability System:** Max 3 strikes and 3 excused passes per calendar month, 5-minute grace period after bedtime, 2-vote community verification, and automatic lazy monthly rollover.
+9. **Monthly Strikes & Metastrikes Accountability System:** Max 3 strikes and 3 excused passes per calendar month, 5-minute grace period, automatic missed-bedtime evaluation at +10 minutes, replacement before the next bedtime, and local monthly rollover.
 
 ---
 
@@ -51,7 +51,7 @@ In an international Discord server with members spanning US, Europe, India, and 
 | **Database** | Supabase (PostgreSQL) | Managed tables: `members`, `push_subscriptions`, `notification_logs`, `nightly_strike_logs` |
 | **Push Notifications** | Web Push API (`web-push` npm) | VAPID key pairs, multi-device support per member, service worker deep linking |
 | **Discord Webhooks** | Discord Incoming Webhooks API | Rich embeds with Warm Dark color tokens, Sleep Shield notices, journal thread deep links |
-| **Deployment & Cron** | Vercel Cron (`vercel.json`) | 1-minute automated trigger targeting `/api/cron/dispatch-notifications` |
+| **Deployment & Cron** | Supabase Cron setup script, Vercel daily cron, GitHub Actions fallback | The one-minute Supabase job requires operator installation. The last inspected Actions run skipped dispatch. |
 | **Issue Tracking** | Jira Software Cloud & GitHub | Project key `ZC`, two-way syncing and transition scripts |
 
 ---
@@ -69,6 +69,103 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 126 · Consolidated PR #95 review
+
+- Reviewed all 17 open inline conversations and the findings in the review summaries. Confirmed the older promotion, lease fencing, error isolation, and month rollover fixes. Updated the CodeRabbit rule to reflect the documented Sleep Shield behavior for overdue members.
+- Made cron stage completion and audit insertion atomic. Lease renewal now merges receipts while updating the stored lease. Wind-down and strike device pushes recheck current Sleep Shield evidence, and resumed strike webhooks use fresh counts.
+- Required an active authenticated sender for manual push reminders. Wake-up nags use durable sleep history for cycle selection, and failed delivery reports the cooldown on the current claim when another request has replaced it.
+- Kept members visible on both rosters when strike counts are unavailable. Pagination now follows short pages to the end. Checked the roster at 390px and 1440px with both available and unavailable counts.
+- Updated `.coderabbit.yaml`, `BACKEND_TZ_PWA_SPEC.md`, `PROJECT_SPEC.md`, `README.md`, `HANDOFF.md`, `src/lib/cronDispatcher.ts`, `src/lib/db.ts`, `src/app/api/members/nag-notif/route.ts`, `src/app/api/members/route.ts`, `src/app/api/mod/route.ts`, `src/components/MemberCard.tsx`, `src/components/ModDrawer.tsx`, `src/components/SleepCalendarModal.tsx`, and `supabase/schema.sql`. Added `supabase/migrations/20261120_cron_stage_completion.sql`. Expanded `scripts/test-dispatch-recovery.mjs`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-nightly-strike-transaction.mjs`, and `scripts/test-wake-up-nag.mjs`.
+
+| Milestone | Status |
+|---|---|
+| Consolidated inline and review-summary fixes | DONE |
+| PR #95 checks and merge into dev | IN PROGRESS |
+| Production migrations and physical-device test | TODO |
+
+### Phase 125 · Dispatcher lease and roster recovery review
+
+- Verified the seven follow-up findings on PR #95. The dispatcher now checks each captured lease before delivery and uses that lease for receipt writes and stage completion. Failed receipt persistence leaves the stage pending and other stages continue.
+- Rechecks the target’s current sleep evidence before outstanding bedtime pushes and community broadcasts. A new check-in closes the stage as suppressed and retains existing receipts. An evidence read failure leaves the stage pending.
+- Roster queries use a primary-key cursor, and public and moderator rosters report and omit the individual member if strike counts cannot be resolved. Strike-alert resumption reports the same failure and continues with the other members.
+- Manual nag cleanup retries the guarded claim deletion and returns a cooldown if release is uncertain. Wake-up nags check durable wake evidence for the selected cycle.
+- Updated `src/lib/cronDispatcher.ts`, `src/lib/db.ts`, `src/app/api/members/route.ts`, `src/app/api/mod/route.ts`, and `src/app/api/members/nag-notif/route.ts`. Added regressions in `scripts/test-dispatch-recovery.mjs` and `scripts/test-push-and-cron.mjs`, and updated `BACKEND_TZ_PWA_SPEC.md` and `HANDOFF.md`.
+
+| Milestone | Status |
+|---|---|
+| Follow-up lease, pagination, roster isolation, and manual nag fixes | DONE |
+| PR #95 review and merge into dev | IN PROGRESS |
+| Production rollout and physical-device test | TODO |
+
+### Phase 124 · Dispatcher and migration review fixes
+
+- Rechecked the review findings on PR #95. Kept community nags available to overdue members who have not checked in, as required by the Sleep Shield spec. A fresh check-in, a completed cycle within quiet hours, or the 15-minute pre-bedtime period still blocks community pushes.
+- The dispatcher now isolates failed schedule promotions, reloads the stored schedule on a conditional miss, calculates TTL against fixed delivery deadlines, and rechecks recipients before each community push. Delivery receipts retry under the owning lease, and pending strike alerts resume from persisted receipts without adding another strike.
+- Monthly rollover returns zero only after a confirmed reset, reloads authoritative counts on a competing write, and surfaces database errors. The strike transaction rejects older months, and the Metastrike endpoint returns a retryable conflict for that case.
+- Added a versioned conversion for legacy text sleep-history keys. Conversion stops for invalid or orphan IDs and retains those rows for reconciliation. Production rollout uses the targeted migrations listed below.
+- Updated verification in `scripts/test-dispatch-recovery.mjs`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-nightly-strike-transaction.mjs`, and `.github/workflows/dispatcher-smoke.yml`. Code changes covered `src/lib/cronDispatcher.ts`, `src/lib/db.ts`, `src/lib/pushServer.ts`, `src/lib/strikes.ts`, and the manual nag and Metastrike routes. Database and docs changes covered `supabase/schema.sql`, the new `20261118_sleep_logs_member_uuid.sql`, `20261119_dispatch_accountability.sql`, `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `README.md`, and `HANDOFF.md`.
+
+| Milestone | Status |
+|---|---|
+| Dispatcher delivery, rollover, migration, and workflow review fixes | DONE |
+| PR #95 review and merge into dev | IN PROGRESS |
+| Production rollout and physical-device test | TODO |
+
+### Phase 123 · Isolated dispatcher verification for PR #95
+
+- The Supabase API could read the production project but returned HTTP 403 when creating a staging project. The owner chose isolated GitHub Actions verification. The new check uses a disposable Supabase stack, generated credentials, synthetic members and a local test push receiver.
+- Added `.github/workflows/dispatcher-smoke.yml` and `scripts/test-dispatcher-ci.mjs` to verify the current schema and migration, authenticated requests sent by the one-minute cron job, encrypted push delivery, Sleep Shield, duplicate suppression, concurrent manual nag cooldown and Metastrike conversion.
+- Two scheduled callbacks returned HTTP 200. The second callback sent zero duplicate pushes. The protected Vercel preview also built successfully. PR #95 was moved out of draft after the checks passed.
+- Fixed `scripts/test-wake-up-durability-and-times.mjs` to freeze the Luxon instance used by the API route. The prior test relied on the real date and started failing once the fixed sleep cycle fell outside the seven-day edit window.
+- Changed files were `.github/workflows/dispatcher-smoke.yml`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-wake-up-durability-and-times.mjs`, and `HANDOFF.md`.
+
+| Milestone | Status |
+|---|---|
+| Deterministic wake-up regression test and 44-suite unit run | DONE |
+| Isolated Supabase Cron and Web Push integration | DONE |
+| PR #95 review and merge into dev | IN PROGRESS |
+| Hosted production scheduler and physical-device smoke test | TODO |
+
+### Phase 122 · Review for integration into dev
+
+- Compared `krish` with `origin/dev` and opened [draft PR #95](https://github.com/KrishJdev/Z-Catchers/pull/95).
+- Inspected Vercel and Supabase through their APIs. The protected Vercel preview built successfully. The Vercel project had no `CRON_SECRET` and the accessible Supabase project was production, with no test branch, `cron_locks`, `nightly_strike_logs`, dispatcher RPCs, `pg_cron`, or `pg_net`. The token returned HTTP 403 for organization access. Cloud inspection was read-only.
+- Updated `supabase/migrations/20261119_dispatch_accountability.sql` to create missing tables idempotently with RLS and service-role permissions. Updated `scripts/test-nightly-strike-transaction.mjs` to cover upgrades from the older schema, service-role writes, denied public reads, and the two scheduler header configurations.
+- Updated `supabase/schedule_dispatch.sql` and `README.md` for deployment access on a protected preview. Updated `.github/workflows/cron-dispatcher.yml` so scheduled fallback dispatch waits for the two GitHub secrets and manual runs surface missing configuration.
+- Verified the dashboard locally at 390 px and 1,440 px with fixture schedules in Kolkata, Tokyo, London, and New York. Both showed the Fox mascot without horizontal overflow. The roster displayed one column on mobile and three on desktop.
+- Files changed during the review were `.github/workflows/cron-dispatcher.yml`, `README.md`, `scripts/test-nightly-strike-transaction.mjs`, `supabase/migrations/20261119_dispatch_accountability.sql`, `supabase/schedule_dispatch.sql`, and `HANDOFF.md`.
+
+| Milestone | Status |
+|---|---|
+| Legacy Supabase upgrade and automated verification | DONE |
+| Integration PR and Vercel preview build | DONE |
+| Isolated Supabase staging setup and authenticated scheduler smoke test | TODO |
+| Subscribed-device reminder, strike, and Sleep Shield verification | TODO |
+
+### Production project references
+
+- Production site [z-catchers.vercel.app](https://z-catchers.vercel.app/) · Vercel project ID `prj_VRuKjjYf82CbGSVmx2pycP86mgtl`.
+- Supabase project ref `shmcmieqytyegbeyemkn` · Organization ID `yoekbzhlsbvynmsxpiua`. [Project dashboard](https://supabase.com/dashboard/project/shmcmieqytyegbeyemkn)
+- On this Windows account, the encrypted API credentials are at `%LOCALAPPDATA%\ZCatchersollout-credentials.xml`. Use `Import-Clixml` to load `VercelToken` and `SupabaseToken` without printing their values. Both tokens require live permission checks before rollout.
+- This update modified only `HANDOFF.md` in Git. Local credential storage was verified. Production rollout remains TODO, and the previously recorded implementation checks still apply.
+
+### Rollout clarification
+
+- Confirmed that the implementation and its previous handoff remain local to `krish` at `9160512` and `f0aadaa`. Reviewed the migration, scheduler, and deployment credentials. Live activation and device verification are still TODO.
+- The existing production projects can host the rollout if the owner approves. Use the normal branch release flow, verify the migration and authenticated dry run, then enable the live job. Vercel REST access and a project-scoped Supabase Management API token can automate these steps. Production verification remains TODO.
+- GitHub access can push `krish` and open the test PR once authorized. Before automating the rest, confirm the test Vercel project and Supabase project ref and obtain authenticated access to their settings and SQL Editor. The test device owner verifies alert delivery.
+- Updated `HANDOFF.md` with test rollout checks. The existing TypeScript and 44-suite unit verification still applies to the implementation commit.
+
+### Phase 121 · Strike and reminder reliability review
+
+- The latest inspected fallback run exited successfully without calling the dispatcher because the repository lacked the `APP_URL` secret. Neither `APP_URL` nor `CRON_SECRET` appeared in the repository Actions secret list. The twelve inspected runs on November 15–19 were hours apart. Vercel's checked-in trigger runs daily at 00:00 UTC. [Skipped Actions run](https://github.com/KrishJdev/Z-Catchers/actions/runs/44459359981)
+- Added an installable one-minute Supabase schedule and made configuration, authentication and dispatch errors visible to callers. Temporary push failures retain successful device receipts for retry within the notification window.
+- Strikes, passes, conversions and moderator removals now change the nightly record and monthly counters together in PostgreSQL. Catch-up checks use dated sleep and wake evidence and the member's exact creation time. A failed strike write leaves the cycle eligible for retry.
+- Confirmed with the owner that an unchecked-in member may receive reminders and nags after bedtime. An open check-in silences alerts. A completed sleep cycle remains protected through its eight-hour quiet window. Community recipients also have the existing 15-minute pre-bedtime quiet period. Manual nags claim their cooldown atomically and report complete delivery failures.
+- Closed direct public reads of active member rows containing PIN hashes and direct public subscription inserts. Roster reads and subscription binding go through the application APIs. Reapplying the installation schema no longer adds another copy of the demo profiles.
+- Created `scripts/test-dispatch-recovery.mjs`, `scripts/test-nightly-strike-transaction.mjs`, `supabase/migrations/20261119_dispatch_accountability.sql`, `supabase/schedule_dispatch.sql`.
+- Modified `.github/workflows/cron-dispatcher.yml`, `AGENTS.md`, `AGENT_RULES.md`, `BACKEND_TZ_PWA_SPEC.md`, `PROJECT_SPEC.md`, `README.md`, `package-lock.json`, `package.json`, `scripts/run-tests.mjs`, `scripts/test-cron-dispatcher.mjs`, `scripts/test-wake-up-nag.mjs`, `src/app/api/cron/dispatch-notifications/route.ts`, `src/app/api/members/nag-notif/route.ts`, `src/components/PushModal.tsx`, `src/components/UnifiedOnboardingCard.tsx`, `src/lib/cronDispatcher.ts`, `src/lib/db.ts`, `src/lib/pushServer.ts`, `src/lib/strikes.ts`, `supabase/schema.sql`, `HANDOFF.md`.
 
 ### Phase 120: Missed-Bedtime Strike Flow Hardening for Daytime Dispatch
 * **Active Working Branch:** `krish`
@@ -2775,6 +2872,12 @@ d:\Projects\Z Catchers\
 
 ## 6. Current Status of Jira Tasks & Milestones
 
+| Review milestone | Status | Verification |
+|---|---|---|
+| Strike and reminder fixes on `krish` | DONE | Dispatcher retry tests, transactional PostgreSQL tests and project checks |
+| Test deployment and device delivery | TODO | Apply the migration, install the scheduler and verify an actual subscribed device |
+| Production rollout | TODO | Requires testing through `dev` before release via `main` |
+
 ### Active Backlog Tasks: Decluttering & PWA Enhancements (Phases 1–4, P0–P3)
 
 | Issue Key | Priority | Summary | Target Files | Linked GitHub Issue | Status |
@@ -2799,7 +2902,7 @@ d:\Projects\Z Catchers\
 | **ZC-18** | **High (P1)** | Security: Enforce database-backed persistent rate limiting in `cancel-pending` and `push/subscribe` | `src/app/api/members/cancel-pending/route.ts`, `src/app/api/push/subscribe/route.ts` | [#32](https://github.com/KrishJdev/Z-Catchers/issues/32) / [#47](https://github.com/KrishJdev/Z-Catchers/issues/47) | **DONE** |
 | **ZC-19** | **High (P1)** | Security: Sanitize and validate `x-forwarded-host` in OAuth redirect base URL | `src/lib/auth.ts` | [#33](https://github.com/KrishJdev/Z-Catchers/issues/33) / [#48](https://github.com/KrishJdev/Z-Catchers/issues/48) | **DONE** |
 | **ZC-20** | **High (P1)** | Security: Prevent IDOR / unauthenticated claim in `update-schedule` when mod rate limit is exceeded | `src/app/api/members/update-schedule/route.ts` | [#34](https://github.com/KrishJdev/Z-Catchers/issues/34) | **DONE** |
-| **ZC-21** | **Medium (P2)** | PWA / Notifications: Prevent race condition by recording nag deduplication before sending push | `src/app/api/members/nag-notif/route.ts` | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | **TODO** |
+| **ZC-21** | **Medium (P2)** | PWA / Notifications: Prevent race condition by recording nag deduplication before sending push | `src/app/api/members/nag-notif/route.ts` | [#35](https://github.com/KrishJdev/Z-Catchers/issues/35) | **DONE** (Unit and isolated integration tests passed in PR #95.) |
 | **ZC-22** | **Medium (P2)** | PWA / Push: Add Authorization Bearer header to push test and unsubscribe requests | `src/components/PushModal.tsx`, `src/lib/pushClient.ts` | [#36](https://github.com/KrishJdev/Z-Catchers/issues/36) | **DONE** |
 | **ZC-23** | **Medium (P2)** | Backend: Align nag-assist date calculation with `getSleepCycleDate()` | `src/app/api/members/nag-assist/route.ts` | [#37](https://github.com/KrishJdev/Z-Catchers/issues/37) | **TODO** |
 | **ZC-24** | **Medium (P2)** | PWA / Service Worker: Resolve `notificationclick` message dropping during tab navigation | `public/sw.js` | [#38](https://github.com/KrishJdev/Z-Catchers/issues/38) | **TODO** |
@@ -2831,11 +2934,11 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-1. **Subsequent Production Release Deployment (`dev` -> `main`):**
-   * Note: Prior releases up to PR [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83) and PR [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81) are merged into `main`.
-   * PR [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84) and PR [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85) were successfully merged into `dev`.
-   * `dev` is fully tested and ahead of `main` by all features from Phase 110 (wake-up transition fixes), Phase 111 (early wake-up cycle completion precedence), and Phase 112 (cross-midnight cycle anchoring & weekly schedule matching).
-   * Open the next Production Release Pull Request from `dev` to `main` after the active integration PR merges to deploy these updates to production.
+1. **Review PR #95 and prepare the production rollout separately.**
+   - PR #95 uses the isolated `Supabase Cron and push smoke test` check for the `dev` integration. Review the PR and merge to `dev` when approved.
+   - For production, apply `supabase/migrations/20261113_add_weekly_schedule.sql` if the weekly columns are missing. If `sleep_logs.member_id` is text, run `supabase/migrations/20261118_sleep_logs_member_uuid.sql` first and reconcile any invalid or orphan IDs it reports. Then apply `supabase/migrations/20261119_dispatch_accountability.sql` and `supabase/migrations/20261120_cron_stage_completion.sql` in order before deploying the updated routes. Set the Vercel `CRON_SECRET` and matching Vault values from the README.
+   - Confirm the hosted dispatcher accepts an authenticated `GET /api/cron/dispatch-notifications?dry_run=true` before installing `supabase/schedule_dispatch.sql`. Compare recent `pg_net` responses with the cron job history and confirm the app receives consecutive HTTP 200 responses.
+   - Verify delivery to a subscribed physical device and Sleep Shield suppression with a controlled test bedtime during the production rollout.
 
 2. **Sprint 1 & Sprint 2 (Completed & Merged to `dev`, PR #79 to `main`):**
    * **ZC-28 / GH #62:** **COMPLETED** (PR [#72](https://github.com/KrishJdev/Z-Catchers/pull/72) merged into `dev`).
@@ -2867,8 +2970,12 @@ d:\Projects\Z Catchers\
    * **ZC-21 / GH #35:** [DONE in Phase 90 on branch feat/zc-21] Atomic nag deduplication.
    * Note: Production release PR [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28) was successfully merged into `main`.
 
-5. **Database Migration Execution in Supabase SQL Editor:**
-   * Run the complete, updated idempotent migration from `supabase/schema.sql` on the remote Supabase database before deployment, ensuring it includes the `weekly_schedule` and `pending_weekly_schedule` column changes and backfill:
+5. **Historical database migration excerpt**
+   * Use the versioned migrations listed in Step 1 for production. The bootstrap schema inserts demo profiles, and the archived SQL below can delete invalid legacy sleep-history rows.
+
+   <details>
+   <summary>Archived SQL from the previous rollout</summary>
+
      ```sql
      -- Members table columns
      ALTER TABLE members ADD COLUMN IF NOT EXISTS discord_id TEXT;
@@ -3005,6 +3112,7 @@ d:\Projects\Z Catchers\
      CREATE POLICY "Service role full access on sleep_logs" ON public.sleep_logs FOR ALL USING (auth.role() = 'service_role');
      ALTER PUBLICATION supabase_realtime ADD TABLE public.sleep_logs;
      ```
+   </details>
 
 6. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.

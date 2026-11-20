@@ -356,7 +356,8 @@ export function MemberCard({
   // Real-time bedtime nag notification eligibility:
   // 1. Viewer cannot nag themselves (!isViewer)
   // 2. Target member is within 30m before bedtime (-30 <= diffMinutes < 0) OR past bedtime (0 <= diffMinutes <= 480)
-  const isEligibleForNagNotif = !isViewer && state.diffMinutes >= -30 && state.diffMinutes <= 480;
+  const canSendPushNag = Boolean(currentMemberId) && !isViewer;
+  const isEligibleForNagNotif = canSendPushNag && state.diffMinutes >= -30 && state.diffMinutes <= 480;
 
   // Secondary contextual status/action exists alongside the Nag Notif button
   const hasSecondaryNagAction = Boolean(
@@ -376,7 +377,7 @@ export function MemberCard({
 
   // Check if there is an active left action button in the sleeping state (Wake up nag, or Shield On)
   const hasSleepingActionButton = Boolean(
-    state.isPastWakeTime ||
+    (state.isPastWakeTime && (isViewer || canSendPushNag)) ||
     (isTargetShieldOn && !isViewer)
   );
 
@@ -1042,7 +1043,7 @@ export function MemberCard({
 
               {/* Notice Zone */}
               {/* Out of Strikes Alert */}
-              {strikesUsed >= 3 && (
+              {!member.strike_counts_unavailable && strikesUsed >= 3 && (
                 <div className="flex items-center justify-between rounded-xl border border-fox-rust/50 bg-fox-rust/15 px-3 py-2 text-[11px] font-semibold text-fox-rust">
                   <div className="flex items-center gap-1.5">
                     <FoxMascot state="alert" size={16} />
@@ -1148,52 +1149,56 @@ export function MemberCard({
                 <span className="text-xs font-semibold text-cream-secondary uppercase tracking-wider">
                   Accountability & Passes
                 </span>
-                <div className="flex items-center justify-between px-3 py-2 rounded-xl text-xs whitespace-nowrap border border-night-border bg-night-elevated">
-                  {/* Strikes Indicator */}
-                  <div className="flex items-center gap-1.5" title={`${strikesUsed} of 3 monthly strikes used`}>
-                    <span className="font-semibold text-fox-rust flex items-center gap-1">
-                      <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
-                      <span>Strikes:</span>
-                      <span className="tabular-nums font-bold">{strikesUsed}/3</span>
-                    </span>
-                    <div className="flex items-center gap-1 ml-0.5">
-                      {[1, 2, 3].map((pip) => (
-                        <span
-                          key={`sheet-strike-${member.id}-${pip}`}
-                          className={`h-1.5 w-1.5 rounded-full transition-colors ${
-                            pip <= strikesUsed
-                              ? 'bg-fox-rust ring-1 ring-fox-rust/40 shadow-sm shadow-fox-rust/50'
-                              : 'bg-night-border border border-night-border/80'
-                          }`}
-                        />
-                      ))}
+                {member.strike_counts_unavailable ? (
+                  <p className="text-xs text-cream-secondary">Strike and pass counts unavailable</p>
+                ) : (
+                  <div className="flex items-center justify-between px-3 py-2 rounded-xl text-xs whitespace-nowrap border border-night-border bg-night-elevated">
+                    {/* Strikes Indicator */}
+                    <div className="flex items-center gap-1.5" title={`${strikesUsed} of 3 monthly strikes used`}>
+                      <span className="font-semibold text-fox-rust flex items-center gap-1">
+                        <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
+                        <span>Strikes:</span>
+                        <span className="tabular-nums font-bold">{strikesUsed}/3</span>
+                      </span>
+                      <div className="flex items-center gap-1 ml-0.5">
+                        {[1, 2, 3].map((pip) => (
+                          <span
+                            key={`sheet-strike-${member.id}-${pip}`}
+                            className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                              pip <= strikesUsed
+                                ? 'bg-fox-rust ring-1 ring-fox-rust/40 shadow-sm shadow-fox-rust/50'
+                                : 'bg-night-border border border-night-border/80'
+                            }`}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Metastrikes Indicator */}
-                  <div
-                    className="flex items-center gap-1.5"
-                    title={`${metastrikesUsed} of 3 monthly excused metastrikes used`}
-                  >
-                    <span className="font-semibold text-fox-amber flex items-center gap-1">
-                      <Shield className="h-3 w-3 fill-fox-amber/20 text-fox-amber" />
-                      <span>Meta:</span>
-                      <span className="tabular-nums font-bold">{metastrikesUsed}/3</span>
-                    </span>
-                    <div className="flex items-center gap-1 ml-0.5">
-                      {[1, 2, 3].map((pip) => (
-                        <span
-                          key={`sheet-meta-${member.id}-${pip}`}
-                          className={`h-1.5 w-1.5 rounded-full transition-colors ${
-                            pip <= metastrikesUsed
-                              ? 'bg-fox-amber ring-1 ring-fox-amber/40 shadow-sm shadow-fox-amber/50'
-                              : 'bg-night-border border border-night-border/80'
-                          }`}
-                        />
-                      ))}
+                    {/* Metastrikes Indicator */}
+                    <div
+                      className="flex items-center gap-1.5"
+                      title={`${metastrikesUsed} of 3 monthly excused metastrikes used`}
+                    >
+                      <span className="font-semibold text-fox-amber flex items-center gap-1">
+                        <Shield className="h-3 w-3 fill-fox-amber/20 text-fox-amber" />
+                        <span>Meta:</span>
+                        <span className="tabular-nums font-bold">{metastrikesUsed}/3</span>
+                      </span>
+                      <div className="flex items-center gap-1 ml-0.5">
+                        {[1, 2, 3].map((pip) => (
+                          <span
+                            key={`sheet-meta-${member.id}-${pip}`}
+                            className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                              pip <= metastrikesUsed
+                                ? 'bg-fox-amber ring-1 ring-fox-amber/40 shadow-sm shadow-fox-amber/50'
+                                : 'bg-night-border border border-night-border/80'
+                            }`}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Modal Triggers: Sleep Calendar & Metastrike */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
@@ -1220,7 +1225,7 @@ export function MemberCard({
                   </button>
 
                   {/* Trigger for MetastrikeModal.tsx */}
-                  {onOpenMetastrike && isViewer && metastrikesUsed < 3 && (isStrikeConvertible || !isMetastrikeActive) && (
+                  {onOpenMetastrike && isViewer && !member.strike_counts_unavailable && metastrikesUsed < 3 && (isStrikeConvertible || !isMetastrikeActive) && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1565,7 +1570,7 @@ export function MemberCard({
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-2 w-full">
-                        {state.isPastWakeTime ? (
+                        {state.isPastWakeTime && canSendPushNag ? (
                           /* 1. Wake-up reminder if past wake time */
                           <button
                             type="button"

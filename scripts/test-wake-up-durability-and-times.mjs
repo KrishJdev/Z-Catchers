@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { DateTime, Settings } from 'luxon';
+import { DateTime } from 'luxon';
 
 // Ensure Supabase configuration is present prior to importing db.ts
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder')) {
@@ -29,6 +29,7 @@ const {
   resolveActiveSleepCycle,
   computeMemberState,
   getSleepCycleDate,
+  Settings,
 } = await import('../src/lib/sleepEngine.ts');
 
 const { POST: handleWakeUpPost } = await import('../src/app/api/members/wake-up/route.ts');
@@ -45,7 +46,7 @@ function testAssert(condition, message) {
   }
 }
 
-// Freeze Luxon clock to a fixed reference time (10:50:44 AM IST on 2026-11-13)
+// Freeze the route's Luxon instance at 10:50:44 AM IST on 2026-11-13.
 // so all route tests, date guards, and cycle resolutions remain 100% deterministic on every run.
 const originalNow = Settings.now;
 const FIXED_CLOCK_ISO = '2026-11-13T10:50:44.000+05:30';
@@ -324,7 +325,7 @@ async function run() {
     const validManualRes = await handleWakeUpPost(validManualReq);
     const validManualJson = await validManualRes.json();
 
-    testAssert(validManualRes.status === 200, 'Valid manual wake-up time returns HTTP 200 independently of execution date');
+    assert.equal(validManualRes.status, 200, JSON.stringify(validManualJson));
     testAssert(validManualJson.sleep_log?.wake_source === 'manual', 'Recorded wake_source is "manual"');
     testAssert(validManualJson.sleep_log?.woke_up_local_time === '08:30', 'woke_up_local_time matches 08:30');
     testAssert(typeof validManualJson.duration_minutes === 'number', 'duration_minutes is computed as a number');

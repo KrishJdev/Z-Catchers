@@ -49,9 +49,8 @@ export async function GET(request: Request) {
     // Query recent check-ins for streak calculation and today's status (paginated to avoid PostgREST row cap)
     const sixtyDaysAgo = nowUtc.minus({ days: 60 }).toISODate() || '2026-01-01';
     const twoDaysAgo = nowUtc.minus({ days: 2 }).toISODate() || '2026-01-01';
-    const { data: inBedLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string; dispatched_at?: string }>((q) =>
-      q.select('member_id, local_date, dispatched_at')
-        .eq('notification_type', 'IN_BED_EARLY')
+    const { data: inBedLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string; dispatched_at?: string }>(
+      'member_id, local_date, dispatched_at', q => q.eq('notification_type', 'IN_BED_EARLY')
         .gte('local_date', sixtyDaysAgo)
     );
 
@@ -96,18 +95,16 @@ export async function GET(request: Request) {
     }
 
     // Query recent woke-up logs to support manual awake / undo sleep transition
-    const { data: wokeUpLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string }>((q) =>
-      q.select('member_id, local_date')
-        .eq('notification_type', 'WOKE_UP')
+    const { data: wokeUpLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string }>(
+      'member_id, local_date', q => q.eq('notification_type', 'WOKE_UP')
         .gte('local_date', twoDaysAgo)
     );
 
     const wokeUpSet = new Set((wokeUpLogs || []).map((l) => `${l.member_id}_${l.local_date}`));
 
     // Query recent nag assists for today's active count (paginated to avoid PostgREST row cap)
-    const { data: nagLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string }>((q) =>
-      q.select('member_id, local_date')
-        .like('notification_type', 'NAG_ASSIST:%')
+    const { data: nagLogs } = await fetchAllNotificationLogs<{ member_id: string; local_date: string }>(
+      'member_id, local_date', q => q.like('notification_type', 'NAG_ASSIST:%')
         .gte('local_date', twoDaysAgo)
     );
 
@@ -245,7 +242,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const strikeInfos = await Promise.all(
+    const strikeInfos = await Promise.allSettled(
       memberItems.map((item) => {
         const monthly = monthlyStrikeCountsMap.get(item.hydratedMember.id);
         return resolveMemberStrikeCounts(item.hydratedMember, nowUtc, {
@@ -256,7 +253,11 @@ export async function GET(request: Request) {
     );
 
     const processedMembers: Member[] = memberItems.map((item, index) => {
-      const strikeInfo = strikeInfos[index];
+      const result = strikeInfos[index];
+      if (result.status === 'rejected') {
+        console.error(`[members] Could not resolve strike counts for ${item.hydratedMember.id}:`, result.reason);
+      }
+      const strikeInfo = result.status === 'fulfilled' ? result.value : undefined;
       const logKey = getStrikeLogKey(item.hydratedMember.id, item.localDateStr);
       const tonightLog = strikeLogsMap.get(logKey) || null;
       const is_metastrike_active = tonightLog?.record_type === 'metastrike';
@@ -270,11 +271,12 @@ export async function GET(request: Request) {
         is_woke_up: item.is_woke_up,
         streak_days: item.streak_days,
         nag_assists_count: item.nag_assists_count,
-        strikes_used: strikeInfo.strikes_used,
-        strikes_count: strikeInfo.strikes_used,
-        metastrikes_used: strikeInfo.metastrikes_used,
-        metastrikes_count: strikeInfo.metastrikes_used,
-        strike_cycle_month: strikeInfo.strike_cycle_month,
+        strike_counts_unavailable: !strikeInfo,
+        strikes_used: strikeInfo?.strikes_used,
+        strikes_count: strikeInfo?.strikes_used,
+        metastrikes_used: strikeInfo?.metastrikes_used,
+        metastrikes_count: strikeInfo?.metastrikes_used,
+        strike_cycle_month: strikeInfo?.strike_cycle_month,
         tonight_strike_log: tonightLog,
         convertible_strike_log: convertibleLog,
         is_metastrike_active,

@@ -11,7 +11,7 @@
 1. **Active Branch:** Always work on and commit to the **`krish`** branch. Never commit directly to `dev` or `main`.
 2. **Timezone Math:** Always use `luxon`. Never use native JavaScript `new Date().getTimezoneOffset()` or manual offset math.
 3. **48-Hour Cooldown:** Regular member schedule changes **must** enter a 48-hour pending state. Never bypass this unless authenticated with `MOD_SECRET_PASSCODE`.
-4. **Sleep Shield:** Never send push notifications to any member currently inside their 8-hour sleep window.
+4. **Sleep Shield:** Members who have not checked in may receive personal notifications and nags after bedtime. Suppress pushes for open check-ins and for members who have slept during the eight-hour sleep window. The 15-minute pre-bedtime community quiet period still applies.
 5. **Discord URL Sanitization:** Enforce the regex `^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$` for all journal links.
 6. **Warm Dark UI:** Strictly adhere to the Warm Dark low-blue-light design system (`#120F0D` background, `#F5EBE1` text) and include the Sleepy Fox mascot.
 7. **Mandatory Unit Tests:** Every feature that is implemented **must** have corresponding automated unit tests. Never consider a feature complete or merge-ready without automated test coverage (`npm run test:unit` must pass cleanly).

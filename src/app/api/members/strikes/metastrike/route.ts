@@ -180,7 +180,7 @@ export async function POST(request: Request) {
       );
 
       if (!result.success) {
-        return NextResponse.json({ error: result.error }, { status: 400 });
+        return NextResponse.json({ error: result.error }, { status: result.reason === 'stale_strike_cycle_month' ? 409 : 400 });
       }
 
       return NextResponse.json({
@@ -205,7 +205,7 @@ export async function POST(request: Request) {
     );
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
+      return NextResponse.json({ error: result.error }, { status: result.reason === 'stale_strike_cycle_month' ? 409 : 400 });
     }
 
     return NextResponse.json({

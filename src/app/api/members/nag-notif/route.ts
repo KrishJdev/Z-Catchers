@@ -3,8 +3,7 @@ import { supabaseAdmin, Member } from '@/lib/db';
 import { getRequestSessionMemberId } from '@/lib/auth';
 import { DateTime } from 'luxon';
 import { computeMemberState, getNightScheduleDateTime, getSleepCycleDate, toValidLuxonZone } from '@/lib/sleepEngine';
-import { sendPushNotification } from '@/lib/pushServer';
-import crypto from 'crypto';
+import { pushTtlBefore, sendPushNotification } from '@/lib/pushServer';
 
 /**
  * Request body for manual nag notifications.
@@ -12,6 +11,24 @@ import crypto from 'crypto';
 interface NagNotifRequestBody {
   target_member_id: string;
   type?: 'bedtime' | 'wake_up';
+}
+
+const NAG_COOLDOWN_MINUTES = 15;
+
+async function readSleepEvidence(memberId: string, cycle: string) {
+  const [logs, sleep] = await Promise.all([
+    supabaseAdmin.from('notification_logs').select('notification_type')
+      .eq('member_id', memberId).eq('local_date', cycle)
+      .in('notification_type', ['IN_BED_EARLY', 'WOKE_UP']),
+    supabaseAdmin.from('sleep_logs').select('in_bed_at,woke_up_at')
+      .eq('member_id', memberId).eq('cycle_date', cycle).maybeSingle(),
+  ]);
+  if (logs.error || sleep.error) return null;
+  return {
+    checkedIn: Boolean(sleep.data?.in_bed_at || logs.data.some(row => row.notification_type === 'IN_BED_EARLY')),
+    inBedAt: sleep.data?.in_bed_at,
+    wokeUp: Boolean(sleep.data?.woke_up_at || logs.data.some(row => row.notification_type === 'WOKE_UP')),
+  };
 }
 
 /**
@@ -43,6 +60,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const sessionMemberId = getRequestSessionMemberId(request);
+    if (!sessionMemberId) {
+      return NextResponse.json({ error: 'Sign in to send a push reminder.' }, { status: 401 });
+    }
+
     // 1. Fetch target member from database
     const { data: rawTarget, error: targetErr } = await supabaseAdmin
       .from('members')
@@ -60,87 +82,63 @@ export async function POST(request: Request) {
 
     const targetMember = rawTarget as Member;
 
-    // 2. Identify sender (session or anonymous hash) & prevent self-nagging
-    const sessionMemberId = getRequestSessionMemberId(request);
-    if (sessionMemberId && sessionMemberId === targetMember.id) {
+    // 2. Identify sender and prevent self-nagging
+    if (sessionMemberId === targetMember.id) {
       return NextResponse.json(
         { error: 'You cannot send a nag notification to yourself.' },
         { status: 400 }
       );
     }
 
-    let senderName = 'A friend in Z Catchers';
-    let helperKey: string;
-
-    if (sessionMemberId) {
-      const { data: senderMember } = await supabaseAdmin
-        .from('members')
-        .select('discord_username')
-        .eq('id', sessionMemberId)
-        .single();
-
-      if (senderMember?.discord_username) {
-        senderName = senderMember.discord_username;
-      }
-      helperKey = `user_${sessionMemberId}`;
-    } else {
-      // Enforce a stable target-wide cooldown for unauthenticated senders, independent of client-controlled headers
-      helperKey = 'anon_target';
+    const { data: senderMember, error: senderError } = await supabaseAdmin.from('members')
+      .select('discord_username').eq('id', sessionMemberId).eq('is_active', true).maybeSingle();
+    if (senderError) {
+      return NextResponse.json({ error: 'Could not verify the sender.' }, { status: 503 });
     }
+    if (!senderMember) return NextResponse.json({ error: 'An active member account is required.' }, { status: 403 });
+    const senderName = senderMember.discord_username || 'A friend in Z Catchers';
+    const helperKey = `user_${sessionMemberId}`;
 
     // 3. Compute target member's current sleep cycle & status using Luxon
     const nowUtc = DateTime.utc();
-    let cycleDate = getSleepCycleDate(targetMember, nowUtc);
+    const activeSleepCycleDate = getSleepCycleDate(targetMember, nowUtc);
+    let cycleDate = activeSleepCycleDate;
+    let evidence = await readSleepEvidence(targetMember.id, cycleDate);
 
-    // If this is a wake-up nag, resolve whether yesterday's check-in cycle is the applicable one
+    // Durable history can keep yesterday's cycle active after the scheduled wake time.
     if (isWakeUpNag) {
       const sleeperNow = nowUtc.setZone(toValidLuxonZone(targetMember.timezone));
       const yesterdayDate = sleeperNow.minus({ days: 1 }).toISODate()!;
-      const { data: yCheckin } = await supabaseAdmin
-        .from('notification_logs')
-        .select('id')
-        .eq('member_id', targetMember.id)
-        .eq('notification_type', 'IN_BED_EARLY')
-        .eq('local_date', yesterdayDate)
-        .maybeSingle();
-
-      const { data: yWakeLog } = await supabaseAdmin
-        .from('notification_logs')
-        .select('id')
-        .eq('member_id', targetMember.id)
-        .eq('notification_type', 'WOKE_UP')
-        .eq('local_date', yesterdayDate)
-        .maybeSingle();
-
-      if (yCheckin && !yWakeLog) {
-        cycleDate = yesterdayDate;
+      if (evidence && cycleDate !== yesterdayDate && !evidence.checkedIn && !evidence.wokeUp) {
+        const previous = await readSleepEvidence(targetMember.id, yesterdayDate);
+        if (!previous) return NextResponse.json({ error: 'Could not verify the member’s sleep status.' }, { status: 503 });
+        const wokeUp = previous.wokeUp || targetMember.last_wake_cycle_date === yesterdayDate;
+        const memberWithHistory = {
+          ...targetMember,
+          in_bed_at: previous.inBedAt ?? targetMember.in_bed_at,
+          last_wake_cycle_date: wokeUp ? yesterdayDate : targetMember.last_wake_cycle_date,
+        };
+        if ((previous.checkedIn || wokeUp) &&
+            getSleepCycleDate(memberWithHistory, nowUtc, previous.checkedIn && !wokeUp) === yesterdayDate) {
+          cycleDate = yesterdayDate;
+          evidence = previous;
+        }
       }
     }
 
-    // Query tonight's check-in (Safe Button) status
-    const { data: inBedLog } = await supabaseAdmin
-      .from('notification_logs')
-      .select('id')
-      .eq('member_id', targetMember.id)
-      .eq('notification_type', 'IN_BED_EARLY')
-      .eq('local_date', cycleDate)
-      .maybeSingle();
-
-    const { data: wokeUpLog } = await supabaseAdmin
-      .from('notification_logs')
-      .select('id')
-      .eq('member_id', targetMember.id)
-      .eq('notification_type', 'WOKE_UP')
-      .eq('local_date', cycleDate)
-      .maybeSingle();
-
-    const isInBed = Boolean(inBedLog) && !wokeUpLog && !Boolean(targetMember.last_wake_cycle_date === cycleDate);
+    if (!evidence) {
+      return NextResponse.json({ error: 'Could not verify the member’s sleep status.' }, { status: 503 });
+    }
+    const wokeUpThisCycle = evidence.wokeUp || targetMember.last_wake_cycle_date === cycleDate;
+    const isInBed = Boolean(evidence.checkedIn ||
+      (targetMember.last_notified_stage === 'IN_BED_EARLY' && targetMember.last_notified_cycle_date === cycleDate)) &&
+      !wokeUpThisCycle;
 
     // Compute active member state
     const targetState = computeMemberState(targetMember, targetMember.timezone, nowUtc, isInBed);
 
     // Query tonight's Metastrike pass status
-    const { data: metastrikeLog } = await supabaseAdmin
+    const { data: metastrikeLog, error: passError } = await supabaseAdmin
       .from('nightly_strike_logs')
       .select('id, record_type')
       .eq('target_member_id', targetMember.id)
@@ -148,21 +146,21 @@ export async function POST(request: Request) {
       .eq('record_type', 'metastrike')
       .maybeSingle();
 
+    if (passError) return NextResponse.json({ error: 'Could not verify the Metastrike pass.' }, { status: 503 });
     const isMetastrikeActive = Boolean(metastrikeLog);
 
     let nagLogType = '';
     let pushTitle = '';
     let pushBody = '';
     let pushTag = '';
+    let pushDeadline: DateTime | undefined;
 
     if (isWakeUpNag) {
       // WAKE UP NAG LOGIC:
       // A. Check if target member has already marked themselves awake
-      const activeSleepCycleDate = getSleepCycleDate(targetMember, nowUtc);
       const hasLoggedWakeUp = Boolean(
-        (targetMember.last_wake_cycle_date && targetMember.last_wake_cycle_date === cycleDate) ||
-        (targetMember.is_woke_up && cycleDate === activeSleepCycleDate) ||
-        targetState.hasLoggedWakeUp
+        wokeUpThisCycle ||
+        (targetState.hasLoggedWakeUp && cycleDate === getSleepCycleDate(targetMember, nowUtc, isInBed))
       );
 
       if (hasLoggedWakeUp) {
@@ -198,46 +196,13 @@ export async function POST(request: Request) {
 
       // D. 15-minute anti-spam cooldown per sender for wake-up nag
       nagLogType = `MANUAL_NAG:WAKE_UP:${helperKey}`;
-      const { data: existingNagLog } = await supabaseAdmin
-        .from('notification_logs')
-        .select('id, dispatched_at')
-        .eq('member_id', targetMember.id)
-        .eq('notification_type', nagLogType)
-        .eq('local_date', cycleDate)
-        .maybeSingle();
-
-      if (existingNagLog && existingNagLog.dispatched_at) {
-        const lastDispatched = DateTime.fromISO(existingNagLog.dispatched_at, { zone: 'utc' });
-        const elapsedSeconds = nowUtc.diff(lastDispatched, 'seconds').seconds;
-        const cooldownTotalSeconds = 15 * 60; // 15-minute cooldown
-        if (elapsedSeconds < cooldownTotalSeconds) {
-          const remainingSeconds = Math.max(1, Math.ceil(cooldownTotalSeconds - elapsedSeconds));
-          const remainingMinutes = Math.ceil(remainingSeconds / 60);
-          return NextResponse.json(
-            {
-              success: false,
-              shieldActive: false,
-              rateLimited: true,
-              cooldownSeconds: remainingSeconds,
-              cooldownMinutes: remainingMinutes,
-              message: `You can send another wake-up reminder to ${targetMember.discord_username} in ${remainingMinutes}m.`,
-            },
-            { status: 429 }
-          );
-        }
-      }
-
       pushTitle = '☀️ Rise and Shine!';
       pushBody = `${senderName} is nudging you to wake up! Time to start the day 🦊`;
       pushTag = `nag-wakeup-${targetMember.id}`;
     } else {
       // BEDTIME NAG LOGIC:
       // 4A. Target member has already completed their sleep cycle and woken up for tonight's cycle:
-      const hasCompletedTonightSleep = Boolean(
-        wokeUpLog ||
-        targetMember.last_wake_cycle_date === cycleDate
-      );
-      if (hasCompletedTonightSleep) {
+      if (wokeUpThisCycle) {
         return NextResponse.json(
           {
             success: false,
@@ -282,35 +247,9 @@ export async function POST(request: Request) {
       // 6. 15-minute anti-spam cooldown per sender per stage (WIND_DOWN vs OVERDUE)
       const stage = targetState.diffMinutes < 0 ? 'WIND_DOWN' : 'OVERDUE';
       nagLogType = `MANUAL_NAG:${stage}:${helperKey}`;
-
-      const { data: existingNagLog } = await supabaseAdmin
-        .from('notification_logs')
-        .select('id, dispatched_at')
-        .eq('member_id', targetMember.id)
-        .eq('notification_type', nagLogType)
-        .eq('local_date', cycleDate)
-        .maybeSingle();
-
-      if (existingNagLog && existingNagLog.dispatched_at) {
-        const lastDispatched = DateTime.fromISO(existingNagLog.dispatched_at, { zone: 'utc' });
-        const elapsedSeconds = nowUtc.diff(lastDispatched, 'seconds').seconds;
-        const cooldownTotalSeconds = 15 * 60; // 15-minute cooldown
-        if (elapsedSeconds < cooldownTotalSeconds) {
-          const remainingSeconds = Math.max(1, Math.ceil(cooldownTotalSeconds - elapsedSeconds));
-          const remainingMinutes = Math.ceil(remainingSeconds / 60);
-          return NextResponse.json(
-            {
-              success: false,
-              shieldActive: false,
-              rateLimited: true,
-              cooldownSeconds: remainingSeconds,
-              cooldownMinutes: remainingMinutes,
-              message: `You can send another reminder to ${targetMember.discord_username} in ${remainingMinutes}m.`,
-            },
-            { status: 429 }
-          );
-        }
-      }
+      const night = DateTime.fromISO(cycleDate, { zone: toValidLuxonZone(targetMember.timezone) });
+      const bedtime = getNightScheduleDateTime(targetMember, night).bedtimeDateTime;
+      pushDeadline = stage === 'WIND_DOWN' ? bedtime : bedtime.plus({ hours: 8 });
 
       pushTitle = stage === 'WIND_DOWN' ? '🌙 Winding Down Reminder' : "⏰ Time to Catch Some Z's!";
       pushBody =
@@ -321,15 +260,15 @@ export async function POST(request: Request) {
     }
 
     // 7. Atomically claim cooldown before dispatching push notification
-    const { error: claimErr } = await supabaseAdmin.from('notification_logs').upsert(
-      {
-        member_id: targetMember.id,
-        notification_type: nagLogType,
-        local_date: cycleDate,
-        dispatched_at: nowUtc.toISO(),
-      },
-      { onConflict: 'member_id,notification_type,local_date' }
-    );
+    const { data: cooldownSeconds, error: claimErr } = await supabaseAdmin.rpc('claim_manual_nag', {
+      p_member_id: targetMember.id, p_type: nagLogType, p_cycle: cycleDate, p_now: nowUtc.toISO(),
+    });
+    if (!claimErr && cooldownSeconds > 0) {
+      return NextResponse.json({
+        success: false, rateLimited: true, cooldownSeconds, cooldownMinutes: Math.ceil(cooldownSeconds / 60),
+        message: `You can send another reminder in ${Math.ceil(cooldownSeconds / 60)}m.`,
+      }, { status: 429 });
+    }
 
     if (claimErr) {
       console.error('[NagNotif] Failed to claim cooldown log:', claimErr.message);
@@ -338,18 +277,6 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
-
-    // 8. Record Nag Assist counter increment
-    const assistType = `NAG_ASSIST:${helperKey}`;
-    await supabaseAdmin.from('notification_logs').upsert(
-      {
-        member_id: targetMember.id,
-        notification_type: assistType,
-        local_date: cycleDate,
-        dispatched_at: nowUtc.toISO(),
-      },
-      { onConflict: 'member_id,notification_type,local_date' }
-    );
 
     // 9. Retrieve active push subscriptions for target member
     const { data: subscriptions, error: subsErr } = await supabaseAdmin
@@ -368,6 +295,8 @@ export async function POST(request: Request) {
 
     // 10. Dispatch Web Push notification to registered devices
     for (const sub of activeSubs) {
+      const ttl = pushDeadline ? pushTtlBefore(pushDeadline, DateTime.utc(), 120) : 120;
+      if (ttl < 1) break;
       const pushResult = await sendPushNotification(
         {
           endpoint: sub.endpoint,
@@ -381,7 +310,8 @@ export async function POST(request: Request) {
           body: pushBody,
           url: targetMember.journal_url || '/',
           tag: pushTag,
-        }
+        },
+        ttl
       );
 
       if (pushResult.success) {
@@ -398,6 +328,52 @@ export async function POST(request: Request) {
     if (deadEndpoints.length > 0) {
       await supabaseAdmin.from('push_subscriptions').delete().in('endpoint', deadEndpoints);
     }
+
+    if (subsErr || (activeSubs.length > 0 && delivered === 0)) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const { data: released, error } = await supabaseAdmin.from('notification_logs').delete()
+            .eq('member_id', targetMember.id).eq('notification_type', nagLogType)
+            .eq('local_date', cycleDate).eq('dispatched_at', nowUtc.toISO())
+            .select('dispatched_at').maybeSingle();
+          if (!error) {
+            if (released) {
+              return NextResponse.json({ success: false, error: 'Could not deliver the reminder. Please retry.' }, { status: 503 });
+            }
+            break;
+          }
+        } catch {
+          // Retry the same timestamp-guarded cleanup.
+        }
+      }
+      const { data: currentClaim, error: readError } = await supabaseAdmin.from('notification_logs')
+        .select('dispatched_at').eq('member_id', targetMember.id).eq('notification_type', nagLogType)
+        .eq('local_date', cycleDate).maybeSingle();
+      const claimedAt = currentClaim ? DateTime.fromISO(currentClaim.dispatched_at) : null;
+      const uncertain = Boolean(readError || (claimedAt && !claimedAt.isValid));
+      const cooldownSeconds = uncertain ? NAG_COOLDOWN_MINUTES * 60 : claimedAt?.isValid
+        ? Math.max(0, Math.ceil(claimedAt.plus({ minutes: NAG_COOLDOWN_MINUTES }).diff(DateTime.utc(), 'seconds').seconds))
+        : 0;
+      const cooldownMinutes = Math.ceil(cooldownSeconds / 60);
+      const message = uncertain ? 'Could not deliver the reminder or verify the cooldown.' : cooldownSeconds > 0
+        ? `Could not deliver the reminder. Your cooldown is active for ${cooldownMinutes}m.`
+        : 'Could not deliver the reminder. Please retry.';
+      return NextResponse.json({
+        success: false, error: message, message, rateLimited: cooldownSeconds > 0, cooldownSeconds, cooldownMinutes,
+      }, { status: 503, headers: cooldownSeconds > 0 ? { 'Retry-After': String(cooldownSeconds) } : undefined });
+    }
+
+    // Record Nag Assist counter increment
+    const assistType = `NAG_ASSIST:${helperKey}`;
+    await supabaseAdmin.from('notification_logs').upsert(
+      {
+        member_id: targetMember.id,
+        notification_type: assistType,
+        local_date: cycleDate,
+        dispatched_at: nowUtc.toISO(),
+      },
+      { onConflict: 'member_id,notification_type,local_date' }
+    );
 
     // Query refreshed total assists count
     const { count: totalAssists } = await supabaseAdmin
@@ -426,7 +402,7 @@ export async function POST(request: Request) {
       deliveredCount: delivered,
       failedCount: failed,
       totalAssists: totalAssists || 1,
-      cooldownSeconds: 15 * 60,
+      cooldownSeconds: NAG_COOLDOWN_MINUTES * 60,
       message: defaultSuccessMessage,
     });
   } catch (err: unknown) {

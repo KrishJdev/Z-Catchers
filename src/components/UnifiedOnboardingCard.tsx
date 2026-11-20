@@ -328,7 +328,7 @@ export function UnifiedOnboardingCard({
             <Sparkles className="h-3.5 w-3.5 text-status-amber hidden sm:inline" />
           </div>
           <p className="text-xs text-cream-secondary mt-0.5">
-            Complete this 2-step setup for instant bedtime alarms & full PWA features.
+            Install the app and enable wind-down reminders on this device.
           </p>
         </div>
       </div>
@@ -452,7 +452,7 @@ export function UnifiedOnboardingCard({
                   <p className="text-xs font-semibold text-cream-primary">Step 2: Enable Push Notifications</p>
                   <div className="mt-1 flex items-center gap-1.5 text-[11px] text-status-amber font-medium">
                     <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-status-amber" />
-                    <span>Sleep Shield Guarantee: Never nagged during your personal 8-hour sleep window.</span>
+                    <span>Sleep Shield Guarantee · Check in to mute nags during your 8-hour sleep window.</span>
                   </div>
                   <p className="text-[11px] text-cream-secondary mt-0.5">
                     Receive gentle bedtime reminders and alerts when friends need a bedtime nag.
