@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-20T16:42:21+05:30
+> **Last Updated:** 2026-11-20T17:46:44+05:30
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest implementation commit:** `8515297` on `krish`
+> **Latest implementation commit:** `2d0c051` on `krish`
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
 > **Active Integration Pull Requests:** [#95](https://github.com/KrishJdev/Z-Catchers/pull/95) is ready for review from `krish` into `dev`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
-> **Build Status:** On `8515297`, `npx tsc --noEmit`, all 44 unit suites, and the production build passed locally. See [PR #95 checks](https://github.com/KrishJdev/Z-Catchers/pull/95/checks) for hosted results.
+> **Build Status:** On `2d0c051`, `npx tsc --noEmit`, all 44 unit suites, and the production build passed locally. See [PR #95 checks](https://github.com/KrishJdev/Z-Catchers/pull/95/checks) for hosted results.
 
 ---
 
@@ -69,6 +69,20 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 125 · Dispatcher lease and roster recovery review
+
+- Verified the seven follow-up findings on PR #95. The dispatcher now checks each captured lease before delivery and uses that lease for receipt writes and stage completion. Failed receipt persistence leaves the stage pending and other stages continue.
+- Rechecks the target’s current sleep evidence before outstanding bedtime pushes and community broadcasts. A new check-in closes the stage as suppressed and retains existing receipts. An evidence read failure leaves the stage pending.
+- Roster queries use a primary-key cursor, and public and moderator rosters report and omit the individual member if strike counts cannot be resolved. Strike-alert resumption reports the same failure and continues with the other members.
+- Manual nag cleanup retries the guarded claim deletion and returns a cooldown if release is uncertain. Wake-up nags check durable wake evidence for the selected cycle.
+- Updated `src/lib/cronDispatcher.ts`, `src/lib/db.ts`, `src/app/api/members/route.ts`, `src/app/api/mod/route.ts`, and `src/app/api/members/nag-notif/route.ts`. Added regressions in `scripts/test-dispatch-recovery.mjs` and `scripts/test-push-and-cron.mjs`, and updated `BACKEND_TZ_PWA_SPEC.md` and `HANDOFF.md`.
+
+| Milestone | Status |
+|---|---|
+| Follow-up lease, pagination, roster isolation, and manual nag fixes | DONE |
+| PR #95 review and merge into dev | IN PROGRESS |
+| Production rollout and physical-device test | TODO |
 
 ### Phase 124 · Dispatcher and migration review fixes
 
