@@ -252,13 +252,12 @@ export async function GET(request: Request) {
       })
     );
 
-    const processedMembers: Member[] = memberItems.flatMap((item, index) => {
+    const processedMembers: Member[] = memberItems.map((item, index) => {
       const result = strikeInfos[index];
       if (result.status === 'rejected') {
         console.error(`[members] Could not resolve strike counts for ${item.hydratedMember.id}:`, result.reason);
-        return [];
       }
-      const strikeInfo = result.value;
+      const strikeInfo = result.status === 'fulfilled' ? result.value : undefined;
       const logKey = getStrikeLogKey(item.hydratedMember.id, item.localDateStr);
       const tonightLog = strikeLogsMap.get(logKey) || null;
       const is_metastrike_active = tonightLog?.record_type === 'metastrike';
@@ -266,23 +265,24 @@ export async function GET(request: Request) {
       const has_voted_strike = Boolean(sessionMemberId && tonightLog?.voter_ids?.includes(sessionMemberId));
       const convertibleLog = recentStrikesMap.get(item.hydratedMember.id) || null;
 
-      return [{
+      return {
         ...sanitizeMember(item.hydratedMember),
         is_in_bed: item.is_in_bed,
         is_woke_up: item.is_woke_up,
         streak_days: item.streak_days,
         nag_assists_count: item.nag_assists_count,
-        strikes_used: strikeInfo.strikes_used,
-        strikes_count: strikeInfo.strikes_used,
-        metastrikes_used: strikeInfo.metastrikes_used,
-        metastrikes_count: strikeInfo.metastrikes_used,
-        strike_cycle_month: strikeInfo.strike_cycle_month,
+        strike_counts_unavailable: !strikeInfo,
+        strikes_used: strikeInfo?.strikes_used,
+        strikes_count: strikeInfo?.strikes_used,
+        metastrikes_used: strikeInfo?.metastrikes_used,
+        metastrikes_count: strikeInfo?.metastrikes_used,
+        strike_cycle_month: strikeInfo?.strike_cycle_month,
         tonight_strike_log: tonightLog,
         convertible_strike_log: convertibleLog,
         is_metastrike_active,
         metastrike_reason,
         has_voted_strike,
-      }];
+      };
     });
 
     return NextResponse.json({ members: processedMembers });

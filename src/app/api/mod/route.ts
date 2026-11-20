@@ -97,15 +97,15 @@ export async function GET(request: Request) {
         strikeCounts = await resolveMemberStrikeCounts(hydrated);
       } catch (error) {
         console.error(`[mod] Could not resolve strike counts for ${hydrated.id}:`, error);
-        continue;
       }
       processedMembers.push({
         ...sanitizeMember(hydrated),
-        strikes_used: strikeCounts.strikes_used,
-        strikes_count: strikeCounts.strikes_used,
-        metastrikes_used: strikeCounts.metastrikes_used,
-        metastrikes_count: strikeCounts.metastrikes_used,
-        strike_cycle_month: strikeCounts.strike_cycle_month,
+        strike_counts_unavailable: !strikeCounts,
+        strikes_used: strikeCounts?.strikes_used,
+        strikes_count: strikeCounts?.strikes_used,
+        metastrikes_used: strikeCounts?.metastrikes_used,
+        metastrikes_count: strikeCounts?.metastrikes_used,
+        strike_cycle_month: strikeCounts?.strike_cycle_month,
       });
     }
 

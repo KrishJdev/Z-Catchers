@@ -141,8 +141,9 @@ assert(elseBranchIndex !== -1, "MemberCard must handle bucket === 'SLEEPING'");
 
 // Non-viewers must see Wake Up Nag when past wake time, and Shield On otherwise
 assert(
-  memberCardContent.includes('state.isPastWakeTime ?'),
-  'MemberCard must conditionally render Wake Up Nag when state.isPastWakeTime is true'
+  memberCardContent.includes('state.isPastWakeTime && canSendPushNag ?') &&
+    memberCardContent.includes('const canSendPushNag = Boolean(currentMemberId) && !isViewer;'),
+  'MemberCard must offer Wake Up Nag after wake time to signed-in peers only'
 );
 
 // Verify check-in banner is viewer-only

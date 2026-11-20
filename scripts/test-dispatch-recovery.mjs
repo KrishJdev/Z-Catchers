@@ -4,6 +4,7 @@ import { DateTime } from 'luxon';
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://unit.invalid';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only';
 process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'disabled';
+process.env.MOD_SECRET_PASSCODE = 'dispatcher-fixture-mod';
 const { fetchAllRows, supabaseAdmin } = await import('../src/lib/db.ts');
 const { Settings } = await import('../src/lib/sleepEngine.ts');
 const { acquireCronLock, clearAllCronLocks, executeNotificationDispatcher, getCronLock, recordCronLockDeliveredSub } = await import('../src/lib/cronDispatcher.ts');
@@ -11,7 +12,9 @@ const { resolveMemberStrikeCounts } = await import('../src/lib/strikes.ts');
 const { webpush } = await import('../src/lib/pushServer.ts');
 const { GET } = await import('../src/app/api/cron/dispatch-notifications/route.ts');
 const { GET: getRoster } = await import('../src/app/api/members/route.ts');
+const { GET: getModRoster } = await import('../src/app/api/mod/route.ts');
 const { POST: nag } = await import('../src/app/api/members/nag-notif/route.ts');
+const { createSessionToken } = await import('../src/lib/auth.ts');
 const sleeper = {
   id: 'sleeper', discord_username: 'Night Fox', bedtime_local: '23:00', wake_time_local: '07:00',
   timezone: 'UTC', created_at: '2026-11-19T12:00Z', is_active: true,
@@ -21,7 +24,7 @@ const sleeper = {
 };
 const tables = {
   members: [sleeper, { ...sleeper, id: 'peer', bedtime_local: '22:00' }],
-  notification_logs: [], sleep_logs: [], cron_locks: [], nightly_strike_logs: [],
+  notification_logs: [], sleep_logs: [], cron_locks: [], nightly_strike_logs: [], rate_limits: [],
   push_subscriptions: ['device-a', 'device-b', 'peer'].map(id => ({
     id, endpoint: id, member_id: id === 'peer' ? 'peer' : 'sleeper', notify_personal: true, notify_community: true,
   })),
@@ -32,10 +35,42 @@ let receiptAttempts = 0;
 let memberUpdate;
 let sleepEvidenceErrorFor;
 let onSleepEvidenceRead;
+let onNightlyStrikeRead;
 let failedNagDeletes = 0;
 let nagDeleteAttempts = 0;
+let nextId = 0;
+let claimNag;
+let applyStrike;
+supabaseAdmin.rpc = async (name, params) => {
+  if (name === 'claim_manual_nag') return claimNag(params);
+  if (name === 'apply_nightly_strike') return applyStrike(params);
+  const lease = tables.cron_locks.find(row => row.lock_key === params.p_key);
+  if (name === 'renew_cron_lease') {
+    if (lease?.locked_at !== params.p_previous_locked_at || lease.expires_at > params.p_locked_at || lease.metadata.completed) {
+      return { data: null, error: null };
+    }
+    lease.locked_at = params.p_locked_at;
+    lease.expires_at = params.p_expires_at;
+    lease.metadata = { ...params.p_metadata, delivered_sub_ids: [...new Set([
+      ...(lease.metadata.delivered_sub_ids ?? []), ...params.p_metadata.delivered_sub_ids,
+    ])] };
+    return { data: structuredClone(lease.metadata), error: null };
+  }
+  assert.equal(name, 'complete_cron_stage');
+  if (lease?.locked_at !== params.p_locked_at || Date.parse(lease.expires_at) <= Date.now() || lease.metadata.completed) {
+    return { data: false, error: null };
+  }
+  lease.metadata = { ...lease.metadata, ...params.p_metadata, completed: true, state: 'completed' };
+  tables.notification_logs.push({
+    member_id: lease.metadata.member_id, notification_type: lease.metadata.stage, local_date: lease.metadata.local_date,
+  });
+  return { data: true, error: null };
+};
 supabaseAdmin.from = table => {
-  let rows = tables[table];
+  let rows = [...tables[table]];
+  for (const row of rows) {
+    if (table !== 'cron_locks' && row.id === undefined) row.id = `row-${String(++nextId).padStart(5, '0')}`;
+  }
   assert.ok(rows, table);
   let updates;
   let deleting = false;
@@ -54,13 +89,15 @@ supabaseAdmin.from = table => {
     in(key, values) { rows = rows.filter(row => values.includes(row[key])); return this; },
     like(key, prefix) { rows = rows.filter(row => row[key].startsWith(prefix.replace(/%$/, ''))); return this; },
     not(key, _operator, value) { rows = rows.filter(row => row[key] !== value); return this; },
-    order() { return this; }, limit() { return this; }, range() { return this; },
+    order(key) { rows.sort((a, b) => a[key] < b[key] ? -1 : Number(a[key] > b[key])); return this; },
+    limit(max) { rows = rows.slice(0, max); return this; }, range() { return this; },
     async insert(row) { tables[table].push(structuredClone(row)); return { error: null }; },
     async upsert(row) { tables[table].push(structuredClone(row)); return { error: null }; },
     update(fields) { updates = fields; return this; },
     delete() { deleting = true; return this; },
     result() {
       if (table === 'sleep_logs' && filterMemberId) onSleepEvidenceRead?.();
+      if (table === 'nightly_strike_logs') onNightlyStrikeRead?.();
       if (table === 'sleep_logs' && filterMemberId && filterMemberId === sleepEvidenceErrorFor) {
         return { data: null, error: { message: 'sleep evidence unavailable' } };
       }
@@ -133,7 +170,7 @@ tables.sleep_logs.push({ member_id: 'sleeping', cycle_date: '2026-11-19', in_bed
   { member_id: 'rested', cycle_date: '2026-11-19', in_bed_at: '2026-11-19T22:00Z', woke_up_at: '2026-11-19T22:50Z' });
 const bedtime = await run('2026-11-19T23:00Z');
 assert.equal(bedtime.communityNagsDispatched, 2);
-assert.deepEqual(attempts.slice(-4), ['device-a', 'device-b', 'peer', 'awake']);
+assert.deepEqual(attempts.slice(-4), ['device-a', 'device-b', 'awake', 'peer']);
 assert.equal(bedtime.bedtimeHitDispatched, 2);
 for (const id of ['sleeping', 'rested', 'winding-down', 'live-check-in']) assert.ok(!attempts.includes(id));
 tables.sleep_logs.push({ member_id: sleeper.id, cycle_date: '2026-11-19', in_bed_at: '2026-11-19T22:55Z' });
@@ -145,8 +182,7 @@ tables.sleep_logs.length = 0;
 sleeper.is_woke_up = true;
 sleeper.last_wake_cycle_date = '2026-11-18';
 let rpcCalls = 0;
-supabaseAdmin.rpc = async (name, params) => {
-  assert.equal(name, 'apply_nightly_strike');
+applyStrike = async params => {
   assert.equal(params.p_cycle, '2026-11-19');
   rpcCalls++;
   return rpcCalls === 1 ? { error: { message: 'write interrupted' } }
@@ -162,7 +198,7 @@ assert.equal((await run('2026-11-20T15:10Z')).autoStrikesDispatched, 0);
 assert.equal(rpcCalls, 2);
 
 // A member still awake at +10 receives the strike alert as well as the earlier alarm.
-supabaseAdmin.rpc = async () => ({ data: { log: { record_type: 'strike' }, strikesUsed: 2 } });
+applyStrike = async () => ({ data: { log: { record_type: 'strike' }, strikesUsed: 2 } });
 const missedTonight = await run('2026-11-20T23:10Z');
 assert.equal(missedTonight.autoStrikesDispatched, 1);
 assert.deepEqual(attempts.slice(-2), ['device-a', 'device-b']);
@@ -183,29 +219,59 @@ assert.equal(response.status, 500);
 assert.match((await response.json()).error, /lock table unavailable/);
 
 Settings.now = () => Date.parse('2026-11-20T23:15:00Z');
-const manual = () => nag(new Request('http://localhost/api/members/nag-notif', {
-  method: 'POST', body: JSON.stringify({ target_member_id: sleeper.id }),
+const sender = createSessionToken('peer');
+const manual = (type = 'bedtime', token = sender) => nag(new Request('http://localhost/api/members/nag-notif', {
+  method: 'POST', headers: token ? { Cookie: `zcatchers_session=${token}` } : {},
+  body: JSON.stringify({ target_member_id: sleeper.id, type }),
 }));
-supabaseAdmin.rpc = async name => {
-  assert.equal(name, 'claim_manual_nag');
+let manualClaimCalls = 0;
+claimNag = async ({ p_member_id, p_type, p_cycle, p_now }) => {
+  manualClaimCalls++;
+  const existing = tables.notification_logs.find(row => row.member_id === p_member_id &&
+    row.notification_type === p_type && row.local_date === p_cycle);
+  if (existing) {
+    const seconds = 900 + (Date.parse(existing.dispatched_at) - Date.parse(p_now)) / 1000;
+    if (seconds > 0) return { data: seconds, error: null };
+    existing.dispatched_at = p_now;
+  } else {
+    tables.notification_logs.push({ member_id: p_member_id, notification_type: p_type, local_date: p_cycle, dispatched_at: p_now });
+  }
   return { data: 0, error: null };
 };
+assert.equal((await manual('bedtime', null)).status, 401);
+assert.equal((await manual('bedtime', createSessionToken(sleeper.id))).status, 400);
+assert.equal(manualClaimCalls, 0);
 const delivered = await (await manual()).json();
 assert.equal(delivered.deliveredCount, 2, JSON.stringify(delivered));
-webpush.sendNotification = async () => { throw Object.assign(new Error('busy'), { statusCode: 503 }); };
-const originalClaim = {
-  member_id: sleeper.id, notification_type: 'MANUAL_NAG:OVERDUE:anon_target',
-  local_date: '2026-11-20', dispatched_at: '2026-11-20T23:15:00.000Z',
+assert.equal((await manual()).status, 429);
+const isBedtimeClaim = row => row.notification_type === 'MANUAL_NAG:OVERDUE:user_peer';
+const clearBedtimeClaim = () => {
+  tables.notification_logs = tables.notification_logs.filter(row => !isBedtimeClaim(row));
 };
-const newerClaim = { ...originalClaim, dispatched_at: '2026-11-20T23:30:00.000Z' };
-tables.notification_logs.push(originalClaim, newerClaim);
+const unavailablePush = () => { throw Object.assign(new Error('busy'), { statusCode: 503 }); };
+clearBedtimeClaim();
+webpush.sendNotification = async () => unavailablePush();
 failedNagDeletes = 1;
 const retryableNag = await manual();
 assert.equal(retryableNag.status, 503);
 assert.match((await retryableNag.json()).error, /Please retry/);
 assert.equal(nagDeleteAttempts, 2);
-assert.ok(!tables.notification_logs.includes(originalClaim));
-assert.ok(tables.notification_logs.includes(newerClaim));
+assert.equal(tables.notification_logs.filter(isBedtimeClaim).length, 0);
+
+webpush.sendNotification = async () => {
+  const [claim] = tables.notification_logs.filter(isBedtimeClaim);
+  claim.dispatched_at = '2026-11-20T23:30:00.000Z';
+  Settings.now = () => Date.parse('2026-11-20T23:31:00Z');
+  unavailablePush();
+};
+const replacedNag = await manual();
+assert.equal(replacedNag.status, 503);
+assert.equal(replacedNag.headers.get('Retry-After'), '840');
+assert.equal((await replacedNag.json()).cooldownSeconds, 840);
+assert.deepEqual(tables.notification_logs.filter(isBedtimeClaim).map(row => row.dispatched_at), ['2026-11-20T23:30:00.000Z']);
+
+clearBedtimeClaim();
+webpush.sendNotification = async () => unavailablePush();
 failedNagDeletes = 2;
 const uncertainNag = await manual();
 assert.equal(uncertainNag.status, 503);
@@ -215,17 +281,18 @@ tables.sleep_logs.push({ member_id: sleeper.id, cycle_date: '2026-11-20', in_bed
 assert.equal((await (await manual()).json()).shieldActive, true);
 
 Settings.now = () => Date.parse('2026-11-21T08:00:00Z');
-tables.notification_logs.push({ member_id: sleeper.id, notification_type: 'IN_BED_EARLY', local_date: '2026-11-20' });
 tables.sleep_logs.at(-1).woke_up_at = '2026-11-21T07:20Z';
-const wakeNag = () => nag(new Request('http://localhost/api/members/nag-notif', {
-  method: 'POST', body: JSON.stringify({ target_member_id: sleeper.id, type: 'wake_up' }),
-}));
+const wakeNag = () => manual('wake_up');
 const alreadyAwake = await wakeNag();
 assert.equal(alreadyAwake.status, 400);
 assert.match((await alreadyAwake.json()).error, /already awake/);
 delete tables.sleep_logs.at(-1).woke_up_at;
 webpush.sendNotification = async () => ({ statusCode: 201 });
 assert.equal((await (await wakeNag()).json()).deliveredCount, 2);
+assert.ok(tables.notification_logs.some(row => row.notification_type === 'MANUAL_NAG:WAKE_UP:user_peer' && row.local_date === '2026-11-20'));
+// A successful cancellation deletes both sources of check-in evidence.
+tables.sleep_logs.length = 0;
+assert.equal((await (await wakeNag()).json()).shieldActive, true);
 
 // A worker retaining an accepted push in memory must carry its receipt into the next lease.
 databaseError = undefined;
@@ -290,7 +357,7 @@ webpush.sendNotification = async sub => {
 const afterPromotion = await executeNotificationDispatcher({ testNowUtc: DateTime.fromISO('2026-11-20T23:00Z') });
 assert.match(afterPromotion.details.errors[0], /failed/);
 assert.equal(afterPromotion.evaluatedMembersCount, 2);
-assert.deepEqual(promotionSends, ['device-a', 'concurrent']);
+assert.deepEqual(promotionSends, ['concurrent', 'device-a']);
 
 // A competing monthly rollover returns the persisted counts. A DB error surfaces separately.
 memberUpdate = (member, fields) => {
@@ -321,8 +388,7 @@ tables.notification_logs = [{ member_id: sleeper.id, notification_type: 'BEDTIME
 tables.cron_locks = [];
 clearAllCronLocks();
 let strikeWrites = 0;
-supabaseAdmin.rpc = async (name, params) => {
-  assert.equal(name, 'apply_nightly_strike');
+applyStrike = async params => {
   strikeWrites++;
   const log = {
     target_member_id: sleeper.id, sleep_cycle_date: params.p_cycle, record_type: 'strike', updated_at: params.p_now,
@@ -345,7 +411,26 @@ assert.equal(firstStrike.details.errors.length, 1);
 const strikeKey = 'notif:sleeper:2026-11-20:AUTO_BEDTIME_STRIKE';
 (await getCronLock(strikeKey)).expiresAt = 0;
 tables.cron_locks.find(row => row.lock_key === strikeKey).expires_at = '2026-01-01T00:00:00Z';
-assert.equal((await run('2026-11-20T23:18Z')).details.errors.length, 0);
+onNightlyStrikeRead = () => {
+  sleeper.strikes_used = 2;
+  onNightlyStrikeRead = undefined;
+};
+const originalFetch = globalThis.fetch;
+const webhookPayloads = [];
+process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'https://discord.com/api/webhooks/123456789/fixture';
+globalThis.fetch = async (url, options) => {
+  assert.equal(url, process.env.DISCORD_COMMUNITY_WEBHOOK_URL);
+  webhookPayloads.push(JSON.parse(options.body));
+  return new Response(null, { status: 204 });
+};
+try {
+  assert.deepEqual((await run('2026-11-20T23:18Z')).details.errors, []);
+} finally {
+  globalThis.fetch = originalFetch;
+  process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'disabled';
+}
+assert.equal(webhookPayloads.length, 1);
+assert.match(webhookPayloads[0].embeds[0].description, /2\/3 strikes/);
 assert.equal(strikeWrites, 1);
 assert.deepEqual(alertAttempts, ['device-a', 'device-b', 'device-b']);
 assert.equal(tables.cron_locks.find(row => row.lock_key === strikeKey).metadata.alert_outcome, 'complete');
@@ -356,7 +441,7 @@ tables.nightly_strike_logs.push({
   target_member_id: sleeper.id, sleep_cycle_date: expiredCycle, record_type: 'strike', updated_at: `${expiredCycle}T23:10Z`,
 });
 tables.cron_locks.push({
-  lock_key: expiredKey, expires_at: `${expiredCycle}T23:15Z`,
+  lock_key: expiredKey, locked_at: `${expiredCycle}T23:10Z`, expires_at: `${expiredCycle}T23:15Z`,
   metadata: { member_id: sleeper.id, stage: 'AUTO_BEDTIME_STRIKE', local_date: expiredCycle, state: 'processing' },
 });
 assert.equal((await run('2026-11-21T23:45Z')).details.errors.length, 0);
@@ -366,7 +451,7 @@ assert.equal(tables.cron_locks.find(row => row.lock_key === expiredKey).metadata
 
 // A target who checks in after the first bedtime push suppresses the remaining stage.
 const primary = { ...sleeper, wake_time_local: '07:00', last_notified_stage: null, last_notified_cycle_date: null };
-const other = { ...primary, id: 'other', bedtime_local: '01:00' };
+const other = { ...primary, id: 'z-other', bedtime_local: '01:00' };
 tables.members = [primary, other];
 tables.notification_logs = [];
 tables.sleep_logs = [];
@@ -386,6 +471,32 @@ const bedtimeStage = () => tables.cron_locks.find(row => row.lock_key === bedtim
 assert.deepEqual(bedtimeSends, ['device-a']);
 assert.deepEqual(bedtimeStage().metadata.delivered_sub_ids, ['device-a']);
 assert.equal(bedtimeStage().metadata.delivery_outcome, 'suppressed');
+
+// Wind-down and strike alerts also recheck Sleep Shield between devices.
+for (const [stage, at, title, outcome] of [
+  ['WIND_DOWN_30M', '22:45', /Wind-Down/, { delivery_outcome: 'suppressed' }],
+  ['AUTO_BEDTIME_STRIKE', '23:15', /Strike Recorded/, { alert_outcome: 'complete' }],
+]) {
+  tables.notification_logs = stage === 'AUTO_BEDTIME_STRIKE'
+    ? [{ member_id: primary.id, notification_type: 'BEDTIME_HIT', local_date: '2026-11-20' }]
+    : [];
+  tables.sleep_logs = [];
+  tables.cron_locks = [];
+  clearAllCronLocks();
+  const sends = [];
+  webpush.sendNotification = async (sub, payload) => {
+    assert.match(JSON.parse(payload).title, title);
+    sends.push(sub.endpoint);
+    tables.sleep_logs.push({ member_id: primary.id, cycle_date: '2026-11-20', in_bed_at: `2026-11-20T${at}Z` });
+    return { statusCode: 201 };
+  };
+  assert.deepEqual((await run(`2026-11-20T${at}Z`)).details.errors, []);
+  assert.deepEqual(sends, ['device-a']);
+  const { metadata } = tables.cron_locks.find(row => row.lock_key === `notif:sleeper:2026-11-20:${stage}`);
+  assert.deepEqual(metadata.delivered_sub_ids, ['device-a']);
+  for (const [key, value] of Object.entries(outcome)) assert.equal(metadata[key], value);
+  assert.ok(tables.notification_logs.some(row => row.member_id === primary.id && row.notification_type === stage));
+}
 
 // A fresh evidence read failure leaves prior receipts intact and the stage retryable.
 tables.notification_logs = [];
@@ -471,7 +582,20 @@ memberUpdate = member => member.id === primary.id ? { data: null, error: { messa
 Settings.now = () => Date.parse('2026-12-01T23:15Z');
 const roster = await getRoster(new Request('http://localhost/api/members'));
 assert.equal(roster.status, 200);
-assert.deepEqual((await roster.json()).members.map(member => member.id), [other.id]);
+const rosterMembers = (await roster.json()).members;
+assert.deepEqual(rosterMembers.map(member => member.id), [primary.id, other.id]);
+assert.equal(rosterMembers[0].strike_counts_unavailable, true);
+assert.equal(rosterMembers[0].strikes_used, undefined);
+assert.equal(rosterMembers[0].metastrikes_count, undefined);
+assert.equal(rosterMembers[1].strike_counts_unavailable, false);
+const modRoster = await getModRoster(new Request('http://localhost/api/mod', {
+  headers: { 'x-mod-passcode': process.env.MOD_SECRET_PASSCODE },
+}));
+assert.equal(modRoster.status, 200);
+const modMembers = (await modRoster.json()).members;
+assert.equal(modMembers.length, 2);
+assert.equal(modMembers.find(member => member.id === primary.id).strike_counts_unavailable, true);
+assert.equal(modMembers.find(member => member.id === primary.id).strikes_count, undefined);
 webpush.sendNotification = async () => ({ statusCode: 201 });
 const resumed = await executeNotificationDispatcher({ testNowUtc: DateTime.fromISO('2026-12-01T23:15Z') });
 assert.match(resumed.details.errors[0], /AUTO_BEDTIME_STRIKE for sleeper.*rollover failed/);
@@ -491,13 +615,13 @@ supabaseAdmin.from = table => {
     limit(size) { limit = size; return this; },
     gt(column, value) { assert.equal(column, 'id'); cursor = value; return this; },
     then(resolve) {
-      const data = rows.filter(row => cursor === undefined || row.id > cursor).slice(0, limit);
+      const data = rows.filter(row => cursor === undefined || row.id > cursor).slice(0, Math.min(limit, 2));
       if (++pageReads === 1) rows = rows.slice(1);
       resolve({ data, error: null });
     },
   };
 };
-const subscriptions = await fetchAllRows('push_subscriptions', 'endpoint', q => q, 2);
+const subscriptions = await fetchAllRows('push_subscriptions', 'endpoint', q => q, 10);
 assert.equal(subscriptions.error, null);
 assert.deepEqual(subscriptions.data.map(row => row.id), ['a', 'b', 'c']);
-assert.equal(pageReads, 2);
+assert.equal(pageReads, 3);

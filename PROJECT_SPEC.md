@@ -334,6 +334,8 @@ Run a scheduled check every **1 minute** (or 5 minutes):
 
      * Record in `notification_logs`.
 
+Manual push nags require an active member session. Each sender, target, sleep cycle, and reminder stage has a 15-minute cooldown.
+
 ### 5.4 Discord Journal URL Validation & Deep Linking
 
 * **Validation Rule:** Must match regex `^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$`

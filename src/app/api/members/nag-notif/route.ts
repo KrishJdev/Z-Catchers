@@ -15,6 +15,22 @@ interface NagNotifRequestBody {
 
 const NAG_COOLDOWN_MINUTES = 15;
 
+async function readSleepEvidence(memberId: string, cycle: string) {
+  const [logs, sleep] = await Promise.all([
+    supabaseAdmin.from('notification_logs').select('notification_type')
+      .eq('member_id', memberId).eq('local_date', cycle)
+      .in('notification_type', ['IN_BED_EARLY', 'WOKE_UP']),
+    supabaseAdmin.from('sleep_logs').select('in_bed_at,woke_up_at')
+      .eq('member_id', memberId).eq('cycle_date', cycle).maybeSingle(),
+  ]);
+  if (logs.error || sleep.error) return null;
+  return {
+    checkedIn: Boolean(sleep.data?.in_bed_at || logs.data.some(row => row.notification_type === 'IN_BED_EARLY')),
+    inBedAt: sleep.data?.in_bed_at,
+    wokeUp: Boolean(sleep.data?.woke_up_at || logs.data.some(row => row.notification_type === 'WOKE_UP')),
+  };
+}
+
 /**
  * POST /api/members/nag-notif
  *
@@ -44,6 +60,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const sessionMemberId = getRequestSessionMemberId(request);
+    if (!sessionMemberId) {
+      return NextResponse.json({ error: 'Sign in to send a push reminder.' }, { status: 401 });
+    }
+
     // 1. Fetch target member from database
     const { data: rawTarget, error: targetErr } = await supabaseAdmin
       .from('members')
@@ -61,88 +82,57 @@ export async function POST(request: Request) {
 
     const targetMember = rawTarget as Member;
 
-    // 2. Identify sender (session or anonymous hash) & prevent self-nagging
-    const sessionMemberId = getRequestSessionMemberId(request);
-    if (sessionMemberId && sessionMemberId === targetMember.id) {
+    // 2. Identify sender and prevent self-nagging
+    if (sessionMemberId === targetMember.id) {
       return NextResponse.json(
         { error: 'You cannot send a nag notification to yourself.' },
         { status: 400 }
       );
     }
 
-    let senderName = 'A friend in Z Catchers';
-    let helperKey: string;
-
-    if (sessionMemberId) {
-      const { data: senderMember } = await supabaseAdmin
-        .from('members')
-        .select('discord_username')
-        .eq('id', sessionMemberId)
-        .single();
-
-      if (senderMember?.discord_username) {
-        senderName = senderMember.discord_username;
-      }
-      helperKey = `user_${sessionMemberId}`;
-    } else {
-      // Enforce a stable target-wide cooldown for unauthenticated senders, independent of client-controlled headers
-      helperKey = 'anon_target';
+    const { data: senderMember, error: senderError } = await supabaseAdmin.from('members')
+      .select('discord_username').eq('id', sessionMemberId).eq('is_active', true).maybeSingle();
+    if (senderError) {
+      return NextResponse.json({ error: 'Could not verify the sender.' }, { status: 503 });
     }
+    if (!senderMember) return NextResponse.json({ error: 'An active member account is required.' }, { status: 403 });
+    const senderName = senderMember.discord_username || 'A friend in Z Catchers';
+    const helperKey = `user_${sessionMemberId}`;
 
     // 3. Compute target member's current sleep cycle & status using Luxon
     const nowUtc = DateTime.utc();
-    let cycleDate = getSleepCycleDate(targetMember, nowUtc);
+    const activeSleepCycleDate = getSleepCycleDate(targetMember, nowUtc);
+    let cycleDate = activeSleepCycleDate;
+    let evidence = await readSleepEvidence(targetMember.id, cycleDate);
 
-    // If this is a wake-up nag, resolve whether yesterday's check-in cycle is the applicable one
+    // Durable history can keep yesterday's cycle active after the scheduled wake time.
     if (isWakeUpNag) {
       const sleeperNow = nowUtc.setZone(toValidLuxonZone(targetMember.timezone));
       const yesterdayDate = sleeperNow.minus({ days: 1 }).toISODate()!;
-      const { data: yCheckin } = await supabaseAdmin
-        .from('notification_logs')
-        .select('id')
-        .eq('member_id', targetMember.id)
-        .eq('notification_type', 'IN_BED_EARLY')
-        .eq('local_date', yesterdayDate)
-        .maybeSingle();
-
-      const { data: yWakeLog } = await supabaseAdmin
-        .from('notification_logs')
-        .select('id')
-        .eq('member_id', targetMember.id)
-        .eq('notification_type', 'WOKE_UP')
-        .eq('local_date', yesterdayDate)
-        .maybeSingle();
-
-      if (yCheckin && !yWakeLog) {
-        cycleDate = yesterdayDate;
+      if (evidence && cycleDate !== yesterdayDate && !evidence.checkedIn && !evidence.wokeUp) {
+        const previous = await readSleepEvidence(targetMember.id, yesterdayDate);
+        if (!previous) return NextResponse.json({ error: 'Could not verify the member’s sleep status.' }, { status: 503 });
+        const wokeUp = previous.wokeUp || targetMember.last_wake_cycle_date === yesterdayDate;
+        const memberWithHistory = {
+          ...targetMember,
+          in_bed_at: previous.inBedAt ?? targetMember.in_bed_at,
+          last_wake_cycle_date: wokeUp ? yesterdayDate : targetMember.last_wake_cycle_date,
+        };
+        if ((previous.checkedIn || wokeUp) &&
+            getSleepCycleDate(memberWithHistory, nowUtc, previous.checkedIn && !wokeUp) === yesterdayDate) {
+          cycleDate = yesterdayDate;
+          evidence = previous;
+        }
       }
     }
 
-    // Query tonight's check-in (Safe Button) status
-    const { data: inBedLog, error: checkInError } = await supabaseAdmin
-      .from('notification_logs')
-      .select('id')
-      .eq('member_id', targetMember.id)
-      .eq('notification_type', 'IN_BED_EARLY')
-      .eq('local_date', cycleDate)
-      .maybeSingle();
-
-    const { data: wokeUpLog, error: wakeError } = await supabaseAdmin
-      .from('notification_logs')
-      .select('id')
-      .eq('member_id', targetMember.id)
-      .eq('notification_type', 'WOKE_UP')
-      .eq('local_date', cycleDate)
-      .maybeSingle();
-
-    const { data: sleepLog, error: sleepError } = await supabaseAdmin.from('sleep_logs')
-      .select('in_bed_at,woke_up_at').eq('member_id', targetMember.id).eq('cycle_date', cycleDate).maybeSingle();
-    if (sleepError || checkInError || wakeError) {
+    if (!evidence) {
       return NextResponse.json({ error: 'Could not verify the member’s sleep status.' }, { status: 503 });
     }
-    const isInBed = Boolean(inBedLog || sleepLog?.in_bed_at ||
+    const wokeUpThisCycle = evidence.wokeUp || targetMember.last_wake_cycle_date === cycleDate;
+    const isInBed = Boolean(evidence.checkedIn ||
       (targetMember.last_notified_stage === 'IN_BED_EARLY' && targetMember.last_notified_cycle_date === cycleDate)) &&
-      !sleepLog?.woke_up_at && !wokeUpLog && !Boolean(targetMember.last_wake_cycle_date === cycleDate);
+      !wokeUpThisCycle;
 
     // Compute active member state
     const targetState = computeMemberState(targetMember, targetMember.timezone, nowUtc, isInBed);
@@ -168,12 +158,9 @@ export async function POST(request: Request) {
     if (isWakeUpNag) {
       // WAKE UP NAG LOGIC:
       // A. Check if target member has already marked themselves awake
-      const activeSleepCycleDate = getSleepCycleDate(targetMember, nowUtc);
       const hasLoggedWakeUp = Boolean(
-        sleepLog?.woke_up_at || wokeUpLog ||
-        (targetMember.last_wake_cycle_date && targetMember.last_wake_cycle_date === cycleDate) ||
-        (targetMember.is_woke_up && cycleDate === activeSleepCycleDate) ||
-        targetState.hasLoggedWakeUp
+        wokeUpThisCycle ||
+        (targetState.hasLoggedWakeUp && cycleDate === getSleepCycleDate(targetMember, nowUtc, isInBed))
       );
 
       if (hasLoggedWakeUp) {
@@ -215,11 +202,7 @@ export async function POST(request: Request) {
     } else {
       // BEDTIME NAG LOGIC:
       // 4A. Target member has already completed their sleep cycle and woken up for tonight's cycle:
-      const hasCompletedTonightSleep = Boolean(
-        wokeUpLog || sleepLog?.woke_up_at ||
-        targetMember.last_wake_cycle_date === cycleDate
-      );
-      if (hasCompletedTonightSleep) {
+      if (wokeUpThisCycle) {
         return NextResponse.json(
           {
             success: false,
@@ -349,25 +332,35 @@ export async function POST(request: Request) {
     if (subsErr || (activeSubs.length > 0 && delivered === 0)) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const { error } = await supabaseAdmin.from('notification_logs').delete()
+          const { data: released, error } = await supabaseAdmin.from('notification_logs').delete()
             .eq('member_id', targetMember.id).eq('notification_type', nagLogType)
-            .eq('local_date', cycleDate).eq('dispatched_at', nowUtc.toISO());
+            .eq('local_date', cycleDate).eq('dispatched_at', nowUtc.toISO())
+            .select('dispatched_at').maybeSingle();
           if (!error) {
-            return NextResponse.json({ success: false, error: 'Could not deliver the reminder. Please retry.' }, { status: 503 });
+            if (released) {
+              return NextResponse.json({ success: false, error: 'Could not deliver the reminder. Please retry.' }, { status: 503 });
+            }
+            break;
           }
         } catch {
           // Retry the same timestamp-guarded cleanup.
         }
       }
-      const cooldownSeconds = Math.max(0, Math.ceil(nowUtc.plus({ minutes: NAG_COOLDOWN_MINUTES })
-        .diff(DateTime.utc(), 'seconds').seconds));
+      const { data: currentClaim, error: readError } = await supabaseAdmin.from('notification_logs')
+        .select('dispatched_at').eq('member_id', targetMember.id).eq('notification_type', nagLogType)
+        .eq('local_date', cycleDate).maybeSingle();
+      const claimedAt = currentClaim ? DateTime.fromISO(currentClaim.dispatched_at) : null;
+      const uncertain = Boolean(readError || (claimedAt && !claimedAt.isValid));
+      const cooldownSeconds = uncertain ? NAG_COOLDOWN_MINUTES * 60 : claimedAt?.isValid
+        ? Math.max(0, Math.ceil(claimedAt.plus({ minutes: NAG_COOLDOWN_MINUTES }).diff(DateTime.utc(), 'seconds').seconds))
+        : 0;
       const cooldownMinutes = Math.ceil(cooldownSeconds / 60);
-      const message = cooldownSeconds > 0
-        ? `Could not deliver the reminder. Your cooldown may remain active for ${cooldownMinutes}m.`
-        : 'Could not deliver the reminder. The cooldown has elapsed.';
+      const message = uncertain ? 'Could not deliver the reminder or verify the cooldown.' : cooldownSeconds > 0
+        ? `Could not deliver the reminder. Your cooldown is active for ${cooldownMinutes}m.`
+        : 'Could not deliver the reminder. Please retry.';
       return NextResponse.json({
         success: false, error: message, message, rateLimited: cooldownSeconds > 0, cooldownSeconds, cooldownMinutes,
-      }, { status: 503, headers: { 'Retry-After': String(cooldownSeconds) } });
+      }, { status: 503, headers: cooldownSeconds > 0 ? { 'Retry-After': String(cooldownSeconds) } : undefined });
     }
 
     // Record Nag Assist counter increment

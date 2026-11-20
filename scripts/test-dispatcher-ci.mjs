@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { createECDH, randomBytes } from 'node:crypto';
+import { createECDH, createHmac, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:https';
 import { join } from 'node:path';
@@ -71,6 +71,7 @@ function setupCertificate() {
 sql(readFileSync('supabase/schema.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261118_sleep_logs_member_uuid.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261119_dispatch_accountability.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261120_cron_stage_completion.sql', 'utf8'));
 sql(`
   UPDATE public.members SET is_active = false;
   CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -210,12 +211,16 @@ try {
     SELECT sleep_cycle_date, record_type, strikes_used, strikes_count
     FROM public.nightly_strike_logs JOIN public.members ON target_member_id = members.id
   `), `${cycle}|strike|1|1`);
-  const nag = () => fetch(appOrigin + '/api/members/nag-notif', {
+  const senderPayload = Buffer.from(JSON.stringify({ memberId: memberId('awake'), exp: Date.now() + 60_000 })).toString('base64url');
+  const senderSignature = createHmac('sha256', env.SESSION_SECRET).update(senderPayload).digest('base64url');
+  const nag = (token) => fetch(appOrigin + '/api/members/nag-notif', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ target_member_id: memberId('overdue') }),
   });
-  const outcomes = await Promise.all([nag(), nag()]);
+  assert.equal((await nag()).status, 401);
+  const senderToken = `${senderPayload}.${senderSignature}`;
+  const outcomes = await Promise.all([nag(senderToken), nag(senderToken)]);
   const statuses = outcomes.map(response => response.status).sort();
   assert.deepEqual(statuses, [200, 429], JSON.stringify(await Promise.all(outcomes.map(response => response.json()))));
   assert.equal(pushes.length, 5);

@@ -14,6 +14,8 @@ try {
   assert.equal((await db.query('select id from members')).rows.length, 4);
   await db.exec(`drop function public.apply_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz);
     drop function public.claim_manual_nag(uuid,text,date,timestamptz);
+    drop function public.renew_cron_lease(text,timestamptz,timestamptz,timestamptz,jsonb);
+    drop function public.complete_cron_stage(text,timestamptz,jsonb);
     drop table public.cron_locks, public.nightly_strike_logs;
     alter table members drop column strikes_count;
     create policy "Public can view active members" on members for select using (is_active);
@@ -34,12 +36,44 @@ try {
   await assert.rejects(db.query("insert into public.sleep_logs(member_id, cycle_date) values (gen_random_uuid(), '2026-11-03')"), /foreign key/);
   await db.exec(migration);
   await db.exec(migration);
+  const cronMigration = readFileSync('supabase/migrations/20261120_cron_stage_completion.sql', 'utf8');
+  await db.exec(cronMigration);
+  await db.exec(cronMigration);
   await db.exec(`grant select, update on public.members to service_role;
     grant select, insert, update on public.notification_logs to service_role;
     grant select, insert on public.sleep_logs to service_role;
     set role service_role;
     insert into public.cron_locks(lock_key, expires_at) values ('upgrade-test', now());`);
   const { rows: [member] } = await db.query('select id from members limit 1');
+
+  const oldLease = '2026-01-01T00:00:00Z';
+  const cronKey = `notif:${member.id}:2026-11-19:BEDTIME_HIT`;
+  const metadata = { member_id: member.id, local_date: '2026-11-19', stage: 'BEDTIME_HIT', state: 'processing' };
+  await db.query('insert into public.cron_locks values ($1,$2,$3,$4)',
+    [cronKey, oldLease, '2026-01-01T00:05:00Z', metadata]);
+  // A late receipt lands after the renewing worker has copied its snapshot.
+  await db.query("update public.cron_locks set metadata = metadata || '{\"delivered_sub_ids\":[\"late-receipt\"]}'::jsonb where lock_key = $1", [cronKey]);
+  const { rows: [{ locked_at: renewedAt, expires_at: expiresAt }] } = await db.query(
+    "select date_trunc('milliseconds', clock_timestamp()) as locked_at, clock_timestamp() + interval '5 minutes' as expires_at");
+  const renew = async () => (await db.query(
+    'select public.renew_cron_lease($1,$2,$3,$4,$5) as metadata',
+    [cronKey, oldLease, renewedAt, expiresAt, { ...metadata, delivered_sub_ids: ['worker-receipt'] }])).rows[0].metadata;
+  assert.deepEqual((await renew()).delivered_sub_ids.sort(), ['late-receipt', 'worker-receipt']);
+  assert.equal(await renew(), null);
+  const complete = async (lease = renewedAt) => (await db.query(
+    'select public.complete_cron_stage($1,$2,$3) as completed', [cronKey, lease, { delivery_outcome: 'complete' }])).rows[0].completed;
+  assert.equal(await complete(oldLease), false);
+  await db.exec(`reset role;
+    alter table public.notification_logs add constraint fail_bedtime_audit check (notification_type <> 'BEDTIME_HIT');
+    set role service_role;`);
+  await assert.rejects(complete(), /fail_bedtime_audit/);
+  assert.equal((await db.query('select metadata from public.cron_locks where lock_key = $1', [cronKey])).rows[0].metadata.state, 'processing');
+  await db.exec(`reset role;
+    alter table public.notification_logs drop constraint fail_bedtime_audit;
+    set role service_role;`);
+  assert.equal(await complete(), true);
+  assert.equal(await complete(), false);
+  assert.equal((await db.query("select id from public.notification_logs where member_id=$1 and notification_type='BEDTIME_HIT'", [member.id])).rows.length, 1);
   const claim = async at => (await db.query(
     "select claim_manual_nag($1,'MANUAL_NAG:OVERDUE:anon_target','2026-11-19',$2) as remaining",
     [member.id, at])).rows[0].remaining;
@@ -92,6 +126,8 @@ try {
   assert.equal((await db.query('select id from public.nightly_strike_logs')).rows.length, 0);
   await assert.rejects(db.query("insert into push_subscriptions(member_id, endpoint, p256dh_key, auth_key) values ($1,'test','test','test')", [member.id]), /row-level security/);
   await assert.rejects(apply('2026-11-21', null, 'strike'), /permission denied/);
+  await assert.rejects(renew(), /permission denied/);
+  await assert.rejects(complete(), /permission denied/);
   await db.exec(`reset role;
     create schema vault; create table vault.decrypted_secrets(name text, decrypted_secret text);
     create schema cron; create table cron.jobs(name text primary key, schedule text, command text);

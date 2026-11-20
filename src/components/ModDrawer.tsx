@@ -1760,67 +1760,73 @@ export function ModDrawer({
 
                           {/* Mod Accountability Row: Adjust Strikes & Metastrikes */}
                           <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl border border-night-border/70 bg-night-bg/50 px-2.5 py-1.5 text-[11px]">
-                            {/* Strikes Adjuster */}
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-fox-rust flex items-center gap-1">
-                                <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
-                                <span>Strikes:</span>
-                                <strong className="tabular-nums font-bold">{Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0)}/3</strong>
-                              </span>
-                              <div className="flex items-center gap-0.5 ml-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleAdjustStrikes(member, -1, 0)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) <= 0}
-                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                  title="Decrement strikes"
-                                >
-                                  -
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAdjustStrikes(member, 1, 0)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) >= 3}
-                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                  title="Increment strikes"
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </div>
+                            {member.strike_counts_unavailable ? (
+                              <span className="text-cream-secondary">Strike and pass counts unavailable</span>
+                            ) : (
+                              <>
+                                {/* Strikes Adjuster */}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-semibold text-fox-rust flex items-center gap-1">
+                                    <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
+                                    <span>Strikes:</span>
+                                    <strong className="tabular-nums font-bold">{Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0)}/3</strong>
+                                  </span>
+                                  <div className="flex items-center gap-0.5 ml-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdjustStrikes(member, -1, 0)}
+                                      disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) <= 0}
+                                      className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
+                                      title="Decrement strikes"
+                                    >
+                                      -
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdjustStrikes(member, 1, 0)}
+                                      disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) >= 3}
+                                      className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
+                                      title="Increment strikes"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
 
-                            <span className="text-cream-muted">•</span>
+                                <span className="text-cream-muted">•</span>
 
-                            {/* Metastrikes Adjuster */}
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-fox-amber flex items-center gap-1">
-                                <Shield className="h-3 w-3 fill-fox-amber/20 text-fox-amber" />
-                                <span>Meta:</span>
-                                <strong className="tabular-nums font-bold">{Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0)}/3</strong>
-                              </span>
-                              <div className="flex items-center gap-0.5 ml-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleAdjustStrikes(member, 0, -1)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) <= 0}
-                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                  title="Decrement metastrikes"
-                                >
-                                  -
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAdjustStrikes(member, 0, 1)}
-                                  disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) >= 3}
-                                  className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                  title="Increment metastrikes"
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </div>
+                                {/* Metastrikes Adjuster */}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-semibold text-fox-amber flex items-center gap-1">
+                                    <Shield className="h-3 w-3 fill-fox-amber/20 text-fox-amber" />
+                                    <span>Meta:</span>
+                                    <strong className="tabular-nums font-bold">{Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0)}/3</strong>
+                                  </span>
+                                  <div className="flex items-center gap-0.5 ml-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdjustStrikes(member, 0, -1)}
+                                      disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) <= 0}
+                                      className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
+                                      title="Decrement metastrikes"
+                                    >
+                                      -
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdjustStrikes(member, 0, 1)}
+                                      disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) >= 3}
+                                      className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
+                                      title="Increment metastrikes"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
 
-                            <span className="text-cream-muted">•</span>
+                                <span className="text-cream-muted">•</span>
+                              </>
+                            )}
 
                             {/* Clear Tonight's Log / Accidental Votes */}
                             <button

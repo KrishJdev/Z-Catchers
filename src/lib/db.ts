@@ -88,6 +88,7 @@ export interface Member {
   created_at: string;
   updated_at: string;
   // Dynamic runtime properties (hydrated by /api/members)
+  strike_counts_unavailable?: boolean;
   is_in_bed?: boolean;
   is_woke_up?: boolean;
   in_bed_at?: string | null;
@@ -219,9 +220,6 @@ export async function fetchAllRows<T>(
       break;
     }
     allRows.push(...data);
-    if (data.length < pageSize) {
-      break;
-    }
     const key = data[data.length - 1][primaryKey];
     if (typeof key !== 'string' || key === cursor) {
       return { data: allRows, error: new Error(`Invalid pagination cursor for ${table}.`) };
