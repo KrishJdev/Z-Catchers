@@ -1,15 +1,16 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-20T18:30:15+05:30
+> **Last Updated:** 2026-11-21T04:47:00.2106723+05:30
 > **Active Working Branch:** `krish`  
+> **Punishments Phase 0 branch:** `codex/punishments-0-baseline` from `origin/dev` at `285f632`
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Latest implementation commit:** `cde52f4` on `krish`
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active Integration Pull Requests:** [#95](https://github.com/KrishJdev/Z-Catchers/pull/95) is ready for review from `krish` into `dev`.
+> **Active Integration Pull Requests:** [#95](https://github.com/KrishJdev/Z-Catchers/pull/95) merged into `dev` at `285f632`. See the Phase 0 record below for the punishments rollout.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
-> **Build Status:** On `cde52f4`, `npx tsc --noEmit`, `npm run test:unit` (44 suites), and `npm run build` passed locally. See [PR #95 checks](https://github.com/KrishJdev/Z-Catchers/pull/95/checks) for hosted results.
+> **Build Status:** On the Phase 0 base `285f632`, `npx tsc --noEmit`, `npm run test:unit` (44 suites), and `npm run build` passed locally. The expanded disposable Supabase baseline requires its hosted dispatcher run.
 
 ---
 
@@ -69,6 +70,17 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Punishments Phase 0 · Baseline and inventory
+
+- Added the approved [punishments plan](PUNISHMENTS_PLAN.md) and [Phase 0 inventory](PUNISHMENTS_BASELINE.md). The inventory identifies the auth callers, moderator entry points, strike writers, cap, scheduler, and existing authorization and mobile access gaps.
+- Updated `scripts/test-dispatcher-ci.mjs` and `.github/workflows/dispatcher-smoke.yml`, and added `scripts/fixtures/discord-oauth-smoke.mjs`. The expanded test runs Discord fixture sign-ins and member flows alongside the existing real Supabase Cron and encrypted push checks. Updated `HANDOFF.md`.
+
+| Punishments milestone | Status | Verification |
+| --- | --- | --- |
+| Phase 0 local baseline and inventory | DONE | TypeScript, 44 unit suites, production build and source inventory on the latest `dev` baseline |
+| Phase 0 expanded disposable Supabase baseline | IN PROGRESS | Await the hosted dispatcher check |
+| Phase 1 Discord-only authentication | TODO | Start after the Phase 0 check passes and its PR merges |
 
 ### Phase 126 · Consolidated PR #95 review
 
@@ -2933,6 +2945,8 @@ d:\Projects\Z Catchers\
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
+
+**Punishments rollout.** Review the [Phase 0 inventory](PUNISHMENTS_BASELINE.md) and confirm the expanded disposable Supabase check. After the Phase 0 PR merges, create `codex/punishments-1-discord-auth` from the updated `origin/dev`. Follow [Phase 1](PUNISHMENTS_PLAN.md#phase-1--discord-only-authentication-and-role-handling) to preserve new and returning Discord sign-in, enforce ownership in the member routes, and require the master passcode on immediate schedule override paths. Check service-worker subscription rotation and both moderator entry points during that phase.
 
 1. **Review PR #95 and prepare the production rollout separately.**
    - PR #95 uses the isolated `Supabase Cron and push smoke test` check for the `dev` integration. Review the PR and merge to `dev` when approved.

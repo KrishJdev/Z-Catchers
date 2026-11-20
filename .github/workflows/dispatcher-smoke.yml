@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/dispatcher-smoke.yml'
       - 'scripts/test-dispatcher-ci.mjs'
+      - 'scripts/fixtures/discord-oauth-smoke.mjs'
       - 'src/app/api/cron/**'
       - 'src/app/api/members/nag-notif/**'
       - 'src/app/api/members/strikes/metastrike/**'

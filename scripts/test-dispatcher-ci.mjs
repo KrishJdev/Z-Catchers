@@ -19,7 +19,12 @@ const dispatcherPath = '/api/cron/dispatch-notifications';
 const fixtureSecret = () => randomBytes(32).toString('hex');
 const cronSecret = fixtureSecret();
 const bypassSecret = fixtureSecret();
-const modPasscode = fixtureSecret();
+const discordAccounts = {
+  overdue: '100000000000000001',
+  'database-mod': '100000000000000002',
+  'discord-mod': '100000000000000003',
+  newcomer: '100000000000000004',
+};
 const { publicKey, privateKey } = webpush.generateVAPIDKeys();
 const localSupabase = parseEnv(execFileSync(
   'supabase', ['status', '--workdir', workdir, '-o', 'env'], { encoding: 'utf8' },
@@ -44,6 +49,56 @@ async function waitFor(check, timeoutMs, failureMessage) {
     await wait(500);
   } while (Date.now() < deadline);
   assert.fail(failureMessage());
+}
+
+function cookieFrom(response, name) {
+  const cookie = response.headers.getSetCookie().find(header => header.startsWith(name + '='));
+  assert.ok(cookie, `Expected the ${name} cookie on HTTP ${response.status}`);
+  return cookie.split(';', 1)[0];
+}
+
+async function discordCallback(account) {
+  const start = await fetch(appOrigin + '/api/auth/discord', { redirect: 'manual' });
+  assert.equal(start.status, 302);
+  const authorizeUrl = new URL(start.headers.get('location'));
+  assert.equal(authorizeUrl.origin + authorizeUrl.pathname, 'https://discord.com/oauth2/authorize');
+  const callbackUrl = new URL(authorizeUrl.searchParams.get('redirect_uri'));
+  assert.equal(callbackUrl.href, appOrigin + '/api/auth/discord/callback');
+  callbackUrl.searchParams.set('code', account);
+  callbackUrl.searchParams.set('state', authorizeUrl.searchParams.get('state'));
+
+  const callback = await fetch(callbackUrl, {
+    redirect: 'manual',
+    headers: { Cookie: cookieFrom(start, 'zcatchers_oauth_state') },
+  });
+  assert.equal(callback.status, 302);
+  return callback;
+}
+
+async function signIn(account, id, isModerator, role) {
+  const callback = await discordCallback(account);
+  assert.equal(callback.headers.get('location'), appOrigin + '/');
+  const cookie = cookieFrom(callback, 'zcatchers_session');
+  const state = await fetch(appOrigin + '/api/auth/me', { headers: { Cookie: cookie } });
+  assert.equal(state.status, 200);
+  const { authenticated, member } = await state.json();
+  assert.equal(authenticated, true);
+  assert.equal(member.id, id);
+  assert.equal(member.role, role);
+  assert.equal(member.is_moderator, isModerator);
+  return cookieFrom(state, 'zcatchers_session');
+}
+
+async function post(path, cookie, body, expectedStatus = 200) {
+  const response = await fetch(appOrigin + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json();
+  assert.equal(response.status, expectedStatus, `${path}: ${JSON.stringify({ error: payload.error })}`);
+  if (response.ok) assert.equal(payload.success, true, path);
+  return payload;
 }
 
 function setupCertificate() {
@@ -121,19 +176,27 @@ const env = {
   NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
   SUPABASE_SERVICE_ROLE_KEY: serviceKey,
   NEXT_PUBLIC_VAPID_PUBLIC_KEY: publicKey,
+  NEXT_PUBLIC_APP_URL: appOrigin,
   VAPID_PRIVATE_KEY: privateKey,
   VAPID_SUBJECT: 'mailto:notifications@example.test',
   NODE_EXTRA_CA_CERTS: certPath,
   SESSION_SECRET: fixtureSecret(),
   PIN_SALT: fixtureSecret(),
   CRON_SECRET: cronSecret,
-  MOD_SECRET_PASSCODE: modPasscode,
+  MOD_SECRET_PASSCODE: fixtureSecret(),
+  MOD_DISCORD_IDS: discordAccounts['discord-mod'],
+  DISCORD_CLIENT_ID: '100000000000000010',
+  DISCORD_CLIENT_SECRET: fixtureSecret(),
+  DISCORD_COMMUNITY_WEBHOOK_URL: '',
+  DISCORD_SMOKE_ACCOUNTS: JSON.stringify(discordAccounts),
 };
 const db = createClient(apiUrl, serviceKey, { auth: { persistSession: false } });
 let app;
 try {
   execFileSync(process.execPath, [nextCli, 'build'], { env, stdio: 'inherit' });
-  app = spawn(process.execPath, [nextCli, 'start', '-H', '127.0.0.1', '-p', '3181'], { env, stdio: 'inherit' });
+  app = spawn(process.execPath, [
+    '--import', './scripts/fixtures/discord-oauth-smoke.mjs', nextCli, 'start', '-H', '127.0.0.1', '-p', '3181',
+  ], { env, stdio: 'inherit' });
   await waitFor(async () => {
     const response = await fetch(appOrigin + dispatcherPath).catch(() => null);
     return response?.status === 401;
@@ -156,6 +219,7 @@ try {
     const bed = local.plus({ minutes: offset });
     return {
       discord_username: name,
+      discord_id: discordAccounts[name] ?? null,
       journal_url: 'https://discord.com/channels/123/456',
       timezone: local.zoneName,
       bedtime_local: bed.toFormat('HH:mm'),
@@ -166,15 +230,28 @@ try {
   })).select('id,discord_username').throwOnError();
   const memberId = name => members.find(member => member.discord_username === name).id;
   const cycle = local.toISODate();
+  const regularId = memberId('overdue');
+  const regularCookie = await signIn('overdue', regularId, false, 'member');
   await db.from('sleep_logs').insert({
     member_id: memberId('checked-in'), cycle_date: cycle, in_bed_at: now.minus({ minutes: 19 }).toISO(),
   }).throwOnError();
-  await db.from('push_subscriptions').insert(fixtures.map(({ name, personal, community }) => ({
+  const subscriptions = fixtures.map(({ name, personal, community }) => ({
     member_id: memberId(name), endpoint: relayOrigin + '/push/' + name,
     p256dh_key: createECDH('prime256v1').generateKeys().toString('base64url'),
     auth_key: randomBytes(16).toString('base64url'),
     notify_personal: personal, notify_community: community,
-  }))).throwOnError();
+  }));
+  const [regularSubscription] = subscriptions.filter(sub => sub.member_id === regularId);
+  await db.from('push_subscriptions').insert(subscriptions.filter(sub => sub.member_id !== regularId)).throwOnError();
+  await post('/api/push/subscribe', regularCookie, {
+    member_id: regularId,
+    notify_personal: regularSubscription.notify_personal,
+    notify_community: regularSubscription.notify_community,
+    subscription: {
+      endpoint: regularSubscription.endpoint,
+      keys: { p256dh: regularSubscription.p256dh_key, auth: regularSubscription.auth_key },
+    },
+  });
 
   const dryRun = await fetch(appOrigin + dispatcherPath + '?dry_run=true', {
     headers: { Authorization: 'Bearer ' + cronSecret },
@@ -189,6 +266,7 @@ try {
     SELECT vault.create_secret('${bypassSecret}', 'zcatchers_vercel_bypass');
   `);
   sql(readFileSync('supabase/schedule_dispatch.sql', 'utf8'));
+  assert.equal(sql("SELECT schedule FROM cron.job WHERE jobname = 'zcatchers-dispatch' AND active"), '* * * * *');
   await waitFor(() => scheduledRuns.length >= 2, 150_000, () => {
     const http = sql("SELECT status_code, error_msg FROM net._http_response ORDER BY id DESC LIMIT 5");
     const cron = sql("SELECT status, return_message FROM cron.job_run_details ORDER BY runid DESC LIMIT 5");
@@ -206,6 +284,7 @@ try {
   assert.deepEqual(pushes.sort(), ['awake', 'overdue', 'overdue', 'wind-down']);
   await waitFor(() => sql('SELECT count(*) FROM net._http_response WHERE status_code = 200') === '2',
     10_000, () => 'pg_net did not record both HTTP 200 responses.');
+  sql("SELECT cron.unschedule('zcatchers-dispatch')");
 
   assert.equal(sql(`
     SELECT sleep_cycle_date, record_type, strikes_used, strikes_count
@@ -226,19 +305,81 @@ try {
   assert.equal(pushes.length, 5);
   assert.equal(pushes.at(-1), 'overdue');
 
-  const metastrike = await fetch(appOrigin + '/api/members/strikes/metastrike', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-mod-passcode': modPasscode },
-    body: JSON.stringify({
-      member_id: memberId('overdue'), action: 'convert_retroactive', sleep_cycle_date: cycle, reason: 'CI fixture',
-    }),
+  await post('/api/members/strikes/metastrike', regularCookie, {
+    member_id: regularId, action: 'convert_retroactive', sleep_cycle_date: cycle, reason: 'CI fixture',
   });
   assert.equal(metastrike.status, 200, await metastrike.text());
   assert.equal(sql(`
     SELECT record_type, strikes_used, strikes_count, metastrikes_used, metastrikes_count
     FROM public.nightly_strike_logs JOIN public.members ON target_member_id = members.id
   `), 'metastrike|0|0|1|1');
-  console.log('Verified two authenticated cron runs, encrypted pushes, Sleep Shield, atomic nag cooldown, and strike replacement.');
+  console.log('Verified two authenticated Supabase Cron runs, encrypted pushes, Sleep Shield, atomic nag cooldown, and member strike replacement.');
+
+  const profile = {
+    journal_url: 'https://discord.com/channels/123/456',
+    timezone: local.zoneName,
+    bedtime_local: local.plus({ hours: 1 }).toFormat('HH:mm'),
+    wake_time_local: local.plus({ hours: 9 }).toFormat('HH:mm'),
+  };
+  const callback = await discordCallback('newcomer');
+  const join = new URL(callback.headers.get('location'));
+  assert.equal(join.origin + join.pathname, appOrigin + '/join');
+  const { member: newcomer } = await post('/api/auth/claim-profile', cookieFrom(callback, 'zcatchers_claim_token'), {
+    ...profile, claim_token: join.searchParams.get('claim_token'), option: 'new',
+  }, 201);
+  const newcomerCookie = await signIn('newcomer', newcomer.id, false, 'member');
+  const proactive = await post('/api/members/strikes/metastrike', newcomerCookie, { member_id: newcomer.id });
+  assert.equal(proactive.log.record_type, 'metastrike');
+  assert.equal(proactive.metastrikes_used, 1);
+
+  await post('/api/mod', regularCookie, { action: 'verify' }, 401);
+  for (const [account, role] of [['database-mod', 'moderator'], ['discord-mod', 'member']]) {
+    const { data: moderator } = await db.from('members').insert({
+      ...profile, role, discord_username: account, discord_id: discordAccounts[account],
+    }).select('id').single().throwOnError();
+    const cookie = await signIn(account, moderator.id, true, role);
+    assert.equal((await fetch(appOrigin + '/api/mod', { headers: { Cookie: cookie } })).status, 200);
+    const verified = await post('/api/mod', cookie, { action: 'verify' });
+    assert.equal(verified.moderatorId, moderator.id);
+  }
+
+  const previousBedtime = local.minus({ minutes: 16 }).toFormat('HH:mm');
+  const scheduleStart = DateTime.utc();
+  const pending = await post('/api/members/update-schedule', regularCookie, {
+    member_id: regularId, bedtime_local: profile.bedtime_local,
+  });
+  assert.equal(pending.cooldown_applied, true);
+  assert.ok(DateTime.fromISO(pending.pending_effective_at) >= scheduleStart.plus({ hours: 48 }));
+  assert.ok(DateTime.fromISO(pending.pending_effective_at) <= DateTime.utc().plus({ hours: 48 }));
+  assert.equal(pending.member.bedtime_local.slice(0, 5), previousBedtime);
+  const cancelled = await post('/api/members/cancel-pending', regularCookie, {
+    member_id: regularId, action: 'schedule',
+  });
+  assert.equal(cancelled.member.pending_effective_at, null);
+  assert.equal(cancelled.member.bedtime_local.slice(0, 5), previousBedtime);
+
+  const inBed = action => post('/api/members/in-bed', regularCookie, { memberId: regularId, action });
+  const checkIn = await inBed('check_in');
+  assert.equal(checkIn.is_in_bed, true);
+  const sleepRows = async () => {
+    const { data } = await db.from('sleep_logs').select('in_bed_at,woke_up_at,wake_source')
+      .eq('member_id', regularId).eq('cycle_date', checkIn.local_date).throwOnError();
+    return data;
+  };
+  assert.ok((await sleepRows())[0]?.in_bed_at);
+  assert.equal((await inBed('cancel')).is_in_bed, false);
+  assert.deepEqual(await sleepRows(), []);
+  assert.equal((await inBed('check_in')).local_date, checkIn.local_date);
+  const wake = await post('/api/members/wake-up', regularCookie, { memberId: regularId, mode: 'button' });
+  assert.equal(wake.isDurable, true);
+  assert.ok((await sleepRows())[0]?.woke_up_at);
+  assert.equal((await sleepRows())[0].wake_source, 'button');
+
+  const receivedBeforeTest = pushes.length;
+  const testPush = await post('/api/push/test', regularCookie, {});
+  assert.equal(testPush.delivered, 1);
+  assert.deepEqual(pushes.slice(receivedBeforeTest), ['overdue']);
+  console.log('Verified Discord onboarding and returning sessions, both moderator types, schedule cooldown and cancellation, check-in and undo, wake-up, Metastrikes, and push subscription and delivery.');
 } finally {
   app?.kill();
   await new Promise(resolve => relay.close(resolve));
