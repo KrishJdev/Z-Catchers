@@ -8,7 +8,7 @@ The feature branch starts at `origin/dev` commit `285f6328bcd64db759add089d8ba13
 | --- | --- |
 | Local baseline | `npx tsc --noEmit`, `npm run test:unit` (44 suites), and `npm run build` all passed. |
 | Existing database and cron baseline | The [dispatcher integration run for the base commit](https://github.com/KrishJdev/Z-Catchers/actions/runs/44785630251) passed with disposable Supabase, the real named Cron job and encrypted Web Push. |
-| Expanded Phase 0 database baseline | The **Dispatcher integration** check on this PR runs the built app on disposable Supabase. It exercises new and returning Discord profiles, a database-role moderator, a Discord-ID moderator, schedule queue and cancel, check-in and undo, wake-up, both Metastrike forms, device subscription and encrypted delivery. Discord's token and identity responses are fixtures. The application handles state, callback, cookies, renewal and authorization over HTTP. The push receiver is a test relay. |
+| Expanded Phase 0 database baseline | The [Dispatcher integration run for `9ad991b`](https://github.com/KrishJdev/Z-Catchers/actions/runs/44836473398) passed against disposable Supabase. It exercised new and returning Discord profiles, a database-role moderator, a Discord-ID moderator, schedule queue and cancel, check-in and undo, wake-up, both Metastrike forms, device subscription and encrypted delivery. Discord's token and identity responses are fixtures. The application handles state, callback, cookies, renewal and authorization over HTTP. The push receiver is a test relay. |
 
 ### Scheduler
 
