@@ -92,7 +92,13 @@ export async function GET(request: Request) {
         });
       }
       const hydrated = hydrateMemberWeekendHours(activeMember);
-      const strikeCounts = await resolveMemberStrikeCounts(hydrated);
+      let strikeCounts;
+      try {
+        strikeCounts = await resolveMemberStrikeCounts(hydrated);
+      } catch (error) {
+        console.error(`[mod] Could not resolve strike counts for ${hydrated.id}:`, error);
+        continue;
+      }
       processedMembers.push({
         ...sanitizeMember(hydrated),
         strikes_used: strikeCounts.strikes_used,

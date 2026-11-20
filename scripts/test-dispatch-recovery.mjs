@@ -4,12 +4,13 @@ import { DateTime } from 'luxon';
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://unit.invalid';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only';
 process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'disabled';
-const { supabaseAdmin } = await import('../src/lib/db.ts');
+const { fetchAllRows, supabaseAdmin } = await import('../src/lib/db.ts');
 const { Settings } = await import('../src/lib/sleepEngine.ts');
 const { acquireCronLock, clearAllCronLocks, executeNotificationDispatcher, getCronLock, recordCronLockDeliveredSub } = await import('../src/lib/cronDispatcher.ts');
 const { resolveMemberStrikeCounts } = await import('../src/lib/strikes.ts');
 const { webpush } = await import('../src/lib/pushServer.ts');
 const { GET } = await import('../src/app/api/cron/dispatch-notifications/route.ts');
+const { GET: getRoster } = await import('../src/app/api/members/route.ts');
 const { POST: nag } = await import('../src/app/api/members/nag-notif/route.ts');
 const sleeper = {
   id: 'sleeper', discord_username: 'Night Fox', bedtime_local: '23:00', wake_time_local: '07:00',
@@ -29,14 +30,20 @@ let databaseError;
 let receiptFailures = 0;
 let receiptAttempts = 0;
 let memberUpdate;
+let sleepEvidenceErrorFor;
+let onSleepEvidenceRead;
+let failedNagDeletes = 0;
+let nagDeleteAttempts = 0;
 supabaseAdmin.from = table => {
   let rows = tables[table];
   assert.ok(rows, table);
   let updates;
   let deleting = false;
+  let filterMemberId;
   const query = {
     select() { return this; },
     eq(key, value) {
+      if (key === 'member_id') filterMemberId = value;
       const [column, field] = key.split('->>');
       rows = rows.filter(row => (field ? row[column]?.[field] : row[column]) === value);
       return this;
@@ -46,12 +53,24 @@ supabaseAdmin.from = table => {
     gte(key, value) { rows = rows.filter(row => row[key] >= value); return this; },
     in(key, values) { rows = rows.filter(row => values.includes(row[key])); return this; },
     like(key, prefix) { rows = rows.filter(row => row[key].startsWith(prefix.replace(/%$/, ''))); return this; },
+    not(key, _operator, value) { rows = rows.filter(row => row[key] !== value); return this; },
     order() { return this; }, limit() { return this; }, range() { return this; },
     async insert(row) { tables[table].push(structuredClone(row)); return { error: null }; },
     async upsert(row) { tables[table].push(structuredClone(row)); return { error: null }; },
     update(fields) { updates = fields; return this; },
     delete() { deleting = true; return this; },
     result() {
+      if (table === 'sleep_logs' && filterMemberId) onSleepEvidenceRead?.();
+      if (table === 'sleep_logs' && filterMemberId && filterMemberId === sleepEvidenceErrorFor) {
+        return { data: null, error: { message: 'sleep evidence unavailable' } };
+      }
+      if (table === 'notification_logs' && deleting) {
+        nagDeleteAttempts++;
+        if (failedNagDeletes > 0) {
+          failedNagDeletes--;
+          return { data: null, error: { message: 'claim cleanup unavailable' } };
+        }
+      }
       if (table === 'cron_locks' && updates?.metadata?.delivered_sub_ids?.length && !updates.expires_at) {
         receiptAttempts++;
         if (receiptFailures > 0) {
@@ -174,19 +193,50 @@ supabaseAdmin.rpc = async name => {
 const delivered = await (await manual()).json();
 assert.equal(delivered.deliveredCount, 2, JSON.stringify(delivered));
 webpush.sendNotification = async () => { throw Object.assign(new Error('busy'), { statusCode: 503 }); };
-assert.equal((await manual()).status, 503);
+const originalClaim = {
+  member_id: sleeper.id, notification_type: 'MANUAL_NAG:OVERDUE:anon_target',
+  local_date: '2026-11-20', dispatched_at: '2026-11-20T23:15:00.000Z',
+};
+const newerClaim = { ...originalClaim, dispatched_at: '2026-11-20T23:30:00.000Z' };
+tables.notification_logs.push(originalClaim, newerClaim);
+failedNagDeletes = 1;
+const retryableNag = await manual();
+assert.equal(retryableNag.status, 503);
+assert.match((await retryableNag.json()).error, /Please retry/);
+assert.equal(nagDeleteAttempts, 2);
+assert.ok(!tables.notification_logs.includes(originalClaim));
+assert.ok(tables.notification_logs.includes(newerClaim));
+failedNagDeletes = 2;
+const uncertainNag = await manual();
+assert.equal(uncertainNag.status, 503);
+assert.equal(uncertainNag.headers.get('Retry-After'), '900');
+assert.equal((await uncertainNag.json()).cooldownSeconds, 900);
 tables.sleep_logs.push({ member_id: sleeper.id, cycle_date: '2026-11-20', in_bed_at: '2026-11-20T23:12Z' });
 assert.equal((await (await manual()).json()).shieldActive, true);
+
+Settings.now = () => Date.parse('2026-11-21T08:00:00Z');
+tables.notification_logs.push({ member_id: sleeper.id, notification_type: 'IN_BED_EARLY', local_date: '2026-11-20' });
+tables.sleep_logs.at(-1).woke_up_at = '2026-11-21T07:20Z';
+const wakeNag = () => nag(new Request('http://localhost/api/members/nag-notif', {
+  method: 'POST', body: JSON.stringify({ target_member_id: sleeper.id, type: 'wake_up' }),
+}));
+const alreadyAwake = await wakeNag();
+assert.equal(alreadyAwake.status, 400);
+assert.match((await alreadyAwake.json()).error, /already awake/);
+delete tables.sleep_logs.at(-1).woke_up_at;
+webpush.sendNotification = async () => ({ statusCode: 201 });
+assert.equal((await (await wakeNag()).json()).deliveredCount, 2);
 
 // A worker retaining an accepted push in memory must carry its receipt into the next lease.
 databaseError = undefined;
 const lockKey = 'test-receipt-renewal';
-assert.equal(await acquireCronLock(lockKey, 300), true);
+const receiptLease = await acquireCronLock(lockKey, 300);
+assert.ok(receiptLease);
 receiptFailures = 3;
-await assert.rejects(recordCronLockDeliveredSub(lockKey, 'accepted'), /temporary receipt failure/);
+await assert.rejects(recordCronLockDeliveredSub(receiptLease, 'accepted'), /temporary receipt failure/);
 (await getCronLock(lockKey)).expiresAt = 0;
 tables.cron_locks.find(row => row.lock_key === lockKey).expires_at = '2026-01-01T00:00:00Z';
-assert.equal(await acquireCronLock(lockKey, 300), true);
+assert.ok(await acquireCronLock(lockKey, 300));
 assert.deepEqual((await getCronLock(lockKey)).metadata.delivered_sub_ids, ['accepted']);
 assert.deepEqual(tables.cron_locks.find(row => row.lock_key === lockKey).metadata.delivered_sub_ids, ['accepted']);
 
@@ -313,3 +363,141 @@ assert.equal((await run('2026-11-21T23:45Z')).details.errors.length, 0);
 assert.equal(strikeWrites, 1);
 assert.equal(alertAttempts.length, 3);
 assert.equal(tables.cron_locks.find(row => row.lock_key === expiredKey).metadata.alert_outcome, 'expired');
+
+// A target who checks in after the first bedtime push suppresses the remaining stage.
+const primary = { ...sleeper, wake_time_local: '07:00', last_notified_stage: null, last_notified_cycle_date: null };
+const other = { ...primary, id: 'other', bedtime_local: '01:00' };
+tables.members = [primary, other];
+tables.notification_logs = [];
+tables.sleep_logs = [];
+tables.cron_locks = [];
+tables.push_subscriptions.push({ ...tables.push_subscriptions[0], id: 'other-device', endpoint: 'other-device',
+  member_id: other.id, notify_community: true });
+clearAllCronLocks();
+const bedtimeSends = [];
+webpush.sendNotification = async sub => {
+  bedtimeSends.push(sub.endpoint);
+  tables.sleep_logs.push({ member_id: primary.id, cycle_date: '2026-11-20', in_bed_at: '2026-11-20T23:00Z' });
+  return { statusCode: 201 };
+};
+assert.equal((await run('2026-11-20T23:00Z')).bedtimeHitDispatched, 1);
+const bedtimeKey = 'notif:sleeper:2026-11-20:BEDTIME_HIT';
+const bedtimeStage = () => tables.cron_locks.find(row => row.lock_key === bedtimeKey);
+assert.deepEqual(bedtimeSends, ['device-a']);
+assert.deepEqual(bedtimeStage().metadata.delivered_sub_ids, ['device-a']);
+assert.equal(bedtimeStage().metadata.delivery_outcome, 'suppressed');
+
+// A fresh evidence read failure leaves prior receipts intact and the stage retryable.
+tables.notification_logs = [];
+tables.sleep_logs = [];
+tables.cron_locks = [];
+clearAllCronLocks();
+webpush.sendNotification = async () => {
+  sleepEvidenceErrorFor = primary.id;
+  return { statusCode: 201 };
+};
+const evidenceFailure = await run('2026-11-20T23:00Z');
+assert.match(evidenceFailure.details.errors[0], /Could not verify current sleep status/);
+assert.deepEqual(bedtimeStage().metadata.delivered_sub_ids, ['device-a']);
+assert.equal(bedtimeStage().metadata.state, 'processing');
+sleepEvidenceErrorFor = undefined;
+
+// An exhausted receipt write leaves the failed stage pending while unrelated work continues.
+const otherWindDown = { ...other, bedtime_local: '23:00' };
+tables.members = [primary, otherWindDown];
+tables.cron_locks = [];
+clearAllCronLocks();
+receiptFailures = 3;
+const isolatedSends = [];
+webpush.sendNotification = async sub => {
+  isolatedSends.push(sub.endpoint);
+  return { statusCode: 201 };
+};
+const stageFailure = await executeNotificationDispatcher({ testNowUtc: DateTime.fromISO('2026-11-20T22:45Z') });
+assert.match(stageFailure.details.errors[0], /WIND_DOWN_30M for sleeper.*temporary receipt failure/);
+assert.deepEqual(isolatedSends, ['device-a', 'other-device']);
+const windDownKey = 'notif:sleeper:2026-11-20:WIND_DOWN_30M';
+assert.equal(tables.cron_locks.find(row => row.lock_key === windDownKey).metadata.state, 'processing');
+assert.deepEqual((await getCronLock(windDownKey)).metadata.delivered_sub_ids, ['device-a']);
+
+// A replacement lease acquired while a provider is in flight is untouched by the stale run.
+tables.cron_locks = [];
+clearAllCronLocks();
+const staleSends = [];
+webpush.sendNotification = async sub => {
+  staleSends.push(sub.endpoint);
+  (await getCronLock(windDownKey)).expiresAt = 0;
+  const row = tables.cron_locks.find(lock => lock.lock_key === windDownKey);
+  row.expires_at = '2026-01-01T00:00:00Z';
+  assert.ok(await acquireCronLock(windDownKey, 300, { stage: 'replacement' }));
+  return { statusCode: 201 };
+};
+const staleRun = await run('2026-11-20T22:45Z');
+assert.match(staleRun.details.errors[0], /lease was replaced/);
+assert.deepEqual(staleSends, ['device-a']);
+const replacement = tables.cron_locks.find(row => row.lock_key === windDownKey);
+assert.equal(replacement.metadata.stage, 'replacement');
+assert.deepEqual(replacement.metadata.delivered_sub_ids, []);
+assert.equal(replacement.metadata.completed, undefined);
+
+// A replacement in the database alone blocks a stale worker before its first push.
+tables.cron_locks = [];
+clearAllCronLocks();
+onSleepEvidenceRead = () => {
+  const row = bedtimeStage();
+  row.locked_at = new Date(Date.parse(row.locked_at) + 1000).toISOString();
+  row.metadata = { state: 'processing', delivered_sub_ids: ['replacement-receipt'] };
+  onSleepEvidenceRead = undefined;
+};
+const pushesBeforeLeaseLoss = staleSends.length;
+const lostLease = await run('2026-11-20T23:00Z');
+assert.match(lostLease.details.errors[0], /expired or was replaced before dispatch/);
+assert.equal(staleSends.length, pushesBeforeLeaseLoss);
+assert.deepEqual(bedtimeStage().metadata.delivered_sub_ids, ['replacement-receipt']);
+
+// Roster loading and alert resumption both isolate a failed monthly rollover.
+const badRollover = { ...primary, strike_cycle_month: '2026-11' };
+const goodRollover = { ...otherWindDown, strike_cycle_month: '2026-12' };
+tables.members = [badRollover, goodRollover];
+tables.notification_logs = tables.members.map(member => ({
+  member_id: member.id, notification_type: 'BEDTIME_HIT', local_date: '2026-12-01',
+}));
+tables.nightly_strike_logs = tables.members.map(member => ({
+  target_member_id: member.id, sleep_cycle_date: '2026-12-01', record_type: 'strike', updated_at: '2026-12-01T23:10Z',
+}));
+tables.cron_locks = [];
+clearAllCronLocks();
+memberUpdate = member => member.id === primary.id ? { data: null, error: { message: 'rollover failed' } } : undefined;
+Settings.now = () => Date.parse('2026-12-01T23:15Z');
+const roster = await getRoster(new Request('http://localhost/api/members'));
+assert.equal(roster.status, 200);
+assert.deepEqual((await roster.json()).members.map(member => member.id), [other.id]);
+webpush.sendNotification = async () => ({ statusCode: 201 });
+const resumed = await executeNotificationDispatcher({ testNowUtc: DateTime.fromISO('2026-12-01T23:15Z') });
+assert.match(resumed.details.errors[0], /AUTO_BEDTIME_STRIKE for sleeper.*rollover failed/);
+assert.ok(tables.notification_logs.some(row => row.member_id === other.id && row.notification_type === 'AUTO_BEDTIME_STRIKE'));
+assert.ok(!tables.notification_logs.some(row => row.member_id === primary.id && row.notification_type === 'AUTO_BEDTIME_STRIKE'));
+
+// Removing a subscription already read on page one must not shift the last row past page two.
+let rows = [{ id: 'a', endpoint: 'A' }, { id: 'b', endpoint: 'B' }, { id: 'c', endpoint: 'C' }];
+let pageReads = 0;
+supabaseAdmin.from = table => {
+  assert.equal(table, 'push_subscriptions');
+  let cursor;
+  let limit;
+  return {
+    select(columns) { assert.equal(columns, 'id, endpoint'); return this; },
+    order(column) { assert.equal(column, 'id'); return this; },
+    limit(size) { limit = size; return this; },
+    gt(column, value) { assert.equal(column, 'id'); cursor = value; return this; },
+    then(resolve) {
+      const data = rows.filter(row => cursor === undefined || row.id > cursor).slice(0, limit);
+      if (++pageReads === 1) rows = rows.slice(1);
+      resolve({ data, error: null });
+    },
+  };
+};
+const subscriptions = await fetchAllRows('push_subscriptions', 'endpoint', q => q, 2);
+assert.equal(subscriptions.error, null);
+assert.deepEqual(subscriptions.data.map(row => row.id), ['a', 'b', 'c']);
+assert.equal(pageReads, 2);

@@ -181,17 +181,19 @@ export interface CronLockRow {
 
 /**
  * Safely fetches all rows matching a query despite PostgREST's default 1000-row cap,
- * paging through results using .range(from, to).
+ * paging by primary key so deletions cannot shift subsequent pages.
  */
 export async function fetchAllNotificationLogs<T = any>(
+  columns: string,
   builderFn: (query: any) => any,
   pageSize = 1000
 ): Promise<{ data: T[]; error: any }> {
-  return fetchAllRows<T>('notification_logs', builderFn, pageSize);
+  return fetchAllRows<T>('notification_logs', columns, builderFn, pageSize);
 }
 
 export async function fetchAllRows<T>(
   table: 'notification_logs' | 'sleep_logs' | 'members' | 'push_subscriptions' | 'cron_locks',
+  columns: string,
   builderFn: (query: any) => any,
   pageSize = 1000
 ): Promise<{ data: T[]; error: any }> {
@@ -199,17 +201,17 @@ export async function fetchAllRows<T>(
     return { data: [], error: null };
   }
 
-  let page = 0;
+  let cursor: string | undefined;
   const allRows: T[] = [];
   const primaryKey = table === 'cron_locks' ? 'lock_key' : 'id';
+  const projection = columns === '*' ? columns : `${primaryKey}, ${columns}`;
 
   while (true) {
-    const from = page * pageSize;
-    const to = from + pageSize - 1;
-    const baseQuery = supabaseAdmin.from(table);
-    const query = builderFn(baseQuery).order(primaryKey, { ascending: true }).range(from, to);
+    const baseQuery = supabaseAdmin.from(table).select(projection);
+    let query = builderFn(baseQuery).order(primaryKey, { ascending: true }).limit(pageSize);
+    if (cursor !== undefined) query = query.gt(primaryKey, cursor);
 
-    const { data, error } = (await query) as { data: T[] | null; error: any };
+    const { data, error } = (await query) as { data: (T & Partial<Record<typeof primaryKey, string>>)[] | null; error: any };
     if (error) {
       return { data: allRows, error };
     }
@@ -220,7 +222,11 @@ export async function fetchAllRows<T>(
     if (data.length < pageSize) {
       break;
     }
-    page++;
+    const key = data[data.length - 1][primaryKey];
+    if (typeof key !== 'string' || key === cursor) {
+      return { data: allRows, error: new Error(`Invalid pagination cursor for ${table}.`) };
+    }
+    cursor = key;
   }
 
   return { data: allRows, error: null };

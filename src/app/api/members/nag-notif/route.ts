@@ -13,6 +13,8 @@ interface NagNotifRequestBody {
   type?: 'bedtime' | 'wake_up';
 }
 
+const NAG_COOLDOWN_MINUTES = 15;
+
 /**
  * POST /api/members/nag-notif
  *
@@ -168,6 +170,7 @@ export async function POST(request: Request) {
       // A. Check if target member has already marked themselves awake
       const activeSleepCycleDate = getSleepCycleDate(targetMember, nowUtc);
       const hasLoggedWakeUp = Boolean(
+        sleepLog?.woke_up_at || wokeUpLog ||
         (targetMember.last_wake_cycle_date && targetMember.last_wake_cycle_date === cycleDate) ||
         (targetMember.is_woke_up && cycleDate === activeSleepCycleDate) ||
         targetState.hasLoggedWakeUp
@@ -344,10 +347,27 @@ export async function POST(request: Request) {
     }
 
     if (subsErr || (activeSubs.length > 0 && delivered === 0)) {
-      await supabaseAdmin.from('notification_logs').delete()
-        .eq('member_id', targetMember.id).eq('notification_type', nagLogType)
-        .eq('local_date', cycleDate).eq('dispatched_at', nowUtc.toISO());
-      return NextResponse.json({ success: false, error: 'Could not deliver the reminder. Please retry.' }, { status: 503 });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const { error } = await supabaseAdmin.from('notification_logs').delete()
+            .eq('member_id', targetMember.id).eq('notification_type', nagLogType)
+            .eq('local_date', cycleDate).eq('dispatched_at', nowUtc.toISO());
+          if (!error) {
+            return NextResponse.json({ success: false, error: 'Could not deliver the reminder. Please retry.' }, { status: 503 });
+          }
+        } catch {
+          // Retry the same timestamp-guarded cleanup.
+        }
+      }
+      const cooldownSeconds = Math.max(0, Math.ceil(nowUtc.plus({ minutes: NAG_COOLDOWN_MINUTES })
+        .diff(DateTime.utc(), 'seconds').seconds));
+      const cooldownMinutes = Math.ceil(cooldownSeconds / 60);
+      const message = cooldownSeconds > 0
+        ? `Could not deliver the reminder. Your cooldown may remain active for ${cooldownMinutes}m.`
+        : 'Could not deliver the reminder. The cooldown has elapsed.';
+      return NextResponse.json({
+        success: false, error: message, message, rateLimited: cooldownSeconds > 0, cooldownSeconds, cooldownMinutes,
+      }, { status: 503, headers: { 'Retry-After': String(cooldownSeconds) } });
     }
 
     // Record Nag Assist counter increment
@@ -389,7 +409,7 @@ export async function POST(request: Request) {
       deliveredCount: delivered,
       failedCount: failed,
       totalAssists: totalAssists || 1,
-      cooldownSeconds: 15 * 60,
+      cooldownSeconds: NAG_COOLDOWN_MINUTES * 60,
       message: defaultSuccessMessage,
     });
   } catch (err: unknown) {

@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon';
+import { rejects } from 'node:assert/strict';
 import { computeMemberState, checkCooldownPromotion, getSleepCycleDate } from '../src/lib/sleepEngine.ts';
 import {
   acquireCronLock,
@@ -232,14 +233,14 @@ const acquired1 = await acquireCronLock(testLockKey, 300, {
   state: 'processing',
   delivered_sub_ids: [],
 });
-assert(acquired1 === true, 'Initial 300-second processing lease acquired');
+assert(acquired1?.lockKey === testLockKey, 'Initial 300-second processing lease acquired');
 
 // Test 5B: Concurrent worker is rejected while lease is active
 const acquiredConcurrent = await acquireCronLock(testLockKey, 300);
-assert(acquiredConcurrent === false, 'Concurrent runner is blocked while active processing lease is held');
+assert(acquiredConcurrent === null, 'Concurrent runner is blocked while active processing lease is held');
 
 // Test 5C: Record delivered push subscription
-await recordCronLockDeliveredSub(testLockKey, 'sub-endpoint-device-1');
+await recordCronLockDeliveredSub(acquired1, 'sub-endpoint-device-1');
 const lockStateMidFlight = await getCronLock(testLockKey);
 const deliveredList = lockStateMidFlight?.metadata?.delivered_sub_ids;
 assert(
@@ -261,7 +262,7 @@ const recovered = await acquireCronLock(testLockKey, 300, {
   local_date: '2026-11-09',
   state: 'processing',
 });
-assert(recovered === true, 'Recovery worker successfully re-acquires expired lease after previous worker crash');
+assert(recovered && recovered.lockedAt !== acquired1.lockedAt, 'Recovery worker acquires a new lease');
 
 const recoveredLock = await getCronLock(testLockKey);
 const recoveredSubs = recoveredLock?.metadata?.delivered_sub_ids;
@@ -271,14 +272,16 @@ assert(
 );
 
 // Test 5E: Mark completed seals with 24-hour durable lock
-await markCronLockCompleted(testLockKey, { member_id: 'test-member-99', stage: 'BEDTIME_HIT' });
+await rejects(recordCronLockDeliveredSub(acquired1, 'stale'), /replaced/);
+await rejects(markCronLockCompleted(acquired1), /replaced/);
+await markCronLockCompleted(recovered, { member_id: 'test-member-99', stage: 'BEDTIME_HIT' });
 const completedLock = await getCronLock(testLockKey);
 assert(completedLock?.metadata?.completed === true, 'Lock marked completed: true');
 assert(completedLock?.metadata?.state === 'completed', 'Lock state marked completed');
 
 // Test 5F: Subsequent worker blocked even after time passes because cycle is completed
 const tryAfterCompletion = await acquireCronLock(testLockKey, 300);
-assert(tryAfterCompletion === false, 'Cannot re-acquire lock once marked durably completed');
+assert(tryAfterCompletion === null, 'Cannot re-acquire lock once marked durably completed');
 
 // Test 5G: Release lock
 await releaseCronLock(testLockKey);
@@ -330,7 +333,7 @@ const lockAcquired = await acquireCronLock(autoStrikeLockKey, 300, {
   local_date: strikeCycleDate,
   state: 'processing',
 });
-assert(lockAcquired === true, 'Cron lock acquired for AUTO_BEDTIME_STRIKE');
+assert(lockAcquired?.lockKey === autoStrikeLockKey, 'Cron lock acquired for AUTO_BEDTIME_STRIKE');
 
 const strikeResult = await issueAutomaticBedtimeStrike(cronTestSleeper, strikeCycleDate, time10m);
 assert(strikeResult.success === true, 'issueAutomaticBedtimeStrike succeeded');
@@ -338,7 +341,7 @@ assert(strikeResult.strikeIssued === true, '1 normal strike officially issued');
 assert(strikeResult.strikesUsed === 1, 'strikes_used incremented to 1');
 assert(strikeResult.log?.record_type === 'strike', 'Nightly strike log record_type is strike');
 
-await markCronLockCompleted(autoStrikeLockKey, {
+await markCronLockCompleted(lockAcquired, {
   member_id: cronTestSleeper.id,
   stage: 'AUTO_BEDTIME_STRIKE',
   local_date: strikeCycleDate,
@@ -349,7 +352,7 @@ assert(completedAutoLock?.metadata?.completed === true, 'Auto-strike lock marked
 // Case 6C: Subsequent cron runs in the same cycle issue 0 additional strikes (Idempotent)
 const time15m = fixedNowUtc.plus({ minutes: 15 });
 const dupeLockAcquired = await acquireCronLock(autoStrikeLockKey, 300);
-assert(dupeLockAcquired === false, 'Subsequent cron run blocked by completed lock');
+assert(dupeLockAcquired === null, 'Subsequent cron run blocked by completed lock');
 
 const repeatStrikeRes = await issueAutomaticBedtimeStrike(cronTestSleeper, strikeCycleDate, time15m);
 assert(repeatStrikeRes.strikeIssued === false, 'Subsequent run issues 0 additional strikes (idempotent)');
