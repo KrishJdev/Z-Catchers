@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-20T03:46:34+05:30
+> **Last Updated:** 2026-11-20T16:42:21+05:30
 > **Active Working Branch:** `krish`  
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest implementation commit:** `0518dba` on `krish`
+> **Latest implementation commit:** `8515297` on `krish`
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
 > **Active Integration Pull Requests:** [#95](https://github.com/KrishJdev/Z-Catchers/pull/95) is ready for review from `krish` into `dev`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
-> **Build Status:** `npx tsc --noEmit` and all 44 unit suites passed. The GitHub build, protected Vercel preview and [isolated Supabase dispatcher smoke test](https://github.com/KrishJdev/Z-Catchers/actions/runs/44626406090) passed on `0518dba`.
+> **Build Status:** On `8515297`, `npx tsc --noEmit`, all 44 unit suites, and the production build passed locally. See [PR #95 checks](https://github.com/KrishJdev/Z-Catchers/pull/95/checks) for hosted results.
 
 ---
 
@@ -69,6 +69,20 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Phase 124 · Dispatcher and migration review fixes
+
+- Rechecked the review findings on PR #95. Kept community nags available to overdue members who have not checked in, as required by the Sleep Shield spec. A fresh check-in, a completed cycle within quiet hours, or the 15-minute pre-bedtime period still blocks community pushes.
+- The dispatcher now isolates failed schedule promotions, reloads the stored schedule on a conditional miss, calculates TTL against fixed delivery deadlines, and rechecks recipients before each community push. Delivery receipts retry under the owning lease, and pending strike alerts resume from persisted receipts without adding another strike.
+- Monthly rollover returns zero only after a confirmed reset, reloads authoritative counts on a competing write, and surfaces database errors. The strike transaction rejects older months, and the Metastrike endpoint returns a retryable conflict for that case.
+- Added a versioned conversion for legacy text sleep-history keys. Conversion stops for invalid or orphan IDs and retains those rows for reconciliation. Production rollout uses the targeted migrations listed below.
+- Updated verification in `scripts/test-dispatch-recovery.mjs`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-nightly-strike-transaction.mjs`, and `.github/workflows/dispatcher-smoke.yml`. Code changes covered `src/lib/cronDispatcher.ts`, `src/lib/db.ts`, `src/lib/pushServer.ts`, `src/lib/strikes.ts`, and the manual nag and Metastrike routes. Database and docs changes covered `supabase/schema.sql`, the new `20261118_sleep_logs_member_uuid.sql`, `20261119_dispatch_accountability.sql`, `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `README.md`, and `HANDOFF.md`.
+
+| Milestone | Status |
+|---|---|
+| Dispatcher delivery, rollover, migration, and workflow review fixes | DONE |
+| PR #95 review and merge into dev | IN PROGRESS |
+| Production rollout and physical-device test | TODO |
 
 ### Phase 123 · Isolated dispatcher verification for PR #95
 
@@ -2894,7 +2908,7 @@ d:\Projects\Z Catchers\
 
 1. **Review PR #95 and prepare the production rollout separately.**
    - PR #95 uses the isolated `Supabase Cron and push smoke test` check for the `dev` integration. Review the PR and merge to `dev` when approved.
-   - For the production release, apply `supabase/migrations/20261119_dispatch_accountability.sql` before deploying the updated routes. Set the Vercel `CRON_SECRET` and the matching Supabase Vault entries from the README.
+   - For production, apply `supabase/migrations/20261113_add_weekly_schedule.sql` if the weekly columns are missing. If `sleep_logs.member_id` is text, run `supabase/migrations/20261118_sleep_logs_member_uuid.sql` first and reconcile any invalid or orphan IDs it reports. Then apply `supabase/migrations/20261119_dispatch_accountability.sql` before deploying the updated routes. Set the Vercel `CRON_SECRET` and matching Vault values from the README.
    - Confirm the hosted dispatcher accepts an authenticated `GET /api/cron/dispatch-notifications?dry_run=true` before installing `supabase/schedule_dispatch.sql`. Compare recent `pg_net` responses with the cron job history and confirm the app receives consecutive HTTP 200 responses.
    - Verify delivery to a subscribed physical device and Sleep Shield suppression with a controlled test bedtime during the production rollout.
 
@@ -2928,8 +2942,12 @@ d:\Projects\Z Catchers\
    * **ZC-21 / GH #35:** [DONE in Phase 90 on branch feat/zc-21] Atomic nag deduplication.
    * Note: Production release PR [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28) was successfully merged into `main`.
 
-5. **Database Migration Execution in Supabase SQL Editor:**
-   * Run the complete, updated idempotent migration from `supabase/schema.sql` on the remote Supabase database before deployment, ensuring it includes the `weekly_schedule` and `pending_weekly_schedule` column changes and backfill:
+5. **Historical database migration excerpt**
+   * Use the versioned migrations listed in Step 1 for production. The bootstrap schema inserts demo profiles, and the archived SQL below can delete invalid legacy sleep-history rows.
+
+   <details>
+   <summary>Archived SQL from the previous rollout</summary>
+
      ```sql
      -- Members table columns
      ALTER TABLE members ADD COLUMN IF NOT EXISTS discord_id TEXT;
@@ -3066,6 +3084,7 @@ d:\Projects\Z Catchers\
      CREATE POLICY "Service role full access on sleep_logs" ON public.sleep_logs FOR ALL USING (auth.role() = 'service_role');
      ALTER PUBLICATION supabase_realtime ADD TABLE public.sleep_logs;
      ```
+   </details>
 
 6. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
    * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
