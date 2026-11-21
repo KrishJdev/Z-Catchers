@@ -136,7 +136,7 @@ CREATE TABLE members (
   pending_effective_at TIMESTAMPTZ,         -- UTC timestamp when pending becomes active (now + 48h)
   
   -- Role & Meta
-  role TEXT NOT NULL DEFAULT 'member',      -- 'member' | 'moderator'
+  role TEXT NOT NULL DEFAULT 'member',      -- 'member' | 'moderator' | 'owner'
   passcode_hash TEXT,                       -- Legacy PIN column retained for older data
   is_active BOOLEAN NOT NULL DEFAULT true,
 

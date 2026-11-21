@@ -30,6 +30,7 @@ const discordAccounts = {
   'discord-mod': '100000000000000003',
   newcomer: '100000000000000004',
   'task-member': '100000000000000005',
+  owner: '100000000000000006',
   ...novemberAccounts,
 };
 const { publicKey, privateKey } = webpush.generateVAPIDKeys();
@@ -205,6 +206,7 @@ assert.equal(sql('SELECT count(*) FROM public.punishments'), '0');
 sql(readFileSync('supabase/migrations/20261123_punishment_task_apis.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261124_guard_active_wake.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261125_verify_punishment_cutover.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261126_moderation_owner_and_roles.sql', 'utf8'));
 const novemberPreview = await verifyNovemberPreview(sql, novemberMembers);
 sql(`
   CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -726,6 +728,42 @@ try {
   sql('SELECT public.show_verified_november_punishments()');
   assert.equal((await getTaskData(memberTasks, taskMemberCookie)).history[0].id, taskId);
   console.log('Verified visibility rollback and reopening preserve completed history and keep the new writer active.');
+
+  const { data: owner } = await db.from('members').insert({
+    ...profile, discord_username: 'Owner fixture', discord_id: discordAccounts.owner,
+  }).select('id').single().throwOnError();
+  const ownerBootstrap = readFileSync('supabase/bootstrap_moderation_owner.sql', 'utf8')
+    .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${owner.id}';`)
+    .replace('owner_discord_id constant text := NULL;', `owner_discord_id constant text := '${discordAccounts.owner}';`);
+  sql(ownerBootstrap);
+  sql(ownerBootstrap);
+  const ownerCookie = await signIn('owner', owner.id, true, 'owner');
+  const origin = { Origin: appOrigin };
+  const promote = { action: 'set_moderator', member_id: newcomer.id, expected_role: 'member', new_role: 'moderator' };
+  const revoke = { ...promote, expected_role: 'moderator', new_role: 'member' };
+  await post('/api/mod', dbModCookie, promote, 403, origin);
+  await post('/api/mod', discordModCookie, promote, 403, origin);
+  await post('/api/mod', '', { ...promote, mod_passcode: moderatorPasscode }, 401, origin);
+  await post('/api/mod', ownerCookie, promote, 403, { Origin: 'https://cross-origin.example' });
+  await post('/api/mod', ownerCookie, { action: 'toggle_active', member_id: owner.id, is_active: false }, 403, origin);
+  await post('/api/mod', ownerCookie, { action: 'delete_member', member_id: owner.id }, 403, origin);
+  await post('/api/members/update-schedule', ownerCookie, {
+    member_id: owner.id, bedtime_local: '21:30', mod_passcode: moderatorPasscode,
+  }, 403);
+  assert.equal((await post('/api/mod', ownerCookie, promote, 200, origin)).role, 'moderator');
+  assert.equal((await post('/api/mod', ownerCookie, revoke, 200, origin)).role, 'member');
+
+  const grant = `public.set_moderator('${owner.id}', '${discordAccounts.owner}', '${newcomer.id}', 'member', 'moderator')`;
+  const tryGrant = `CREATE FUNCTION pg_temp.try_grant() RETURNS jsonb LANGUAGE plpgsql AS $$
+    BEGIN RETURN to_jsonb(${grant});
+    EXCEPTION WHEN SQLSTATE 'PT409' THEN RETURN jsonb_build_object('conflict', true); END; $$;
+    SELECT pg_temp.try_grant()`;
+  const [granted, roleConflict] = await concurrentSql(`SELECT to_jsonb(${grant})`, tryGrant);
+  assert.equal(granted, 'moderator');
+  assert.equal(roleConflict.conflict, true);
+  assert.equal(sql(`SELECT count(*) FROM public.moderator_role_changes
+    WHERE actor_member_id = '${owner.id}' AND target_member_id = '${newcomer.id}'`), '3');
+  console.log('Verified owner bootstrap, signed owner-only role changes, owner protection, and a concurrent role conflict.');
 
 } finally {
   app?.kill();

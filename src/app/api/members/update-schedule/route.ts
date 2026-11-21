@@ -100,6 +100,9 @@ export async function POST(request: Request) {
         { status: sessionMemberId ? 403 : 401 }
       );
     }
+    if (isModeratorOverride && currentMember.role === 'owner') {
+      return NextResponse.json({ error: 'The owner uses the self-service schedule cooldown.' }, { status: 403 });
+    }
 
     // 3. Validate Journal URL
     if (journal_url) {
@@ -362,7 +365,7 @@ export async function POST(request: Request) {
 
     // 7. Persist to Supabase
     const { data: updatedMember, error: updateError } = await updateMemberSafe(member_id, updates, {
-      conditions: isModeratorOverride ? undefined : { is_active: true, discord_id: currentMember.discord_id },
+      conditions: isModeratorOverride ? { role: currentMember.role } : { is_active: true, discord_id: currentMember.discord_id },
     });
 
     if (updateError) {

@@ -116,7 +116,6 @@ export function ModDrawer({
   const [editWeekendWakeTime, setEditWeekendWakeTime] = useState('');
   const [editJournalUrl, setEditJournalUrl] = useState('');
   const [editHandle, setEditHandle] = useState('');
-  const [editRole, setEditRole] = useState<'member' | 'moderator'>('member');
   const [editWeeklySchedule, setEditWeeklySchedule] = useState<WeeklySchedule | null>(null);
   const [editScheduleMode, setEditScheduleMode] = useState<'quick' | '7day'>('quick');
   const [editSelectedDay, setEditSelectedDay] = useState<DayKey>('mon');
@@ -428,7 +427,6 @@ export function ModDrawer({
     setEditWeekendWakeTime(member.weekend_wake_time_local || '');
     setEditJournalUrl(member.journal_url);
     setEditHandle(member.discord_handle || '');
-    setEditRole(member.role);
     setEditSelectedDay('mon');
 
     if (member.weekly_schedule) {
@@ -545,7 +543,6 @@ export function ModDrawer({
           weekly_schedule: finalWeeklySchedule,
           journal_url: editJournalUrl.trim(),
           discord_handle: editHandle.trim() || null,
-          role: editRole,
         }),
       });
 
@@ -1225,32 +1222,17 @@ export function ModDrawer({
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="text-[11px] font-semibold text-cream-muted">
-                        Discord Handle / User ID
-                      </label>
-                      <input
-                        type="text"
-                        value={editHandle}
-                        onChange={(e) => setEditHandle(e.target.value)}
-                        placeholder="e.g. @marcus_ldn"
-                        className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-semibold text-cream-muted">
-                        Role
-                      </label>
-                      <select
-                        value={editRole}
-                        onChange={(e) => setEditRole(e.target.value as 'member' | 'moderator')}
-                        className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                      >
-                        <option value="member">Regular Member</option>
-                        <option value="moderator">Moderator</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-cream-muted">
+                      Discord Handle / User ID
+                    </label>
+                    <input
+                      type="text"
+                      value={editHandle}
+                      onChange={(e) => setEditHandle(e.target.value)}
+                      placeholder="e.g. @marcus_ldn"
+                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                    />
                   </div>
 
                   <div className="flex items-center justify-end gap-2 pt-2">

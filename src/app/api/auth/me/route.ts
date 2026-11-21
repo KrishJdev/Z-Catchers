@@ -6,6 +6,7 @@ import {
   setSessionCookie,
   sanitizeMember,
   isModDiscordId,
+  hasDatabaseModeratorRole,
 } from '@/lib/auth';
 import { DateTime } from 'luxon';
 import { getSleepCycleDate, toValidLuxonZone } from '@/lib/sleepEngine';
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
     const currentMember = memberData as Member;
 
     // Evaluate effective moderator status dynamically (MOD_DISCORD_IDS is live; do not persist into DB role)
-    const isDbMod = currentMember.role === 'moderator';
+    const isDbMod = hasDatabaseModeratorRole(currentMember.role);
     const isEnvMod = isModDiscordId(currentMember.discord_id);
     const effectiveIsMod = isDbMod || isEnvMod;
 
