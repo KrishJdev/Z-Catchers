@@ -1,15 +1,16 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-21T19:27:20+05:30
+> **Last Updated:** 2026-11-21T20:59:15+05:30
 > **Active working branch:** `krish`, fast-forwarded to the Phase 5 merge at `f759dbb` before implementing Phase 6.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
+> **Phase 6 review fix:** `2682c1c` on `krish`.
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active integration:** Phase 6 targets `dev` from `krish`. Phase 5 [PR #102](https://github.com/KrishJdev/Z-Catchers/pull/102) merged into `dev` at `f759dbb`.
+> **Active integration:** Phase 6 [PR #103](https://github.com/KrishJdev/Z-Catchers/pull/103) targets `dev` from `krish`. Phase 5 [PR #102](https://github.com/KrishJdev/Z-Catchers/pull/102) merged into `dev` at `f759dbb`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** The punishments release is pending Phase 6 integration. The current `origin/main` commit is `69ff880` from [PR #96](https://github.com/KrishJdev/Z-Catchers/pull/96).
-> **Build Status:** Phase 6 `npx tsc --noEmit`, all 51 unit suites, and the production build passed. The hosted disposable Supabase smoke runs on the Phase 6 PR.
+> **Build Status:** `npx tsc --noEmit` and all 51 unit suites passed with the Phase 6 review fix. The original Phase 6 head passed the production build and hosted Supabase rehearsal. Updated hosted checks run on PR #103.
 
 ---
 
@@ -76,6 +77,11 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 - Added `supabase/migrations/20261125_verify_punishment_cutover.sql` and mirrored it in `supabase/schema.sql`. Updated `scripts/test-november-cutover.mjs`, `scripts/test-guarded-active-wake.mjs`, and `scripts/test-dispatcher-ci.mjs` to exercise permissions, rejection of unseeded data, successful retry, a visibility check waiting on active seeding, and reopening after recovery. The wake test now locates its migration within the full schema.
 - Updated `PUNISHMENTS_PLAN.md`, `PUNISHMENTS_RELEASE_CHECKLIST.md`, and this handoff. The checklist covers backup and target identification, ordered migrations, preview and seed evidence, scheduled HTTP verification, controlled member and moderator checks, and recovery with the active writer.
 - Production target confirmation, backup verification, migration, activation, seed, and live Discord and device checks are pending the separate release. The Phase 5 rehearsal used Discord fixtures and an encrypted push relay.
+
+#### Phase 6 CodeRabbit follow-up
+
+- Addressed the [single review finding](https://github.com/KrishJdev/Z-Catchers/pull/103#discussion_r4653373699). The ledger audit now uses one wall-clock timestamp taken during the audit, after the visibility function acquires the rollout lock. A task can become assignable while the visibility function waits without triggering a false rejection. Tasks with genuinely future deadlines still fail verification if marked assignable.
+- Updated `supabase/migrations/20261125_verify_punishment_cutover.sql`, `supabase/schema.sql`, `scripts/test-november-cutover.mjs`, and this handoff. The new deadline regression reproduced the error before the fix and passed afterward.
 
 ### Punishments Phase 5 · November cutover rehearsal
 
@@ -186,7 +192,8 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 | Phase 5 integration into dev | DONE | [PR #102](https://github.com/KrishJdev/Z-Catchers/pull/102) merged at `f759dbb` and the merged CI build passed. |
 | Phase 5 live Discord and device checks | TODO | Skipped at the owner's request during this session. |
 | Phase 6 cutover tooling and checklist | DONE | Operator audit, checked visibility switch, regression coverage, and release checklist on `krish`. |
-| Phase 6 integration into dev | IN PROGRESS | Review the Phase 6 PR and its hosted dispatcher rehearsal. |
+| Phase 6 CodeRabbit fix | DONE | Fixed the stale deadline comparison and verified the regression. |
+| Phase 6 integration into dev | IN PROGRESS | See [PR #103](https://github.com/KrishJdev/Z-Catchers/pull/103) for checks and merge status. |
 | Phase 6 production cutover and live verification | TODO | Apply the checklist through a separate `dev` → `main` release PR. |
 
 ### Phase 126 · Consolidated PR #95 review
