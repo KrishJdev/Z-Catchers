@@ -112,6 +112,16 @@ try {
 
   await seed(datedPasses);
   assert.equal((await preview(datedPasses)).used_passes, 2);
+  const firstCorrection = await correction(datedPasses, '2026-11-05', 'rerank-1');
+  for (const [index, day] of ['06', '07', '08'].entries()) {
+    await correction(datedPasses, '2026-11-' + day, 'rerank-' + (index + 2));
+  }
+  const [originalThreshold] = await items(datedPasses);
+  assert.equal(originalThreshold.earned_cycle_date.toISOString().slice(0, 10), '2026-11-07');
+  await correction(datedPasses, '2026-11-05', 'rerank-void', firstCorrection);
+  const [updatedThreshold] = await items(datedPasses);
+  assert.equal(updatedThreshold.id, originalThreshold.id);
+  assert.equal(updatedThreshold.earned_cycle_date.toISOString().slice(0, 10), '2026-11-08');
   const originalRevision = await result('SELECT strike_schedule_revision AS result FROM public.members WHERE id = $1', [live]);
   await rows("UPDATE public.members SET bedtime_local = '23:30' WHERE id = $1", [live]);
   await assert.rejects(apply(live, '2026-11-08', { expectedRevision: originalRevision }), /sleep schedule changed/);
