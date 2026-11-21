@@ -73,7 +73,17 @@ try {
     ['eligible_task_canceled', 'invalid_earned_action_count', 'task_assignable_before_deadline']);
   await sql('ROLLBACK');
 
-  assert.equal(await sql(show), activation);
+  // A seed can make the deadline eligible after the caller's statement started.
+  // This also happens when the visibility check waits for the seed's rollout lock.
+  await sql(`DO $$
+    BEGIN
+      PERFORM pg_sleep(0.02);
+      UPDATE public.nightly_strike_logs SET replacement_until = clock_timestamp()
+      WHERE target_member_id = '${fixtures['rollover-west']}' AND sleep_cycle_date = '2026-11-03';
+      PERFORM public.seed_november_punishments('${fixtures['rollover-west']}');
+      PERFORM public.show_verified_november_punishments();
+    END;
+  $$;`);
   assert.equal(await sql(show), activation);
   assert.equal(await sql(visibility), 'true');
   await db.query("SELECT public.update_punishment($1, 'assign', 'fixture-moderator', 'Journal')", [westTask]);

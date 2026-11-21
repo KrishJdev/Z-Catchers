@@ -3,8 +3,11 @@ BEGIN;
 
 CREATE OR REPLACE FUNCTION public.punishment_ledger_issues(p_month date DEFAULT date '2026-11-01')
 RETURNS TABLE (member_id uuid, threshold_number integer, punishment_id uuid, issue text)
-LANGUAGE sql STABLE SET search_path = '' AS $$
-  WITH expected AS (
+LANGUAGE sql VOLATILE SET search_path = '' AS $$
+  -- The caller may have waited on the rollout lock past a replacement deadline.
+  WITH verification_time AS MATERIALIZED (
+    SELECT clock_timestamp() AS checked_at
+  ), expected AS (
     SELECT m.id AS member_id, t.*
     FROM public.members AS m
     CROSS JOIN LATERAL public.earned_punishment_thresholds(m, p_month) AS t
@@ -20,7 +23,7 @@ LANGUAGE sql STABLE SET search_path = '' AS $$
         WHEN p.status IN ('pending', 'awaiting_assignment') AND
           (p.earned_cycle_date, p.qualified_at, p.assignable_at) IS DISTINCT FROM
           (e.earned_cycle_date, e.qualified_at, e.assignable_at) THEN 'unassigned_task_dates_differ'
-        WHEN p.status = 'awaiting_assignment' AND p.assignable_at > statement_timestamp()
+        WHEN p.status = 'awaiting_assignment' AND p.assignable_at > (SELECT checked_at FROM verification_time)
           THEN 'task_assignable_before_deadline'
       END AS issue
     FROM expected AS e FULL JOIN stored AS p USING (member_id, threshold_number)
