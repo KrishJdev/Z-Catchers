@@ -151,7 +151,7 @@ assert(
   'page.tsx passes onOpenProfile handler to MemberCard components'
 );
 assert(
-  pageContent.includes('initialTab={calendarModalTab}'),
+  pageContent.includes('initialTab={calendarView.tab}'),
   'page.tsx passes initialTab to SleepCalendarModal'
 );
 console.log('✅ PASSED: page.tsx coordinates member profile clicks and modal tabs.');

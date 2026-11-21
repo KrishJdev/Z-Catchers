@@ -59,6 +59,7 @@ const UNIT_TESTS = [
   'test-nightly-strike-transaction.mjs',
   'test-punishment-strike-ledger.mjs',
   'test-punishment-task-apis.mjs',
+  'test-punishment-screens.mjs',
   'test-state-sync-audit.mjs',
 ];
 

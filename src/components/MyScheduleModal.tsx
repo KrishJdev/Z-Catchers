@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ResponsiveDialog } from '@/components/ResponsiveDialog';
+import { computeMemberState } from '@/lib/sleepEngine';
 import { FoxMascot } from './FoxMascot';
 import { Member } from '@/lib/db';
 import { DateTime } from 'luxon';
@@ -9,10 +11,10 @@ import {
   Lock,
   Moon,
   Clock,
+  Calendar,
   ExternalLink,
   AlertTriangle,
   CheckCircle2,
-  Calendar,
   Sparkles,
   Shield,
   RefreshCw,
@@ -42,18 +44,11 @@ interface MyScheduleModalProps {
   onClose: () => void;
   viewerTimezone: string;
   onRefreshRoster: () => Promise<void>;
-  currentUser?: Member | null;
-  onLogout?: () => void;
-  onOpenSleepCalendar?: (memberId: string) => void;
+  currentUser: Member;
+  onLogout: () => void;
+  initialView?: 'profile' | 'schedule';
 }
 
-/**
- * Modal dialog enabling members to update bedtime/wake schedules, manage pending 48-hour changes,
- * view active cooldowns, or log out of their session.
- *
- * @param props - Modal properties including the signed-in member, timezone, and callbacks
- * @returns React JSX modal dialog element
- */
 export function MyScheduleModal({
   isOpen,
   onClose,
@@ -61,8 +56,19 @@ export function MyScheduleModal({
   onRefreshRoster,
   currentUser,
   onLogout,
-  onOpenSleepCalendar,
+  initialView = 'profile',
 }: MyScheduleModalProps) {
+  const [view, setView] = useState<'profile' | 'edit' | 'schedule'>(initialView);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const previousView = useRef(view);
+
+  useEffect(() => {
+    if (previousView.current !== view) {
+      headingRef.current?.focus();
+      previousView.current = view;
+    }
+  }, [view]);
+
   // Form fields for editing
   const [username, setUsername] = useState<string>('');
   const [handle, setHandle] = useState<string>('');
@@ -174,18 +180,19 @@ export function MyScheduleModal({
     if (!activeMember || !activeMember.pending_effective_at) return null;
     const now = DateTime.utc();
     const effectiveAt = DateTime.fromISO(activeMember.pending_effective_at, { zone: 'utc' });
-    if (now >= effectiveAt) return null;
+    if (!effectiveAt.isValid || now >= effectiveAt) return null;
 
     const remainingHours = Math.max(0, Math.floor(effectiveAt.diff(now, 'hours').hours));
     const remainingMins = Math.max(0, Math.floor(effectiveAt.diff(now, 'minutes').minutes % 60));
 
     return {
       pendingBedtime: activeMember.pending_bedtime_local,
+      pendingWakeTime: activeMember.pending_wake_time_local,
       pendingWeekendBedtime: activeMember.pending_weekend_bedtime_local,
       pendingTimezone: activeMember.pending_timezone,
       remainingHours,
       remainingMins,
-      effectiveDate: effectiveAt.setZone(toValidLuxonZone(viewerTimezone)).toFormat('LLL d, h:mm a'),
+      effectiveDate: effectiveAt.setZone(toValidLuxonZone(viewerTimezone)).toFormat('LLL d, h:mm a ZZZZ'),
     };
   }, [activeMember, viewerTimezone]);
 
@@ -243,20 +250,20 @@ export function MyScheduleModal({
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    if (!isJournalValid || !journalUrl.trim()) {
+    if (view === 'edit' && (!isJournalValid || !journalUrl.trim())) {
       setErrorMessage(
         'Please enter a valid Discord Journal Thread URL: https://discord.com/channels/{guild}/{thread}'
       );
       return;
     }
 
-    if (!username.trim()) {
+    if (view === 'edit' && !username.trim()) {
       setErrorMessage('Please enter your Discord display name.');
       return;
     }
 
     // Validate 7-day schedule
-    for (const day of DAY_KEYS) {
+    for (const day of view === 'schedule' ? DAY_KEYS : []) {
       const item = weeklySchedule[day];
       if (!item || !TIME_FORMAT_REGEX.test(item.bedtime) || !TIME_FORMAT_REGEX.test(item.wake_time)) {
         setErrorMessage(`Please enter a valid 24h HH:mm bedtime and wake time for ${DAY_LABELS[day].full}.`);
@@ -278,21 +285,16 @@ export function MyScheduleModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           member_id: activeMember.id,
-          discord_username: username.trim(),
-          discord_handle: handle.trim() || null,
-          journal_url: journalUrl.trim(),
-          weekly_schedule: weeklySchedule,
-          bedtime_local: weeklySchedule.mon.bedtime,
-          wake_time_local: weeklySchedule.mon.wake_time,
-          timezone: timezone.trim(),
-          weekend_bedtime_local:
-            weeklySchedule.sat.bedtime !== weeklySchedule.mon.bedtime
-              ? weeklySchedule.sat.bedtime
-              : (weeklySchedule.fri.bedtime !== weeklySchedule.mon.bedtime ? weeklySchedule.fri.bedtime : null),
-          weekend_wake_time_local:
-            weeklySchedule.sat.wake_time !== weeklySchedule.mon.wake_time
-              ? weeklySchedule.sat.wake_time
-              : (weeklySchedule.fri.wake_time !== weeklySchedule.mon.wake_time ? weeklySchedule.fri.wake_time : null),
+          ...(view === 'edit'
+            ? {
+                discord_username: username.trim(),
+                discord_handle: handle.trim() || null,
+                journal_url: journalUrl.trim(),
+              }
+            : {
+                weekly_schedule: weeklySchedule,
+                timezone: timezone.trim(),
+              }),
         }),
       });
 
@@ -325,6 +327,7 @@ export function MyScheduleModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           member_id: activeMember.id,
+          action: 'schedule',
         }),
       });
 
@@ -345,59 +348,60 @@ export function MyScheduleModal({
     }
   };
 
-
+  const activeSchedule = computeMemberState(currentUser, viewerTimezone);
+  const title = view === 'profile' ? 'Profile' : view === 'edit' ? 'Edit profile' : 'Sleep schedule';
+  const openView = (next: typeof view) => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setView(next);
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/85 backdrop-blur-md p-0 md:items-center md:p-4">
-      <div
-        className="relative flex w-full max-w-lg flex-col rounded-t-3xl border-t border-night-border bg-night-surface p-5 shadow-2xl max-h-[90dvh] overflow-y-auto md:rounded-2xl md:border md:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-6"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-schedule-title"
-      >
-        {/* Mobile handle indicator */}
-        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-night-border md:hidden shrink-0" />
+    <ResponsiveDialog labelledBy="modal-schedule-title" onClose={onClose}
+      className="max-h-[90dvh] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:max-w-lg md:p-6">
+        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-night-border md:hidden" />
+        <div className="flex items-center gap-3 border-b border-night-border pb-3">
+          <FoxMascot state="lantern" size={32} className="shrink-0" />
+          <h2 ref={headingRef} tabIndex={-1} id="modal-schedule-title" className="min-w-0 flex-1 font-bold">{title}</h2>
+          <button type="button" onClick={onClose}
+            className="grid min-h-[44px] min-w-[44px] place-items-center rounded-xl text-cream-secondary hover:bg-night-elevated"
+            aria-label="Close profile settings">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-        {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-night-border pb-4">
-          <div className="flex items-center gap-3">
-            <FoxMascot state="lantern" size={32} />
-            <div>
-              <h2
-                id="modal-schedule-title"
-                className="text-base font-bold text-cream-primary sm:text-lg"
-              >
-                My Profile &amp; Schedule
-              </h2>
-              <p className="text-xs text-cream-secondary">
-                Accountability settings, sleep schedule &amp; website profile
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {currentUser && onLogout && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onLogout();
-                }}
-                title={`Log out of @${currentUser.discord_username}`}
-                className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 sm:px-3 py-1.5 text-xs font-medium text-cream-muted hover:border-status-coral/40 hover:bg-status-coral/10 hover:text-status-coral transition-colors min-h-[44px]"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Log Out</span>
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="rounded-xl p-2 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary min-h-[44px] min-w-[44px] flex items-center justify-center"
-              aria-label="Close modal"
-            >
-              <X className="h-5 w-5" />
+        {view === 'profile' ? (
+          <div className="space-y-2 pt-4">
+            <p className="pb-1 text-sm text-cream-secondary [overflow-wrap:anywhere]">@{currentUser.discord_username}</p>
+            <button type="button" onClick={() => openView('edit')}
+              className="block min-h-[44px] w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-left text-sm font-semibold">
+              Edit profile
+            </button>
+            <button type="button" onClick={() => openView('schedule')}
+              className="block min-h-[44px] w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-left text-sm">
+              <span className="block font-semibold">Sleep schedule</span>
+              <span className="block text-xs text-cream-secondary">Bedtime {activeSchedule.activeBedtimeLocal} · Wake {activeSchedule.activeWakeTimeLocal}</span>
+              {pendingCooldownNotice && (
+                <span className="mt-1 block text-xs text-status-amber">
+                  Pending change applies {pendingCooldownNotice.effectiveDate}
+                  {pendingCooldownNotice.pendingBedtime && pendingCooldownNotice.pendingWakeTime &&
+                    ` · ${pendingCooldownNotice.pendingBedtime} bedtime, ${pendingCooldownNotice.pendingWakeTime} wake`}
+                </span>
+              )}
+            </button>
+            <button type="button" onClick={onLogout}
+              className="flex min-h-[44px] w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold text-status-coral hover:bg-status-coral/10">
+              <LogOut className="h-4 w-4" aria-hidden="true" /> Sign out
             </button>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-4">
+            {initialView === 'profile' && (
+              <button type="button" onClick={() => openView('profile')} disabled={loading || cancelLoading}
+                className="min-h-[44px] text-sm font-semibold text-status-amber">
+                Back to Profile
+              </button>
+            )}
 
         {/* Feedback alerts */}
         {errorMessage && (
@@ -414,10 +418,8 @@ export function MyScheduleModal({
           </div>
         )}
 
-        {activeMember ? (
-          <div className="space-y-4">
             {/* Active pending cooldown alert banner (if exists) */}
-            {pendingCooldownNotice && (
+            {view === 'schedule' && pendingCooldownNotice && (
               <div className="rounded-xl border border-dashed border-status-amber/60 bg-status-amber/10 p-3.5 text-xs">
                 <div className="flex items-start justify-between gap-2">
                   <div className="space-y-1">
@@ -451,6 +453,8 @@ export function MyScheduleModal({
             )}
 
             <form onSubmit={handleSaveProfile} className="space-y-4">
+              {view === 'edit' ? (
+                <>
                 {/* Website Username (User Editable) */}
                 <div>
                   <label className="block text-xs font-medium text-cream-secondary mb-1">
@@ -544,6 +548,9 @@ export function MyScheduleModal({
                   </p>
                 </div>
 
+                </>
+              ) : (
+                <>
                 {/* 7-Day Sleep Schedule Section */}
                 <div className="rounded-2xl border border-night-border bg-night-elevated/70 p-4 space-y-3.5">
                   <div className="flex items-center justify-between">
@@ -999,11 +1006,13 @@ export function MyScheduleModal({
                   </div>
                 )}
 
+                </>
+              )}
                 {/* Save Button */}
                 <div className="flex gap-2 pt-2">
                   <button
                     type="submit"
-                    disabled={loading || !isJournalValid}
+                    disabled={loading || (view === 'edit' && !isJournalValid)}
                     className="flex-1 h-11 min-h-[44px] rounded-xl bg-status-amber font-semibold text-xs text-night-bg hover:bg-status-amber/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 px-4 whitespace-nowrap"
                   >
                     {loading ? (
@@ -1011,69 +1020,17 @@ export function MyScheduleModal({
                         <RefreshCw className="h-4 w-4 animate-spin" />
                         <span>Saving...</span>
                       </>
-                    ) : hasScheduleChanged ? (
+                    ) : view === 'schedule' && hasScheduleChanged ? (
                       <span>Queue 48h Schedule Change</span>
                     ) : (
-                      <span>Save Profile Changes</span>
+                      <span>{view === 'edit' ? 'Save profile' : 'Save schedule'}</span>
                     )}
                   </button>
                 </div>
             </form>
 
-            {/* Account & Session Management (Sleep Calendar & Log Out) */}
-            {currentUser && (
-              <div className="pt-4 border-t border-night-border flex flex-col gap-3">
-                {onOpenSleepCalendar && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenSleepCalendar(currentUser.id);
-                    }}
-                    className="flex items-center justify-center gap-2 rounded-2xl border border-status-amber/40 bg-status-amber/15 px-4 text-xs font-bold text-status-amber hover:bg-status-amber/25 transition-all h-12 min-h-[44px] w-full shadow-sm"
-                  >
-                    <Calendar className="h-4 w-4 text-status-amber" />
-                    <span>View My Sleep & Wake Calendar</span>
-                  </button>
-                )}
-
-                {onLogout && (
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-2xl border border-night-border bg-night-elevated/40 p-3.5">
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-night-surface border border-night-border text-status-amber">
-                        <FoxMascot state="logo" size={20} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-cream-primary">
-                          Signed in as @{currentUser.discord_username}
-                        </p>
-                        <p className="text-[11px] text-cream-muted">
-                          Need to switch accounts or take a break?
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onLogout();
-                      }}
-                      className="flex items-center justify-center gap-2 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 text-xs font-semibold text-status-coral hover:bg-status-coral/20 hover:border-status-coral/60 transition-all h-11 min-h-[44px] whitespace-nowrap"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      <span>Log Out of Fox Den</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
-        ) : (
-          <a href="/join" className="mt-4 flex min-h-[44px] items-center justify-center rounded-xl bg-status-amber px-4 text-xs font-semibold text-night-bg">
-            Sign in with Discord
-          </a>
         )}
-      </div>
-    </div>
+    </ResponsiveDialog>
   );
 }

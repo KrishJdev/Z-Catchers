@@ -9,6 +9,8 @@ function DiscordIcon({ className = 'w-4 h-4' }: { className?: string }) {
 }
 
 
+import { ModeratorPunishmentQueue } from '@/components/ModeratorPunishmentQueue';
+import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FoxMascot } from './FoxMascot';
 import { Member } from '@/lib/db';
@@ -86,8 +88,8 @@ export function ModDrawer({
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
-  // Tab navigation: 'pending' | 'roster' | 'webhook'
-  const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'webhook'>('pending');
+  // Main tabs and advanced tools
+  const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'punishments' | 'webhook'>('pending');
 
   // Webhook Tab state
   const [webhookUrlInput, setWebhookUrlInput] = useState('');
@@ -178,15 +180,14 @@ export function ModDrawer({
     }
   }, []);
 
-  // When unlocked and modal is open, load roster & webhook status
+  // Load roster when the drawer unlocks
   useEffect(() => {
     if (isOpen && isUnlocked) {
       fetchModRoster(passcode);
-      fetchWebhookStatus(passcode);
       setErrorMessage(null);
       setSuccessMessage(null);
     }
-  }, [isOpen, isUnlocked, passcode, fetchModRoster, fetchWebhookStatus]);
+  }, [isOpen, isUnlocked, passcode, fetchModRoster]);
 
   // Handle Passcode Unlock
   const handleUnlock = async (e: React.FormEvent) => {
@@ -221,7 +222,6 @@ export function ModDrawer({
       }
       setSuccessMessage('Moderator panel unlocked!');
       await fetchModRoster(passcode.trim());
-      await fetchWebhookStatus(passcode.trim());
     } catch {
       setErrorMessage('Network error while verifying passcode.');
     } finally {
@@ -711,13 +711,8 @@ export function ModDrawer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/85 backdrop-blur-md p-0 md:items-center md:p-4">
-      <div
-        className="relative flex w-full max-w-2xl lg:max-w-3xl flex-col rounded-t-3xl border-t border-night-border bg-night-surface p-5 shadow-2xl max-h-[92dvh] overflow-y-auto md:rounded-2xl md:border md:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-6"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="mod-panel-title"
-      >
+    <ResponsiveDialog labelledBy="mod-panel-title" onClose={onClose}
+      className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-2xl md:p-6 lg:max-w-3xl">
         {/* Mobile drag handle indicator */}
         <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-night-border md:hidden shrink-0" />
 
@@ -841,21 +836,21 @@ export function ModDrawer({
           /* Unlocked Moderator Panel View */
           <div className="mt-4 flex flex-col">
             {/* Tab Navigation Pill Bar */}
-            <div className="flex items-center gap-1 rounded-xl border border-night-border bg-night-elevated p-1 text-xs overflow-x-auto no-scrollbar">
+            <div className="grid grid-cols-3 gap-1 rounded-xl border border-night-border bg-night-elevated p-1 text-xs">
               <button
                 type="button"
                 onClick={() => {
                   setActiveTab('pending');
                   setEditingMember(null);
-                  }}
-                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-2 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
+                }}
+                aria-pressed={activeTab === 'pending'}
+                className={`flex min-w-0 flex-wrap items-center justify-center gap-1 rounded-lg px-1 py-2 font-semibold transition-all min-h-[44px] ${
                   activeTab === 'pending'
                     ? 'bg-status-amber text-night-bg shadow-sm'
                     : 'text-cream-muted hover:text-cream-primary'
                 }`}
               >
-                <Zap className="h-3.5 w-3.5" />
-                <span>Pending Approvals</span>
+                <span>Approvals</span>
                 {pendingMembers.length > 0 && (
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -874,15 +869,15 @@ export function ModDrawer({
                 onClick={() => {
                   setActiveTab('roster');
                   setEditingMember(null);
-                  }}
-                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
+                }}
+                aria-pressed={activeTab === 'roster'}
+                className={`flex min-w-0 flex-wrap items-center justify-center gap-1 rounded-lg px-1 py-2 font-semibold transition-all min-h-[44px] ${
                   activeTab === 'roster'
                     ? 'bg-status-amber text-night-bg shadow-sm'
                     : 'text-cream-muted hover:text-cream-primary'
                 }`}
               >
-                <UserCheck className="h-3.5 w-3.5" />
-                <span>Full Roster</span>
+                <span>Roster</span>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                     activeTab === 'roster'
@@ -895,23 +890,24 @@ export function ModDrawer({
               </button>
 
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('webhook');
-                  setEditingMember(null);
-                    if (passcode) fetchWebhookStatus(passcode);
-                }}
-                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
-                  activeTab === 'webhook'
-                    ? 'bg-status-amber text-night-bg shadow-sm'
-                    : 'text-cream-muted hover:text-cream-primary'
-                }`}
-              >
-                <Radio className="h-3.5 w-3.5" />
-                <span>Discord Webhook</span>
+              <button type="button" aria-pressed={activeTab === 'punishments'} onClick={() => {
+                setActiveTab('punishments');
+                setEditingMember(null);
+              }} className={`min-h-[44px] rounded-lg px-1 py-2 font-semibold ${activeTab === 'punishments' ? 'bg-status-amber text-night-bg shadow-sm' : 'text-cream-secondary hover:text-cream-primary'}`}>
+                Punishments
               </button>
             </div>
+            <button type="button" aria-pressed={activeTab === 'webhook'} onClick={() => {
+              setActiveTab('webhook');
+              setEditingMember(null);
+              void fetchWebhookStatus(isModUser ? undefined : passcode);
+            }} className="flex min-h-[44px] items-center gap-2 self-start rounded-lg px-2 text-xs font-semibold text-status-amber">
+              <Radio className="h-3.5 w-3.5" aria-hidden="true" /> Advanced
+            </button>
+
+            {activeTab === 'punishments' && (
+              <ModeratorPunishmentQueue passcode={isModUser ? '' : passcode} onTaskChanged={onRosterChanged} />
+            )}
 
             {isModUser && (activeTab === 'pending' || editingMember) && (
               <label className="mt-3 block space-y-1 text-xs text-cream-secondary">
@@ -1855,7 +1851,6 @@ export function ModDrawer({
             )}
           </div>
         )}
-      </div>
-    </div>
+    </ResponsiveDialog>
   );
 }

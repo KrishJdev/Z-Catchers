@@ -62,7 +62,7 @@ assert(
 
 // 5. ModDrawer: Tab bar must have normalized pill badges on Full Roster
 assert(
-  modDrawerContent.includes('Full Roster</span>\n                <span\n                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold'),
+  modDrawerContent.includes('Roster</span>\n                <span\n                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold'),
   'ModDrawer Full Roster tab must feature a normalized count pill badge'
 );
 
@@ -72,21 +72,11 @@ assert(
   'ModDrawer Full Roster action buttons wrapper must have shrink-0'
 );
 
-// 7. MyScheduleModal: Must not have duplicate 📅 emoji in Calendar button
+// 7. Profile opens the full schedule editor with a 44px target.
 assert(
-  !myScheduleModalContent.includes('<span>📅 View My Sleep & Wake Calendar</span>'),
-  'MyScheduleModal must not have duplicate 📅 emoji next to Calendar icon'
-);
-assert(
-  myScheduleModalContent.includes('<span>View My Sleep & Wake Calendar</span>'),
-  'MyScheduleModal must have clean <span>View My Sleep & Wake Calendar</span>'
-);
-
-// 8. MyScheduleModal: Active tab styling must use bg-status-amber text-night-bg font-bold shadow and min-h-[44px]
-assert(
-  myScheduleModalContent.includes('bg-status-amber text-night-bg font-bold shadow') &&
-  myScheduleModalContent.includes('min-h-[44px]'),
-  'MyScheduleModal active tab must use the normalized bg-status-amber text-night-bg font-bold shadow and min-h-[44px]'
+  myScheduleModalContent.includes("openView('schedule')") &&
+  myScheduleModalContent.includes('block min-h-[44px] w-full'),
+  'Profile rows meet the minimum touch target'
 );
 assert(
   myScheduleModalContent.includes('min-h-[44px]') &&
@@ -114,9 +104,10 @@ assert(
   'ModDrawer strike adjusters must have min-h-[44px] min-w-[44px]'
 );
 assert(
-  modDrawerContent.includes('min-h-[44px] whitespace-nowrap') &&
-  modDrawerContent.includes('Pending Approvals'),
-  'ModDrawer tabs must have min-h-[44px] and whitespace-nowrap'
+  modDrawerContent.includes('grid grid-cols-3') &&
+  modDrawerContent.includes('font-semibold transition-all min-h-[44px]') &&
+  modDrawerContent.includes('min-h-[44px] rounded-lg px-1 py-2 font-semibold'),
+  'All three moderator tabs meet the minimum touch height on narrow screens'
 );
 
 // 11. SleepCalendarModal: Edit Schedule button normalized with min-h-[44px] and whitespace-nowrap shrink-0
@@ -144,13 +135,10 @@ assert(
   'PwaBanner / UnifiedOnboardingCard dismiss buttons must meet min-h-[44px] min-w-[44px] touch target'
 );
 
-// 14. HomePage: Hero manual wake form buttons have whitespace-nowrap and shrink-0
-const homePagePath = path.resolve('src/app/page.tsx');
-const homePageContent = fs.readFileSync(homePagePath, 'utf8');
+const barContent = fs.readFileSync(path.resolve('src/components/PinnedSelfActionBar.tsx'), 'utf8');
 assert(
-  homePageContent.includes('Save Wake Time') &&
-  homePageContent.includes('whitespace-nowrap shrink-0'),
-  'HomePage hero manual wake time form buttons must have whitespace-nowrap and shrink-0'
+  barContent.includes('Save wake time') && barContent.includes('min-h-[44px] min-w-[44px]'),
+  'Manual wake actions meet the minimum touch target in the pinned bar'
 );
 
 console.log('✅ All UI Normalization & Button Anti-Wrapping assertions passed cleanly!');

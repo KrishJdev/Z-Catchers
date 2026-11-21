@@ -29,8 +29,8 @@ assert(pushModalContent.includes('90dvh'), 'PushModal uses 90dvh to avoid virtua
 const scheduleModalContent = fs.readFileSync(path.resolve('src/components/MyScheduleModal.tsx'), 'utf8');
 assert(scheduleModalContent.includes('90dvh'), 'MyScheduleModal uses 90dvh to avoid virtual keyboard overlap');
 
-const modDrawerContent = fs.readFileSync(path.resolve('src/components/ModDrawer.tsx'), 'utf8');
-assert(modDrawerContent.includes('92dvh'), 'ModDrawer uses 92dvh to avoid virtual keyboard overlap');
+const dialogContent = fs.readFileSync(path.resolve('src/components/ResponsiveDialog.tsx'), 'utf8');
+assert(dialogContent.includes('92dvh'), 'Responsive dialog caps sheet height to avoid virtual keyboard overlap');
 
 const metaModalContent = fs.readFileSync(path.resolve('src/components/MetastrikeModal.tsx'), 'utf8');
 assert(metaModalContent.includes('90dvh'), 'MetastrikeModal uses 90dvh scrollable constraint');

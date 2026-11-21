@@ -176,14 +176,14 @@ console.log('\n--- 3. Page Hero Banner Undo Option Verification ---');
 const pageContent = fs.readFileSync(path.join(process.cwd(), 'src/app/page.tsx'), 'utf8');
 
 assert(
-  pageContent.includes('Wake Up / Undo') || pageContent.includes('Undo check-in'),
-  'Page hero banner must provide prominent Wake Up / Undo or Undo check-in button'
+  pageContent.includes('<PinnedSelfActionBar') && pageContent.includes('onCancelInBed={handleCancelInBed}'),
+  'Roster action bar provides Undo check-in'
 );
 assert(
   pageContent.includes('isModerator={Boolean(currentUser?.is_moderator)}'),
   'Page must pass isModerator to MemberCard across status buckets'
 );
-console.log('✅ PASSED: Page hero banner features prominent Wake Up / Undo button.');
+console.log('✅ PASSED: Roster wires Undo check-in into the pinned action bar.');
 
 // 4. ModDrawer Moderator Undo Verification
 console.log('\n--- 4. ModDrawer Wake Up / Undo Sleep Option Verification ---');
@@ -209,19 +209,14 @@ assert(
   memberCardContent.includes('history') || memberCardContent.includes('History') || memberCardContent.includes('onOpenSleepCalendar'),
   'MemberCard wires up sleep history profile trigger'
 );
-assert(
-  pageContent.includes('☀️ I Woke Up'),
-  'Page hero banner includes "☀️ I Woke Up" button'
-);
-assert(
-  pageContent.includes('Enter Time Manually'),
-  'Page hero banner includes "Enter Time Manually" button'
-);
+const actionBar = fs.readFileSync(path.join(process.cwd(), 'src/components/PinnedSelfActionBar.tsx'), 'utf8');
+assert(actionBar.includes('I woke up'), 'The pinned bar offers wake-up now');
+assert(actionBar.includes('Enter wake time'), 'The pinned bar offers manual wake time');
 assert(
   pageContent.includes('SleepCalendarModal'),
   'Page renders SleepCalendarModal component'
 );
-console.log('✅ PASSED: MemberCard and Page hero banner include "☀️ I Woke Up" and calendar triggers.');
+console.log('✅ PASSED: MemberCard and the pinned bar preserve wake-up and calendar flows.');
 
 // 6. SleepCalendarModal File & Interface Verification
 console.log('\n--- 6. SleepCalendarModal Verification ---');
