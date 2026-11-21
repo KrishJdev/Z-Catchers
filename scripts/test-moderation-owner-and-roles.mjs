@@ -174,6 +174,10 @@ await withDatabase(schema, async db => {
     await expect(post(ownerCookie, promote, { Origin: 'null' }), 403);
     await expect(post(ownerCookie, promote, { Origin: 'http://localhost:3001' }), 403);
     await expect(post(ownerCookie, promote, { 'Sec-Fetch-Site': 'cross-site' }), 403);
+    const loopback = { Host: '127.0.0.1:3000', Origin: 'http://127.0.0.1:3000' };
+    await expect(post('', promote, loopback), 401);
+    await expect(post(ownerCookie, promote, { ...loopback, Origin: origin, 'X-Forwarded-Host': 'localhost:3000' }), 403);
+    await expect(post(ownerCookie, promote, { Host: 'localhost:3000, other.example' }), 403);
     await expect(post(ownerCookie, { ...promote, new_role: 'owner' }), 400);
     await expect(post(ownerCookie, { ...promote, member_id: owner.id }), 403);
     for (const target of [inactive, unlinked]) await expect(post(ownerCookie, { ...promote, member_id: target.id }), 409);

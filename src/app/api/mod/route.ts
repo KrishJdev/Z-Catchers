@@ -6,7 +6,7 @@ import {
   hydrateMemberWeekendHours,
   getMemberByIdSafe,
 } from '@/lib/db';
-import { sanitizeMember, verifyModeratorAuthorization, verifyModeratorSession, getModeratorPasscode, getRequestSession, getRequestSessionMemberId, type ModAuthResult } from '@/lib/auth';
+import { sanitizeHostHeader, sanitizeMember, verifyModeratorAuthorization, verifyModeratorSession, getModeratorPasscode, getRequestSession, getRequestSessionMemberId, type ModAuthResult } from '@/lib/auth';
 import {
   getClientIp,
   checkPinRateLimitPersistent,
@@ -23,6 +23,21 @@ import { DateTime } from 'luxon';
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+function hasSameOrigin(request: Request, origin: string): boolean {
+  const url = new URL(request.url);
+  const host = request.headers.get('host');
+  if (host === null) return origin === url.origin;
+
+  // Next can replace the URL's hostname with the listening address.
+  const destination = sanitizeHostHeader(host);
+  if (!destination || host.includes(',')) return false;
+  try {
+    return origin === new URL(`${url.protocol}//${destination}`).origin;
+  } catch {
+    return false;
+  }
+}
 
 async function setModerator(request: Request, body: Record<string, unknown>) {
   const session = getRequestSession(request);
@@ -176,7 +191,7 @@ export async function POST(request: Request) {
   try {
     const origin = request.headers.get('origin');
     const fetchSite = request.headers.get('sec-fetch-site');
-    if ((origin !== null && origin !== new URL(request.url).origin) ||
+    if ((origin !== null && !hasSameOrigin(request, origin)) ||
         fetchSite === 'cross-site' || fetchSite === 'same-site') {
       return NextResponse.json({ error: 'Moderator actions require a same-origin request.' }, { status: 403 });
     }
