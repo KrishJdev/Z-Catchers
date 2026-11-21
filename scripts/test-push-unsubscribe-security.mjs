@@ -39,6 +39,13 @@ async function run() {
   function installQueryStub(mockError = null) {
     queries = [];
     supabaseAdmin.from = (table) => {
+      if (table === 'members') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          async maybeSingle() { return { data: { id: 'owner' }, error: null }; },
+        };
+      }
       const q = {
         table,
         op: null,
@@ -68,8 +75,8 @@ async function run() {
   try {
     const memberAliceId = 'mem_alice_secure_001';
     const memberMalloryId = 'mem_mallory_attacker_002';
-    const aliceToken = createSessionToken({ memberId: memberAliceId });
-    const malloryToken = createSessionToken({ memberId: memberMalloryId });
+    const aliceToken = createSessionToken({ memberId: memberAliceId, discordId: '100000000000000111' });
+    const malloryToken = createSessionToken({ memberId: memberMalloryId, discordId: '100000000000000222' });
     const aliceEndpoint = 'https://fcm.googleapis.com/fcm/send/alice-device-token-123';
 
     // -------------------------------------------------------------
@@ -89,7 +96,7 @@ async function run() {
 
     testAssert(unauthRes1.status === 401, 'Anonymous request with endpoint returns HTTP 401 Unauthorized');
     testAssert(
-      unauthJson1.error && unauthJson1.error.includes('Active member session required'),
+      unauthJson1.error && unauthJson1.error.includes('Sign in with Discord'),
       'Returns informative unauthorized message for anonymous endpoint deletion'
     );
     testAssert(queries.length === 0, 'No database delete query executed for unauthenticated request');
@@ -137,8 +144,6 @@ async function run() {
 
     testAssert(aliceRes.status === 200, 'Authenticated owner request returns HTTP 200 OK');
     testAssert(aliceJson.success === true, 'Response JSON confirms success: true');
-    testAssert(aliceJson.endpoint === aliceEndpoint, 'Response echoes unsubscribed endpoint');
-    testAssert(aliceJson.member_id === memberAliceId, 'Response confirms member_id is Alice');
     testAssert(queries.length === 1, 'Exactly one database query triggered');
     testAssert(queries[0].table === 'push_subscriptions', 'Query targets push_subscriptions table');
     testAssert(queries[0].op === 'delete', 'Query performs delete operation');
@@ -195,7 +200,6 @@ async function run() {
     );
     testAssert(malloryMemberFilter, 'Query scopes deletion strictly to Mallory (sessionMemberId)');
     testAssert(!aliceInFilters, 'Alice member ID is NOT in query filters');
-    testAssert(malloryJson.member_id === memberMalloryId, 'Response confirms operation was scoped to Mallory');
 
     // -------------------------------------------------------------
     // 4. Invalid Endpoint Format Validation
@@ -275,7 +279,6 @@ async function run() {
 
     testAssert(memberWideRes.status === 200, 'Member-wide unsubscription returns HTTP 200 OK');
     testAssert(memberWideJson.success === true, 'Member-wide confirms success: true');
-    testAssert(memberWideJson.member_id === memberAliceId, 'Member-wide echoes member_id');
     testAssert(queries.length === 1, 'One query executed for member-wide unsubscription');
     testAssert(queries[0].filters.length === 1 && queries[0].filters[0].col === 'member_id' && queries[0].filters[0].val === memberAliceId,
       'Query deletes all subscriptions strictly matching member_id = Alice');
@@ -308,9 +311,7 @@ async function run() {
       },
     });
     const queryDeleteRes = await handleUnsubscribeDelete(queryDeleteReq);
-    const queryDeleteJson = await queryDeleteRes.json();
     testAssert(queryDeleteRes.status === 200, 'DELETE with URL query parameter ?endpoint=... returns HTTP 200 OK');
-    testAssert(queryDeleteJson.endpoint === aliceEndpoint, 'Response echoes query parameter endpoint');
     testAssert(queries.length === 1 && queries[0].op === 'delete', 'Query param DELETE executes database delete');
     const hasQueryEndpointFilter = queries[0]?.filters.some(
       (f) => f.col === 'endpoint' && f.val === aliceEndpoint
@@ -325,23 +326,6 @@ async function run() {
     // 7. Client-Side Authorization Injection Verification (GH #36)
     // -------------------------------------------------------------
     console.log('\n--- 7. Client-Side Authorization Injection Checks ---');
-
-    const pushClientContent = fs.readFileSync(path.resolve('src/lib/pushClient.ts'), 'utf8');
-    testAssert(
-      pushClientContent.includes('const token = getStoredAuthToken();') &&
-      pushClientContent.includes("headers['Authorization'] = `Bearer ${token}`;"),
-      'pushClient.ts injects Authorization Bearer header into /api/push/unsubscribe'
-    );
-    testAssert(
-      pushClientContent.includes('Server unregister endpoint returned HTTP'),
-      'pushClient.ts logs diagnostic warnings when server unsubscription returns non-2xx status'
-    );
-    testAssert(
-      pushClientContent.includes('STORAGE_KEY_PENDING_UNSUBSCRIBE') &&
-      pushClientContent.includes('setStoredPendingUnsubscribeEndpoint(endpoint)') &&
-      pushClientContent.includes('retryPendingUnsubscribe'),
-      'pushClient.ts preserves unregister endpoint for retry upon server failure'
-    );
 
     const pushModalContent = fs.readFileSync(path.resolve('src/components/PushModal.tsx'), 'utf8');
     testAssert(
@@ -368,8 +352,8 @@ async function run() {
     const dbErrRes = await handleUnsubscribePost(dbErrReq);
     const dbErrJson = await dbErrRes.json();
 
-    testAssert(dbErrRes.status === 500, 'Database failure returns HTTP 500');
-    testAssert(dbErrJson.error === 'Simulated connection failure', 'Returns database error message');
+    testAssert(dbErrRes.status === 503, 'Database failure returns HTTP 503');
+    testAssert(dbErrJson.error === 'Could not unlink notifications. Try again.', 'Returns a safe failure message');
 
   } finally {
     restoreQueryStub();

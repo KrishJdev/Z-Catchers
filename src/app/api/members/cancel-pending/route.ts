@@ -7,7 +7,7 @@ import {
   isSupabaseConfigured,
   isTestMemberFixture,
 } from '@/lib/db';
-import { verifyPin, verifyModPasscode, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
+import { ownsDiscordProfile, verifyModPasscode, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
 import {
   getClientIp,
   checkPinRateLimitPersistent,
@@ -21,15 +21,16 @@ import { DateTime } from 'luxon';
 /**
  * POST: Cancel a member's pending schedule changes during the 48-hour cooldown window,
  * or cancel an active pending/in-bed check-in state.
- * Requires member PIN authentication or moderator passcode override.
+ * Requires the linked Discord session or moderator passcode.
  *
- * @param request - Incoming HTTP request with member_id and PIN or mod_passcode
+ * @param request - Incoming HTTP request with member_id and optional mod_passcode
  * @returns JSON response confirming cancellation of pending changes
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { member_id, memberId, pin, mod_passcode, action, type } = body;
+    const { member_id, memberId, action, type } = body;
+    const mod_passcode = body.mod_passcode ?? request.headers.get('x-mod-passcode');
     const targetMemberId = member_id || memberId;
 
     if (!targetMemberId) {
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     const clientIp = getClientIp(request);
 
     const sessionMemberId = getRequestSessionMemberId(request);
-    const isSessionOwner = Boolean(sessionMemberId && sessionMemberId === member.id);
+    const isSessionOwner = ownsDiscordProfile(request, member);
 
     let isModerator = false;
     if (mod_passcode) {
@@ -76,53 +77,11 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!isModerator && isSessionOwner && !member.is_active) {
-      return NextResponse.json({ error: 'Member is inactive.' }, { status: 403 });
-    }
-
     if (!isModerator && !isSessionOwner) {
-      if (member.discord_id) {
-        return NextResponse.json(
-          { error: 'This profile is linked to a Discord account and can only be updated by its owner or a moderator.' },
-          { status: 403 }
-        );
-      }
-
-      if (!member.passcode_hash) {
-        return NextResponse.json(
-          { error: 'PIN protection or owner session is required to cancel pending schedule changes.' },
-          { status: 403 }
-        );
-      }
-
-      const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
-      if (!rateCheck.allowed) {
-        return NextResponse.json(
-          {
-            error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-          },
-          {
-            status: 429,
-            headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-          }
-        );
-      }
-
-      if (!pin || typeof pin !== 'string') {
-        return NextResponse.json(
-          { error: 'Invalid PIN. PIN is required to cancel your pending change.' },
-          { status: 401 }
-        );
-      }
-
-      if (!verifyPin(pin.trim(), member.passcode_hash)) {
-        await recordPinFailurePersistent(clientIp, member.id);
-        return NextResponse.json(
-          { error: 'Invalid PIN. PIN is required to cancel your pending change.' },
-          { status: 401 }
-        );
-      }
-      await resetPinFailurePersistent(clientIp, member.id);
+      return NextResponse.json(
+        { error: 'Sign in with the Discord account linked to this profile.' },
+        { status: sessionMemberId ? 403 : 401 }
+      );
     }
 
     const nowUtc = DateTime.utc();
@@ -229,8 +188,7 @@ export async function POST(request: Request) {
 
     const { data: updatedMember, error: updateError } = await updateMemberSafe(
       targetMemberId,
-      updateFields,
-      { requireUnlinkedDiscord: !isModerator && !isSessionOwner }
+      updateFields
     );
 
     if (updateError) {
@@ -242,8 +200,8 @@ export async function POST(request: Request) {
 
     if (!updatedMember) {
       return NextResponse.json(
-        { error: 'This profile has been linked to a Discord account and can only be updated by its owner or a moderator.' },
-        { status: 409 }
+        { error: 'Failed to cancel pending change.' },
+        { status: 500 }
       );
     }
 

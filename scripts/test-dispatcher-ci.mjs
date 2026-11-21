@@ -19,6 +19,7 @@ const dispatcherPath = '/api/cron/dispatch-notifications';
 const fixtureSecret = () => randomBytes(32).toString('hex');
 const cronSecret = fixtureSecret();
 const bypassSecret = fixtureSecret();
+const moderatorPasscode = fixtureSecret();
 const discordAccounts = {
   overdue: '100000000000000001',
   'database-mod': '100000000000000002',
@@ -127,6 +128,7 @@ sql(readFileSync('supabase/schema.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261118_sleep_logs_member_uuid.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261119_dispatch_accountability.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261120_cron_stage_completion.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261121_push_subscription_rotation.sql', 'utf8'));
 sql(`
   UPDATE public.members SET is_active = false;
   CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -183,7 +185,7 @@ const env = {
   SESSION_SECRET: fixtureSecret(),
   PIN_SALT: fixtureSecret(),
   CRON_SECRET: cronSecret,
-  MOD_SECRET_PASSCODE: fixtureSecret(),
+  MOD_SECRET_PASSCODE: moderatorPasscode,
   MOD_DISCORD_IDS: discordAccounts['discord-mod'],
   DISCORD_CLIENT_ID: '100000000000000010',
   DISCORD_CLIENT_SECRET: fixtureSecret(),
@@ -327,6 +329,22 @@ try {
     ...profile, timezone: 'UTC', claim_token: join.searchParams.get('claim_token'), option: 'new',
   }, 201);
   const newcomerCookie = await signIn('newcomer', newcomer.id, false, 'member');
+  const claimCookie = cookieFrom(callback, 'zcatchers_claim_token');
+  await post('/api/auth/claim-profile', claimCookie, { option: 'claim', target_member_id: regularId }, 400);
+  for (const action of ['add_member', 'reset_pin']) {
+    await post('/api/mod', '', { action, mod_passcode: moderatorPasscode, member_id: regularId }, 400);
+  }
+  for (const [path, body] of [
+    ['/api/members/update-schedule', { member_id: regularId, bedtime_local: profile.bedtime_local }],
+    ['/api/members/cancel-pending', { member_id: regularId }],
+    ['/api/members/in-bed', { memberId: regularId, action: 'check_in' }],
+    ['/api/members/wake-up', { memberId: regularId, mode: 'button' }],
+    ['/api/members/strikes/metastrike', { member_id: regularId }],
+  ]) {
+    await post(path, '', { ...body, pin: '1234', new_pin: '1234' }, 401);
+    await post(path, newcomerCookie, body, 403);
+  }
+
   const proactive = await post('/api/members/strikes/metastrike', newcomerCookie, { member_id: newcomer.id });
   assert.equal(proactive.log.record_type, 'metastrike');
   assert.equal(proactive.metastrikes_used, 1);
@@ -340,6 +358,10 @@ try {
     assert.equal((await fetch(appOrigin + '/api/mod', { headers: { Cookie: cookie } })).status, 200);
     const verified = await post('/api/mod', cookie, { action: 'verify' });
     assert.equal(verified.moderatorId, moderator.id);
+    await post('/api/mod', cookie, { action: 'approve_cooldown', member_id: regularId }, 403);
+    await post('/api/mod', cookie, {
+      action: 'edit_member', member_id: regularId, timezone: 'Asia/Kolkata',
+    }, 403);
   }
 
   const previousBedtime = local.minus({ minutes: 16 }).toFormat('HH:mm');
@@ -378,6 +400,44 @@ try {
   const testPush = await post('/api/push/test', regularCookie, {});
   assert.equal(testPush.delivered, 1);
   assert.deepEqual(pushes.slice(receivedBeforeTest), ['overdue']);
+  const override = await post('/api/members/update-schedule', regularCookie, {
+    member_id: regularId, bedtime_local: profile.bedtime_local,
+  });
+  assert.equal(override.cooldown_applied, true);
+  await post('/api/mod', '', {
+    action: 'approve_cooldown', member_id: regularId, mod_passcode: moderatorPasscode,
+  });
+
+  const subscribePath = '/api/push/subscribe';
+  const pushPayload = (endpoint) => ({
+    endpoint,
+    keys: { p256dh: regularSubscription.p256dh_key, auth: regularSubscription.auth_key },
+  });
+  const legacyEndpoint = relayOrigin + '/push/legacy-rotation';
+  const replacementEndpoint = relayOrigin + '/push/credential-rotation';
+  const rotation = (previous, next, credential) => ({
+    background: true, old_endpoint: previous, subscription: pushPayload(next), rotation_credential: credential,
+  });
+  await post(subscribePath, newcomerCookie, {
+    member_id: regularId, subscription: pushPayload(regularSubscription.endpoint),
+  }, 403);
+  await post(subscribePath, '', rotation(regularSubscription.endpoint, legacyEndpoint));
+  const credential = fixtureSecret();
+  const upgraded = await post(subscribePath, regularCookie, {
+    member_id: regularId, subscription: pushPayload(legacyEndpoint), rotation_credential: credential,
+  });
+  assert.equal(upgraded.notifyPersonal, regularSubscription.notify_personal);
+  assert.equal(upgraded.notifyCommunity, regularSubscription.notify_community);
+  await post(subscribePath, '', rotation(legacyEndpoint, replacementEndpoint), 401);
+  const next = rotation(legacyEndpoint, replacementEndpoint, credential);
+  await post(subscribePath, '', next);
+  await post(subscribePath, '', next); // Lost response and exact retry.
+  await post('/api/push/unsubscribe', regularCookie, {
+    member_id: regularId, endpoint: legacyEndpoint, rotation_credential: credential,
+  });
+  await post(subscribePath, '', rotation(legacyEndpoint, replacementEndpoint, credential), 401);
+  console.log('Verified legacy push upgrade, sessionless rotation, exact retry and credential revocation.');
+
   console.log('Verified Discord onboarding and returning sessions, both moderator types, schedule cooldown and cancellation, check-in and undo, wake-up, Metastrikes, and push subscription and delivery.');
 } finally {
   app?.kill();

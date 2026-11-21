@@ -405,8 +405,8 @@ async function run() {
       'GET /api/auth/login redirect does NOT contain attacker-phishing.com'
     );
     assert(
-      loginLoc.endsWith('/api/auth/discord'),
-      'GET /api/auth/login redirects to canonical /api/auth/discord'
+      loginLoc.endsWith('/join'),
+      'GET /api/auth/login redirects to canonical /join'
     );
 
     const poisonRegReq = new Request('https://z-catchers.vercel.app/api/auth/register', {
@@ -423,8 +423,8 @@ async function run() {
       'GET /api/auth/register redirect does NOT contain attacker-phishing.com'
     );
     assert(
-      regLoc.endsWith('/api/auth/discord'),
-      'GET /api/auth/register redirects to canonical /api/auth/discord'
+      regLoc.endsWith('/join'),
+      'GET /api/auth/register redirects to canonical /join'
     );
 
   } finally {

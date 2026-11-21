@@ -289,33 +289,182 @@ self.addEventListener('notificationclick', function (event) {
   );
 });
 
-// 6. Push Subscription Change (Background iOS/Android token rotation recovery)
-self.addEventListener('pushsubscriptionchange', function (event) {
-  const options = event.oldSubscription ? event.oldSubscription.options : { userVisibleOnly: true };
+// 6. Keep one durable device binding so foreground sync and background rotation
+// can retry a failed request without losing the endpoint that was last confirmed.
+let bindingQueue = Promise.resolve();
 
-  event.waitUntil(
-    self.registration.pushManager
-      .subscribe(options)
-      .then(function (newSubscription) {
-        const subJson = newSubscription.toJSON();
-        return fetch('/api/push/subscribe', {
+function withPushBinding(task) {
+  const result = bindingQueue.then(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('zcatchers-push', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('device');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const access = (mode, change) => new Promise((resolve, reject) => {
+      const tx = db.transaction('device', mode);
+      const request = change(tx.objectStore('device'));
+      tx.oncomplete = () => resolve(request.result);
+      tx.onabort = () => reject(tx.error);
+      tx.onerror = () => reject(tx.error);
+    });
+    try {
+      const binding = await access('readonly', store => store.get('binding')) || {};
+      const save = next => access('readwrite', store => store.put(next, 'binding'));
+      return await task(binding, save);
+    } finally {
+      db.close();
+    }
+  });
+  bindingQueue = result.catch(() => {});
+  return result;
+}
+
+async function sendPushBinding(subscription, binding, details) {
+  try {
+    const response = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      credentials: details.background ? 'omit' : 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...details,
+        subscription,
+        old_endpoint: binding.endpoint,
+        rotation_credential: binding.credential,
+        user_agent: self.navigator.userAgent,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) {
+      return {
+        success: false,
+        confirmedEndpoint: data.confirmedEndpoint,
+        error: data.error || 'Could not sync device alerts. Try again.',
+        repair: response.status === 401 || response.status === 403 ? 'sign_in' : 'retry',
+      };
+    }
+    return data;
+  } catch {
+    return { success: false, repair: 'retry', error: 'Could not reach the server. Try again when online.' };
+  }
+}
+
+self.addEventListener('message', event => {
+  if (event.data?.type !== 'PUSH_DEVICE' || !event.ports[0]) return;
+  const { action, memberId, notifyPersonal, notifyCommunity, enable, applicationServerKey } = event.data;
+  event.waitUntil(withPushBinding(async (binding, save) => {
+    if (action === 'status') {
+      return { repair: binding.repair, disabled: binding.disabled, memberId: binding.memberId,
+        notifyPersonal: binding.notifyPersonal, notifyCommunity: binding.notifyCommunity };
+    }
+
+    if (binding.memberId && binding.memberId !== memberId) {
+      return { success: false, repair: 'sign_in', error: 'Sign in with the Discord account that linked this device.' };
+    }
+
+    let subscription = await self.registration.pushManager.getSubscription();
+    if (action === 'unlink') {
+      const endpoint = binding.endpoint || subscription?.endpoint;
+      if (endpoint || binding.credential) {
+        const response = await fetch('/api/push/unsubscribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            subscription: {
-              endpoint: subJson.endpoint,
-              keys: {
-                p256dh: subJson.keys?.p256dh,
-                auth: subJson.keys?.auth,
-              },
-            },
-            old_endpoint: event.oldSubscription ? event.oldSubscription.endpoint : undefined,
-            user_agent: self.navigator ? self.navigator.userAgent : null,
-          }),
+          body: JSON.stringify({ endpoint, rotation_credential: binding.credential, member_id: memberId }),
         });
-      })
-      .catch(function (err) {
-        console.error('[SW] Failed to recover subscription during pushsubscriptionchange:', err);
-      })
-  );
+        if (!response.ok) {
+          return { success: false, error: 'Could not unlink this device. Check your sign-in and try again.' };
+        }
+      }
+      await save({ disabled: true });
+      await subscription?.unsubscribe().catch(() => false);
+      return { success: true };
+    }
+
+    if (action !== 'sync' || !memberId || (binding.disabled && !enable)) return { success: false };
+    if (!enable && !subscription && !binding.endpoint && !binding.repair) return { success: false };
+    const { disabled, ...saved } = binding;
+    const credential = binding.credential || Array.from(
+      crypto.getRandomValues(new Uint8Array(32)),
+      byte => byte.toString(16).padStart(2, '0')
+    ).join('');
+    const staged = { ...saved, credential };
+
+    try {
+      if (!subscription && applicationServerKey) {
+        subscription = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+      }
+    } catch {
+      await save({ ...staged, repair: 'retry' });
+      return { success: false, repair: 'retry', error: 'Push registration failed. Try again on this device.' };
+    }
+    if (!subscription) return { success: false };
+
+    // Commit the credential in worker storage before the server disables legacy rotation.
+    await save(staged);
+    const details = { member_id: memberId, notify_personal: notifyPersonal, notify_community: notifyCommunity };
+    let result = await sendPushBinding(subscription.toJSON(), staged, details);
+    if (result.confirmedEndpoint && result.confirmedEndpoint !== staged.endpoint) {
+      const current = await self.registration.pushManager.getSubscription();
+      if (current?.endpoint === subscription.endpoint) {
+        result = await sendPushBinding(current.toJSON(), { ...staged, endpoint: result.confirmedEndpoint }, details);
+      }
+    }
+    if (!result.success) {
+      await save({ ...staged, repair: result.repair });
+      return result;
+    }
+    await save({
+      memberId,
+      credential,
+      endpoint: subscription.endpoint,
+      notifyPersonal: result.notifyPersonal,
+      notifyCommunity: result.notifyCommunity,
+    });
+    return result;
+  }).then(
+    result => event.ports[0].postMessage(result),
+    () => event.ports[0].postMessage({ success: false, repair: 'retry', error: 'Could not sync device alerts. Try again.' })
+  ));
 });
+
+self.addEventListener('pushsubscriptionchange', event => {
+  event.waitUntil(withPushBinding(async (binding, save) => {
+    if (binding.disabled) return;
+
+    const previous = binding.endpoint || event.oldSubscription?.endpoint;
+    const staged = { ...binding, endpoint: previous };
+    await save({ ...staged, repair: 'retry' });
+
+    let subscription;
+    try {
+      subscription = event.newSubscription || await self.registration.pushManager.getSubscription();
+      if (!subscription && event.oldSubscription) {
+        subscription = await self.registration.pushManager.subscribe(event.oldSubscription.options);
+      }
+    } catch {
+      return;
+    }
+    if (!subscription || !previous) {
+      await notifyPushBindingChanged(false);
+      return;
+    }
+    // A queued event may already have been superseded by a foreground sync.
+    const browserSubscription = await self.registration.pushManager.getSubscription();
+    if (browserSubscription && browserSubscription.endpoint !== subscription.endpoint) return;
+    const result = await sendPushBinding(subscription.toJSON(), staged, { background: true });
+    if (!result.success) {
+      await save({ ...staged, repair: result.repair });
+      await notifyPushBindingChanged(false);
+      return;
+    }
+    const { repair, ...confirmed } = staged;
+    await save({ ...confirmed, endpoint: subscription.endpoint });
+    await notifyPushBindingChanged(true);
+  }).catch(() => {}));
+});
+
+async function notifyPushBindingChanged(active) {
+  for (const client of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) {
+    client.postMessage({ type: 'PUSH_DEVICE_CHANGED', active });
+  }
+}

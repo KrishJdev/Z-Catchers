@@ -1,223 +1,86 @@
+import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db';
-import { getRequestSessionMemberId, verifyPin } from '@/lib/auth';
-import {
-  getClientIp,
-  checkPinRateLimitPersistent,
-  recordPinFailurePersistent,
-  resetPinFailurePersistent,
-} from '@/lib/rateLimit';
+import { getRequestSession } from '@/lib/auth';
 
-/**
- * POST: Register or rotate a Web Push subscription endpoint linked to an authenticated member.
- * Preserves existing notification preferences when omitted from health sync calls.
- *
- * @param request - Incoming HTTP request containing push subscription and credentials
- * @returns JSON response with linked subscription record
- */
-export async function POST(request: Request) {
+const credentialFormat = /^[a-f0-9]{64}$/;
+
+const failures: Record<string, { status: number; message: string }> = {
+  credential_required: { status: 401, message: 'Sign in with Discord to repair alerts on this device.' },
+  inactive_owner: { status: 403, message: 'This subscription requires its active Discord account.' },
+  endpoint_conflict: { status: 409, message: 'This push endpoint is already linked to a device.' },
+  stale_endpoint: { status: 409, message: 'This device changed its subscription. Retry notification setup.' },
+};
+
+function endpointIsValid(endpoint: unknown): endpoint is string {
+  if (typeof endpoint !== 'string' || endpoint.length > 2048) return false;
   try {
-    const sessionMemberId = getRequestSessionMemberId(request);
-    const body = await request.json();
-    const {
-      member_id,
-      pin,
-      subscription,
-      old_endpoint,
-      notify_personal,
-      notify_community,
-      user_agent,
-    } = body;
-
-    if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
-      return NextResponse.json(
-        { error: 'Invalid push subscription payload. Missing endpoint or encryption keys.' },
-        { status: 400 }
-      );
-    }
-
-    // Determine target member ID: Prefer authenticated session member ID
-    let effectiveMemberId = sessionMemberId || member_id;
-    let isRotationRecovery = false;
-
-    // Background pushsubscriptionchange recovery: if old_endpoint is provided and matches an existing subscription,
-    // recover the linked member_id without requiring active user credentials
-    if (!effectiveMemberId && old_endpoint) {
-      const { data: oldSub } = await supabaseAdmin
-        .from('push_subscriptions')
-        .select('member_id')
-        .eq('endpoint', old_endpoint)
-        .maybeSingle();
-
-      if (oldSub) {
-        effectiveMemberId = oldSub.member_id;
-        isRotationRecovery = true;
-      }
-    }
-
-    if (!effectiveMemberId) {
-      return NextResponse.json(
-        {
-          error:
-            'A logged-in member profile is required to link push notifications and calculate your Sleep Shield window.',
-          code: 'MEMBER_REQUIRED',
-        },
-        { status: 400 }
-      );
-    }
-
-    // If both session and body member_id provided, ensure no cross-profile impersonation
-    if (sessionMemberId && member_id && sessionMemberId !== member_id) {
-      return NextResponse.json(
-        {
-          error: 'Unauthorized. You cannot bind push notifications to another member profile.',
-          code: 'FORBIDDEN',
-        },
-        { status: 403 }
-      );
-    }
-
-    // Verify member exists in database
-    const { data: member, error: memberErr } = await supabaseAdmin
-      .from('members')
-      .select('id, discord_username, timezone, passcode_hash')
-      .eq('id', effectiveMemberId)
-      .eq('is_active', true)
-      .single();
-
-    if (memberErr || !member) {
-      return NextResponse.json(
-        { error: 'Member not found or inactive.' },
-        { status: 404 }
-      );
-    }
-
-    // Security Gate:
-    // Must be authenticated via session, valid PIN, or verified background rotation recovery
-    const isSessionMatch = Boolean(sessionMemberId && sessionMemberId === member.id);
-    let isPinMatch = false;
-
-    if (!isSessionMatch && !isRotationRecovery) {
-      if (pin !== undefined && pin !== null) {
-        if (typeof pin !== 'string') {
-          return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
-        }
-        const clientIp = getClientIp(request);
-        const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
-        if (!rateCheck.allowed) {
-          return NextResponse.json(
-            {
-              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-            },
-            {
-              status: 429,
-              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-            }
-          );
-        }
-
-        const cleanPin = pin.trim();
-        if (member.passcode_hash && verifyPin(cleanPin, member.passcode_hash)) {
-          isPinMatch = true;
-          await resetPinFailurePersistent(clientIp, member.id);
-        } else {
-          await recordPinFailurePersistent(clientIp, member.id);
-        }
-      }
-    }
-
-    if (!isSessionMatch && !isPinMatch && !isRotationRecovery) {
-      return NextResponse.json(
-        {
-          error: 'Authentication required. Please log in or provide your 4-digit PIN to link push notifications.',
-          code: 'UNAUTHORIZED',
-        },
-        { status: 401 }
-      );
-    }
-
-    // If an old endpoint was rotated, capture its preferences before pruning (scoped to member.id)
-    let oldSubPrefs: { notify_personal?: boolean; notify_community?: boolean } | null = null;
-    if (old_endpoint && old_endpoint !== subscription.endpoint) {
-      const { data: oldData } = await supabaseAdmin
-        .from('push_subscriptions')
-        .select('notify_personal, notify_community')
-        .eq('endpoint', old_endpoint)
-        .eq('member_id', member.id)
-        .maybeSingle();
-
-      if (oldData) {
-        oldSubPrefs = oldData;
-      }
-
-      await supabaseAdmin
-        .from('push_subscriptions')
-        .delete()
-        .eq('endpoint', old_endpoint)
-        .eq('member_id', member.id);
-    }
-
-    // Preserve existing preferences when omitted in request (e.g. background health sync or endpoint rotation)
-    let existingSub: { notify_personal?: boolean; notify_community?: boolean } | null = null;
-    if (
-      notify_personal === undefined ||
-      notify_personal === null ||
-      notify_community === undefined ||
-      notify_community === null
-    ) {
-      const { data } = await supabaseAdmin
-        .from('push_subscriptions')
-        .select('notify_personal, notify_community')
-        .eq('endpoint', subscription.endpoint)
-        .maybeSingle();
-      if (data) {
-        existingSub = data;
-      } else if (oldSubPrefs) {
-        existingSub = oldSubPrefs;
-      }
-    }
-
-    const finalNotifyPersonal =
-      notify_personal !== undefined && notify_personal !== null
-        ? Boolean(notify_personal)
-        : (existingSub?.notify_personal ?? true);
-
-    const finalNotifyCommunity =
-      notify_community !== undefined && notify_community !== null
-        ? Boolean(notify_community)
-        : (existingSub?.notify_community ?? true);
-
-    // Upsert subscription uniquely by endpoint tied to member_id.
-    // This allows a single member to maintain separate rows for mobile PWA and desktop simultaneously.
-    const { data: subData, error: subErr } = await supabaseAdmin
-      .from('push_subscriptions')
-      .upsert(
-        {
-          member_id: member.id,
-          endpoint: subscription.endpoint,
-          p256dh_key: subscription.keys.p256dh,
-          auth_key: subscription.keys.auth,
-          notify_personal: finalNotifyPersonal,
-          notify_community: finalNotifyCommunity,
-          user_agent: user_agent || null,
-        },
-        { onConflict: 'endpoint' }
-      )
-      .select()
-      .single();
-
-    if (subErr) {
-      console.error('Failed to upsert push subscription:', subErr);
-      return NextResponse.json({ error: subErr.message }, { status: 500 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Push subscription linked to ${member.discord_username}`,
-      subscription: subData,
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown server error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const url = new URL(endpoint);
+    return url.protocol === 'https:' && !url.username && !url.password;
+  } catch {
+    return false;
   }
+}
+
+export async function POST(request: Request) {
+  const session = getRequestSession(request);
+  const payload = await request.json().catch(() => null);
+  const background = payload?.background === true || (!session && payload?.old_endpoint != null);
+  const fail = (code: string, status: number, error: string, confirmedEndpoint?: string) => {
+    if (background) console.warn('[push-rotation]', code);
+    return NextResponse.json({ code, error, confirmedEndpoint }, { status });
+  };
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return fail('invalid_payload', 400, 'Invalid push payload.');
+  }
+
+  const { member_id, subscription, old_endpoint, rotation_credential, notify_personal, notify_community, user_agent } = payload;
+  if (!background && !session?.discordId) {
+    return fail('discord_required', 401, 'Sign in with Discord to link push notifications.');
+  }
+  if (member_id != null && (background || member_id !== session?.memberId)) {
+    return fail('wrong_account', 403, 'This device can only be linked to your own profile.');
+  }
+  if (!endpointIsValid(subscription?.endpoint) ||
+      ![subscription.keys?.p256dh, subscription.keys?.auth].every(
+        key => typeof key === 'string' && key.length > 0 && key.length <= 256) ||
+      (old_endpoint != null && !endpointIsValid(old_endpoint)) ||
+      (rotation_credential != null &&
+        (typeof rotation_credential !== 'string' || !credentialFormat.test(rotation_credential)))) {
+    return fail('invalid_payload', 400, 'Invalid push subscription or rotation credential.');
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc('bind_push_subscription', {
+      p_member_id: background ? null : session!.memberId,
+      p_discord_id: background ? null : session!.discordId,
+      p_endpoint: subscription.endpoint,
+      p_previous: old_endpoint ?? null,
+      p_p256dh: subscription.keys.p256dh,
+      p_auth: subscription.keys.auth,
+      p_digest: rotation_credential ? createHash('sha256').update(rotation_credential).digest('hex') : null,
+      p_personal: typeof notify_personal === 'boolean' ? notify_personal : null,
+      p_community: typeof notify_community === 'boolean' ? notify_community : null,
+      p_user_agent: typeof user_agent === 'string' ? user_agent.slice(0, 500) : null,
+    });
+
+    if (!error && (data?.code === 'ok' || data?.code === 'legacy_rotation')) {
+      if (data.code === 'legacy_rotation') console.info('[push-rotation]', 'legacy_rotation');
+      return NextResponse.json({
+        success: true,
+        notifyPersonal: data.notify_personal,
+        notifyCommunity: data.notify_community,
+      });
+    }
+
+    if (!error && Object.hasOwn(failures, data?.code)) {
+      const failure = failures[data.code];
+      return fail(data.code, failure.status, failure.message, background ? undefined : data.confirmed_endpoint);
+    }
+  } catch {
+    // Database errors can contain endpoints or keys. Report only the stable reason.
+  }
+
+  return fail('storage_error', 503, 'Unable to save notification settings. Please try again.');
 }

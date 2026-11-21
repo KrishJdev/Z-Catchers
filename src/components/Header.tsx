@@ -116,14 +116,16 @@ export function Header({
 
         {/* Right side: Compact profile pill on mobile; desktop command buttons on md:flex */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={onOpenMod}
-            className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary h-11 min-h-[44px] whitespace-nowrap md:inline-flex"
-          >
-            <Shield className="h-3.5 w-3.5 text-cream-muted" />
-            <span>Mod Panel</span>
-          </button>
+          {currentUser?.is_moderator && onOpenMod && (
+            <button
+              type="button"
+              onClick={onOpenMod}
+              className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary h-11 min-h-[44px] whitespace-nowrap md:inline-flex"
+            >
+              <Shield className="h-3.5 w-3.5 text-cream-muted" />
+              <span>Mod Panel</span>
+            </button>
+          )}
 
           {/* Push Notification Toggle (Desktop only; on mobile accessed via Alerts bottom tab) */}
           <button

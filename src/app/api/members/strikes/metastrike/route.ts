@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured, Member, getMemberByIdSafe } from '@/lib/db';
-import { getRequestSessionMemberId, verifyPin, verifyModPasscode } from '@/lib/auth';
+import { Member, getMemberByIdSafe } from '@/lib/db';
+import { getRequestSessionMemberId, ownsDiscordProfile, verifyModPasscode, verifyModeratorAuthorization } from '@/lib/auth';
 import {
   useProactiveMetastrike,
   convertStrikeToMetastrike,
@@ -32,7 +32,6 @@ export async function POST(request: Request) {
       member_id,
       action = 'proactive',
       reason,
-      pin,
       mod_passcode,
       sleep_cycle_date,
     } = body;
@@ -49,112 +48,34 @@ export async function POST(request: Request) {
     }
 
     const member = rawMember as Member;
-    const clientIp = getClientIp(request);
-
-    // Rate limit check before verifying auth
-    const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds.`,
-        },
-        {
-          status: 429,
-          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-        }
-      );
-    }
-
-    // Security check: Target member ownership OR Moderator authorization
     const sessionMemberId = getRequestSessionMemberId(request);
-    let isAuthorized = false;
+    const candidatePasscode = mod_passcode ?? request.headers.get('x-mod-passcode');
     let isModerator = false;
 
-    // 1. Check moderator passcode
-    const headerPasscode = request.headers.get('x-mod-passcode');
-    const candidatePasscode = mod_passcode || headerPasscode;
     if (candidatePasscode) {
-      if (verifyModPasscode(candidatePasscode)) {
-        isAuthorized = true;
-        isModerator = true;
-      } else {
-        await recordPinFailurePersistent(clientIp, member.id);
+      const clientIp = getClientIp(request);
+      const limitKey = sessionMemberId ? `mod_gate_member:${sessionMemberId}` : `mod_gate_ip:${clientIp}`;
+      const rate = await checkPinRateLimitPersistent(clientIp, limitKey);
+      if (!rate.allowed) {
         return NextResponse.json(
-          { error: 'Invalid moderator passcode.' },
-          { status: 401 }
+          { error: 'Too many failed moderator passcode attempts.' },
+          { status: 429, headers: { 'Retry-After': String(rate.retryAfterSeconds) } }
         );
       }
+      if (typeof candidatePasscode !== 'string' || !verifyModPasscode(candidatePasscode.trim())) {
+        await recordPinFailurePersistent(clientIp, limitKey);
+        return NextResponse.json({ error: 'Invalid moderator passcode.' }, { status: 401 });
+      }
+      await resetPinFailurePersistent(clientIp, limitKey);
+      isModerator = true;
+    } else if (!ownsDiscordProfile(request, member)) {
+      isModerator = (await verifyModeratorAuthorization(request)).authorized;
     }
 
-    // 2. Check session token (matching target member OR live-verified moderator role)
-    if (!isAuthorized && sessionMemberId) {
-      if (sessionMemberId === member.id) {
-        isAuthorized = true;
-      } else {
-        // Enforce fail-closed live database verification for moderator privileges
-        let isSessionMod = false;
-        if (isSupabaseConfigured) {
-          try {
-            const { data: dbUser, error: dbErr } = await supabaseAdmin
-              .from('members')
-              .select('id, role, is_moderator, is_active')
-              .eq('id', sessionMemberId)
-              .maybeSingle();
-
-            if (!dbErr && dbUser && dbUser.is_active && (dbUser.role === 'moderator' || dbUser.is_moderator)) {
-              isSessionMod = true;
-            }
-          } catch {
-            isSessionMod = false;
-          }
-        } else {
-          const { data: sessionUser } = await getMemberByIdSafe(sessionMemberId);
-          if (sessionUser && sessionUser.is_active && (sessionUser.role === 'moderator' || sessionUser.is_moderator)) {
-            isSessionMod = true;
-          }
-        }
-
-        if (isSessionMod) {
-          isAuthorized = true;
-          isModerator = true;
-        }
-      }
-    }
-
-    // 3. Check 4-digit PIN for target member
-    if (!isAuthorized && pin !== undefined && pin !== null) {
-      if (typeof pin !== 'string') {
-        return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
-      }
-
-      if (member.passcode_hash && verifyPin(pin, member.passcode_hash)) {
-        isAuthorized = true;
-        await resetPinFailurePersistent(clientIp, member.id);
-      } else {
-        await recordPinFailurePersistent(clientIp, member.id);
-        return NextResponse.json(
-          { error: 'Invalid 4-digit PIN for this profile.' },
-          { status: 401 }
-        );
-      }
-    }
-
-    if (!isAuthorized) {
-      if (sessionMemberId && sessionMemberId !== member.id) {
-        return NextResponse.json(
-          {
-            error: 'Forbidden. You cannot manage Metastrikes for another member without moderator privileges.',
-            code: 'FORBIDDEN',
-          },
-          { status: 403 }
-        );
-      }
+    if (!member.is_active || (!isModerator && !ownsDiscordProfile(request, member))) {
       return NextResponse.json(
-        {
-          error: 'Authentication required. Please log in with your profile or moderator passcode to use a Metastrike.',
-          code: 'UNAUTHORIZED',
-        },
-        { status: 401 }
+        { error: 'Sign in with the Discord account linked to this profile.', code: sessionMemberId ? 'FORBIDDEN' : 'UNAUTHORIZED' },
+        { status: sessionMemberId ? 403 : 401 }
       );
     }
 

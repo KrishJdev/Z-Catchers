@@ -386,6 +386,8 @@ self.addEventListener('notificationclick', function(event) {
 });
 ```
 
+The service worker stores the device's last confirmed push endpoint, rotation credential, and repair status in IndexedDB. It commits a new credential to device storage before submitting it with an authenticated enrollment or sync. Supabase stores only its digest. Background rotation presents the credential and expected previous endpoint. A single database update preserves the subscription ID and alert preferences, and an exact retry confirms a prior success. Existing devices can rotate with the old endpoint until their service worker provisions a credential. A failed rotation leaves the last confirmed endpoint available for signed-in repair. Unlinking deletes the subscription and its credential.
+
 ### 3.2 Notification Dispatcher Logic (Canonical Cron Endpoint: `/api/cron/dispatch-notifications`)
 The one-minute Supabase job is installed separately with `supabase/schedule_dispatch.sql`. Vercel is configured for a daily run and GitHub Actions provides a best-effort fallback. Each invocation enforces the **Sleep Shield** and distributed idempotency:
 

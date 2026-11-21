@@ -27,7 +27,6 @@ import {
   Sparkles,
   Zap,
   UserCheck,
-  UserPlus,
   RefreshCw,
   Search,
   KeyRound,
@@ -83,11 +82,12 @@ export function ModDrawer({
 }: ModDrawerProps) {
   // Passcode & auth state
   const [passcode, setPasscode] = useState('');
+  const [schedulePasscode, setSchedulePasscode] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
-  // Tab navigation: 'pending' | 'roster' | 'add' | 'webhook'
-  const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'add' | 'webhook'>('pending');
+  // Tab navigation: 'pending' | 'roster' | 'webhook'
+  const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'webhook'>('pending');
 
   // Webhook Tab state
   const [webhookUrlInput, setWebhookUrlInput] = useState('');
@@ -119,28 +119,12 @@ export function ModDrawer({
   const [editScheduleMode, setEditScheduleMode] = useState<'quick' | '7day'>('quick');
   const [editSelectedDay, setEditSelectedDay] = useState<DayKey>('mon');
 
-  // Reset PIN modal state
-  const [pinResetMember, setPinResetMember] = useState<Member | null>(null);
-  const [newPinValue, setNewPinValue] = useState('');
-
-  // New member form
-  const [newUsername, setNewUsername] = useState('');
-  const [newHandle, setNewHandle] = useState('');
-  const [newJournalUrl, setNewJournalUrl] = useState('');
-  const [newBedtime, setNewBedtime] = useState('23:00');
-  const [newWakeTime, setNewWakeTime] = useState('07:00');
-  const [newTimezone, setNewTimezone] = useState(viewerTimezone);
-  const [newWeekendBedtime, setNewWeekendBedtime] = useState('');
-  const [newWeekendWakeTime, setNewWeekendWakeTime] = useState('');
-  const [newRole, setNewRole] = useState<'member' | 'moderator'>('member');
-  const [newPin, setNewPin] = useState('');
-
   // UI status feedback
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const isModUser = Boolean(currentUser?.is_moderator || currentUser?.role === 'moderator');
+  const isModUser = Boolean(currentUser?.is_moderator);
 
   useEffect(() => {
     if (isOpen && isModUser) {
@@ -346,7 +330,6 @@ export function ModDrawer({
       sessionStorage.removeItem('z_catchers_mod_passcode');
     }
     setEditingMember(null);
-    setPinResetMember(null);
     setErrorMessage(null);
     setSuccessMessage(null);
   };
@@ -380,7 +363,7 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'approve_cooldown',
-          mod_passcode: passcode,
+          mod_passcode: schedulePasscode.trim() || passcode,
           member_id: memberId,
         }),
       });
@@ -551,7 +534,7 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'edit_member',
-          mod_passcode: passcode,
+          mod_passcode: schedulePasscode.trim() || passcode,
           member_id: editingMember.id,
           bedtime_local: finalWeeklySchedule.mon.bedtime,
           wake_time_local: finalWeeklySchedule.mon.wake_time,
@@ -689,129 +672,6 @@ export function ModDrawer({
     }
   };
 
-  // Action: Submit PIN Reset
-  const handleResetPinSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pinResetMember) return;
-
-    if (newPinValue.trim() && !/^\d{4,6}$/.test(newPinValue.trim())) {
-      setErrorMessage('PIN must be 4 to 6 numeric digits (or leave blank to clear).');
-      return;
-    }
-
-    setActionLoadingId('reset-pin');
-    setErrorMessage(null);
-
-    try {
-      const res = await fetch('/api/mod', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'reset_pin',
-          mod_passcode: passcode,
-          member_id: pinResetMember.id,
-          new_pin: newPinValue.trim() || null,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setErrorMessage(data.error || 'Failed to reset PIN.');
-        return;
-      }
-
-      setSuccessMessage(data.message);
-      setPinResetMember(null);
-      setNewPinValue('');
-      await fetchModRoster(passcode);
-      await onRosterChanged();
-    } catch {
-      setErrorMessage('Network error resetting PIN.');
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-
-  // Action: Add New Member
-  const handleAddMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!newUsername.trim() || !newJournalUrl.trim() || !newBedtime.trim()) {
-      setErrorMessage('Username, Discord Journal URL, and Bedtime are required.');
-      return;
-    }
-
-    if (!DISCORD_JOURNAL_REGEX.test(newJournalUrl.trim())) {
-      setErrorMessage('Invalid Discord Journal URL. Format: https://discord.com/channels/{guild}/{thread}');
-      return;
-    }
-
-    if (!TIME_FORMAT_REGEX.test(newBedtime.trim())) {
-      setErrorMessage('Bedtime must be in 24h "HH:mm" format (e.g. "23:00").');
-      return;
-    }
-
-    if (newWeekendBedtime.trim() && !TIME_FORMAT_REGEX.test(newWeekendBedtime.trim())) {
-      setErrorMessage('Weekend bedtime must be in 24h "HH:mm" format (e.g. "00:30").');
-      return;
-    }
-
-    if (newWeekendWakeTime.trim() && !TIME_FORMAT_REGEX.test(newWeekendWakeTime.trim())) {
-      setErrorMessage('Weekend wake time must be in 24h "HH:mm" format (e.g. "09:00").');
-      return;
-    }
-
-    if (newPin.trim() && !/^\d{4,6}$/.test(newPin.trim())) {
-      setErrorMessage('Initial PIN must be 4 to 6 digits (or leave blank for member to claim).');
-      return;
-    }
-
-    setActionLoadingId('add-member');
-    setErrorMessage(null);
-    setSuccessMessage(null);
-
-    try {
-      const res = await fetch('/api/mod', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add_member',
-          mod_passcode: passcode,
-          discord_username: newUsername.trim(),
-          discord_handle: newHandle.trim() || null,
-          journal_url: newJournalUrl.trim(),
-          bedtime_local: newBedtime.trim(),
-          wake_time_local: newWakeTime.trim() || '07:00',
-          timezone: newTimezone.trim(),
-          weekend_bedtime_local: newWeekendBedtime.trim() || null,
-          weekend_wake_time_local: newWeekendWakeTime.trim() || null,
-          role: newRole,
-          pin: newPin.trim() || null,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setErrorMessage(data.error || 'Failed to create member.');
-        return;
-      }
-
-      setSuccessMessage(`Welcome ${data.member.discord_username}! Profile created immediately.`);
-      setNewUsername('');
-      setNewHandle('');
-      setNewJournalUrl('');
-      setNewWeekendBedtime('');
-      setNewWeekendWakeTime('');
-      setNewPin('');
-      setActiveTab('roster');
-      await fetchModRoster(passcode);
-      await onRosterChanged();
-    } catch {
-      setErrorMessage('Network error creating member.');
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
 
   const hasDemoMembers = useMemo(() => {
     return modMembers.some(isDemoSeedMember);
@@ -879,7 +739,7 @@ export function ModDrawer({
                 </span>
               </div>
               <p className="text-xs text-cream-muted">
-                Bypass 48-hour cooldowns, manage server roster, and reset member PINs
+                Manage the roster, pending schedules, and Discord notifications
               </p>
             </div>
           </div>
@@ -991,8 +851,7 @@ export function ModDrawer({
                 onClick={() => {
                   setActiveTab('pending');
                   setEditingMember(null);
-                  setPinResetMember(null);
-                }}
+                  }}
                 className={`flex shrink-0 sm:flex-1 items-center justify-center gap-2 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'pending'
                     ? 'bg-status-amber text-night-bg shadow-sm'
@@ -1019,8 +878,7 @@ export function ModDrawer({
                 onClick={() => {
                   setActiveTab('roster');
                   setEditingMember(null);
-                  setPinResetMember(null);
-                }}
+                  }}
                 className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'roster'
                     ? 'bg-status-amber text-night-bg shadow-sm'
@@ -1040,30 +898,13 @@ export function ModDrawer({
                 </span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('add');
-                  setEditingMember(null);
-                  setPinResetMember(null);
-                }}
-                className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
-                  activeTab === 'add'
-                    ? 'bg-status-amber text-night-bg shadow-sm'
-                    : 'text-cream-muted hover:text-cream-primary'
-                }`}
-              >
-                <UserPlus className="h-3.5 w-3.5" />
-                <span>Add Member</span>
-              </button>
 
               <button
                 type="button"
                 onClick={() => {
                   setActiveTab('webhook');
                   setEditingMember(null);
-                  setPinResetMember(null);
-                  if (passcode) fetchWebhookStatus(passcode);
+                    if (passcode) fetchWebhookStatus(passcode);
                 }}
                 className={`flex shrink-0 sm:flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-3 font-semibold transition-all min-h-[44px] whitespace-nowrap ${
                   activeTab === 'webhook'
@@ -1075,6 +916,18 @@ export function ModDrawer({
                 <span>Discord Webhook</span>
               </button>
             </div>
+
+            {isModUser && (activeTab === 'pending' || editingMember) && (
+              <label className="mt-3 block space-y-1 text-xs text-cream-secondary">
+                <span>Moderator secret passcode for immediate schedule changes</span>
+                <input
+                  type="password"
+                  value={schedulePasscode}
+                  onChange={(event) => setSchedulePasscode(event.target.value)}
+                  className="block min-h-[44px] w-full rounded-xl border border-night-border bg-night-elevated px-3 text-cream-primary"
+                />
+              </label>
+            )}
 
             {/* Sub-View: Inline Member Editor */}
             {editingMember && (
@@ -1438,75 +1291,7 @@ export function ModDrawer({
               </div>
             )}
 
-            {/* Sub-View: PIN Reset Modal */}
-            {pinResetMember && (
-              <div className="mt-4 rounded-2xl border border-status-coral/40 bg-night-elevated p-4">
-                <div className="flex items-center justify-between border-b border-night-border pb-3">
-                  <div className="flex items-center gap-2">
-                    <KeyRound className="h-4 w-4 text-status-coral" />
-                    <h4 className="text-sm font-bold text-cream-primary">
-                      Manage PIN: {pinResetMember.discord_username}
-                    </h4>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setPinResetMember(null)}
-                    title="Close PIN form"
-                    aria-label="Close PIN form"
-                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded p-1 text-cream-muted hover:text-cream-primary"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <p className="mt-2 text-xs text-cream-secondary">
-                  If this member forgot their 4-digit PIN, you can assign them a new PIN or clear it completely so they can reclaim their profile.
-                </p>
-
-                <form onSubmit={handleResetPinSubmit} className="mt-4 space-y-3">
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      New 4-Digit PIN (Leave blank to clear)
-                    </label>
-                    <input
-                      type="password"
-                      maxLength={6}
-                      value={newPinValue}
-                      onChange={(e) => setNewPinValue(e.target.value.replace(/\D/g, ''))}
-                      placeholder="e.g. 1234 (or leave empty to reset to unclaimed)"
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setPinResetMember(null)}
-                      className="min-h-[44px] rounded-xl border border-night-border bg-night-bg px-4 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary whitespace-nowrap transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={actionLoadingId === 'reset-pin'}
-                      className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl bg-status-coral px-4 py-2 text-xs font-bold text-cream-primary hover:opacity-95 disabled:opacity-50 whitespace-nowrap shadow-sm transition-opacity"
-                    >
-                      {actionLoadingId === 'reset-pin' ? (
-                        <>
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                          <span>Updating...</span>
-                        </>
-                      ) : (
-                        <span>{newPinValue.trim() ? 'Set New PIN' : 'Clear & Unlock PIN'}</span>
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            {/* TAB 1: PENDING COOLDOWNS QUEUE */}
-            {activeTab === 'pending' && !editingMember && !pinResetMember && (
+            {activeTab === 'pending' && !editingMember && (
               <div className="mt-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-cream-muted">
@@ -1672,7 +1457,7 @@ export function ModDrawer({
             )}
 
             {/* TAB 2: FULL ROSTER MANAGEMENT */}
-            {activeTab === 'roster' && !editingMember && !pinResetMember && (
+            {activeTab === 'roster' && !editingMember && (
               <div className="mt-4 space-y-3">
                 {/* Pre-seeded demo profiles banner */}
                 {hasDemoMembers && (
@@ -1754,7 +1539,7 @@ export function ModDrawer({
                             <span>{formatGmtOffset(member.timezone)}</span>
                             <span>•</span>
                             <span className={member.discord_id ? 'text-status-sage' : 'text-status-amber'}>
-                              {(member.discord_id ? 'Linked Discord' : 'Unclaimed')}
+                              {(member.discord_id ? 'Linked Discord' : 'Discord not linked')}
                             </span>
                           </div>
 
@@ -1895,15 +1680,6 @@ export function ModDrawer({
                           <ExternalLink className="h-4 w-4" />
                         </a>
 
-                        <button
-                          type="button"
-                          onClick={() => setPinResetMember(member)}
-                          title="Reset or clear PIN"
-                          aria-label={`Reset or clear PIN for ${member.discord_username}`}
-                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 text-cream-muted transition-colors hover:bg-night-border hover:text-status-amber"
-                        >
-                          <KeyRound className="h-4 w-4" />
-                        </button>
 
                         <button
                           type="button"
@@ -1943,177 +1719,7 @@ export function ModDrawer({
             )}
 
             {/* TAB 3: ADD NEW MEMBER */}
-            {activeTab === 'add' && !editingMember && !pinResetMember && (
-              <form onSubmit={handleAddMember} className="mt-4 space-y-3">
-                <div className="rounded-xl border border-night-border bg-night-elevated p-3 text-xs text-cream-secondary">
-                  💡 Members created by a moderator are active immediately with zero cooldown period.
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      Discord Username *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Alex"
-                      value={newUsername}
-                      onChange={(e) => setNewUsername(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      Discord Handle (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. alex_sleeps"
-                      value={newHandle}
-                      onChange={(e) => setNewHandle(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-cream-muted">
-                    Discord Journal Thread URL *
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="https://discord.com/channels/123456789/987654321"
-                    value={newJournalUrl}
-                    onChange={(e) => setNewJournalUrl(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      Bedtime (24h HH:mm) *
-                    </label>
-                    <input
-                      type="time"
-                      value={newBedtime}
-                      onChange={(e) => setNewBedtime(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      Wake Time (24h HH:mm)
-                    </label>
-                    <input
-                      type="time"
-                      value={newWakeTime}
-                      onChange={(e) => setNewWakeTime(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Weekend Hours Grid */}
-                <div className="rounded-xl border border-night-border/70 bg-night-surface/50 p-2.5 space-y-2">
-                  <span className="text-[11px] font-bold text-cream-secondary flex items-center gap-1.5">
-                    <span>🌙</span>
-                    <span>Weekend Hours (Friday &amp; Saturday Nights - Optional)</span>
-                  </span>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="text-[10px] font-medium text-cream-muted">
-                        Weekend Bedtime (24h)
-                      </label>
-                      <input
-                        type="time"
-                        value={newWeekendBedtime}
-                        onChange={(e) => setNewWeekendBedtime(e.target.value)}
-                        className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-cream-muted">
-                        Weekend Wake Time (24h)
-                      </label>
-                      <input
-                        type="time"
-                        value={newWeekendWakeTime}
-                        onChange={(e) => setNewWeekendWakeTime(e.target.value)}
-                        className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      Timezone (GMT Offset) *
-                    </label>
-                    <TimezoneSelect
-                      value={newTimezone}
-                      onChange={setNewTimezone}
-                      selectClassName="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      Role
-                    </label>
-                    <select
-                      value={newRole}
-                      onChange={(e) => setNewRole(e.target.value as 'member' | 'moderator')}
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                    >
-                      <option value="member">Regular Member</option>
-                      <option value="moderator">Moderator</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-cream-muted">
-                    Initial 4-Digit PIN (Optional)
-                  </label>
-                  <input
-                    type="password"
-                    maxLength={6}
-                    placeholder="Leave blank for member to claim on first edit"
-                    value={newPin}
-                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                    className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
-                  />
-                </div>
-
-                <div className="flex justify-end pt-3">
-                  <button
-                    type="submit"
-                    disabled={actionLoadingId === 'add-member'}
-                    className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-5 py-2.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50 sm:w-auto whitespace-nowrap shadow-sm"
-                  >
-                    {actionLoadingId === 'add-member' ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        <span>Creating Member...</span>
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus className="h-4 w-4" />
-                        <span>Create Member Profile</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Tab 4 View: Discord Webhook Broadcast Controls */}
-            {activeTab === 'webhook' && !editingMember && !pinResetMember && (
+            {activeTab === 'webhook' && !editingMember && (
               <div className="mt-4 space-y-4">
                 <div className="rounded-2xl border border-night-border bg-night-elevated p-4">
                   <div className="flex items-start gap-3">

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member, updateMemberSafe, getInMemorySleepLogs } from '@/lib/db';
+import { supabaseAdmin, Member, getInMemorySleepLogs } from '@/lib/db';
 import {
   getRequestSession,
   createSessionToken,
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   try {
     const session = getRequestSession(request);
 
-    if (!session || !session.memberId) {
+    if (!session?.discordId) {
       return NextResponse.json({ authenticated: false, member: null }, { status: 200 });
     }
 
@@ -29,6 +29,7 @@ export async function GET(request: Request) {
       .from('members')
       .select('*')
       .eq('id', session.memberId)
+      .eq('discord_id', session.discordId)
       .eq('is_active', true)
       .single();
 
@@ -42,15 +43,6 @@ export async function GET(request: Request) {
     const isDbMod = currentMember.role === 'moderator';
     const isEnvMod = isModDiscordId(currentMember.discord_id);
     const effectiveIsMod = isDbMod || isEnvMod;
-
-    // Clean up stale database is_moderator flag if role is not moderator
-    if (!isDbMod && currentMember.is_moderator) {
-      await updateMemberSafe(currentMember.id, {
-        is_moderator: false,
-        updated_at: DateTime.utc().toISO() as string,
-      });
-      currentMember.is_moderator = false;
-    }
 
     // Rolling 90-Day Session Renewal: Generate fresh token and extend expiration
     const renewedToken = createSessionToken(

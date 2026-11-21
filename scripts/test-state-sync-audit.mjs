@@ -173,9 +173,11 @@ async function testInBedRouteCancel() {
   clearKnownMemberColumns();
   const memberId = 'member-in-bed-cancel-test';
   const hashedPin = hashPin('1234');
-  const token = createSessionToken(memberId);
+  const discordId = `discord-${memberId}`;
+  const token = createSessionToken({ memberId, discordId });
   let mockMember = {
     id: memberId,
+    discord_id: discordId,
     discord_username: 'CancelTestFox',
     passcode_hash: hashedPin,
     timezone: 'America/New_York',
@@ -362,9 +364,11 @@ async function testCancelPendingRoute() {
   clearKnownMemberColumns();
   const memberId = 'member-cancel-pending-sync-test';
   const hashedPin = hashPin('4321');
-  const token = createSessionToken(memberId);
+  const discordId = `discord-${memberId}`;
+  const token = createSessionToken({ memberId, discordId });
   let mockMember = {
     id: memberId,
+    discord_id: discordId,
     discord_username: 'PendingSyncFox',
     passcode_hash: hashedPin,
     timezone: 'America/New_York',
@@ -545,9 +549,11 @@ async function testCancelPendingScheduleOnlyPreservesCompletedSleep() {
   clearKnownMemberColumns();
   const memberId = 'member-preserve-sleep-test';
   const hashedPin = hashPin('4321');
-  const token = createSessionToken(memberId);
+  const discordId = `discord-${memberId}`;
+  const token = createSessionToken({ memberId, discordId });
   let mockMember = {
     id: memberId,
+    discord_id: discordId,
     discord_username: 'PreserveFox',
     passcode_hash: hashedPin,
     timezone: 'America/New_York',
@@ -680,9 +686,11 @@ async function testCleanupFailureReturns500() {
   clearKnownMemberColumns();
   const memberId = 'member-cleanup-fail-test';
   const hashedPin = hashPin('4321');
-  const token = createSessionToken(memberId);
+  const discordId = `discord-${memberId}`;
+  const token = createSessionToken({ memberId, discordId });
   let mockMember = {
     id: memberId,
+    discord_id: discordId,
     discord_username: 'FailSafeFox',
     passcode_hash: hashedPin,
     timezone: 'America/New_York',

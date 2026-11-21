@@ -24,7 +24,6 @@ export interface ClaimTokenPayload {
   discordHandle?: string | null;
   avatarUrl: string | null;
   isModerator: boolean;
-  suggestedMemberId?: string | null;
   exp: number;
 }
 
@@ -712,6 +711,15 @@ export function getRequestSessionMemberId(request: Request): string | null {
   return session?.memberId || null;
 }
 
+export function ownsDiscordProfile(
+  request: Request,
+  member: Pick<Member, 'id' | 'discord_id' | 'is_active'>
+): boolean {
+  const session = getRequestSession(request);
+  return Boolean(member.is_active && session?.discordId &&
+    session.memberId === member.id && session.discordId === member.discord_id);
+}
+
 /**
  * Sets the long-lived zcatchers_session cookie on an HTTP response.
  * Configured with SameSite=Lax for mobile PWA OAuth redirect survival.
@@ -746,7 +754,7 @@ export function setSessionCookie(
 export function sanitizeMember(member: Member): Member {
   const { passcode_hash, ...rest } = member;
   const isMod = Boolean(
-    member.is_moderator || member.role === 'moderator' || isModDiscordId(member.discord_id)
+    member.role === 'moderator' || isModDiscordId(member.discord_id)
   );
   return {
     ...rest,
@@ -777,7 +785,7 @@ export async function verifyModeratorAuthorization(
 ): Promise<ModAuthResult> {
   // 1. Check Master Moderator Secret Passcode
   const headerPasscode = request.headers.get('x-mod-passcode');
-  const candidatePasscode = (passcodeFromBody || headerPasscode)?.trim();
+  const candidatePasscode = typeof passcodeFromBody === 'string' ? passcodeFromBody.trim() || headerPasscode?.trim() : headerPasscode?.trim();
 
   if (candidatePasscode) {
     const isPasscodeMatch = verifyModPasscode(candidatePasscode);
@@ -792,7 +800,7 @@ export async function verifyModeratorAuthorization(
 
   // 2. Check Authenticated Moderator Session Token
   const session = getRequestSession(request);
-  if (session) {
+  if (session?.discordId) {
     // Session token claims are used only for identity; always check live member record
     // and current moderator eligibility (including active status and live MOD_DISCORD_IDS)
     try {
@@ -803,16 +811,15 @@ export async function verifyModeratorAuthorization(
         const client = createClient(url, key, { auth: { persistSession: false } });
         const { data: member } = await client
           .from('members')
-          .select('id, role, is_active, discord_id, is_moderator')
+          .select('id, role, is_active, discord_id')
           .eq('id', session.memberId)
           .single();
 
         if (
           member &&
           member.is_active &&
-          (member.role === 'moderator' ||
-            member.is_moderator === true ||
-            isModDiscordId(member.discord_id))
+          member.discord_id === session.discordId &&
+          (member.role === 'moderator' || isModDiscordId(member.discord_id))
         ) {
           return {
             authorized: true,

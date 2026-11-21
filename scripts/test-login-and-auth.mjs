@@ -370,14 +370,12 @@ async function run() {
 
     // 2. Claim Token Tests
     console.log('\n--- 2. Claim Token Lifecycle Tests ---');
-    const mockSuggestedId = 'sug_test_' + Date.now();
     const claimToken = createClaimToken(
       {
         discordId: mockDiscordId,
         discordUsername: 'SleepyFoxDev',
         avatarUrl: 'https://cdn.discordapp.com/avatars/123/abc.png',
         isModerator: false,
-        suggestedMemberId: mockSuggestedId,
       },
       60
     );
@@ -386,10 +384,6 @@ async function run() {
     const claimDecoded = verifyClaimToken(claimToken);
     assert(claimDecoded && claimDecoded.discordId === mockDiscordId, 'verifyClaimToken decodes discordId');
     assert(claimDecoded && claimDecoded.discordUsername === 'SleepyFoxDev', 'verifyClaimToken decodes username');
-    assert(
-      claimDecoded && claimDecoded.suggestedMemberId === mockSuggestedId,
-      'verifyClaimToken decodes suggestedMemberId'
-    );
     assert(verifyClaimToken(claimToken.slice(0, -4) + 'xyz') === null, 'Rejects tampered claim token');
 
     // 3. Moderator Role Enforcement via Discord Snowflake
@@ -402,8 +396,8 @@ async function run() {
     assert(!isModDiscordId(null), 'isModDiscordId safely returns false for null');
     assert(!isModDiscordId(''), 'isModDiscordId safely returns false for empty string');
 
-    // 4. Database Integration & Discord Profile Claim Lifecycle
-    console.log('\n--- 4. Database Integration & Discord Profile Claim Lifecycle ---');
+    // 4. Database Integration & Discord Profile Lifecycle
+    console.log('\n--- 4. Database Integration & Discord Profile Lifecycle ---');
     const runnerMode = process.env.RUNNER_MODE || (process.argv.includes('--all') ? 'all' : 'unit');
     const isAllMode = runnerMode === 'all';
     const isSupabaseLive = isAllMode && isSupabaseConfigured;
@@ -418,57 +412,19 @@ async function run() {
       const testDiscordId = 'disc_' + Date.now();
       const testUsername = `FoxOAuth_${Date.now()}`;
 
-      // Create unclaimed legacy profile using insertMemberSafe
       const { data: createdMember, error: createErr } = await insertMemberSafe({
+        discord_id: testDiscordId,
         discord_username: testUsername,
-        discord_handle: `${testUsername}#0001`,
         journal_url: 'https://discord.com/channels/123456789/987654321',
         bedtime_local: '23:30',
         wake_time_local: '07:30',
         timezone: 'Asia/Kolkata',
         role: 'member',
-        passcode_hash: null, // Legacy unclaimed
         is_active: true,
       });
       newMember = createdMember;
-
-      assert(!createErr && newMember, `Created unclaimed test member ${testUsername}`);
-
+      assert(!createErr && newMember?.discord_id === testDiscordId, 'Created a linked Discord profile');
       if (newMember) {
-        // Claim profile with Discord ID using updateMemberSafe (auto schema adaptation)
-        console.log('   Testing Discord profile claim binding...');
-        const avatarUrl = `https://cdn.discordapp.com/avatars/${testDiscordId}/mock_avatar.png`;
-
-        const { data: claimedMember, error: claimErr } = await updateMemberSafe(
-          newMember.id,
-          {
-            discord_id: testDiscordId,
-            avatar_url: avatarUrl,
-            onboarding_completed: true,
-            updated_at: new Date().toISOString(),
-          },
-          { requireUnlinkedDiscord: true }
-        );
-
-        assert(!claimErr && claimedMember, 'updateMemberSafe successfully claimed profile without schema crashes');
-
-        // Attempt concurrent/duplicate claim on already linked member with requireUnlinkedDiscord: true
-        const { data: rivalClaimData, error: rivalClaimErr } = await updateMemberSafe(
-          newMember.id,
-          {
-            discord_id: 'rival_discord_id_123',
-            avatar_url: 'https://cdn.discordapp.com/avatars/rival/avatar.png',
-            onboarding_completed: true,
-            updated_at: new Date().toISOString(),
-          },
-          { requireUnlinkedDiscord: true }
-        );
-
-        assert(
-          !rivalClaimErr && rivalClaimData === null,
-          'requireUnlinkedDiscord returns null data without error on lost race/already linked profile (HTTP 409 trigger)'
-        );
-
         // Generate authenticated 90-day session token
         const memberSessionToken = createSessionToken(
           {
@@ -580,7 +536,7 @@ async function run() {
     assert(loginRes.status === 410, 'POST /api/auth/login returns 410 Gone');
     const loginJson = await loginRes.json();
     assert(loginJson.deprecated === true, 'POST /api/auth/login includes deprecated: true');
-    assert(loginJson.auth_url === '/api/auth/discord', 'POST /api/auth/login references /api/auth/discord');
+    assert(loginJson.auth_url === '/join', 'POST /api/auth/login directs callers to /join');
 
     const regRes = await registerPost();
     assert(regRes.status === 410, 'POST /api/auth/register returns 410 Gone');
