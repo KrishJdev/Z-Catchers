@@ -137,7 +137,7 @@ export async function getExistingSubscription(): Promise<PushSubscription | null
   if (!isPushSupported()) return null;
 
   try {
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await waitForPushWorker();
     return await registration.pushManager.getSubscription();
   } catch (err) {
     console.error('Failed to get existing push subscription:', err);
@@ -145,87 +145,78 @@ export async function getExistingSubscription(): Promise<PushSubscription | null
   }
 }
 
-/**
- * Silent push subscription health-check called on app boot and foreground resume.
- * When Notification.permission === 'granted', verifies that registration.pushManager.getSubscription()
- * exists and re-syncs it with /api/push/subscribe so local browser state and Supabase rows never drift out of sync.
- */
+function waitForPushWorker(): Promise<ServiceWorkerRegistration> {
+  return new Promise((resolve, reject) => {
+    const deadline = window.setTimeout(() => {
+      reject(new Error('Notification service is still starting. Try again.'));
+    }, 4000);
+    navigator.serviceWorker.ready.then(resolve, reject).finally(() => window.clearTimeout(deadline));
+  });
+}
+
+interface PushDeviceStatus {
+  memberId?: string;
+  repair?: 'sign_in' | 'retry';
+  disabled?: boolean;
+  notifyPersonal?: boolean;
+  notifyCommunity?: boolean;
+}
+
+interface PushDeviceResult extends PushDeviceStatus {
+  success?: boolean;
+  error?: string;
+}
+
+async function requestPushDevice(
+  action: 'status' | 'sync' | 'unlink',
+  input: SubscribePushOptions & { enable?: boolean } = {}
+): Promise<PushDeviceResult> {
+  const registration = await waitForPushWorker();
+  if (!registration.active) throw new Error('Notification service is still starting. Try again.');
+  const worker = registration.active;
+  return new Promise((resolve, reject) => {
+    const channel = new MessageChannel();
+    const timeout = window.setTimeout(() => {
+      channel.port1.close();
+      reject(new Error('Notification service is updating or offline. Try again.'));
+    }, 15000);
+    channel.port1.onmessage = event => {
+      window.clearTimeout(timeout);
+      channel.port1.close();
+      resolve(event.data);
+    };
+    worker.postMessage({
+      type: 'PUSH_DEVICE',
+      action,
+      ...input,
+      applicationServerKey: action === 'sync' && VAPID_PUBLIC_KEY
+        ? urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        : undefined,
+    }, [channel.port2]);
+  });
+}
+
+export async function getPushDeviceStatus(): Promise<PushDeviceStatus> {
+  if (!isPushSupported()) return {};
+  return requestPushDevice('status').catch(() => ({ repair: 'retry' }));
+}
+
+/** Sync the device without changing its stored notification preferences. */
 export async function syncPushSubscriptionHealth(): Promise<boolean> {
-  if (!isPushSupported()) return false;
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
+  const memberId = getStoredMemberId();
+  if (!memberId || !isPushSupported() || getNotificationPermission() !== 'granted') return false;
 
   try {
-    const registration = await navigator.serviceWorker.ready;
-    let subscription = await registration.pushManager.getSubscription();
-
-    // If permission is granted but subscription was lost/cleared, attempt silent resubscribe
-    if (!subscription && VAPID_PUBLIC_KEY) {
-      try {
-        const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: applicationServerKey as unknown as BufferSource,
-        });
-      } catch (subErr) {
-        console.warn('[PushClient] Silent resubscribe error:', subErr);
-      }
+    if (!await retryPendingUnsubscribe()) return false;
+    const result = await requestPushDevice('sync', { memberId });
+    if (result.success) {
+      localStorage.setItem(STORAGE_KEY_PUSH_ENABLED, 'true');
+      setStoredNotificationPreferences(memberId, result);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_PUSH_ENABLED);
     }
-
-    if (!subscription) return false;
-
-    const subJson = subscription.toJSON();
-    if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
-      return false;
-    }
-
-    const memberIdToUse = getStoredMemberId();
-    const token = getStoredAuthToken();
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    // Preserve client-stored notification preferences ONLY for the current signed-in member.
-    // If no member is signed in or no member-scoped choice exists, leave as undefined so
-    // another member's stored choices are never applied or transmitted.
-    let notifyPersonal: boolean | undefined = undefined;
-    let notifyCommunity: boolean | undefined = undefined;
-    if (memberIdToUse) {
-      const prefs = getStoredNotificationPreferences(memberIdToUse);
-      notifyPersonal = prefs.notifyPersonal;
-      notifyCommunity = prefs.notifyCommunity;
-    }
-
-    const res = await fetch('/api/push/subscribe', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        member_id: memberIdToUse || null,
-        notify_personal: notifyPersonal,
-        notify_community: notifyCommunity,
-        subscription: {
-          endpoint: subJson.endpoint,
-          keys: {
-            p256dh: subJson.keys.p256dh,
-            auth: subJson.keys.auth,
-          },
-        },
-        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-      }),
-    });
-
-    if (res.ok) {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY_PUSH_ENABLED, 'true');
-      }
-      return true;
-    }
-    return false;
-  } catch (err) {
-    console.warn('[PushClient] Push subscription health sync failed:', err);
+    return Boolean(result.success);
+  } catch {
     return false;
   }
 }
@@ -242,7 +233,7 @@ export interface SubscribePushOptions {
  */
 export async function subscribeToPush(
   options: SubscribePushOptions = {}
-): Promise<{ success: boolean; subscription?: PushSubscription; error?: string }> {
+): Promise<{ success: boolean; error?: string }> {
   if (!isPushSupported()) {
     return { success: false, error: 'Push notifications are not supported by this browser.' };
   }
@@ -253,79 +244,31 @@ export async function subscribeToPush(
 
   try {
     // 1. Request permission
-    const permission = await Notification.requestPermission();
+    const permission = Notification.permission === 'default'
+      ? await Notification.requestPermission()
+      : Notification.permission;
     if (permission !== 'granted') {
       return { success: false, error: 'Push notification permission was denied or dismissed.' };
     }
 
-    // 2. Ensure Service Worker is registered and active
-    const registration = await navigator.serviceWorker.ready;
-
-    // 3. Subscribe or get existing subscription
-    let subscription = await registration.pushManager.getSubscription();
-    if (!subscription) {
-      const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-      subscription = await registration.pushManager.subscribe({
+    const memberId = options.memberId || getStoredMemberId();
+    if (!memberId) return { success: false, error: 'Sign in with Discord to enable alerts.' };
+    if (!await retryPendingUnsubscribe()) {
+      return { success: false, error: 'Could not finish unlinking the previous device subscription. Try again.' };
+    }
+    // Keep the browser subscription request in the foreground permission flow.
+    const registration = await waitForPushWorker();
+    if (!await registration.pushManager.getSubscription()) {
+      await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: applicationServerKey as unknown as BufferSource,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
     }
-
-    const subJson = subscription.toJSON();
-    if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
-      return { success: false, error: 'Incomplete push subscription generated by browser.' };
-    }
-
-    // 4. Save to backend database
-    const memberIdToUse = options.memberId || getStoredMemberId() || null;
-    const token = getStoredAuthToken();
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const res = await fetch('/api/push/subscribe', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        member_id: memberIdToUse,
-        subscription: {
-          endpoint: subJson.endpoint,
-          keys: {
-            p256dh: subJson.keys.p256dh,
-            auth: subJson.keys.auth,
-          },
-        },
-        notify_personal: options.notifyPersonal ?? true,
-        notify_community: options.notifyCommunity ?? true,
-        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-      }),
-    });
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      return {
-        success: false,
-        error: errorData.error || `Server responded with ${res.status}`,
-      };
-    }
-
-    // Record push enabled and member-scoped preferences in local storage
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY_PUSH_ENABLED, 'true');
-      if (memberIdToUse) {
-        localStorage.setItem(STORAGE_KEY_MEMBER_ID, memberIdToUse);
-        setStoredNotificationPreferences(memberIdToUse, {
-          notifyPersonal: options.notifyPersonal,
-          notifyCommunity: options.notifyCommunity,
-        });
-      }
-    }
-
-    return { success: true, subscription };
+    const result = await requestPushDevice('sync', { ...options, memberId, enable: true });
+    if (!result.success) return { success: false, error: result.error || 'Could not enable alerts. Try again.' };
+    localStorage.setItem(STORAGE_KEY_PUSH_ENABLED, 'true');
+    setStoredNotificationPreferences(memberId, result);
+    return { success: true };
   } catch (err: unknown) {
     const rawMessage = err instanceof Error ? err.message : 'Unknown push subscription error';
     let userFriendlyError = rawMessage;
@@ -355,48 +298,11 @@ export async function unsubscribeFromPush(): Promise<{ success: boolean; error?:
   if (!isPushSupported()) return { success: true };
 
   try {
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
-
-    if (subscription) {
-      const endpoint = subscription.endpoint;
-      await subscription.unsubscribe();
-
-      const token = getStoredAuthToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      // Notify backend to remove from push_subscriptions
-      const res = await fetch('/api/push/unsubscribe', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ endpoint }),
-      }).catch((err) => {
-        console.warn('Network error unregistering endpoint on server:', err);
-        return null;
-      });
-
-      if (!res || !res.ok) {
-        const statusMsg = res ? `HTTP ${res.status}` : 'Network error';
-        console.warn(`Server unregister endpoint returned HTTP ${res?.status || 'error'}: ${statusMsg}`);
-        setStoredPendingUnsubscribeEndpoint(endpoint);
-        return {
-          success: false,
-          error: `Browser unsubscribed locally, but server unregister failed (${statusMsg}). Endpoint retained for retry.`,
-        };
-      }
-
-      setStoredPendingUnsubscribeEndpoint(null);
-    }
-
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(STORAGE_KEY_PUSH_ENABLED);
-    }
-
+    const memberId = getStoredMemberId();
+    if (!memberId) return { success: false, error: 'Sign in with Discord to unlink this device.' };
+    const result = await requestPushDevice('unlink', { memberId });
+    if (!result.success) return { success: false, error: result.error || 'Could not unlink this device. Try again.' };
+    localStorage.removeItem(STORAGE_KEY_PUSH_ENABLED);
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unsubscribe error';
@@ -413,7 +319,7 @@ export function getStoredMemberId(): string | null {
 }
 
 /**
- * Stores the claimed member ID in localStorage and re-syncs active push subscription if present
+ * Stores the authenticated member ID for client-side state
  */
 export function setStoredMemberId(memberId: string | null): void {
   if (typeof localStorage === 'undefined') return;
@@ -439,7 +345,6 @@ export function setStoredAuthToken(token: string | null): void {
   if (typeof localStorage === 'undefined') return;
   if (token) {
     localStorage.setItem(STORAGE_KEY_AUTH_TOKEN, token);
-    retryPendingUnsubscribe().catch(() => {});
   } else {
     localStorage.removeItem(STORAGE_KEY_AUTH_TOKEN);
   }

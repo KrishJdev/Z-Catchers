@@ -46,6 +46,7 @@ async function run() {
   const futureWake90mLocal = nowUtc.plus({ hours: 6, minutes: 30 }).toFormat('HH:mm');
 
   const voterAlice = {
+    discord_id: '100000000000000111',
     id: 'mem_voter_alice_001',
     discord_username: 'AliceVoter',
     discord_handle: 'alice#0001',
@@ -66,6 +67,7 @@ async function run() {
   };
 
   const voterBob = {
+    discord_id: '100000000000000222',
     id: 'mem_voter_bob_002',
     discord_username: 'BobVoter',
     discord_handle: 'bob#0002',
@@ -86,6 +88,7 @@ async function run() {
   };
 
   const targetCharlie = {
+    discord_id: '100000000000000333',
     id: 'mem_target_charlie_003',
     discord_username: 'CharlieSleeper',
     discord_handle: 'charlie#0003',
@@ -156,9 +159,9 @@ async function run() {
   setInMemoryMember(targetDaveCheckedIn);
   setInMemoryMember(targetEve90mOverdue);
 
-  const aliceToken = createSessionToken(voterAlice.id);
-  const bobToken = createSessionToken(voterBob.id);
-  const charlieToken = createSessionToken(targetCharlie.id);
+  const aliceToken = createSessionToken({ memberId: voterAlice.id, discordId: voterAlice.discord_id });
+  const bobToken = createSessionToken({ memberId: voterBob.id, discordId: voterBob.discord_id });
+  const charlieToken = createSessionToken({ memberId: targetCharlie.id, discordId: targetCharlie.discord_id });
 
   testAssert(Boolean(aliceToken && bobToken && charlieToken), 'Generated valid session tokens for members');
 

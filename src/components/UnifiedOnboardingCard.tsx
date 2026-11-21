@@ -270,8 +270,6 @@ export function UnifiedOnboardingCard({
         // 4. Perform subscription (permission is already granted) without timeout on subscription itself
         const result = await subscribeToPush({
           memberId: currentUser.id,
-          notifyPersonal: true,
-          notifyCommunity: true,
         });
 
         if (result.success) {

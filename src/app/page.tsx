@@ -18,12 +18,10 @@ import { computeMemberState, MemberState } from '@/lib/sleepEngine';
 import { formatGmtOffset } from '@/lib/timezone';
 import {
   registerServiceWorker,
-  getExistingSubscription,
   syncPushSubscriptionHealth,
   isPushSupported,
-  getStoredMemberId,
-  getStoredAuthMember,
   setStoredAuthMember,
+  setStoredAuthToken,
   getStoredAuthToken,
   clearAuthSession,
 } from '@/lib/pushClient';
@@ -65,7 +63,10 @@ export default function HomePage() {
 
   // Authenticated current member session (ZC-13)
   const [currentUser, setCurrentUser] = useState<Member | null>(null);
-  const [claimedMemberId, setClaimedMemberId] = useState<string | null>(null);
+  const claimedMemberId = currentUser?.id;
+
+  const [sessionCheckFailed, setSessionCheckFailed] = useState(false);
+  const [sessionCheckAttempt, retrySessionCheck] = useState(0);
 
   // Starred accountability buddies
   const [starredMembers, setStarredMembers] = useState<string[]>([]);
@@ -110,7 +111,6 @@ export default function HomePage() {
     } finally {
       clearAuthSession();
       setCurrentUser(null);
-      setClaimedMemberId(null);
       setActiveModal(null);
       setToastMessage({
         text: 'Logged out of Fox Den successfully.',
@@ -141,62 +141,47 @@ export default function HomePage() {
     setMobileTab('roster');
   };
 
-  // Route Guard: verify claimed session in localStorage or via /api/auth/me cookie
   useEffect(() => {
     let isMounted = true;
-    const cachedMember = getStoredAuthMember<Member>();
-    const cachedToken = getStoredAuthToken();
-    const cachedId = getStoredMemberId();
-
-    if (cachedMember && (cachedToken || cachedId)) {
-      setCurrentUser(cachedMember);
-      setClaimedMemberId(cachedMember.id);
-      setIsSessionChecked(true);
-
-      // Verify in background
-      fetch('/api/auth/me')
-        .then((res) => res.json())
-        .then((data) => {
-          if (!isMounted) return;
-          if (data.authenticated && data.member) {
-            setCurrentUser(data.member);
-            setClaimedMemberId(data.member.id);
-            setStoredAuthMember(data.member);
-          } else if (data.authenticated === false) {
-            clearAuthSession();
-            setCurrentUser(null);
-            setClaimedMemberId(null);
-            router.replace('/join');
-          }
-        })
-        .catch((err) => console.warn('Auth background verify error:', err));
-      return;
-    }
-
-    // No local storage session -> query /api/auth/me to check session cookie
-    fetch('/api/auth/me')
-      .then((res) => res.json())
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    fetch('/api/auth/me', { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error('Session verification unavailable');
+        return res.json();
+      })
       .then((data) => {
         if (!isMounted) return;
         if (data.authenticated && data.member) {
           setCurrentUser(data.member);
-          setClaimedMemberId(data.member.id);
           setStoredAuthMember(data.member);
+          if (data.token) setStoredAuthToken(data.token);
+          setSessionCheckFailed(false);
           setIsSessionChecked(true);
-        } else {
+        } else if (data.authenticated === false) {
+          clearAuthSession();
           router.replace('/join');
+        } else {
+          throw new Error('Unexpected session response');
         }
       })
-      .catch((err) => {
-        if (!isMounted) return;
-        console.warn('Auth check error:', err);
-        router.replace('/join');
-      });
-
+      .catch(() => {
+        if (isMounted) setSessionCheckFailed(true);
+      })
+      .finally(() => window.clearTimeout(timeout));
     return () => {
       isMounted = false;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
-  }, [router]);
+  }, [router, sessionCheckAttempt]);
+
+  useEffect(() => {
+    if (!sessionCheckFailed) return;
+    const retry = () => retrySessionCheck(attempt => attempt + 1);
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [sessionCheckFailed]);
 
   // Detect viewer's local timezone (formatted as GMT offset to prevent disclosing physical location)
   useEffect(() => {
@@ -209,11 +194,9 @@ export default function HomePage() {
     }
   }, []);
 
-  // Sync claimed member ID & starred buddies from localStorage
+  // Load starred buddies from localStorage
   useEffect(() => {
     try {
-      const storedId = getStoredMemberId();
-      if (storedId) setClaimedMemberId(storedId);
 
       const storedStarred = localStorage.getItem(STORAGE_KEY_STARRED);
       if (storedStarred) {
@@ -239,7 +222,7 @@ export default function HomePage() {
           setCurrentUser((prev) => {
             if (!prev) return null;
             const updated = json.members.find((m: Member) => m.id === prev.id);
-            return updated ? { ...prev, ...updated } : prev;
+            return updated ? { ...prev, ...updated, is_moderator: prev.is_moderator } : prev;
           });
           try {
             localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(json.members));
@@ -757,9 +740,14 @@ export default function HomePage() {
         const authJson = await authRes.json();
         if (authJson.authenticated && authJson.member) {
           setCurrentUser(authJson.member);
-          setClaimedMemberId(authJson.member.id);
           setStoredAuthMember(authJson.member);
+          if (authJson.token) setStoredAuthToken(authJson.token);
           processDeepLinkAction(authJson.member);
+        } else if (authJson.authenticated === false) {
+          clearAuthSession();
+          setCurrentUser(null);
+          router.replace('/join');
+          return;
         }
       }
     } catch (err) {
@@ -767,27 +755,21 @@ export default function HomePage() {
     }
 
     // 3. Silent push subscription health-check
-    syncPushSubscriptionHealth().catch((err) =>
-      console.warn('Silent push sync error:', err)
-    );
-  }, [processDeepLinkAction]);
+    syncPushSubscriptionHealth().then(setIsPushEnabled);
+  }, [processDeepLinkAction, router]);
 
-  // Register service worker and inspect/re-sync existing push subscription on boot
+  // Wait for the Discord session before enrolling or repairing this device.
+  const signedInMemberId = currentUser?.id;
   useEffect(() => {
-    if (isPushSupported()) {
-      registerServiceWorker().then(() => {
-        getExistingSubscription().then((sub) => {
-          if (sub) {
-            setIsPushEnabled(true);
-          }
-        });
-        // Silent subscription health-check on app boot
-        syncPushSubscriptionHealth().then((synced) => {
-          if (synced) setIsPushEnabled(true);
-        });
-      });
-    }
-  }, []);
+    if (!signedInMemberId || !isPushSupported()) return;
+    let active = true;
+    registerServiceWorker().then(async registration => {
+      if (!registration || !active) return;
+      const synced = await syncPushSubscriptionHealth();
+      if (active) setIsPushEnabled(synced);
+    });
+    return () => { active = false; };
+  }, [signedInMemberId]);
 
   // Process deep-link actions when user session is available
   useEffect(() => {
@@ -801,6 +783,9 @@ export default function HomePage() {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
 
     const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'PUSH_DEVICE_CHANGED') {
+        setIsPushEnabled(Boolean(event.data.active));
+      }
       if (
         event.data?.action === 'in-bed' ||
         (event.data?.url && typeof event.data.url === 'string' && event.data.url.includes('action=in-bed'))
@@ -947,18 +932,28 @@ export default function HomePage() {
   };
 
   // If waiting for route guard session verification, show Warm Dark splash
-  if (!isSessionChecked) {
+  const sessionRetry = sessionCheckFailed && (
+    <div role="status" className="mx-auto flex max-w-lg flex-wrap items-center justify-center gap-x-4 px-4 text-xs text-cream-secondary">
+      <p>Session verification is unavailable.</p>
+      <button type="button" className="min-h-[44px] font-semibold text-status-amber" onClick={() => retrySessionCheck(attempt => attempt + 1)}>
+        Retry sign-in check
+      </button>
+    </div>
+  );
+
+  if (!isSessionChecked && !(sessionCheckFailed && members.length > 0)) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-night-bg text-cream-primary p-4">
         <FoxMascot state="sleeping" size={56} className="animate-pulse mb-3" />
         <h1 className="text-xl font-bold tracking-tight">Z Catchers</h1>
-        <p className="text-xs text-cream-secondary mt-1">Entering the Fox Den...</p>
+        {sessionRetry || <p className="text-xs text-cream-secondary mt-1">Entering the Fox Den...</p>}
       </main>
     );
   }
 
   return (
     <main className="flex min-h-screen flex-col bg-night-bg">
+      {sessionRetry}
       <Header
         viewerTimezone={viewerTimezone}
         isPushEnabled={isPushEnabled}
@@ -1301,7 +1296,7 @@ export default function HomePage() {
               Welcome to the Fox Den!
             </h3>
             <p className="mt-2 max-w-md text-xs sm:text-sm text-cream-secondary leading-relaxed">
-              The den is peaceful and ready for your friends! Create your profile to set your local bedtime, link your Discord journal, and choose a simple 4-digit PIN.
+              The den is peaceful and ready for your friends! Create your profile to set your local bedtime, and link your Discord journal.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <button
@@ -1337,14 +1332,14 @@ export default function HomePage() {
                   key={member.id}
                   member={member}
                   state={state}
-                  currentMemberId={currentUser?.id || claimedMemberId}
+                  currentMemberId={currentUser?.id}
                   isStarred={starredMembers.includes(member.id)}
                   onToggleStar={handleToggleStar}
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
                   onOpenMetastrike={handleOpenMetastrike}
-                  isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
+                  isModerator={Boolean(currentUser?.is_moderator)}
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
                   onWakeUp={handleWakeUp}
@@ -1367,14 +1362,14 @@ export default function HomePage() {
                   key={member.id}
                   member={member}
                   state={state}
-                  currentMemberId={currentUser?.id || claimedMemberId}
+                  currentMemberId={currentUser?.id}
                   isStarred={starredMembers.includes(member.id)}
                   onToggleStar={handleToggleStar}
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
                   onOpenMetastrike={handleOpenMetastrike}
-                  isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
+                  isModerator={Boolean(currentUser?.is_moderator)}
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
                   onWakeUp={handleWakeUp}
@@ -1396,14 +1391,14 @@ export default function HomePage() {
                   key={member.id}
                   member={member}
                   state={state}
-                  currentMemberId={currentUser?.id || claimedMemberId}
+                  currentMemberId={currentUser?.id}
                   isStarred={starredMembers.includes(member.id)}
                   onToggleStar={handleToggleStar}
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
                   onOpenMetastrike={handleOpenMetastrike}
-                  isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
+                  isModerator={Boolean(currentUser?.is_moderator)}
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
                   onWakeUp={handleWakeUp}
@@ -1427,14 +1422,14 @@ export default function HomePage() {
                   key={member.id}
                   member={member}
                   state={state}
-                  currentMemberId={currentUser?.id || claimedMemberId}
+                  currentMemberId={currentUser?.id}
                   isStarred={starredMembers.includes(member.id)}
                   onToggleStar={handleToggleStar}
                   onCheckIn={handleCheckIn}
                   onCancelInBed={handleCancelInBed}
                   isCheckingIn={isCheckingIn}
                   onOpenMetastrike={handleOpenMetastrike}
-                  isModerator={Boolean(currentUser?.role === 'moderator' || currentUser?.is_moderator)}
+                  isModerator={Boolean(currentUser?.is_moderator)}
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
                   onWakeUp={handleWakeUp}
@@ -1464,14 +1459,13 @@ export default function HomePage() {
         activeTab={mobileTab}
         onChangeTab={handleMobileTabChange}
         isPushEnabled={isPushEnabled}
-        isModerator={currentUser?.role === 'moderator'}
+        isModerator={Boolean(currentUser?.is_moderator)}
       />
 
       {/* Self-Service My Schedule Modal */}
       <MyScheduleModal
         isOpen={activeModal === 'schedule'}
         onClose={handleCloseModal}
-        members={members}
         viewerTimezone={viewerTimezone}
         onRefreshRoster={fetchRoster}
         currentUser={currentUser}
@@ -1483,7 +1477,6 @@ export default function HomePage() {
       <PushModal
         isOpen={activeModal === 'push'}
         onClose={handleCloseModal}
-        members={members}
         isPushEnabled={isPushEnabled}
         onPushStateChanged={setIsPushEnabled}
         onOpenScheduleModal={() => {

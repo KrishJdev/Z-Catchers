@@ -10,15 +10,10 @@ import {
   isTestMemberFixture,
 } from '@/lib/db';
 import { DateTime } from 'luxon';
-import { verifyPin, getRequestSessionMemberId, verifyModeratorAuthorization, sanitizeMember } from '@/lib/auth';
+import { ownsDiscordProfile, getRequestSessionMemberId, verifyModeratorAuthorization, sanitizeMember } from '@/lib/auth';
 import { getNightScheduleDateTime, getSleepCycleDate, resolveActiveSleepCycleWindow } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
-import {
-  getClientIp,
-  checkPinRateLimitPersistent,
-  recordPinFailurePersistent,
-  resetPinFailurePersistent,
-} from '@/lib/rateLimit';
+
 
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_FORMAT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -39,7 +34,7 @@ export async function POST(request: Request) {
       body = {};
     }
 
-    const { memberId: requestedMemberId, mode = 'button', wokeUpTime, cycleDate, pin } = body;
+    const { memberId: requestedMemberId, mode = 'button', wokeUpTime, cycleDate } = body;
 
     // Authentication:
     const sessionMemberId = getRequestSessionMemberId(request);
@@ -52,7 +47,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(targetMemberId);
+    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(targetMemberId, { requireFresh: true });
 
     if (memberErr || !rawMember) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
@@ -60,63 +55,11 @@ export async function POST(request: Request) {
 
     const member = rawMember;
 
-    // Authorization verification
-    const isSessionMatch = Boolean(sessionMemberId && sessionMemberId === member.id);
-
-    let isModMatch = false;
-    if (!isSessionMatch) {
-      const modAuth = await verifyModeratorAuthorization(request);
-      if (modAuth.authorized) {
-        isModMatch = true;
-      }
-    }
-
-    let isPinMatch = false;
-    if (!isSessionMatch && !isModMatch) {
-      if (sessionMemberId && sessionMemberId !== member.id) {
-        return NextResponse.json(
-          { error: 'Forbidden. You cannot log wake-up for another member.', code: 'FORBIDDEN' },
-          { status: 403 }
-        );
-      }
-
-      if (pin !== undefined && pin !== null) {
-        if (typeof pin !== 'string') {
-          return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
-        }
-        const clientIp = getClientIp(request);
-        const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
-        if (!rateCheck.allowed) {
-          return NextResponse.json(
-            {
-              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-            },
-            {
-              status: 429,
-              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-            }
-          );
-        }
-
-        const cleanPin = pin.trim();
-        if (member.passcode_hash && verifyPin(cleanPin, member.passcode_hash)) {
-          isPinMatch = true;
-          await resetPinFailurePersistent(clientIp, member.id);
-        } else {
-          await recordPinFailurePersistent(clientIp, member.id);
-        }
-      }
-    }
-
-    if (!isSessionMatch && !isModMatch && !isPinMatch) {
+    if (!member.is_active || (!ownsDiscordProfile(request, member) &&
+        !(await verifyModeratorAuthorization(request)).authorized)) {
       return NextResponse.json(
-        {
-          error: member.passcode_hash
-            ? 'Authentication required. Please log in with your 4-digit PIN before logging wake-up.'
-            : 'Please claim your profile before logging wake-up.',
-          code: 'UNAUTHORIZED',
-        },
-        { status: 401 }
+        { error: 'Sign in with the Discord account linked to this profile.', code: sessionMemberId ? 'FORBIDDEN' : 'UNAUTHORIZED' },
+        { status: sessionMemberId ? 403 : 401 }
       );
     }
 

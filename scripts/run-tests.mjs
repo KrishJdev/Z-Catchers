@@ -32,6 +32,8 @@ const UNIT_TESTS = [
   'test-profile-and-schedule-tab.mjs',
   'test-push-and-cron.mjs',
   'test-push-unsubscribe-security.mjs',
+  'test-push-subscription-rotation.mjs',
+  'test-push-worker-repair.mjs',
   'test-schedule-cooldown.mjs',
   'test-signup-and-profiles.mjs',
   'test-sleep-history-and-wakeup.mjs',

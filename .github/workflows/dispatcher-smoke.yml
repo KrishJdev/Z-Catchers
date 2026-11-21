@@ -18,6 +18,7 @@ on:
       - 'src/app/api/mod/route.ts'
       - 'src/app/api/push/**'
       - 'src/lib/**'
+      - 'public/sw.js'
       - 'supabase/**'
       - 'package*.json'
 

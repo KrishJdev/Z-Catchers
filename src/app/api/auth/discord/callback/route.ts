@@ -154,17 +154,21 @@ export async function GET(request: Request) {
     const isModerator = isModDiscordId(discordId);
 
     // 3. Query existing member row in Supabase by discord_id
-    const { data: existingMemberData } = await supabaseAdmin
+    const { data: existingMemberData, error: lookupError } = await supabaseAdmin
       .from('members')
       .select('*')
       .eq('discord_id', discordId)
-      .eq('is_active', true)
       .maybeSingle();
 
+    if (lookupError) throw new Error('Could not look up the Discord profile. Please try again.');
+    if (existingMemberData && !existingMemberData.is_active) {
+      return NextResponse.redirect(`${baseUrl}/join?error=${encodeURIComponent('Your Discord profile is inactive. Contact a moderator.')}`, { status: 302 });
+    }
+
     if (existingMemberData) {
-      // Returning Discord Member: update username, avatar, and moderator flag
+      // Returning Discord Member: update Discord handle and avatar
       const member = existingMemberData as Member;
-      const isDbMod = member.role === 'moderator' || member.is_moderator === true;
+      const isDbMod = member.role === 'moderator';
       const isEnvMod = isModDiscordId(discordId);
       const effectiveIsMod = isDbMod || isEnvMod;
 
@@ -172,8 +176,6 @@ export async function GET(request: Request) {
         discord_username: member.discord_username || discordUsername,
         discord_handle: discordHandle || member.discord_handle,
         avatar_url: avatarUrl,
-        is_moderator: isDbMod,
-        role: member.role,
         updated_at: DateTime.utc().toISO() as string,
       });
 
@@ -201,27 +203,6 @@ export async function GET(request: Request) {
       return response;
     }
 
-    // 4. First-time Discord Login: Check for unclaimed legacy rows matching candidate names
-    const candidateNames = [discordUser.global_name, discordUser.username].filter(
-      Boolean
-    ) as string[];
-
-    let matchedMemberId: string | null = null;
-    for (const name of candidateNames) {
-      const { data: match } = await supabaseAdmin
-        .from('members')
-        .select('id, discord_username')
-        .is('discord_id', null)
-        .ilike('discord_username', name.trim())
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (match) {
-        matchedMemberId = match.id;
-        break;
-      }
-    }
-
     // Create signed claim token (valid for 60 minutes)
     const claimToken = createClaimToken(
       {
@@ -230,12 +211,11 @@ export async function GET(request: Request) {
         discordHandle,
         avatarUrl,
         isModerator,
-        suggestedMemberId: matchedMemberId,
       },
       60
     );
 
-    // Redirect user to /join with claim token to select existing profile or configure new schedule
+    // Redirect user to /join to create their Discord-linked profile
     const claimUrl = `${baseUrl}/join?claim_token=${encodeURIComponent(claimToken)}`;
     const response = NextResponse.redirect(claimUrl, { status: 302 });
 

@@ -21,7 +21,8 @@ import {
 import {
   subscribeToPush,
   unsubscribeFromPush,
-  getStoredMemberId,
+  getPushDeviceStatus,
+  syncPushSubscriptionHealth,
   getStoredAuthToken,
   isPushSupported,
   getNotificationPermission,
@@ -31,7 +32,6 @@ import {
 interface PushModalProps {
   isOpen: boolean;
   onClose: () => void;
-  members: Member[];
   isPushEnabled: boolean;
   onPushStateChanged: (enabled: boolean) => void;
   onOpenScheduleModal: () => void;
@@ -50,7 +50,6 @@ interface PushModalProps {
 export function PushModal({
   isOpen,
   onClose,
-  members,
   isPushEnabled,
   onPushStateChanged,
   onOpenScheduleModal,
@@ -58,9 +57,9 @@ export function PushModal({
   onOpenLogin,
   onLogout,
 }: PushModalProps) {
-  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
-  const [notifyPersonal, setNotifyPersonal] = useState<boolean>(true);
-  const [notifyCommunity, setNotifyCommunity] = useState<boolean>(true);
+  const [repair, setRepair] = useState<'sign_in' | 'retry'>();
+  const [savedPreferences, setSavedPreferences] = useState<{ notifyPersonal?: boolean; notifyCommunity?: boolean }>({});
+  const [preferenceEdits, setPreferenceEdits] = useState<{ notifyPersonal?: boolean; notifyCommunity?: boolean }>({});
   const [loading, setLoading] = useState<boolean>(false);
   const [testLoading, setTestLoading] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
@@ -73,22 +72,36 @@ export function PushModal({
     isBraveBrowser().then(setIsBrave);
   }, []);
 
+  const memberId = currentUser?.id;
+
   useEffect(() => {
-    if (currentUser) {
-      setSelectedMemberId(currentUser.id);
-    } else {
-      const storedId = getStoredMemberId();
-      if (storedId) {
-        setSelectedMemberId(storedId);
-      } else {
-        setSelectedMemberId('');
+    setRepair(undefined);
+    setSavedPreferences({});
+    setPreferenceEdits({});
+    if (!isOpen || !isPushSupported()) return;
+    let active = true;
+    const refreshStatus = async () => {
+      const status = await getPushDeviceStatus();
+      if (!active) return;
+      setRepair(status.memberId && status.memberId !== memberId ? 'sign_in' : status.repair);
+      if (status.memberId === memberId && memberId) {
+        setSavedPreferences({ notifyPersonal: status.notifyPersonal, notifyCommunity: status.notifyCommunity });
       }
-    }
-  }, [currentUser, members, isOpen]);
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'PUSH_DEVICE_CHANGED') void refreshStatus();
+    };
+    void refreshStatus();
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => {
+      active = false;
+      navigator.serviceWorker.removeEventListener('message', onMessage);
+    };
+  }, [isOpen, memberId]);
 
   if (!isOpen) return null;
 
-  const currentMember = currentUser || members.find((m) => m.id === selectedMemberId);
+  const currentMember = currentUser;
   const supported = isPushSupported();
   const permission = getNotificationPermission();
 
@@ -110,14 +123,14 @@ export function PushModal({
 
     const result = await subscribeToPush({
       memberId: currentUser.id,
-      notifyPersonal,
-      notifyCommunity,
+      ...preferenceEdits,
     });
 
     setLoading(false);
 
     if (result.success) {
       onPushStateChanged(true);
+      setRepair(undefined);
       setFeedback({
         type: 'success',
         message: 'Push notifications enabled! Your Sleep Shield and alarms are now active.',
@@ -130,6 +143,38 @@ export function PushModal({
     }
   };
 
+  const handleRepairPush = async () => {
+    if (!memberId) {
+      onClose();
+      onOpenLogin?.();
+      return;
+    }
+    if (repair === 'sign_in') {
+      onLogout?.();
+      return;
+    }
+    const currentPermission = getNotificationPermission();
+    if (currentPermission === 'denied') {
+      setFeedback({ type: 'error', message: 'Allow notifications in your browser settings, then retry.' });
+      return;
+    }
+    setLoading(true);
+    const result = currentPermission === 'default'
+      ? await subscribeToPush({ memberId })
+      : { success: await syncPushSubscriptionHealth(), error: undefined };
+    const status = await getPushDeviceStatus();
+    const repairReason = status.memberId && status.memberId !== memberId ? 'sign_in' : status.repair;
+    setLoading(false);
+    onPushStateChanged(result.success);
+    setRepair(result.success ? undefined : repairReason || 'retry');
+    setFeedback(result.success ? { type: 'success', message: 'Device alerts repaired.' } : {
+      type: 'error',
+      message: repairReason === 'sign_in'
+        ? 'Sign in again with the Discord account that linked this device.'
+        : result.error || 'Could not repair device alerts. Try again when online.',
+    });
+  };
+
   const handleDisablePush = async () => {
     setLoading(true);
     setFeedback(null);
@@ -139,6 +184,7 @@ export function PushModal({
 
     if (result.success) {
       onPushStateChanged(false);
+      setRepair(undefined);
       setFeedback({
         type: 'success',
         message: 'Push notifications disabled on this device.',
@@ -261,6 +307,15 @@ export function PushModal({
           </div>
         )}
 
+        {repair && (
+          <div role="status" className="mb-4 rounded-xl border border-status-amber/40 bg-status-amber/10 p-3.5 text-xs text-cream-secondary">
+            <p>Device alerts need repair. {repair === 'sign_in' ? 'Sign out and sign back in with the Discord account that linked this device.' : permission === 'denied' ? 'Allow notifications in your browser settings, then retry.' : 'Retry when you’re online.'}</p>
+            <button type="button" disabled={loading} onClick={handleRepairPush} className="min-h-[44px] text-status-amber font-semibold disabled:opacity-50">
+              {!currentUser ? 'Sign in with Discord' : repair === 'sign_in' ? 'Sign out' : permission === 'default' ? 'Allow notifications and retry' : 'Retry alert sync'}
+            </button>
+          </div>
+        )}
+
         {/* Browser Support Warning */}
         {!supported && (
           <div className="mb-4 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3.5 text-xs text-status-coral flex items-start gap-2.5">
@@ -346,8 +401,11 @@ export function PushModal({
           <label className="flex items-start gap-3 rounded-xl border border-night-border bg-night-bg/60 p-3 cursor-pointer hover:bg-night-bg transition-colors min-h-[44px]">
             <input
               type="checkbox"
-              checked={notifyPersonal}
-              onChange={(e) => setNotifyPersonal(e.target.checked)}
+              checked={preferenceEdits.notifyPersonal ?? savedPreferences.notifyPersonal ?? true}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setPreferenceEdits(previous => ({ ...previous, notifyPersonal: checked }));
+              }}
               className="mt-0.5 h-4 w-4 rounded border-night-border bg-night-elevated text-status-amber focus:ring-0"
             />
             <div>
@@ -364,8 +422,11 @@ export function PushModal({
           <label className="flex items-start gap-3 rounded-xl border border-night-border bg-night-bg/60 p-3 cursor-pointer hover:bg-night-bg transition-colors min-h-[44px]">
             <input
               type="checkbox"
-              checked={notifyCommunity}
-              onChange={(e) => setNotifyCommunity(e.target.checked)}
+              checked={preferenceEdits.notifyCommunity ?? savedPreferences.notifyCommunity ?? true}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setPreferenceEdits(previous => ({ ...previous, notifyCommunity: checked }));
+              }}
               className="mt-0.5 h-4 w-4 rounded border-night-border bg-night-elevated text-status-amber focus:ring-0"
             />
             <div>
@@ -421,7 +482,7 @@ export function PushModal({
             <button
               type="button"
               onClick={handleEnablePush}
-              disabled={loading || !supported}
+              disabled={loading || !supported || Boolean(repair)}
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-status-amber px-4 text-xs font-bold text-night-bg shadow-lg hover:bg-status-amber/90 transition-all disabled:opacity-50 active:scale-95 h-11 min-h-[44px] whitespace-nowrap"
             >
               <Bell className="h-4 w-4" />

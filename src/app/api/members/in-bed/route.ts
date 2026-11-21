@@ -10,7 +10,7 @@ import {
   isTestMemberFixture,
 } from '@/lib/db';
 import { DateTime } from 'luxon';
-import { verifyPin, getRequestSessionMemberId, verifyModeratorAuthorization } from '@/lib/auth';
+import { ownsDiscordProfile, getRequestSessionMemberId, verifyModeratorAuthorization } from '@/lib/auth';
 import {
   calculateSleepStreak,
   getSleepCycleDate,
@@ -18,12 +18,7 @@ import {
   resolveActiveSleepCycleWindow,
 } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
-import {
-  getClientIp,
-  checkPinRateLimitPersistent,
-  recordPinFailurePersistent,
-  resetPinFailurePersistent,
-} from '@/lib/rateLimit';
+
 
 /**
  * GET: Retrieve member's in-bed status and current sleep streak for their active sleep cycle date.
@@ -97,21 +92,21 @@ export async function GET(request: Request) {
 
 /**
  * POST: Record an "I'm in Bed" check-in or cancel an existing check-in for tonight's sleep cycle.
- * Requires member PIN authentication or valid session cookie.
+ * Requires the linked Discord session or moderator authorization.
  *
- * @param request - Incoming HTTP request with memberId, action, and optional PIN
+ * @param request - Incoming HTTP request with memberId, and action
  * @returns JSON response with updated in-bed status and recalculated streak days
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { memberId, action = 'check_in', pin } = body;
+    const { memberId, action = 'check_in' } = body;
 
     if (!memberId) {
       return NextResponse.json({ error: 'Missing required field: memberId' }, { status: 400 });
     }
 
-    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(memberId);
+    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(memberId, { requireFresh: true });
 
     if (memberErr || !rawMember) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
@@ -119,70 +114,12 @@ export async function POST(request: Request) {
 
     const member = rawMember;
 
-    // Security Gate:
-    // 1. Session must match target memberId, OR
-    // 2. Authenticated server moderator (session or secret passcode), OR
-    // 3. A valid PIN must be provided matching member's passcode_hash.
     const sessionMemberId = getRequestSessionMemberId(request);
-    const isSessionMatch = Boolean(sessionMemberId && sessionMemberId === member.id);
-
-    let isModMatch = false;
-    if (!isSessionMatch) {
-      const modAuth = await verifyModeratorAuthorization(request);
-      if (modAuth.authorized) {
-        isModMatch = true;
-      }
-    }
-
-    let isPinMatch = false;
-    if (!isSessionMatch && !isModMatch) {
-      if (sessionMemberId && sessionMemberId !== member.id) {
-        return NextResponse.json(
-          {
-            error: 'Forbidden. You cannot check in or modify bedtime status for another member.',
-            code: 'FORBIDDEN',
-          },
-          { status: 403 }
-        );
-      }
-
-      if (pin !== undefined && pin !== null) {
-        if (typeof pin !== 'string') {
-          return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
-        }
-        const clientIp = getClientIp(request);
-        const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
-        if (!rateCheck.allowed) {
-          return NextResponse.json(
-            {
-              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-            },
-            {
-              status: 429,
-              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-            }
-          );
-        }
-
-        const cleanPin = pin.trim();
-        if (member.passcode_hash && verifyPin(cleanPin, member.passcode_hash)) {
-          isPinMatch = true;
-          await resetPinFailurePersistent(clientIp, member.id);
-        } else {
-          await recordPinFailurePersistent(clientIp, member.id);
-        }
-      }
-    }
-
-    if (!isSessionMatch && !isModMatch && !isPinMatch) {
+    if (!member.is_active || (!ownsDiscordProfile(request, member) &&
+        !(await verifyModeratorAuthorization(request)).authorized)) {
       return NextResponse.json(
-        {
-          error: member.passcode_hash
-            ? 'Authentication required. Please log in with your 4-digit PIN before checking in.'
-            : 'Please claim your profile with a 4-digit PIN before checking in.',
-          code: 'UNAUTHORIZED',
-        },
-        { status: 401 }
+        { error: 'Sign in with the Discord account linked to this profile.', code: sessionMemberId ? 'FORBIDDEN' : 'UNAUTHORIZED' },
+        { status: sessionMemberId ? 403 : 401 }
       );
     }
 

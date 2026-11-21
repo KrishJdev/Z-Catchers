@@ -33,7 +33,7 @@ Members of an international Discord community want to keep each other accountabl
 
 4. **The Action (Discord Redirect):** Tapping the notification or the member's card opens their specific Discord Journal thread directly in the Discord app so friends can tell them goodnight or nag them off their screens.
 
-5. **Anti-Cheat Governance (48-Hour Cooldown):** To stop members from pushing their bedtime back 5 minutes before midnight to dodge nagging, any self-service schedule edit enters a **48-hour pending state** before becoming active. Moderators can add/remove members or override changes immediately.
+5. **Anti-Cheat Governance (48-Hour Cooldown):** To stop members from pushing their bedtime back 5 minutes before midnight to dodge nagging, any self-service schedule edit enters a **48-hour pending state** before becoming active. Moderators can remove members or override schedule changes immediately with the master passcode.
 
 6. **Monthly Strikes & Metastrikes Accountability System:**
    * **Strikes (Max 3 per month):** The dispatcher issues one strike for a missed check-in starting ten minutes after the scheduled bedtime.
@@ -137,7 +137,7 @@ CREATE TABLE members (
   
   -- Role & Meta
   role TEXT NOT NULL DEFAULT 'member',      -- 'member' | 'moderator'
-  passcode_hash TEXT,                       -- Simple 4-6 digit PIN or auth token for claiming profile
+  passcode_hash TEXT,                       -- Legacy PIN column retained for older data
   is_active BOOLEAN NOT NULL DEFAULT true,
 
   -- Monthly Strikes & Metastrikes Accountability System
@@ -346,33 +346,12 @@ Manual push nags require an active member session. Each sender, target, sleep cy
 
   * In the Service Worker (`sw.js`), handle the `notificationclick` event by reading `event.notification.data.url` and calling `clients.openWindow(url)`. On iOS and Android, opening a `https://discord.com/channels/...` URL via `openWindow` or `<a href="..." target="_blank" rel="noopener noreferrer">` automatically triggers Universal Links / App Links and launches the native Discord mobile app directly into that thread.
 
-### 5.5 Authentication & Governance Model (Lightweight for MVP)
+### 5.5 Authentication & Governance
 
-To ship ASAP without waiting on complex OAuth app verification:
-
-* **Member Profile Claim / Edit:** Each member has a 4-digit PIN (or uses a lightweight Discord OAuth / Magic Link if preferred). Entering their PIN lets them edit their own profile and link their push subscription to their `member_id`.
-
-* **Self-Edit Rules:**
-
-  * Updating `journal_url` or `discord_username`: **Instant**.
-
-  * Initial creation of `bedtime_local`: **Instant**.
-
-  * Changing an existing `bedtime_local` or `timezone`: **Locked behind the 48-hour cooldown** (`pending_effective_at = NOW() + INTERVAL '48 hours'`). Users can cancel a pending change anytime before it takes effect.
-
-* **Moderator Mode:**
-
-  * Protected by a master `MOD_SECRET_PASSCODE` environment variable.
-
-  * Moderators can:
-
-    1. Add a new member (sets initial bedtime immediately).
-
-    2. Remove/Deactivate a member.
-
-    3. Edit any member's bedtime or journal link **immediately** (bypasses the 48-hour cooldown).
-
-    4. Click `"Approve Now"` on any member's pending 48-hour change.
+* First-time members use `/join` and Discord OAuth to create a profile. Returning members sign in to the profile already linked to their Discord ID. Member writes require the active profile's linked Discord session.
+* Members can update their display name or journal link immediately. A change to an existing sleep schedule or timezone queues for 48 hours and the member can cancel it before it takes effect.
+* An active linked profile qualifies for moderator access if its database role is `moderator` or its Discord ID is on the current `MOD_DISCORD_IDS` allowlist. Immediate schedule edits and early approvals also require `MOD_SECRET_PASSCODE`.
+* A signed-in member links each device to their profile. The device's service worker uses its own rotation credential to recover updates after the Discord session expires.
 
 ### 5.6 Monthly Strikes & Metastrikes Accountability Engine
 
@@ -497,9 +476,9 @@ Follow these exact milestones in order. Verify each milestone compiles and passe
 
    * `GET /api/members` — Fetches all active members, auto-promotes any expired 48h pending schedules in the DB, and returns the list.
 
-   * `POST /api/members/update-schedule` — Validates PIN; if member, writes to `pending_*` with `now + 48h`. If moderator passcode provided, writes directly to active columns.
+   * `POST /api/members/update-schedule` — Validates Discord profile ownership and writes to `pending_*` with `now + 48h`. If moderator passcode provided, writes directly to active columns.
 
-   * `POST /api/mod/members` — Moderator CRUD (Add member, delete member, approve pending cooldown immediately).
+   * `POST /api/mod` — Moderator roster management and master-passcode approval of pending schedules. New profiles are created through Discord onboarding.
 
 ### Milestone 3: Warm Dark UI, Responsive Desktop Dashboard & Sleepy Fox Mascot
 
@@ -519,9 +498,9 @@ Follow these exact milestones in order. Verify each milestone compiles and passe
 
 ### Milestone 4: Self-Service Profile & Moderator Drawer
 
-1. Build the **"My Schedule"** modal/tab (centered dialog on desktop, bottom sheet on mobile) where a user selects their name, enters their PIN, updates their Discord Journal thread URL, or requests a bedtime change (with a clear warning that bedtime edits take **48 hours** to take effect).
+1. Build the **"My Schedule"** modal/tab (centered dialog on desktop, bottom sheet on mobile) where a signed-in member updates their Discord Journal thread URL, or requests a bedtime change (with a clear warning that bedtime edits take **48 hours** to take effect).
 
-2. Build the **"Mod Panel"** modal/tab unlocked via the Moderator Passcode, allowing instant member creation, removal, and one-click approval of pending 48-hour cooldowns.
+2. Build the **"Mod Panel"** modal/tab for eligible moderators to manage and remove roster members and approve pending schedules with the master passcode. Members create their own profiles through Discord onboarding.
 
 ### Milestone 5: PWA Configuration, Fox Mascot Assets & Web Push Notifications
 

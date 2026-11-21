@@ -424,8 +424,6 @@ export async function sanitizeMemberPayload<T extends Record<string, any>>(paylo
 
 export interface SafeUpdateOptions {
   select?: string;
-  isFirstTimeClaim?: boolean;
-  requireUnlinkedDiscord?: boolean;
   conditions?: Record<string, any>;
 }
 
@@ -496,12 +494,6 @@ export async function updateMemberSafe(
 
   const performUpdate = async (fields: Record<string, any>) => {
     let query = supabaseAdmin.from('members').update(fields).eq('id', memberId);
-    if (options.isFirstTimeClaim) {
-      query = query.is('passcode_hash', null);
-    }
-    if (options.requireUnlinkedDiscord) {
-      query = query.is('discord_id', null);
-    }
     if (activeConditions) {
       for (const [col, val] of Object.entries(activeConditions)) {
         if (val === null || val === undefined) {
@@ -613,7 +605,10 @@ export async function insertMemberSafe(
     }
   }
 
-  let cleanPayload = await sanitizeMemberPayload(payload);
+  const cleanPayload = await sanitizeMemberPayload(payload);
+  if (payload.discord_id && !cleanPayload.discord_id) {
+    return { data: null, error: { message: 'Discord profile binding is unavailable in the current schema.' } };
+  }
 
   const performInsert = async (fields: Record<string, any>) => {
     return supabaseAdmin.from('members').insert(fields).select(select).single();
@@ -625,6 +620,7 @@ export async function insertMemberSafe(
     const match = error.message.match(/Could not find the '([^']+)' column/);
     if (match && match[1] && match[1] in cleanPayload) {
       const missingCol = match[1];
+      if (missingCol === 'discord_id') break;
       console.warn(`[Supabase Safe Insert] Column '${missingCol}' not found in Supabase schema cache; stripping and retrying.`);
       if (knownMemberColumns) {
         knownMemberColumns.delete(missingCol);
@@ -719,7 +715,7 @@ export function clearInMemoryMembers(): void {
 export async function getMemberByIdSafe(
   memberId: string, options: { requireFresh?: boolean } = {}
 ): Promise<{ data: Member | null; error: any }> {
-  if (!options.requireFresh && isTestMemberFixture(memberId)) {
+  if ((!options.requireFresh || process.env.NODE_ENV === 'test') && isTestMemberFixture(memberId)) {
     const inMem = memoryMembers.get(memberId);
     if (inMem) {
       return { data: inMem, error: null };

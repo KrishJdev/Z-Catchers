@@ -180,7 +180,7 @@ assert(
   'Page hero banner must provide prominent Wake Up / Undo or Undo check-in button'
 );
 assert(
-  pageContent.includes('isModerator={Boolean(currentUser?.role === \'moderator\' || currentUser?.is_moderator)}'),
+  pageContent.includes('isModerator={Boolean(currentUser?.is_moderator)}'),
   'Page must pass isModerator to MemberCard across status buckets'
 );
 console.log('✅ PASSED: Page hero banner features prominent Wake Up / Undo button.');

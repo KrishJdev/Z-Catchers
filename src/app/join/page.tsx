@@ -3,25 +3,18 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FoxMascot } from '@/components/FoxMascot';
-import type { Member } from '@/lib/db';
-import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, detectUserTimezone } from '@/lib/timezone';
+import { detectUserTimezone } from '@/lib/timezone';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
 import {
   setStoredAuthToken,
   setStoredAuthMember,
-  getStoredAuthMember,
-  getStoredAuthToken,
 } from '@/lib/pushClient';
 import {
-  Sparkles,
-  UserPlus,
   AlertTriangle,
   CheckCircle2,
   Clock,
-  ExternalLink,
   Shield,
   Moon,
-  ArrowRight,
   UserCheck,
   RefreshCw,
 } from 'lucide-react';
@@ -41,7 +34,6 @@ interface DiscordProfileDetails {
   username: string;
   avatarUrl: string | null;
   isModerator: boolean;
-  suggestedMemberId: string | null;
 }
 
 function JoinPageContent() {
@@ -54,14 +46,7 @@ function JoinPageContent() {
   // Claim Mode State
   const [claimToken, setClaimToken] = useState<string | null>(urlClaimToken);
   const [discordUser, setDiscordUser] = useState<DiscordProfileDetails | null>(null);
-  const [unclaimedMembers, setUnclaimedMembers] = useState<Member[]>([]);
   const [loadingClaim, setLoadingClaim] = useState<boolean>(Boolean(urlClaimToken));
-
-  // 1-Step Claim/Setup Choice: 'claim' | 'new'
-  const [claimOption, setClaimOption] = useState<'claim' | 'new'>('claim');
-  const [selectedTargetId, setSelectedTargetId] = useState<string>('');
-  const [claimPin, setClaimPin] = useState<string>('');
-  const [claimModPasscode, setClaimModPasscode] = useState<string>('');
 
   // New Profile Form State
   const [regUsername, setRegUsername] = useState('');
@@ -94,14 +79,6 @@ function JoinPageContent() {
     if (claimToken) return;
 
     let isMounted = true;
-    const cachedMember = getStoredAuthMember<Member>();
-    const cachedToken = getStoredAuthToken();
-
-    if (cachedMember || cachedToken) {
-      router.replace('/');
-      return;
-    }
-
     fetch('/api/auth/me')
       .then((res) => res.json())
       .then((data) => {
@@ -135,15 +112,6 @@ function JoinPageContent() {
         if (data.valid && data.discordUser) {
           setDiscordUser(data.discordUser);
           setRegUsername(data.discordUser.username || '');
-          setUnclaimedMembers(data.unclaimedMembers || []);
-
-          if (data.unclaimedMembers && data.unclaimedMembers.length > 0) {
-            const initialId = data.discordUser.suggestedMemberId || data.unclaimedMembers[0].id;
-            setSelectedTargetId(initialId);
-            setClaimOption('claim');
-          } else {
-            setClaimOption('new');
-          }
         } else {
           setErrorMessage(data.error || 'Invalid or expired claim token. Please log in with Discord again.');
           setClaimToken(null);
@@ -157,69 +125,13 @@ function JoinPageContent() {
       .finally(() => setLoadingClaim(false));
   }, [claimToken]);
 
-  // Handler for Claim Profile submission
-  const handleClaimSubmit = async (e: React.FormEvent) => {
+  // Create the Discord-linked profile
+  const handleCreateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     triggerHaptic(20);
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    if (claimOption === 'claim') {
-      if (!selectedTargetId) {
-        setErrorMessage('Please select a member profile from the list to claim.');
-        return;
-      }
-
-      const targetMember = unclaimedMembers.find((m) => m.id === selectedTargetId);
-      const isTargetMod = Boolean(targetMember?.is_moderator || targetMember?.role === 'moderator');
-
-      if (targetMember?.has_pin && (!claimPin || claimPin.length < 4)) {
-        setErrorMessage('Please enter the 4-digit PIN to claim this profile.');
-        return;
-      }
-
-      if (isTargetMod && !discordUser?.isModerator && !claimModPasscode.trim()) {
-        setErrorMessage('Claiming an unlinked moderator profile requires the master moderator passcode.');
-        return;
-      }
-
-      setSubmitting(true);
-      try {
-        const res = await fetch('/api/auth/claim-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            claim_token: claimToken,
-            option: 'claim',
-            target_member_id: selectedTargetId,
-            pin: claimPin.trim() || undefined,
-            mod_passcode: claimModPasscode.trim() || undefined,
-          }),
-        });
-
-        const data = await res.json();
-        if (!res.ok) {
-          setErrorMessage(data.error || 'Failed to claim profile.');
-          setSubmitting(false);
-          return;
-        }
-
-        if (data.token) setStoredAuthToken(data.token);
-        if (data.member) setStoredAuthMember(data.member);
-        setSuccessMessage(data.message || 'Profile claimed successfully! Entering dashboard...');
-
-        setTimeout(() => {
-          router.replace('/');
-        }, 600);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Claiming failed.';
-        setErrorMessage(msg);
-        setSubmitting(false);
-      }
-      return;
-    }
-
-    // Option: 'new'
     const cleanUsername = regUsername.trim();
     if (!cleanUsername || cleanUsername.length < 2) {
       setErrorMessage('Please enter a display name (at least 2 characters).');
@@ -366,111 +278,8 @@ function JoinPageContent() {
               </div>
             </div>
 
-            {/* Option Tabs: Claim Existing vs. New Profile */}
-            <div className="flex border-b border-night-border pb-2 gap-4 text-xs font-semibold">
-              {unclaimedMembers.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setClaimOption('claim')}
-                  className={`pb-1 transition-all ${
-                    claimOption === 'claim'
-                      ? 'border-b-2 border-status-amber text-status-amber'
-                      : 'text-cream-muted hover:text-cream-secondary'
-                  }`}
-                >
-                  Claim Existing Profile ({unclaimedMembers.length})
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setClaimOption('new')}
-                className={`pb-1 transition-all ${
-                  claimOption === 'new'
-                    ? 'border-b-2 border-status-amber text-status-amber'
-                    : 'text-cream-muted hover:text-cream-secondary'
-                }`}
-              >
-                Create New Member Profile
-              </button>
-            </div>
-
-            <form onSubmit={handleClaimSubmit} className="space-y-4">
-              {claimOption === 'claim' && unclaimedMembers.length > 0 ? (
-                /* Mode A: Select Unclaimed Profile */
-                <div className="space-y-3">
-                  <p className="text-xs text-cream-secondary leading-relaxed">
-                    Select your existing Z Catchers profile to link your Discord account. This preserves your current bedtime schedule, journal link, and sleep streak!
-                  </p>
-
-                  <div>
-                    <label className="block text-xs font-medium text-cream-secondary mb-1.5">
-                      Select Your Unclaimed Profile
-                    </label>
-                    <select
-                      value={selectedTargetId}
-                      onChange={(e) => {
-                        setSelectedTargetId(e.target.value);
-                        setClaimPin('');
-                        setClaimModPasscode('');
-                      }}
-                      className="w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2.5 text-cream-primary text-sm focus:border-status-amber focus:outline-none"
-                    >
-                      {unclaimedMembers.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          @{m.discord_username} — Bedtime {m.bedtime_local} ({m.timezone}){m.has_pin ? ' 🔒 (PIN Protected)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {unclaimedMembers.find((m) => m.id === selectedTargetId)?.has_pin && (
-                    <div>
-                      <label htmlFor="claim-profile-pin" className="block text-xs font-medium text-cream-secondary mb-1">
-                        Profile PIN <span className="text-status-amber">*</span>
-                      </label>
-                      <input
-                        id="claim-profile-pin"
-                        type="password"
-                        inputMode="numeric"
-                        maxLength={6}
-                        required
-                        placeholder="Enter 4-digit PIN"
-                        value={claimPin}
-                        onChange={(e) => setClaimPin(e.target.value.replace(/\D/g, ''))}
-                        className="w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-cream-primary text-sm focus:border-status-amber focus:outline-none"
-                      />
-                      <p className="text-[11px] text-cream-muted mt-1">
-                        This profile is protected with a legacy PIN. Enter the PIN to verify ownership.
-                      </p>
-                    </div>
-                  )}
-
-                  {Boolean(
-                    (unclaimedMembers.find((m) => m.id === selectedTargetId)?.is_moderator ||
-                      unclaimedMembers.find((m) => m.id === selectedTargetId)?.role === 'moderator') &&
-                      !discordUser?.isModerator
-                  ) && (
-                    <div>
-                      <label htmlFor="claim-mod-passcode" className="block text-xs font-medium text-cream-secondary mb-1">
-                        Master Moderator Passcode <span className="text-status-amber">*</span>
-                      </label>
-                      <input
-                        id="claim-mod-passcode"
-                        type="password"
-                        required
-                        placeholder="Enter master moderator passcode"
-                        value={claimModPasscode}
-                        onChange={(e) => setClaimModPasscode(e.target.value)}
-                        className="w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-cream-primary text-sm focus:border-status-amber focus:outline-none"
-                      />
-                      <p className="text-[11px] text-cream-muted mt-1">
-                        Claiming an unlinked moderator profile requires the master moderator secret passcode if not pre-authorized.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Mode B: Configure New Schedule */
+            <h2 className="text-sm font-semibold text-cream-primary">Create your profile</h2>
+            <form onSubmit={handleCreateProfile} className="space-y-4">
                 <div className="space-y-3.5">
                   <div>
                     <label className="block text-xs font-medium text-cream-secondary mb-1">
@@ -538,7 +347,6 @@ function JoinPageContent() {
                     />
                   </div>
                 </div>
-              )}
 
               <button
                 type="submit"
@@ -553,7 +361,7 @@ function JoinPageContent() {
                 ) : (
                   <>
                     <UserCheck className="h-4 w-4" />
-                    <span>{claimOption === 'claim' ? 'Claim Profile & Enter Den' : 'Join Den & Save Schedule'}</span>
+                    <span>Join Den & Save Schedule</span>
                   </>
                 )}
               </button>
@@ -600,7 +408,7 @@ function JoinPageContent() {
             </a>
 
             <p className="text-[11px] text-cream-muted leading-tight">
-              Requires only basic Discord <code>identify</code> scope to display your avatar and name. Zero passwords or PINs required.
+              Requires only basic Discord <code>identify</code> scope to display your avatar and name.
             </p>
           </div>
         )}

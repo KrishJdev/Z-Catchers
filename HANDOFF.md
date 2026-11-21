@@ -1,16 +1,16 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-21T05:16:30.3000713+05:30
-> **Active Working Branch:** `krish`  
-> **Punishments Phase 0 branch:** `codex/punishments-0-baseline` from `origin/dev` at `285f632`. The last pre-review commit was `ee6401c`.
+> **Last Updated:** 2026-11-21T00:57:51+00:00
+> **Primary checkout:** `krish` at `b754cf9`
+> **Active Phase 1 worktree:** `codex/punishments-1-discord-auth` from `origin/dev` at `a69a3ce`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest implementation commit:** `cde52f4` on `krish`
+> **Latest implementation commit:** `493ab2f` on `codex/punishments-1-discord-auth`
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active Integration Pull Requests:** [PR #97](https://github.com/KrishJdev/Z-Catchers/pull/97) covers Punishments Phase 0. [PR #95](https://github.com/KrishJdev/Z-Catchers/pull/95) merged into `dev` at `285f632`.
+> **Active integration:** [PR #98](https://github.com/KrishJdev/Z-Catchers/pull/98) proposes Phase 1 for `dev`. [PR #97](https://github.com/KrishJdev/Z-Catchers/pull/97) merged at `a69a3ce`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
-> **Build Status:** After the review changes, `npx tsc --noEmit`, `npm run test:unit` (44 suites), and `npm run build` passed locally. All 14 API routes exercised by the smoke test match a workflow path filter. See [PR #97 checks](https://github.com/KrishJdev/Z-Catchers/pull/97/checks) for hosted verification.
+> **Build Status:** On `493ab2f`, `npx tsc --noEmit`, all 46 unit suites, and the production build passed locally. [GitHub checks for PR #98](https://github.com/KrishJdev/Z-Catchers/pull/98/checks) include the expanded disposable Supabase smoke test.
 
 ---
 
@@ -71,6 +71,25 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 ## 4. Comprehensive Task Changelog
 
+### Punishments Phase 1 · Discord-only authentication and role handling
+
+- Preserved new and returning Discord profiles, rolling sessions, and the 48-hour schedule queue. Retired PIN writes, prototype claims, manual member creation, and the unused login modal. The compatibility login and registration redirects point to `/join`.
+- Member writes require the active linked Discord account. Moderator routes verify active database-role or Discord-ID authorization. Early schedule approvals and direct schedule changes require the master passcode.
+- Push enrollment stores a device-owned rotation credential in the worker before enabling it on the server. The SQL function rotates a single row atomically, protects preferences and ownership, and accepts an exact retry. A staged worker preserves the last confirmed binding and exposes repair in Notification Settings.
+- Local verification passed for TypeScript, 46 unit suites, and the production build. The new suites run the migration in PostgreSQL and exercise service worker repair on network and HTTP failures. The expanded GitHub smoke test covers onboarding with Discord fixtures, both moderator types, anonymous and cross-account failures, schedule gating, and device rotation on disposable Supabase. Live Discord consent and a physical device are rehearsal checks.
+
+- Created `scripts/test-push-subscription-rotation.mjs`, `scripts/test-push-worker-repair.mjs`, `supabase/migrations/20261121_push_subscription_rotation.sql`.
+- Updated `HANDOFF.md`, `.github/workflows/dispatcher-smoke.yml`, `AGENT_RULES.md`, `BACKEND_TZ_PWA_SPEC.md`, `PROJECT_SPEC.md`, `README.md`, `public/sw.js`, `scripts/run-tests.mjs`, `scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/test-oauth-redirect-host-validation.mjs`, `scripts/test-phase1-pwa-push.mjs`, `scripts/test-push-unsubscribe-security.mjs`, `scripts/test-state-sync-audit.mjs`, `scripts/test-strikes-api-and-routes.mjs`, `scripts/test-update-schedule-mod-rate-limit.mjs`, `scripts/test-wake-up-and-overflow.mjs`, `src/app/api/auth/claim-profile/route.ts`, `src/app/api/auth/discord/callback/route.ts`, `src/app/api/auth/login/route.ts`, `src/app/api/auth/me/route.ts`, `src/app/api/auth/register/route.ts`, `src/app/api/members/cancel-pending/route.ts`, `src/app/api/members/in-bed/route.ts`, `src/app/api/members/strikes/metastrike/route.ts`, `src/app/api/members/update-schedule/route.ts`, `src/app/api/members/wake-up/route.ts`, `src/app/api/mod/route.ts`, `src/app/api/push/subscribe/route.ts`, `src/app/api/push/test/route.ts`, `src/app/api/push/unsubscribe/route.ts`, `src/app/join/page.tsx`, `src/app/page.tsx`, `src/components/Header.tsx`, `src/components/ModDrawer.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/PushModal.tsx`, `src/components/UnifiedOnboardingCard.tsx`, `src/lib/auth.ts`, `src/lib/db.ts`, `src/lib/pushClient.ts`, `supabase/schema.sql`.
+- Deleted `src/components/LoginModal.tsx`.
+
+### Punishments Phase 1 · CodeRabbit review fixes
+
+- The [manual review](https://github.com/KrishJdev/Z-Catchers/pull/98#issuecomment-7054237618) found gaps in moderator passcode throttling, active Discord identity checks, onboarding validation, and push-device recovery. Applied the substantive fixes on the Phase 1 feature branch and expanded regressions for concurrent passcode attempts, stale profile reads, lost rotation responses, legacy upgrade, and worker deadlines.
+- Conditional owner writes guard against changed profile identity. The existing multi-write sleep cancellation can still race with deactivation between its separate database operations. The review identified atomic sleep cancellation as a follow-up.
+- Session verification failures offer a retry and leave the cached roster available without an authenticated profile. The profile editor retains unsaved drafts, and push enrollment only submits explicit preference edits.
+- The rollout requires the updated push rotation migration, which also installs the atomic moderator passcode limit. Check for unlinked active profiles before deploying.
+- Updated `HANDOFF.md`, `PROJECT_SPEC.md`, `README.md`, `public/sw.js`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/test-oauth-redirect-host-validation.mjs`, `scripts/test-push-subscription-rotation.mjs`, `scripts/test-push-unsubscribe-security.mjs`, `scripts/test-push-worker-repair.mjs`, `scripts/test-state-sync-audit.mjs`, `scripts/test-update-schedule-mod-rate-limit.mjs`, `src/app/api/auth/claim-profile/route.ts`, `src/app/api/auth/me/route.ts`, `src/app/api/members/cancel-pending/route.ts`, `src/app/api/members/in-bed/route.ts`, `src/app/api/members/strikes/metastrike/route.ts`, `src/app/api/members/update-schedule/route.ts`, `src/app/api/members/wake-up/route.ts`, `src/app/api/mod/route.ts`, `src/app/api/push/subscribe/route.ts`, `src/app/api/push/test/route.ts`, `src/app/api/push/unsubscribe/route.ts`, `src/app/page.tsx`, `src/components/ModDrawer.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/PushModal.tsx`, `src/lib/auth.ts`, `src/lib/db.ts`, `src/lib/pushClient.ts`, `src/lib/pushServer.ts`, `src/lib/rateLimit.ts`, `supabase/migrations/20261121_push_subscription_rotation.sql`, `supabase/schema.sql`.
+
 ### Punishments Phase 0 · PR #97 review follow-up
 
 - Updated `.github/workflows/dispatcher-smoke.yml` so changes to the exercised auth, member, moderator and push routes trigger disposable Supabase coverage.
@@ -86,7 +105,10 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 | Phase 0 local baseline and inventory | DONE | TypeScript, 44 unit suites, production build and source inventory on the latest `dev` baseline |
 | Phase 0 expanded disposable Supabase baseline | DONE | Member and moderator flows, two authenticated minute-job responses, encrypted push, and strike replacement passed on `9ad991b` |
 | Phase 0 CodeRabbit changes | DONE | Rotation requirements specified for Phase 1 and workflow filters checked against all 14 exercised API routes |
-| Phase 1 Discord-only authentication | TODO | Start after PR #97 merges |
+| Phase 1 Discord-only authentication | DONE | TypeScript, 46 unit suites, and production build passed |
+| Phase 1 CodeRabbit fixes | DONE | TypeScript, 46 unit suites, and production build passed |
+| Phase 1 disposable Supabase smoke test | DONE | [PR #98 dispatcher integration](https://github.com/KrishJdev/Z-Catchers/actions/runs/44843350966) |
+| Phase 2 strike ledger and migration | TODO | Start after the Phase 1 PR passes checks and merges to dev |
 
 ### Phase 126 · Consolidated PR #95 review
 
@@ -165,7 +187,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 - Production site [z-catchers.vercel.app](https://z-catchers.vercel.app/) · Vercel project ID `prj_VRuKjjYf82CbGSVmx2pycP86mgtl`.
 - Supabase project ref `shmcmieqytyegbeyemkn` · Organization ID `yoekbzhlsbvynmsxpiua`. [Project dashboard](https://supabase.com/dashboard/project/shmcmieqytyegbeyemkn)
-- On this Windows account, the encrypted API credentials are at `%LOCALAPPDATA%\ZCatchersollout-credentials.xml`. Use `Import-Clixml` to load `VercelToken` and `SupabaseToken` without printing their values. Both tokens require live permission checks before rollout.
+- On this Windows account, the encrypted API credentials are at `%LOCALAPPDATA%\ZCatchers\rollout-credentials.xml`. Use `Import-Clixml` to load `VercelToken` and `SupabaseToken` without printing their values. Both tokens require live permission checks before rollout.
 - This update modified only `HANDOFF.md` in Git. Local credential storage was verified. Production rollout remains TODO, and the previously recorded implementation checks still apply.
 
 ### Rollout clarification
@@ -2952,7 +2974,7 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-**Punishments rollout.** Review the [Phase 0 inventory](PUNISHMENTS_BASELINE.md). After [PR #97](https://github.com/KrishJdev/Z-Catchers/pull/97) merges, create `codex/punishments-1-discord-auth` from the updated `origin/dev`. Follow [Phase 1](PUNISHMENTS_PLAN.md#phase-1--discord-only-authentication-and-role-handling) to preserve new and returning Discord sign-in, enforce ownership in the member routes, and require the master passcode on immediate schedule override paths. Implement the rotation credential and verify legacy device upgrade, failed-rotation repair, and both moderator entry points during Phase 1.
+**Punishments rollout.** Review [Phase 1 PR #98](https://github.com/KrishJdev/Z-Catchers/pull/98). The expanded disposable Supabase smoke test passed. Before deploying Phase 1, report active profiles where `discord_id IS NULL`. For each row, have the operator verify account ownership and either link the existing profile or record that it will stay unlinked with its history kept separately. Apply `supabase/migrations/20261121_push_subscription_rotation.sql` before deploying the app. Monitor the `legacy_rotation` reason as signed-in devices upgrade. After the Phase 1 PR merges to `dev`, use the [owner-approved branch exception for the punishments rollout](PUNISHMENTS_PLAN.md#feature-branches-and-pull-requests) and branch from the updated `origin/dev` as `codex/punishments-2-strike-ledger`. Follow [Phase 2](PUNISHMENTS_PLAN.md#phase-2--strike-ledger-punishment-records-and-migration) to add the dated ledger, punishment records, and reconciliation while keeping the new writer inactive.
 
 1. **Review PR #95 and prepare the production rollout separately.**
    - PR #95 uses the isolated `Supabase Cron and push smoke test` check for the `dev` integration. Review the PR and merge to `dev` when approved.
