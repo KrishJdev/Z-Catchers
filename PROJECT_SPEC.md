@@ -482,7 +482,7 @@ Follow these exact milestones in order. Verify each milestone compiles and passe
 
    * `GET /api/members` — Fetches all active members, auto-promotes any expired 48h pending schedules in the DB, and returns the list.
 
-   * `POST /api/members/update-schedule` — Validates Discord profile ownership and writes to `pending_*` with `now + 48h`. At the role-only cutover, all immediate edits move to explicit staff actions in `/api/mod`.
+   * `POST /api/members/update-schedule` queues schedule changes from the active profile's linked Discord session in `pending_*` for 48 hours. The current release also has a rate-limited legacy override. A valid `MOD_SECRET_PASSCODE` in the `mod_passcode` body field or the `x-mod-passcode` header applies the schedule change immediately without a profile-owner session. The role-only cutover retires the passcode override and moves immediate schedule edits to explicit staff actions in `/api/mod`.
 
    * `POST /api/mod` — Staff roster management and pending schedule approvals. After the role-only cutover, the server verifies the actor’s current role and target eligibility for each action. New profiles are created through Discord onboarding.
 
