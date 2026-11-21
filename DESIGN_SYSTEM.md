@@ -219,19 +219,12 @@ Whenever `member.pending_effective_at` is in the future, render a dashed sub-ban
 ### 5.6 Accountability Row & Indicator Pips (`MemberCard.tsx`)
 Every `MemberCard` includes a compact, warm dark accountability row positioned directly below the sleep schedule information:
 
-* **Strikes Indicator (`⚡ Strikes: X/3`):**
-  * Color token: Warm rust / terracotta (`#E07A5F` / `fox-rust` / `border-fox-rust/40 text-fox-rust`).
-  * Visual Pips: 3 horizontal mini-dots ($6\text{px} \times 6\text{px}$). Filled dots render in glowing rust (`bg-fox-rust shadow-[0_0_6px_rgba(224,122,95,0.4)]`), unfilled dots render in subtle border tone (`bg-night-border`).
-  * Counter text: `⚡ Strikes: 1/3` (cream text with rust accent).
+* **Monthly strikes:** Show the current month’s total in Warm Dark rust (`#E07A5F` / `fox-rust`). In My Sleep, show three progress segments with a separate label such as “1 of 3 toward your next punishment.” Every three eligible strikes earns a punishment and starts a new set of segments.
 * **Metastrikes Indicator (`🛡️ Meta: X/3`):**
   * Color token: Warm gold / amber (`#F4A261` / `fox-amber` / `border-fox-amber/40 text-fox-amber`).
   * Visual Pips: 3 horizontal mini-shield dots ($6\text{px} \times 6\text{px}$). Filled dots render in golden amber (`bg-fox-amber shadow-[0_0_6px_rgba(244,162,97,0.4)]`), unfilled dots render in subtle border tone (`bg-night-border`).
   * Counter text: `🛡️ Meta: 2/3` (cream text with amber accent).
-* **Max Strikes Alert State (3/3 Strikes Used):**
-  * When a member reaches `strikes_used >= 3`, a prominent Sleepy Fox caution badge renders:
-  * Style: `mt-2 px-2.5 py-1 rounded-xl bg-fox-rust/15 border border-fox-rust/50 text-fox-rust text-xs font-semibold flex items-center justify-between`
-  * Text: `"🦊 Out of Strikes • 0 Margin Left"`
-  * Informs the community that the member has exhausted all leeway for the current calendar month.
+* **Open punishments:** The signed-in member’s own card shows the open count as a link to the authenticated task list.
 
 ### 5.7 Action Bar Secondary Pill Variants
 Next to the primary `"Nag in Discord Journal ↗"` button, contextual secondary pills adapt based on bedtime proximity and strike states:

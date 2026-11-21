@@ -84,13 +84,13 @@ export function Header({
         {/* Live clock and Sleep Shield status */}
         <div className="hidden items-center gap-3 md:flex">
           {/* Live Clock & Timezone Pill */}
-          <div className="hidden items-center gap-2 rounded-full border border-night-border bg-night-surface px-3 py-1.5 text-xs text-cream-secondary lg:flex">
+          <div className="flex items-center gap-1.5 whitespace-nowrap text-xs text-cream-secondary lg:gap-2 lg:rounded-full lg:border lg:border-night-border lg:bg-night-surface lg:px-3 lg:py-1.5">
             <Clock className="h-3.5 w-3.5 text-status-amber" />
             <span className="font-semibold tabular-nums text-cream-primary">
               {currentTimeStr || '—'}
             </span>
-            <span className="text-cream-muted">•</span>
-            <span className="text-cream-secondary">{timezoneDisplayName}</span>
+            <span className="hidden text-cream-muted lg:inline">•</span>
+            <span className="hidden text-cream-secondary lg:inline">{timezoneDisplayName}</span>
           </div>
 
           {currentUser && (

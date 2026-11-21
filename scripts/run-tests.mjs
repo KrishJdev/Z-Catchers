@@ -60,6 +60,7 @@ const UNIT_TESTS = [
   'test-punishment-strike-ledger.mjs',
   'test-punishment-task-apis.mjs',
   'test-punishment-screens.mjs',
+  'test-guarded-active-wake.mjs',
   'test-state-sync-audit.mjs',
 ];
 

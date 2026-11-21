@@ -7,7 +7,7 @@ import { DateTime } from 'luxon';
 const db = new PGlite();
 const schema = readFileSync('supabase/schema.sql', 'utf8').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
 const migration = readFileSync('supabase/migrations/20261123_punishment_task_apis.sql', 'utf8');
-assert.equal('-- Expose the punishment workflow' + schema.split('-- Expose the punishment workflow')[1], migration);
+assert.equal('-- Expose the punishment workflow' + schema.split('-- Expose the punishment workflow')[1].split('\n-- Complete a specific open check-in')[0], migration);
 await db.exec(`
   CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
   CREATE SCHEMA auth; CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS 'SELECT current_user::text';

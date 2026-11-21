@@ -14,8 +14,7 @@ import { BottomNav, type MobileNavTab } from '@/components/BottomNav';
 import { MetastrikeModal } from '@/components/MetastrikeModal';
 import { SleepCalendarModal } from '@/components/SleepCalendarModal';
 import { PinnedSelfActionBar } from '@/components/PinnedSelfActionBar';
-import { DateTime } from 'luxon';
-import { computeMemberState, getPreviousScheduledBedtime, MemberState } from '@/lib/sleepEngine';
+import { computeMemberState, hasRosterSleepShield, MemberState } from '@/lib/sleepEngine';
 import { formatGmtOffset } from '@/lib/timezone';
 import {
   registerServiceWorker,
@@ -40,6 +39,28 @@ import {
 
 const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
 const STORAGE_KEY_CACHED_ROSTER = 'zcatchers_cached_roster';
+
+function rosterWithoutPrivateCounts(members: Member[]): Member[] {
+  return members.map(({ open_punishment_count: _privateCount, ...member }) => member);
+}
+
+function readCachedRoster(): Member[] {
+  try {
+    const snapshot = JSON.parse(localStorage.getItem(STORAGE_KEY_CACHED_ROSTER) ?? 'null');
+    if (!Array.isArray(snapshot)) return [];
+    const roster = rosterWithoutPrivateCounts(snapshot);
+    if (snapshot.some(member => 'open_punishment_count' in member)) {
+      try {
+        localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(roster));
+      } catch {
+        // Keep the sanitized roster usable when storage cannot be written.
+      }
+    }
+    return roster;
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Main dashboard page for Z Catchers.
@@ -220,9 +241,7 @@ export default function HomePage() {
             return updated ? { ...prev, ...updated, is_moderator: prev.is_moderator } : prev;
           });
           try {
-            localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(
-              json.members.map(({ open_punishment_count: _privateCount, ...member }: Member) => member)
-            ));
+            localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(rosterWithoutPrivateCounts(json.members)));
           } catch {
             // Ignore quota errors
           }
@@ -230,20 +249,8 @@ export default function HomePage() {
       }
     } catch (err) {
       console.error('Failed to load roster:', err);
-      // Offline fallback: hydrate from cached snapshot if available
-      try {
-        const cached = localStorage.getItem(STORAGE_KEY_CACHED_ROSTER);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setMembers(prev => prev.length === 0
-              ? parsed.map(({ open_punishment_count: _privateCount, ...member }: Member) => member)
-              : prev);
-          }
-        }
-      } catch {
-        // Ignore JSON parse errors
-      }
+      const cached = readCachedRoster();
+      if (cached.length) setMembers(prev => prev.length === 0 ? cached : prev);
     } finally {
       setLoading(false);
     }
@@ -251,19 +258,10 @@ export default function HomePage() {
 
   // Preload cached roster snapshot on initial mount & track online/offline connectivity
   useEffect(() => {
-    try {
-      const cached = localStorage.getItem(STORAGE_KEY_CACHED_ROSTER);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMembers(prev => prev.length === 0
-              ? parsed.map(({ open_punishment_count: _privateCount, ...member }: Member) => member)
-              : prev);
-          setLoading(false);
-        }
-      }
-    } catch {
-      // Ignore
+    const cached = readCachedRoster();
+    if (cached.length) {
+      setMembers(prev => prev.length === 0 ? cached : prev);
+      setLoading(false);
     }
 
     if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') {
@@ -362,7 +360,7 @@ export default function HomePage() {
 
   // Wake Up handler (Instant Button or Manual Time Entry)
   const handleWakeUp = useCallback(
-    async (memberId: string, mode: 'button' | 'manual' = 'button', wokeUpTime?: string, cycleDate?: string) => {
+    async (memberId: string, mode: 'button' | 'manual' = 'button', wokeUpTime?: string, cycleDate?: string, expectedInBedAt?: string | null) => {
       try {
         setIsCheckingIn(true);
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -372,7 +370,7 @@ export default function HomePage() {
         const res = await fetch('/api/members/wake-up', {
           method: 'POST',
           headers,
-          body: JSON.stringify({ memberId, mode, wokeUpTime, cycleDate }),
+          body: JSON.stringify({ memberId, mode, wokeUpTime, cycleDate, expectedInBedAt }),
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
@@ -404,6 +402,7 @@ export default function HomePage() {
           router.push('/join');
           return false;
         } else {
+          if (res.status === 409) await fetchRoster();
           setToastMessage({
             text: data.error || 'Failed to log wake-up.',
             type: 'error',
@@ -502,20 +501,8 @@ export default function HomePage() {
   }, [fetchRoster, router]);
 
   useEffect(() => {
-    if (!currentUser) {
-      setIsSleepShieldActive(false);
-      return;
-    }
-
-    const now = DateTime.utc();
-    const previous = getPreviousScheduledBedtime(currentUser, now);
-    const state = computeMemberState(currentUser, viewerTimezone, now);
-    const openCheckIn = currentUser.is_in_bed && !currentUser.is_woke_up;
-    const completedInQuietWindow = currentUser.last_wake_cycle_date === previous.cycleEveningDate &&
-      now < previous.bedtimeDateTime.plus({ hours: 8 });
-
-    setIsSleepShieldActive(Boolean(openCheckIn || state.isSleepShieldActive || completedInQuietWindow));
-  }, [currentUser, viewerTimezone, tick]);
+    setIsSleepShieldActive(Boolean(currentUser && hasRosterSleepShield(currentUser)));
+  }, [currentUser, tick]);
 
   // Deep-Link Action Handler: /?action=in-bed
   const processDeepLinkAction = useCallback(

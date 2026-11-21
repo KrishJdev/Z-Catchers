@@ -461,6 +461,10 @@ Allows authenticated members to log when they woke up for their active or recent
 * **State Transition:**
   * `computeMemberState` immediately moves member to `AWAKE`, deactivates Sleep Shield, and clears `needsWakeUpLog`.
 
+The pinned check-in bar supplies `expectedInBedAt` for wake-now and manual wake. The timestamp identifies the check-in that opened the flow. It can be null for a legacy open check-in with no timestamp. The active check-in RPC locks the member and commits the sleep log, member wake marker, and notification receipt in one transaction. A changed or completed check-in returns HTTP 409. Manual calendar edits still use their explicit `cycleDate`.
+
+Apply `20261124_guard_active_wake.sql` after the punishment task API migration before deploying the Phase 4 app.
+
 ### 6.2 `GET /api/members/sleep-history`
 Retrieves monthly sleep & wake logs and summary statistics for self or any community member.
 

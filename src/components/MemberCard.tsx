@@ -145,11 +145,14 @@ export function MemberCard({
 
     previousFocusRef.current = document.activeElement as HTMLElement | null;
 
-    // Focus first interactive element inside sheet dialog (or sheet itself as fallback)
+    const focusableControls = () => Array.from(sheetDialogRef.current?.querySelectorAll<HTMLElement>(
+      'button, [href], input, [tabindex]'
+    ) ?? []).filter(element => element.tabIndex >= 0 && !element.matches(':disabled') &&
+      element.getClientRects().length > 0 && getComputedStyle(element).visibility === 'visible');
+
+    // Focus the first visible control inside the dialog.
     const focusTimer = setTimeout(() => {
-      const firstFocusable = sheetDialogRef.current?.querySelector<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
+      const firstFocusable = focusableControls()[0];
       if (firstFocusable) {
         firstFocusable.focus();
       } else {
@@ -166,9 +169,7 @@ export function MemberCard({
 
       if (e.key === 'Tab') {
         if (!sheetDialogRef.current) return;
-        const focusables = sheetDialogRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        );
+        const focusables = focusableControls();
         if (focusables.length === 0) {
           e.preventDefault();
           return;

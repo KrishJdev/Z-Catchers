@@ -38,7 +38,8 @@ export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
   const [result, setResult] = useState<TaskResult | null>(null);
   const resultRef = useRef<HTMLParagraphElement>(null);
   const requestRef = useRef<AbortController | null>(null);
-  const editorTrigger = useRef<HTMLButtonElement | null>(null);
+  const queueRef = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef<{ id: string; action: TaskAction } | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -59,6 +60,12 @@ export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
 
   useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => { if (result) resultRef.current?.focus(); }, [result]);
+  useEffect(() => {
+    if (editor || !returnFocus.current) return;
+    const { id, action } = returnFocus.current;
+    queueRef.current?.querySelector<HTMLButtonElement>(`[data-task-action="${CSS.escape(id)}-${action}"]`)?.focus();
+    returnFocus.current = null;
+  }, [editor]);
 
   const loadMore = async (status: QueueStatus, offset: number) => {
     const controller = new AbortController();
@@ -110,15 +117,14 @@ export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
     }
   };
 
-  const startAction = (trigger: HTMLButtonElement, item: Task, action: TaskAction) => {
-    editorTrigger.current = trigger;
+  const startAction = (item: Task, action: TaskAction) => {
     setEditor({ item, action });
     setActionError('');
     setResult(null);
   };
 
   return (
-    <div className="mt-4 space-y-5">
+    <div ref={queueRef} className="mt-4 space-y-5">
       {result && (
         <p tabIndex={-1} ref={resultRef} role="status" className="rounded-xl border border-status-sage/40 bg-status-sage/10 p-3 text-sm [overflow-wrap:anywhere]">
           {result.item.member_name} · {result.item.title} · {punishmentStatus[result.item.status]} · {result.open_count} open
@@ -130,7 +136,7 @@ export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
           className={buttonStyle}>Refresh queue</button>
         {loading && <span role="status" className="text-sm text-cream-secondary">Loading punishments…</span>}
       </div>
-      {!loading && !queueError && sections.map(({ status, title }) => {
+      {!loading && sections.map(({ status, title }) => {
         const page = pages[status];
         if (!page) return null;
         return (
@@ -162,20 +168,21 @@ export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
                             {busy ? 'Saving…' : editor.action === 'complete' ? 'Confirm completion' : 'Save task'}
                           </button>
                           <button type="button" disabled={busy} className={buttonStyle} onClick={() => {
+                            returnFocus.current = { id: item.id, action: editor.action };
                             setEditor(null);
-                            requestAnimationFrame(() => editorTrigger.current?.focus());
                           }}>Cancel</button>
                         </div>
                       </form>
                     ) : status !== 'pending' && (
                       <div className="flex flex-wrap gap-2 pt-1">
                         <button type="button" className={buttonStyle} disabled={busy || !!editor}
-                          onClick={event => startAction(event.currentTarget, item, status === 'assigned' ? 'edit' : 'assign')}>
+                          data-task-action={`${item.id}-${status === 'assigned' ? 'edit' : 'assign'}`}
+                          onClick={() => startAction(item, status === 'assigned' ? 'edit' : 'assign')}>
                           {status === 'assigned' ? 'Edit task' : 'Assign task'}
                         </button>
                         {status === 'assigned' && (
                           <button type="button" className={buttonStyle} disabled={busy || !!editor}
-                            onClick={event => startAction(event.currentTarget, item, 'complete')}>Mark complete</button>
+                            data-task-action={`${item.id}-complete`} onClick={() => startAction(item, 'complete')}>Mark complete</button>
                         )}
                       </div>
                     )}

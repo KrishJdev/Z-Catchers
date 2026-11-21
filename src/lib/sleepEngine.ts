@@ -1345,6 +1345,20 @@ export function getPreviousScheduledBedtime(
 }
 
 /**
+ * Personal protection shown on the roster, using the hydrated sleep cycle and Metastrike evidence.
+ */
+export function hasRosterSleepShield(member: Member, at = DateTime.utc()): boolean {
+  if ((member.is_in_bed && !member.is_woke_up) ||
+      member.is_metastrike_active || member.tonight_strike_log?.record_type === 'metastrike') {
+    return true;
+  }
+
+  const previous = getPreviousScheduledBedtime(member, at);
+  return member.last_wake_cycle_date === previous.cycleEveningDate &&
+    at < previous.bedtimeDateTime.plus({ hours: 8 });
+}
+
+/**
  * Canonical result describing an active sleep cycle window.
  */
 export interface ActiveSleepCycleWindow {

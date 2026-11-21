@@ -137,7 +137,8 @@ assert(
 
 const barContent = fs.readFileSync(path.resolve('src/components/PinnedSelfActionBar.tsx'), 'utf8');
 assert(
-  barContent.includes('Save wake time') && barContent.includes('min-h-[44px] min-w-[44px]'),
+  /<button type="submit" disabled=\{isCheckingIn \|\| !draftMatches\} className=\{primary\}>[^<]*Save wake time/.test(barContent) &&
+  /const primary = '[^']*min-h-\[44px\] min-w-\[44px\]/.test(barContent),
   'Manual wake actions meet the minimum touch target in the pinned bar'
 );
 
