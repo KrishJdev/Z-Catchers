@@ -744,6 +744,10 @@ export function setSessionCookie(
   });
 }
 
+export function hasDatabaseModeratorRole(role: Member['role']): boolean {
+  return role === 'moderator' || role === 'owner';
+}
+
 /**
  * Strips sensitive authentication credentials (passcode_hash) from a Member record
  * and provides safe boolean indicators has_pin and is_moderator.
@@ -754,7 +758,7 @@ export function setSessionCookie(
 export function sanitizeMember(member: Member): Member {
   const { passcode_hash, ...rest } = member;
   const isMod = Boolean(
-    member.role === 'moderator' || isModDiscordId(member.discord_id)
+    hasDatabaseModeratorRole(member.role) || isModDiscordId(member.discord_id)
   );
   return {
     ...rest,
@@ -826,7 +830,7 @@ export async function verifyModeratorSession(request: Request): Promise<ModAuthR
           member &&
           member.is_active &&
           member.discord_id === session.discordId &&
-          (member.role === 'moderator' || isModDiscordId(member.discord_id))
+          (hasDatabaseModeratorRole(member.role) || isModDiscordId(member.discord_id))
         ) {
           return {
             authorized: true,

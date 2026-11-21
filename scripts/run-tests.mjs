@@ -62,6 +62,7 @@ const UNIT_TESTS = [
   'test-november-cutover.mjs',
   'test-punishment-screens.mjs',
   'test-guarded-active-wake.mjs',
+  'test-moderation-owner-and-roles.mjs',
   'test-state-sync-audit.mjs',
 ];
 

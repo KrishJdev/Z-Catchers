@@ -31,7 +31,7 @@ CREATE TABLE members (
   pending_effective_at TIMESTAMPTZ,         -- UTC timestamp when pending promotion unlocks (NOW() + 48h)
   
   -- Role & Security
-  role TEXT NOT NULL DEFAULT 'member',      -- 'member' | 'moderator'
+  role TEXT NOT NULL DEFAULT 'member',      -- 'member' | 'moderator' | 'owner'
   passcode_hash TEXT,                       -- 4-digit PIN for self-service updates
   is_active BOOLEAN NOT NULL DEFAULT true,
 
@@ -443,6 +443,8 @@ All user-submitted journal links must be validated against this strict regex bef
 ### Staff authorization and schedule writes after the moderation cutover
 
 The [moderation rollout](MODERATION_PLAN.md) adds the `owner` role alongside `member` and `moderator`. The database enforces at most one Owner, whose row must be active and Discord-linked. Staff endpoints match the Discord session’s member ID and Discord ID to the active row and authorize using its current role. Guard the target’s role in the staff write so a concurrent promotion cannot grant access to a protected target.
+
+Phase 1 adds the same-origin `POST /api/mod` action `set_moderator` with `member_id`, `expected_role`, and `new_role`. The service-role function checks the signed actor’s live Owner role and Discord link, locks the target, and returns HTTP 409 if the expected role is stale. Promotions require an active, linked member. A successful change records the actor, target, old and new roles, and timestamp in `moderator_role_changes`. Follow the [operator checklist](MODERATION_ROLLOUT_CHECKLIST.md#phase-1-owner-bootstrap) for the initial owner assignment.
 
 `POST /api/members/update-schedule` is the profile owner’s self-service route. Schedule changes in every role write to the 48-hour queue. An immediate schedule edit or early approval uses a dedicated action in `POST /api/mod`. Moderators can target members and the Owner can target members or moderators. Early approval must still match the queued schedule the actor reviewed. Audit staff actions with the signed-in member ID and retain historical `master_mod` records.
 

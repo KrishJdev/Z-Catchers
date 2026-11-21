@@ -6,7 +6,7 @@ import {
   hydrateMemberWeekendHours,
   getMemberByIdSafe,
 } from '@/lib/db';
-import { sanitizeMember, verifyModeratorAuthorization, verifyModeratorSession, getModeratorPasscode, getRequestSessionMemberId, type ModAuthResult } from '@/lib/auth';
+import { sanitizeHostHeader, sanitizeMember, verifyModeratorAuthorization, verifyModeratorSession, getModeratorPasscode, getRequestSession, getRequestSessionMemberId, type ModAuthResult } from '@/lib/auth';
 import {
   getClientIp,
   checkPinRateLimitPersistent,
@@ -22,6 +22,57 @@ import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+function hasSameOrigin(request: Request, origin: string): boolean {
+  const url = new URL(request.url);
+  const host = request.headers.get('host');
+  if (host === null) return origin === url.origin;
+
+  // Next can replace the URL's hostname with the listening address.
+  const destination = sanitizeHostHeader(host);
+  if (!destination || host.includes(',')) return false;
+  try {
+    return origin === new URL(`${url.protocol}//${destination}`).origin;
+  } catch {
+    return false;
+  }
+}
+
+async function setModerator(request: Request, body: Record<string, unknown>) {
+  const session = getRequestSession(request);
+  if (!session?.discordId) {
+    return NextResponse.json({ error: 'Sign in with your linked Discord account.' }, { status: 401 });
+  }
+
+  const { member_id, expected_role, new_role } = body;
+  if (typeof member_id !== 'string' || !UUID_PATTERN.test(member_id) ||
+      (expected_role !== 'member' && expected_role !== 'moderator') ||
+      (new_role !== 'member' && new_role !== 'moderator') || expected_role === new_role) {
+    return NextResponse.json(
+      { error: 'Supply a valid member_id and a transition between member and moderator.' },
+      { status: 400 }
+    );
+  }
+
+  // Use the signed identity; the RPC checks the actor's live owner role under lock.
+  const { data: role, error } = await supabaseAdmin.rpc('set_moderator', {
+    p_actor_id: session.memberId,
+    p_actor_discord_id: session.discordId,
+    p_target_id: member_id,
+    p_expected_role: expected_role,
+    p_new_role: new_role,
+  });
+
+  if (error && /^PT(400|403|404|409)$/.test(error.code)) {
+    return NextResponse.json({ error: error.message }, { status: Number(error.code.slice(2)) });
+  }
+  if (error || role !== new_role) {
+    console.error('[mod] Could not change moderator role:', error?.code);
+    return NextResponse.json({ error: 'Moderator assignment is currently unavailable.' }, { status: 503 });
+  }
+  return NextResponse.json({ success: true, member_id, role });
+}
 
 /**
  * GET: Fetch all members (including inactive and pending schedules) for moderator view.
@@ -126,6 +177,7 @@ export async function GET(request: Request) {
  * - 'approve_cooldown': Instantly promote a pending schedule change
  * - 'cancel_cooldown': Cancel a pending schedule change without altering current schedule
  * - 'edit_member': Directly modify member profile/schedule (bypasses 48h cooldown)
+ * - 'set_moderator': Promote or demote a roster member with a signed owner session
  * - 'toggle_active': Activate or deactivate a member
  * - 'delete_member': Permanently remove a member
  */
@@ -137,10 +189,24 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const clientIp = getClientIp(request);
-    const sessionMemberId = getRequestSessionMemberId(request);
+    const origin = request.headers.get('origin');
+    const fetchSite = request.headers.get('sec-fetch-site');
+    if ((origin !== null && !hasSameOrigin(request, origin)) ||
+        fetchSite === 'cross-site' || fetchSite === 'same-site') {
+      return NextResponse.json({ error: 'Moderator actions require a same-origin request.' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { action, mod_passcode } = body;
+    if (action === 'set_moderator') {
+      if (!origin) {
+        return NextResponse.json({ error: 'Moderator assignment requires a same-origin request.' }, { status: 403 });
+      }
+      return await setModerator(request, body);
+    }
+
+    const clientIp = getClientIp(request);
+    const sessionMemberId = getRequestSessionMemberId(request);
     const candidatePasscode = getModeratorPasscode(request, mod_passcode);
     let authResult: ModAuthResult;
 
@@ -195,6 +261,9 @@ export async function POST(request: Request) {
       if (fetchErr || !member) {
         return NextResponse.json({ error: 'Member not found' }, { status: 404 });
       }
+      if (member.role === 'owner') {
+        return NextResponse.json({ error: 'The owner uses the self-service schedule cooldown.' }, { status: 403 });
+      }
 
       if (!member.pending_effective_at || (!member.pending_bedtime_local && !member.pending_weekend_bedtime_local && !member.pending_weekly_schedule)) {
         return NextResponse.json(
@@ -229,10 +298,13 @@ export async function POST(request: Request) {
         pending_weekly_schedule: null,
         pending_effective_at: null,
         updated_at: DateTime.utc().toISO() as string,
-      });
+      }, { conditions: { role: member.role } });
 
-      if (updateErr || !updated) {
-        return NextResponse.json({ error: updateErr?.message || 'Failed to approve change' }, { status: 500 });
+      if (updateErr) {
+        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      }
+      if (!updated) {
+        return NextResponse.json({ error: 'The member changed. Refresh the roster and try again.' }, { status: 409 });
       }
 
       return NextResponse.json({
@@ -249,6 +321,14 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
       }
 
+      const { data: member, error: fetchErr } = await getMemberByIdSafe(member_id);
+      if (fetchErr || !member) {
+        return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+      }
+      if (member.role === 'owner') {
+        return NextResponse.json({ error: 'The owner account is protected.' }, { status: 403 });
+      }
+
       const { data: updated, error: updateErr } = await updateMemberSafe(member_id, {
         pending_bedtime_local: null,
         pending_wake_time_local: null,
@@ -258,10 +338,13 @@ export async function POST(request: Request) {
         pending_weekly_schedule: null,
         pending_effective_at: null,
         updated_at: DateTime.utc().toISO() as string,
-      });
+      }, { conditions: { role: member.role } });
 
-      if (updateErr || !updated) {
-        return NextResponse.json({ error: updateErr?.message || 'Failed to cancel cooldown' }, { status: 500 });
+      if (updateErr) {
+        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      }
+      if (!updated) {
+        return NextResponse.json({ error: 'The member changed. Refresh the roster and try again.' }, { status: 409 });
       }
 
       return NextResponse.json({
@@ -273,6 +356,9 @@ export async function POST(request: Request) {
 
     // 4. Edit Member Directly (Bypasses 48-hour cooldown)
     if (action === 'edit_member') {
+      if ('role' in body || 'is_moderator' in body) {
+        return NextResponse.json({ error: 'Use set_moderator to change moderator access.' }, { status: 400 });
+      }
       const {
         member_id,
         discord_username,
@@ -284,7 +370,6 @@ export async function POST(request: Request) {
         weekend_bedtime_local,
         weekend_wake_time_local,
         weekly_schedule,
-        role,
       } = body;
 
       if (!member_id) {
@@ -299,6 +384,9 @@ export async function POST(request: Request) {
 
       if (fetchErr || !existing) {
         return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+      }
+      if (existing.role === 'owner') {
+        return NextResponse.json({ error: 'The owner account is protected.' }, { status: 403 });
       }
 
       if (journal_url && !DISCORD_JOURNAL_REGEX.test(journal_url.trim())) {
@@ -470,7 +558,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Enter the moderator secret passcode to change a schedule immediately.' }, { status: 403 });
       }
 
-      const isTargetMod = (role ?? existing.role) === 'moderator';
       const updates: Partial<Member> = {
         discord_username: discord_username?.trim() || existing.discord_username,
         discord_handle:
@@ -479,8 +566,6 @@ export async function POST(request: Request) {
             : existing.discord_handle,
         journal_url: journal_url?.trim() || existing.journal_url,
         timezone: nextTimezone,
-        role: isTargetMod ? 'moderator' : 'member',
-        is_moderator: isTargetMod,
         updated_at: DateTime.utc().toISO() as string,
       };
 
@@ -503,10 +588,15 @@ export async function POST(request: Request) {
         updates.pending_timezone = null;
       }
 
-      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, updates);
+      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, updates, {
+        conditions: { role: existing.role },
+      });
 
-      if (updateErr || !updated) {
-        return NextResponse.json({ error: updateErr?.message || 'Failed to update member' }, { status: 500 });
+      if (updateErr) {
+        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      }
+      if (!updated) {
+        return NextResponse.json({ error: 'The member changed. Refresh the roster and try again.' }, { status: 409 });
       }
 
       return NextResponse.json({
@@ -532,7 +622,10 @@ export async function POST(request: Request) {
       });
 
       if (updateErr || !updated) {
-        return NextResponse.json({ error: updateErr?.message || 'Failed to update member status' }, { status: 500 });
+        return NextResponse.json(
+          { error: updateErr?.message || 'Failed to update member status' },
+          { status: updateErr?.code === 'PT403' ? 403 : 500 }
+        );
       }
 
       return NextResponse.json({
@@ -555,7 +648,7 @@ export async function POST(request: Request) {
         .eq('id', member_id);
 
       if (delErr) {
-        return NextResponse.json({ error: delErr.message }, { status: 500 });
+        return NextResponse.json({ error: delErr.message }, { status: delErr.code === 'PT403' ? 403 : 500 });
       }
 
       return NextResponse.json({
@@ -591,6 +684,7 @@ export async function POST(request: Request) {
         .from('members')
         .delete()
         .in('id', seedIds)
+        .neq('role', 'owner')
         .select('id, discord_username');
 
       if (purgeErr) {

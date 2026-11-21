@@ -5,6 +5,7 @@ import {
   setSessionCookie,
   createClaimToken,
   isModDiscordId,
+  hasDatabaseModeratorRole,
   getAppBaseUrl,
 } from '@/lib/auth';
 import { DateTime } from 'luxon';
@@ -168,7 +169,7 @@ export async function GET(request: Request) {
     if (existingMemberData) {
       // Returning Discord Member: update Discord handle and avatar
       const member = existingMemberData as Member;
-      const isDbMod = member.role === 'moderator';
+      const isDbMod = hasDatabaseModeratorRole(member.role);
       const isEnvMod = isModDiscordId(discordId);
       const effectiveIsMod = isDbMod || isEnvMod;
 

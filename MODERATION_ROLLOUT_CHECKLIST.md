@@ -8,7 +8,15 @@ Reviewed on 2026-11-22 against the production release from PR #104 and the match
 - [x] Queried the roster for database moderators. There were zero rows with `role = 'moderator'`. The local allowlist contained only the verified owner.
 - [x] Krish confirmed the production `MOD_DISCORD_IDS` contains only his account and approved zero Moderator carryovers. The verified active row is the only bootstrap target.
 
-The private operator copy in the local Git directory (`git rev-parse --absolute-git-dir`, file `moderation-phase-0-private.md`) contains the verified member UUID, Discord ID and operator confirmation. Use those IDs together in the Phase 1 bootstrap. Record deployment details there or in the private operator record.
+The private operator copy in the shared Git directory (`git rev-parse --path-format=absolute --git-common-dir`, file `moderation-phase-0-private.md`) contains the verified member UUID, Discord ID and operator confirmation. Use those IDs together in the Phase 1 bootstrap. Record deployment details there or in the private operator record.
+
+## Phase 1 owner bootstrap
+
+1. Apply [the role migration](supabase/migrations/20261126_moderation_owner_and_roles.sql). It supports the three roles, protects the single active Discord-linked Owner, and installs the service-role assignment function and its audit table.
+2. Follow the cutover prerequisites below before running [the operator transaction](supabase/bootstrap_moderation_owner.sql) as the database owner. Fill in both verified IDs in a private copy. For this rollout, the approved moderator list is empty. The prepared copy is `moderation-phase-1-bootstrap.sql` in the directory printed by `git rev-parse --path-format=absolute --git-common-dir`.
+3. Confirm the sole active Owner matches both IDs, the existing Moderator assignments match the approved inventory, and the pending queue matches the pre-cutover snapshot. An identical bootstrap retry leaves the roster unchanged, including moderator changes made after the first successful run. A different or unverified owner causes the transaction to fail.
+
+The database trigger blocks changes to the Owner's role, active state, member ID and Discord link, and blocks deletion. Any recovery must be coordinated with paused staff writes and a verified replacement identity. Rehearse that operator procedure in Phase 4 before the production cutover.
 
 ### Shared-passcode callers
 

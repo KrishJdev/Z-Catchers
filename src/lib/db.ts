@@ -69,7 +69,7 @@ export interface Member {
   pending_weekend_wake_time_local?: string | null;
   pending_weekly_schedule?: WeeklySchedule | null;
   pending_effective_at: string | null; // ISO timestamp
-  role: 'member' | 'moderator';
+  role: 'member' | 'moderator' | 'owner';
   is_moderator?: boolean;
   onboarding_completed?: boolean;
   passcode_hash?: string | null;

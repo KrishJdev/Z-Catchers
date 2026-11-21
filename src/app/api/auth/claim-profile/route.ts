@@ -6,6 +6,7 @@ import {
   setSessionCookie,
   sanitizeMember,
   isModDiscordId,
+  hasDatabaseModeratorRole,
 } from '@/lib/auth';
 import { isValidTimezone, DAY_KEYS, type WeeklySchedule } from '@/lib/timezone';
 import { DateTime } from 'luxon';
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
     if (existingLinked) {
       // If already linked, directly issue rolling session cookie
       const isLiveMod = isModDiscordId(payload.discordId);
-      const isDbMod = existingLinked.role === 'moderator';
+      const isDbMod = hasDatabaseModeratorRole(existingLinked.role);
       const sessionToken = createSessionToken(
         {
           memberId: existingLinked.id,
