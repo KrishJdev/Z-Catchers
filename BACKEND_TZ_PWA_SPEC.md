@@ -270,7 +270,7 @@ The accountability system ensures members adhere to their bedtimes with automate
 * **Peer Strike Voting Removed:** Manual peer strike voting has been removed and disabled (`POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`). Regular members cannot vote to strike others.
 * **Strike thresholds:** Every third verified strike in a member’s local calendar month earns a distinct punishment. Automatic strikes continue beyond three.
 * **Metastrikes (Max 3 per calendar month):** Excused passes for unexpected or important events (e.g. Monthly Battle, Family Event, Birthday Celebration, Health Emergency).
-* **Monthly rollover:** Strike progress and Metastrike usage use the member’s local calendar month. The stored sleep-cycle date determines the strike month. Open tasks carry over.
+* **Monthly rollover:** Strike progress and Metastrike usage use the member’s local calendar month. The stored sleep-cycle date determines the strike month. Open tasks carry over. Progress reads use the pending timezone once its existing cooldown expires.
 
 #### 2. Timezone & 10-Minute Cutoff State Machine
 * **`BEDTIME_GRACE` ($0 \le \text{diffMinutes} \le 5$):**

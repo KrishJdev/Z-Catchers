@@ -16,6 +16,16 @@ RETURNS integer LANGUAGE sql STABLE SET search_path = '' AS $$
   WHERE member_id = p_member_id AND status IN ('pending', 'awaiting_assignment', 'assigned');
 $$;
 
+-- Use the already-effective timezone even if the schedule writer has not promoted it yet.
+CREATE OR REPLACE FUNCTION public.punishment_progress_month(m public.members, now_at timestamptz)
+RETURNS date LANGUAGE sql STABLE SET search_path = '' AS $$
+  SELECT date_trunc('month', now_at AT TIME ZONE public.strike_member_zone(
+    CASE WHEN m.pending_effective_at <= now_at
+      THEN COALESCE(NULLIF(m.pending_timezone, ''), m.timezone)
+      ELSE m.timezone END
+  ))::date;
+$$;
+
 CREATE OR REPLACE FUNCTION public.get_member_punishments(p_member_id uuid, p_discord_id text, p_details boolean)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
@@ -35,7 +45,7 @@ BEGIN
   open_count := public.count_open_punishments(m.id);
   IF NOT p_details THEN RETURN jsonb_build_object('open_count', open_count); END IF;
 
-  local_month := date_trunc('month', statement_timestamp() AT TIME ZONE public.strike_member_zone(m.timezone))::date;
+  local_month := public.punishment_progress_month(m, statement_timestamp());
   SELECT count(*) INTO total FROM public.verified_monthly_strikes(m, local_month);
   SELECT COALESCE(
     (SELECT used FROM public.strike_pass_months WHERE member_id = m.id AND strike_pass_months.month_start = local_month),
@@ -208,6 +218,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.require_punishment_visibility(), public.count_open_punishments(uuid),
+  public.punishment_progress_month(public.members,timestamptz),
   public.record_dated_strike_correction(uuid,date,text,text,text,uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.get_member_punishments(uuid,text,boolean),
   public.get_moderator_punishments(uuid,text,integer), public.update_punishment(uuid,text,text,text,text,date,uuid,text,uuid)

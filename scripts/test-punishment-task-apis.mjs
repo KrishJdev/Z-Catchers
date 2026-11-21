@@ -24,6 +24,20 @@ const { rows: members } = await db.query(`INSERT INTO public.members
   RETURNING id, discord_id, role, is_active`);
 const [member, other, dbMod, discordMod] = members;
 
+// At this instant Los Angeles is in November and Tokyo is in December.
+const boundary = '2026-11-30T23:30Z';
+const progressMonth = async effectiveAt => {
+  await db.query(`UPDATE public.members SET timezone = 'America/Los_Angeles',
+    pending_timezone = 'Asia/Tokyo', pending_effective_at = $2 WHERE id = $1`, [member.id, effectiveAt]);
+  const { rows: [{ month }] } = await db.query(`SELECT to_char(public.punishment_progress_month(m, $2), 'YYYY-MM') AS month
+    FROM public.members AS m WHERE m.id = $1`, [member.id, boundary]);
+  return month;
+};
+assert.equal(await progressMonth('2026-11-30T23:31Z'), '2026-11');
+assert.equal(await progressMonth(boundary), '2026-12');
+assert.equal(await progressMonth(null), '2026-11');
+await db.query(`UPDATE public.members SET timezone = 'UTC', pending_timezone = NULL WHERE id = $1`, [member.id]);
+
 await db.query(`INSERT INTO public.nightly_strike_logs
   (target_member_id, sleep_cycle_date, record_type, updated_at, replacement_until)
   VALUES ($1, '2026-11-01', 'strike', '2026-11-01T23:10Z', '2026-11-02T23:00Z'),
