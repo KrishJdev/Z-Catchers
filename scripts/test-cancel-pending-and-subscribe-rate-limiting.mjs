@@ -1,7 +1,3 @@
-import assert from 'assert';
-import fs from 'fs';
-import path from 'path';
-
 // Configure test environment variables prior to module imports
 if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = 'test';
@@ -48,7 +44,6 @@ async function run() {
   // In-memory mock database tables for offline deterministic execution
   const rateLimitsDb = new Map(); // key -> { key, count, window_start, expires_at }
   let currentMemberRow = null;
-  let pushSubs = [];
 
   // Setup universal table router for supabaseAdmin.from
   supabaseAdmin.from = (table) => {
@@ -154,146 +149,37 @@ async function run() {
       return builder;
     }
 
-    if (table === 'push_subscriptions') {
-      const builder = {
-        select: () => builder,
-        eq: () => builder,
-        maybeSingle: async () => ({ data: null, error: null }),
-        upsert: (record) => {
-          pushSubs.push(record);
-          return builder;
-        },
-        single: async () => ({ data: pushSubs[pushSubs.length - 1] || {}, error: null }),
-      };
-      return builder;
-    }
-
     return origFrom.call(supabaseAdmin, table);
   };
 
   try {
-    // -------------------------------------------------------------
-    // 1. Static AST / Code Inspection (Zero Non-Persistent Rate Limit Calls)
-    // -------------------------------------------------------------
-    console.log('--- 1. Static Verification: Enforce Persistent Rate Limiting Imports & Calls ---');
-
-    const cancelPendingCode = fs.readFileSync(
-      path.resolve(process.cwd(), 'src/app/api/members/cancel-pending/route.ts'),
-      'utf8'
-    );
-    const subscribeCode = fs.readFileSync(
-      path.resolve(process.cwd(), 'src/app/api/push/subscribe/route.ts'),
-      'utf8'
-    );
-
-    // Assert cancel-pending uses persistent imports
-    testAssert(
-      cancelPendingCode.includes('checkPinRateLimitPersistent') &&
-        cancelPendingCode.includes('recordPinFailurePersistent') &&
-        cancelPendingCode.includes('resetPinFailurePersistent'),
-      'cancel-pending imports persistent rate limiting functions from @/lib/rateLimit'
-    );
-    testAssert(
-      !cancelPendingCode.includes('checkPinRateLimit(') &&
-        !cancelPendingCode.includes('recordPinFailure(') &&
-        !cancelPendingCode.includes('resetPinFailure('),
-      'cancel-pending contains zero non-persistent rate limit calls'
-    );
+    const accountIp = '198.51.100.111';
+    const accountKey = 'member-rate-fixture';
+    await clearAllPinRateLimitsPersistent();
+    for (let i = 0; i < 5; i++) await recordPinFailurePersistent(accountIp, accountKey);
+    clearInMemoryPinRateLimits();
+    const blocked = await checkPinRateLimitPersistent(accountIp, accountKey);
+    testAssert(!blocked.allowed && blocked.retryAfterSeconds > 0, 'Account rate limit persists across instances');
+    await resetPinFailurePersistent(accountIp, accountKey);
+    testAssert(!rateLimitsDb.has(`target:${accountKey}`) && rateLimitsDb.has(`ip:${accountIp}`),
+      'Account reset clears the target while preserving the shared IP limit');
 
     const memberId = 'cancel-discord-member';
     currentMemberRow = { id: memberId, is_active: true, timezone: 'UTC' };
 
-    // 3. Cancel-Pending: Moderator Passcode Rate Limiting
-    // -------------------------------------------------------------
-    console.log('\n--- 3. Cancel-Pending: Moderator Passcode Persistent Rate Limiting ---');
+    // Retired credentials cannot cancel a pending change or hit the account rate limiter.
     await clearAllPinRateLimitsPersistent();
-    clearAllPinRateLimits();
     rateLimitsDb.clear();
-
-    const modClientIp = '203.0.113.88';
-    process.env.MOD_SECRET_PASSCODE = 'super_secret_fox_mod_2026';
-
-    // 3.1 Send 5 invalid moderator passcode attempts
-    for (let i = 1; i <= 5; i++) {
-      const req = new Request('http://localhost:3000/api/members/cancel-pending', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-forwarded-for': modClientIp,
-        },
-        body: JSON.stringify({
-          member_id: memberId,
-          mod_passcode: 'wrong_passcode_' + i,
-        }),
-      });
-
-      const res = await handleCancelPending(req);
-      testAssert(
-        res.status === 401 || res.status === 403 || res.status === 429,
-        `Mod attempt ${i}: Rejected with HTTP ${res.status}`
-      );
-    }
-
-    // Verify expected persisted rows in rateLimitsDb for moderator gate
-    const modIpRow = rateLimitsDb.get(`ip:${modClientIp}`);
-    const modTargetRow = rateLimitsDb.get(`target:mod_gate_ip:${modClientIp}`);
-    testAssert(
-      (modTargetRow && modTargetRow.count >= 5) || (modIpRow && modIpRow.count >= 5),
-      'rateLimitsDb contains persisted row with count>=5 for moderator attempt'
-    );
-
-    // Clear ONLY in-memory state before 6th attempt to verify persistent lockout lookup
-    clearInMemoryPinRateLimits();
-
-    // 3.2 6th attempt with mod_passcode must return HTTP 429
-    const reqModBlocked = new Request('http://localhost:3000/api/members/cancel-pending', {
+    const retired = 'retired-moderation-credential';
+    process.env.MOD_SECRET_PASSCODE = retired;
+    const retiredRequest = await handleCancelPending(new Request('http://localhost:3000/api/members/cancel-pending', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-forwarded-for': modClientIp,
-      },
-      body: JSON.stringify({
-        member_id: memberId,
-        mod_passcode: process.env.MOD_SECRET_PASSCODE,
-      }),
-    });
+      headers: { 'Content-Type': 'application/json', 'x-mod-passcode': retired },
+      body: JSON.stringify({ member_id: memberId, mod_passcode: retired }),
+    }));
+    testAssert(retiredRequest.status === 401, 'Retired credential cannot cancel a pending change');
+    testAssert(rateLimitsDb.size === 0, 'Retired credential does not consume account rate limits');
 
-    const resModBlocked = await handleCancelPending(reqModBlocked);
-    const jsonModBlocked = await resModBlocked.json();
-    testAssert(resModBlocked.status === 429, '6th moderator passcode attempt is blocked with HTTP 429 (persisted)');
-    testAssert(
-      jsonModBlocked.error && jsonModBlocked.error.includes('Too many failed moderator passcode attempts'),
-      'Returns moderator lockout message'
-    );
-    testAssert(
-      resModBlocked.headers.get('Retry-After') !== null,
-      'Response includes Retry-After header'
-    );
-
-    // 3.2b Cold instance test: Seed persisted moderator lockout directly without prior local memory
-    clearInMemoryPinRateLimits();
-    const coldModIp = '198.51.100.111';
-    rateLimitsDb.set(`target:mod_gate_ip:${coldModIp}`, {
-      key: `target:mod_gate_ip:${coldModIp}`,
-      count: 5,
-      window_start: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-    });
-    const reqColdMod = new Request('http://localhost:3000/api/members/cancel-pending', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-forwarded-for': coldModIp,
-      },
-      body: JSON.stringify({
-        member_id: memberId,
-        mod_passcode: process.env.MOD_SECRET_PASSCODE,
-      }),
-    });
-    const resColdMod = await handleCancelPending(reqColdMod);
-    testAssert(resColdMod.status === 429, 'Cold instance moderator request blocked with HTTP 429 from persisted row');
-
-    // -------------------------------------------------------------
     // Verify an unrelated member from an unrelated IP is NOT rate limited
     const otherRateCheck = await checkPinRateLimitPersistent('10.10.10.10', 'mem_unrelated_009');
     testAssert(otherRateCheck.allowed === true, 'Unrelated member and IP is allowed');

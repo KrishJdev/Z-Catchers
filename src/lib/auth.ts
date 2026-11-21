@@ -171,46 +171,6 @@ export function verifyPin(pin: string, storedHash: string | null, salt?: string)
 }
 
 /**
- * Verifies the master Moderator Secret Passcode using timing-safe comparison.
- */
-export function verifyModPasscode(passcode: string | null | undefined): boolean {
-  if (!passcode) return false;
-  try {
-    const defaultPasscode = process.env.NODE_ENV === 'production' ? null : 'cozyfox2026';
-    const modPasscode = (process.env.MOD_SECRET_PASSCODE || defaultPasscode)?.trim();
-    if (!modPasscode) {
-      console.warn('MOD_SECRET_PASSCODE is not set in production. Mod access disabled.');
-      return false;
-    }
-    const input = passcode.trim();
-
-    // Hash with sha256 to ensure equal length buffers and prevent timing attacks
-    const expectedHash = crypto.createHash('sha256').update(modPasscode).digest();
-    const actualHash = crypto.createHash('sha256').update(input).digest();
-
-    return crypto.timingSafeEqual(expectedHash, actualHash);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Checks whether a Discord Snowflake ID is registered in MOD_DISCORD_IDS.
- *
- * @param discordId - Discord snowflake ID
- * @returns True if ID is listed as moderator
- */
-export function isModDiscordId(discordId: string | null | undefined): boolean {
-  if (!discordId) return false;
-  const modIdsStr = process.env.MOD_DISCORD_IDS || '';
-  const modIds = modIdsStr
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return modIds.includes(discordId.trim());
-}
-
-/**
  * Configuration options for host header validation.
  */
 export interface TrustedHostOptions {
@@ -757,9 +717,7 @@ export function hasDatabaseModeratorRole(role: Member['role']): boolean {
  */
 export function sanitizeMember(member: Member): Member {
   const { passcode_hash, ...rest } = member;
-  const isMod = Boolean(
-    hasDatabaseModeratorRole(member.role) || isModDiscordId(member.discord_id)
-  );
+  const isMod = Boolean(member.is_active && member.discord_id && hasDatabaseModeratorRole(member.role));
   return {
     ...rest,
     is_moderator: isMod,
@@ -767,85 +725,63 @@ export function sanitizeMember(member: Member): Member {
   };
 }
 
-export interface ModAuthResult {
-  authorized: boolean;
-  moderatorId?: string;
-  moderatorRole?: 'master' | 'member_mod';
-  error?: string;
+export interface StaffActor {
+  id: string;
+  discordId: string;
+  role: 'owner' | 'moderator';
 }
 
-export function getModeratorPasscode(request: Request, supplied?: unknown): string | undefined {
-  const bodyPasscode = typeof supplied === 'string' ? supplied.trim() : '';
-  return bodyPasscode || request.headers.get('x-mod-passcode')?.trim() || undefined;
-}
-
-/**
- * Enforces strict server-side moderator session and passcode validation.
- * Supports verified Discord moderator sessions and master passcode fallback.
- * Eliminates legacy moderator PIN requirement.
- *
- * @param request - Incoming HTTP request
- * @param passcodeFromBody - Optional master passcode from request body
- * @returns ModAuthResult indicating authorization status
- */
-export async function verifyModeratorAuthorization(
-  request: Request,
-  passcodeFromBody?: string
-): Promise<ModAuthResult> {
-  // 1. Check Master Moderator Secret Passcode
-  const candidatePasscode = getModeratorPasscode(request, passcodeFromBody);
-
-  if (candidatePasscode) {
-    const isPasscodeMatch = verifyModPasscode(candidatePasscode);
-    if (isPasscodeMatch) {
-      return {
-        authorized: true,
-        moderatorId: 'master_mod',
-        moderatorRole: 'master',
-      };
-    }
-  }
-
-  return verifyModeratorSession(request);
-}
+export type ModAuthResult =
+  | { authorized: true; actor: StaffActor }
+  | { authorized: false; status: 401 | 403 | 503; error: string };
 
 export async function verifyModeratorSession(request: Request): Promise<ModAuthResult> {
   const session = getRequestSession(request);
-  if (session?.discordId) {
-    // Session token claims are used only for identity; always check live member record
-    // and current moderator eligibility (including active status and live MOD_DISCORD_IDS)
-    try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      if (url && key) {
-        const client = createClient(url, key, { auth: { persistSession: false } });
-        const { data: member } = await client
-          .from('members')
-          .select('id, role, is_active, discord_id')
-          .eq('id', session.memberId)
-          .single();
-
-        if (
-          member &&
-          member.is_active &&
-          member.discord_id === session.discordId &&
-          (hasDatabaseModeratorRole(member.role) || isModDiscordId(member.discord_id))
-        ) {
-          return {
-            authorized: true,
-            moderatorId: member.id,
-            moderatorRole: 'member_mod',
-          };
-        }
-      }
-    } catch {
-      // Continue to unauthorized response
-    }
+  if (!session?.discordId) {
+    return { authorized: false, status: 401, error: 'Sign in with your linked Discord account.' };
   }
 
-  return {
-    authorized: false,
-    error: 'Unauthorized: Active moderator session or master moderator secret passcode required.',
-  };
+  try {
+    const { isSupabaseConfigured, supabaseAdmin } = await import('@/lib/db');
+    if (isSupabaseConfigured) {
+      const { data: member, error } = await supabaseAdmin
+        .from('members')
+        .select('id, role, is_active, discord_id')
+        .eq('id', session.memberId)
+        .maybeSingle();
+
+      if (!error) {
+        if (!member?.is_active || member.discord_id !== session.discordId) {
+          return { authorized: false, status: 401, error: 'Sign in with your linked Discord account.' };
+        }
+        if (member.role === 'owner' || member.role === 'moderator') {
+          return { authorized: true, actor: { id: member.id, discordId: session.discordId, role: member.role } };
+        }
+        return { authorized: false, status: 403, error: 'Moderator access is required.' };
+      }
+    }
+  } catch {
+    // Deny access when a live role cannot be verified.
+  }
+  return { authorized: false, status: 503, error: 'Could not verify your moderator access. Try again.' };
+}
+
+export function canModerateTarget(actor: StaffActor, target: Pick<Member, 'id' | 'role'>): boolean {
+  return actor.id !== target.id &&
+    (target.role === 'member' || (actor.role === 'owner' && target.role === 'moderator'));
+}
+
+export function isSameOriginMutation(request: Request): boolean {
+  const fetchSite = request.headers.get('sec-fetch-site');
+  if (fetchSite === 'cross-site' || fetchSite === 'same-site') return false;
+  const origin = request.headers.get('origin');
+  if (origin === null) return true;
+
+  const url = new URL(request.url);
+  const host = request.headers.get('host');
+  if (host === null) return origin === url.origin;
+  // Next can replace the URL's hostname with the listening address.
+  const destination = sanitizeHostHeader(host);
+  return Boolean(destination && !host.includes(',') &&
+    origin === new URL(`${url.protocol}//${destination}`).origin);
 }

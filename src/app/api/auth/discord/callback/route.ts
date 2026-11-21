@@ -4,7 +4,6 @@ import {
   createSessionToken,
   setSessionCookie,
   createClaimToken,
-  isModDiscordId,
   hasDatabaseModeratorRole,
   getAppBaseUrl,
 } from '@/lib/auth';
@@ -152,7 +151,6 @@ export async function GET(request: Request) {
       discordUser.avatar,
       discordUser.discriminator
     );
-    const isModerator = isModDiscordId(discordId);
 
     // 3. Query existing member row in Supabase by discord_id
     const { data: existingMemberData, error: lookupError } = await supabaseAdmin
@@ -169,9 +167,7 @@ export async function GET(request: Request) {
     if (existingMemberData) {
       // Returning Discord Member: update Discord handle and avatar
       const member = existingMemberData as Member;
-      const isDbMod = hasDatabaseModeratorRole(member.role);
-      const isEnvMod = isModDiscordId(discordId);
-      const effectiveIsMod = isDbMod || isEnvMod;
+      const isModerator = hasDatabaseModeratorRole(member.role);
 
       await updateMemberSafe(member.id, {
         discord_username: member.discord_username || discordUsername,
@@ -185,7 +181,7 @@ export async function GET(request: Request) {
         {
           memberId: member.id,
           discordId,
-          isModerator: effectiveIsMod,
+          isModerator,
         },
         90
       );
@@ -211,7 +207,7 @@ export async function GET(request: Request) {
         discordUsername,
         discordHandle,
         avatarUrl,
-        isModerator,
+        isModerator: false,
       },
       60
     );

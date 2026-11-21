@@ -3,41 +3,20 @@ import {
   supabaseAdmin,
   Member,
   updateMemberSafe,
-  hydrateMemberWeekendHours,
   getMemberByIdSafe,
 } from '@/lib/db';
-import { sanitizeHostHeader, sanitizeMember, verifyModeratorAuthorization, verifyModeratorSession, getModeratorPasscode, getRequestSession, getRequestSessionMemberId, type ModAuthResult } from '@/lib/auth';
-import {
-  getClientIp,
-  checkPinRateLimitPersistent,
-  recordPinFailurePersistent,
-  resetPinFailurePersistent,
-  verifyRateLimitedModeratorPasscode,
-} from '@/lib/rateLimit';
+import { canModerateTarget, isSameOriginMutation, sanitizeMember, verifyModeratorSession, getRequestSession } from '@/lib/auth';
+import { staffIdentity, staffWriteError } from '@/lib/moderation';
+import { pendingScheduleSnapshot } from '@/lib/pendingSchedule';
 import { DEMO_SEED_FINGERPRINTS, isDemoSeedMember } from '@/lib/demoSeed';
 import { checkCooldownPromotion, getSleepCycleDate } from '@/lib/sleepEngine';
-import { isValidTimezone, formatGmtOffset, DAY_KEYS, type DayKey, type WeeklySchedule, type DailySchedule } from '@/lib/timezone';
+import { isValidTimezone, DAY_KEYS, type DayKey, type WeeklySchedule } from '@/lib/timezone';
 import { resolveMemberStrikeCounts, modAdjustStrikes, modClearStrikeLog } from '@/lib/strikes';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
-
-function hasSameOrigin(request: Request, origin: string): boolean {
-  const url = new URL(request.url);
-  const host = request.headers.get('host');
-  if (host === null) return origin === url.origin;
-
-  // Next can replace the URL's hostname with the listening address.
-  const destination = sanitizeHostHeader(host);
-  if (!destination || host.includes(',')) return false;
-  try {
-    return origin === new URL(`${url.protocol}//${destination}`).origin;
-  } catch {
-    return false;
-  }
-}
 
 async function setModerator(request: Request, body: Record<string, unknown>) {
   const session = getRequestSession(request);
@@ -77,38 +56,15 @@ async function setModerator(request: Request, body: Record<string, unknown>) {
 /**
  * GET: Fetch all members (including inactive and pending schedules) for moderator view.
  *
- * @param request - Incoming HTTP request with moderator credentials or session
+ * @param request - Incoming HTTP request with a linked Discord session
  * @returns JSON response containing list of all members
  */
 export async function GET(request: Request) {
   try {
-    const clientIp = getClientIp(request);
-    const sessionMemberId = getRequestSessionMemberId(request);
-    const modTarget = sessionMemberId ? `mod_member:${sessionMemberId}` : `mod_ip:${clientIp}`;
-
-    const rateCheck = await checkPinRateLimitPersistent(clientIp, modTarget);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-        },
-        {
-          status: 429,
-          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-        }
-      );
+    const auth = await verifyModeratorSession(request);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
-
-    const authResult = await verifyModeratorAuthorization(request);
-    if (!authResult.authorized) {
-      await recordPinFailurePersistent(clientIp, modTarget);
-      return NextResponse.json(
-        { error: authResult.error || 'Unauthorized: Invalid moderator passcode or session.' },
-        { status: 401 }
-      );
-    }
-
-    await resetPinFailurePersistent(clientIp, modTarget);
 
     // Fetch all members with service role (includes is_active = false)
     const { data: members, error } = await supabaseAdmin
@@ -124,8 +80,9 @@ export async function GET(request: Request) {
     const processedMembers: Member[] = [];
     for (const member of (members as Member[]) || []) {
       const { promoted, activeMember } = checkCooldownPromotion(member);
+      let rosterMember = member;
       if (promoted) {
-        await updateMemberSafe(member.id, {
+        const { data: saved } = await updateMemberSafe(member.id, {
           bedtime_local: activeMember.bedtime_local,
           wake_time_local: activeMember.wake_time_local,
           timezone: activeMember.timezone,
@@ -140,9 +97,10 @@ export async function GET(request: Request) {
           pending_weekly_schedule: null,
           pending_effective_at: null,
           updated_at: DateTime.utc().toISO() as string,
-        });
+        }, { conditions: { updated_at: member.updated_at, pending_effective_at: member.pending_effective_at } });
+        if (saved) rosterMember = saved;
       }
-      const hydrated = hydrateMemberWeekendHours(activeMember);
+      const hydrated = rosterMember;
       let strikeCounts;
       try {
         strikeCounts = await resolveMemberStrikeCounts(hydrated);
@@ -173,10 +131,10 @@ export async function GET(request: Request) {
 /**
  * POST: Moderator operations
  * Actions:
- * - 'verify': Check if passcode is valid
  * - 'approve_cooldown': Instantly promote a pending schedule change
  * - 'cancel_cooldown': Cancel a pending schedule change without altering current schedule
- * - 'edit_member': Directly modify member profile/schedule (bypasses 48h cooldown)
+ * - 'edit_member': Edit routine profile details
+ * - 'edit_schedule': Edit the active schedule immediately
  * - 'set_moderator': Promote or demote a roster member with a signed owner session
  * - 'toggle_active': Activate or deactivate a member
  * - 'delete_member': Permanently remove a member
@@ -190,14 +148,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const origin = request.headers.get('origin');
-    const fetchSite = request.headers.get('sec-fetch-site');
-    if ((origin !== null && !hasSameOrigin(request, origin)) ||
-        fetchSite === 'cross-site' || fetchSite === 'same-site') {
+    if (!isSameOriginMutation(request)) {
       return NextResponse.json({ error: 'Moderator actions require a same-origin request.' }, { status: 403 });
     }
 
     const body = await request.json();
-    const { action, mod_passcode } = body;
+    const { action } = body;
     if (action === 'set_moderator') {
       if (!origin) {
         return NextResponse.json({ error: 'Moderator assignment requires a same-origin request.' }, { status: 403 });
@@ -205,157 +161,41 @@ export async function POST(request: Request) {
       return await setModerator(request, body);
     }
 
-    const clientIp = getClientIp(request);
-    const sessionMemberId = getRequestSessionMemberId(request);
-    const candidatePasscode = getModeratorPasscode(request, mod_passcode);
-    let authResult: ModAuthResult;
-
-    if (candidatePasscode) {
-      const attempt = await verifyRateLimitedModeratorPasscode(candidatePasscode, clientIp, sessionMemberId);
-      if (attempt.unavailable) {
-        return NextResponse.json({ error: 'Could not verify moderator passcode. Try again.' }, { status: 503 });
-      }
-      if (attempt.retryAfterSeconds) {
-        return NextResponse.json(
-          { error: 'Too many failed moderator passcode attempts.' },
-          { status: 429, headers: { 'Retry-After': String(attempt.retryAfterSeconds) } }
-        );
-      }
-      if (!attempt.valid) {
-        return NextResponse.json({ error: 'Invalid moderator passcode.' }, { status: 401 });
-      }
-      authResult = { authorized: true, moderatorId: 'master_mod', moderatorRole: 'master' };
-    } else {
-      authResult = await verifyModeratorSession(request);
-      if (!authResult.authorized) {
-        return NextResponse.json({ error: authResult.error }, { status: 401 });
-      }
+    const auth = await verifyModeratorSession(request);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    const { actor } = auth;
+    const identity = staffIdentity(actor);
+    if (['toggle_active', 'delete_member', 'purge_seed_members', 'adjust_strikes', 'clear_strike_log'].includes(action) &&
+        actor.role !== 'owner') {
+      return NextResponse.json({ error: 'Owner access is required.' }, { status: 403 });
     }
 
-    // 1. Verify Passcode action
-    if (action === 'verify') {
-      return NextResponse.json({
-        success: true,
-        message: 'Moderator passcode verified successfully.',
-        moderatorId: authResult.moderatorId,
-        moderatorRole: authResult.moderatorRole,
+    if (action === 'approve_cooldown' || action === 'cancel_cooldown') {
+      const { member_id, expected_pending } = body;
+      if (!member_id || (action === 'approve_cooldown' &&
+          (!expected_pending || typeof expected_pending.pending_effective_at !== 'string' ||
+           !DateTime.fromISO(expected_pending.pending_effective_at).isValid))) {
+        return NextResponse.json({ error: 'Provide the member and the pending schedule you reviewed.' }, { status: 400 });
+      }
+
+      const { data, error } = await supabaseAdmin.rpc('moderate_roster_member', {
+        ...identity,
+        p_target_id: member_id,
+        p_action: action,
+        p_expected_pending: expected_pending ? pendingScheduleSnapshot(expected_pending) : null,
       });
-    }
-
-    // 2. Approve 48-Hour Cooldown Immediately
-    if (action === 'approve_cooldown') {
-      if (authResult.moderatorRole !== 'master') {
-        return NextResponse.json({ error: 'Enter the moderator secret passcode to approve a schedule early.' }, { status: 403 });
-      }
-      const { member_id } = body;
-      if (!member_id) {
-        return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
-      }
-
-      const { data: member, error: fetchErr } = await supabaseAdmin
-        .from('members')
-        .select('*')
-        .eq('id', member_id)
-        .single();
-
-      if (fetchErr || !member) {
-        return NextResponse.json({ error: 'Member not found' }, { status: 404 });
-      }
-      if (member.role === 'owner') {
-        return NextResponse.json({ error: 'The owner uses the self-service schedule cooldown.' }, { status: 403 });
-      }
-
-      if (!member.pending_effective_at || (!member.pending_bedtime_local && !member.pending_weekend_bedtime_local && !member.pending_weekly_schedule)) {
-        return NextResponse.json(
-          { error: 'Member does not have an active pending schedule change.' },
-          { status: 400 }
-        );
-      }
-
-      const nextWeekendBedtime =
-        member.pending_weekend_bedtime_local !== undefined
-          ? member.pending_weekend_bedtime_local
-          : member.weekend_bedtime_local;
-      const nextWeekendWakeTime =
-        member.pending_weekend_wake_time_local !== undefined
-          ? member.pending_weekend_wake_time_local
-          : member.weekend_wake_time_local;
-      const nextWeeklySchedule =
-        member.pending_weekly_schedule || member.weekly_schedule || null;
-
-      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, {
-        bedtime_local: member.pending_bedtime_local || member.bedtime_local,
-        wake_time_local: member.pending_wake_time_local || member.wake_time_local,
-        timezone: member.pending_timezone || member.timezone,
-        weekend_bedtime_local: nextWeekendBedtime,
-        weekend_wake_time_local: nextWeekendWakeTime,
-        weekly_schedule: nextWeeklySchedule,
-        pending_bedtime_local: null,
-        pending_wake_time_local: null,
-        pending_timezone: null,
-        pending_weekend_bedtime_local: null,
-        pending_weekend_wake_time_local: null,
-        pending_weekly_schedule: null,
-        pending_effective_at: null,
-        updated_at: DateTime.utc().toISO() as string,
-      }, { conditions: { role: member.role } });
-
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
-      }
-      if (!updated) {
-        return NextResponse.json({ error: 'The member changed. Refresh the roster and try again.' }, { status: 409 });
-      }
+      if (error || !data) return staffWriteError(error);
 
       return NextResponse.json({
         success: true,
-        message: `Approved schedule change for ${member.discord_username} immediately!`,
-        member: sanitizeMember(updated as Member),
+        message: action === 'approve_cooldown' ? 'Pending schedule approved.' : 'Pending schedule change cancelled.',
+        member: sanitizeMember(data),
       });
     }
 
-    // 3. Cancel / Reject Pending Cooldown
-    if (action === 'cancel_cooldown') {
-      const { member_id } = body;
-      if (!member_id) {
-        return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
-      }
-
-      const { data: member, error: fetchErr } = await getMemberByIdSafe(member_id);
-      if (fetchErr || !member) {
-        return NextResponse.json({ error: 'Member not found' }, { status: 404 });
-      }
-      if (member.role === 'owner') {
-        return NextResponse.json({ error: 'The owner account is protected.' }, { status: 403 });
-      }
-
-      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, {
-        pending_bedtime_local: null,
-        pending_wake_time_local: null,
-        pending_timezone: null,
-        pending_weekend_bedtime_local: null,
-        pending_weekend_wake_time_local: null,
-        pending_weekly_schedule: null,
-        pending_effective_at: null,
-        updated_at: DateTime.utc().toISO() as string,
-      }, { conditions: { role: member.role } });
-
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
-      }
-      if (!updated) {
-        return NextResponse.json({ error: 'The member changed. Refresh the roster and try again.' }, { status: 409 });
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: 'Pending schedule change cancelled.',
-        member: sanitizeMember(updated as Member),
-      });
-    }
-
-    // 4. Edit Member Directly (Bypasses 48-hour cooldown)
-    if (action === 'edit_member') {
+    if (action === 'edit_member' || action === 'edit_schedule') {
       if ('role' in body || 'is_moderator' in body) {
         return NextResponse.json({ error: 'Use set_moderator to change moderator access.' }, { status: 400 });
       }
@@ -385,8 +225,8 @@ export async function POST(request: Request) {
       if (fetchErr || !existing) {
         return NextResponse.json({ error: 'Member not found' }, { status: 404 });
       }
-      if (existing.role === 'owner') {
-        return NextResponse.json({ error: 'The owner account is protected.' }, { status: 403 });
+      if (!canModerateTarget(actor, existing)) {
+        return NextResponse.json({ error: 'You cannot manage this profile.' }, { status: 403 });
       }
 
       if (journal_url && !DISCORD_JOURNAL_REGEX.test(journal_url.trim())) {
@@ -554,8 +394,8 @@ export async function POST(request: Request) {
         const activeWakeTime = active?.wake_time || (weekend && existing.weekend_wake_time_local) || existing.wake_time_local;
         return targetWeeklySchedule[day].bedtime !== activeBedtime || targetWeeklySchedule[day].wake_time !== activeWakeTime;
       }));
-      if (scheduleChanged && authResult.moderatorRole !== 'master') {
-        return NextResponse.json({ error: 'Enter the moderator secret passcode to change a schedule immediately.' }, { status: 403 });
+      if (action === 'edit_member' && (hasScheduleUpdate || timezone !== undefined)) {
+        return NextResponse.json({ error: 'Use edit_schedule to change the active schedule.' }, { status: 400 });
       }
 
       const updates: Partial<Member> = {
@@ -566,15 +406,16 @@ export async function POST(request: Request) {
             : existing.discord_handle,
         journal_url: journal_url?.trim() || existing.journal_url,
         timezone: nextTimezone,
-        updated_at: DateTime.utc().toISO() as string,
       };
 
-      if (scheduleChanged && hasScheduleUpdate) {
-        updates.bedtime_local = syncBedtime;
-        updates.wake_time_local = syncWakeTime;
-        updates.weekend_bedtime_local = syncWeekendBedtime;
-        updates.weekend_wake_time_local = syncWeekendWakeTime;
-        updates.weekly_schedule = targetWeeklySchedule;
+      if (scheduleChanged) {
+        if (hasScheduleUpdate) {
+          updates.bedtime_local = syncBedtime;
+          updates.wake_time_local = syncWakeTime;
+          updates.weekend_bedtime_local = syncWeekendBedtime;
+          updates.weekend_wake_time_local = syncWeekendWakeTime;
+          updates.weekly_schedule = targetWeeklySchedule;
+        }
         updates.pending_bedtime_local = null;
         updates.pending_wake_time_local = null;
         updates.pending_timezone = null;
@@ -584,20 +425,14 @@ export async function POST(request: Request) {
         updates.pending_effective_at = null;
       }
 
-      if (nextTimezone !== existing.timezone) {
-        updates.pending_timezone = null;
-      }
-
-      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, updates, {
-        conditions: { role: existing.role },
+      const { data: updated, error } = await supabaseAdmin.rpc('moderate_roster_member', {
+        ...identity,
+        p_target_id: member_id,
+        p_action: action,
+        p_updates: updates,
+        p_expected_updated_at: existing.updated_at,
       });
-
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
-      }
-      if (!updated) {
-        return NextResponse.json({ error: 'The member changed. Refresh the roster and try again.' }, { status: 409 });
-      }
+      if (error || !updated) return staffWriteError(error);
 
       return NextResponse.json({
         success: true,
@@ -616,17 +451,10 @@ export async function POST(request: Request) {
         );
       }
 
-      const { data: updated, error: updateErr } = await updateMemberSafe(member_id, {
-        is_active,
-        updated_at: DateTime.utc().toISO() as string,
+      const { data: updated, error } = await supabaseAdmin.rpc('moderate_roster_member', {
+        ...identity, p_target_id: member_id, p_action: action, p_updates: { is_active },
       });
-
-      if (updateErr || !updated) {
-        return NextResponse.json(
-          { error: updateErr?.message || 'Failed to update member status' },
-          { status: updateErr?.code === 'PT403' ? 403 : 500 }
-        );
-      }
+      if (error || !updated) return staffWriteError(error);
 
       return NextResponse.json({
         success: true,
@@ -642,14 +470,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Missing member_id.' }, { status: 400 });
       }
 
-      const { error: delErr } = await supabaseAdmin
-        .from('members')
-        .delete()
-        .eq('id', member_id);
-
-      if (delErr) {
-        return NextResponse.json({ error: delErr.message }, { status: delErr.code === 'PT403' ? 403 : 500 });
-      }
+      const { error } = await supabaseAdmin.rpc('moderate_roster_member', {
+        ...identity, p_target_id: member_id, p_action: action,
+      });
+      if (error) return staffWriteError(error);
 
       return NextResponse.json({
         success: true,
@@ -671,8 +495,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: findErr.message }, { status: 500 });
       }
 
-      const seedIds = (candidates || []).filter(isDemoSeedMember).map((m: { id: string }) => m.id);
-      if (seedIds.length === 0) {
+      const verifiedDemoProfiles = (candidates || []).filter(isDemoSeedMember);
+      if (verifiedDemoProfiles.length === 0) {
         return NextResponse.json({
           success: true,
           message: 'No demo seed profiles found to purge.',
@@ -680,16 +504,11 @@ export async function POST(request: Request) {
         });
       }
 
-      const { data: deleted, error: purgeErr } = await supabaseAdmin
-        .from('members')
-        .delete()
-        .in('id', seedIds)
-        .neq('role', 'owner')
-        .select('id, discord_username');
-
-      if (purgeErr) {
-        return NextResponse.json({ error: purgeErr.message }, { status: 500 });
-      }
+      const { data: deleted, error: purgeErr } = await supabaseAdmin.rpc('purge_moderation_demo_members', {
+        ...identity,
+        p_profiles: verifiedDemoProfiles,
+      });
+      if (purgeErr) return staffWriteError(purgeErr);
 
       const count = deleted ? deleted.length : 0;
       return NextResponse.json({
@@ -718,9 +537,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Enter valid strike and Metastrike adjustments.' }, { status: 400 });
       }
 
-      const result = await modAdjustStrikes(member_id, strikes, passes, relative, authResult.moderatorId!);
+      const result = await modAdjustStrikes(member_id, strikes, passes, relative, actor);
       if (!result.success) {
-        return NextResponse.json({ error: result.error }, { status: 400 });
+        return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
       }
 
       return NextResponse.json({
@@ -740,24 +559,22 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
       }
 
-      let cycleDate = sleep_cycle_date;
-      if (!cycleDate) {
-        const { data: member, error: memberErr } = await getMemberByIdSafe(member_id);
-
-        if (memberErr || !member) {
-          return NextResponse.json({ error: 'Member not found' }, { status: 404 });
-        }
-
-        cycleDate = getSleepCycleDate(member as Member, DateTime.utc());
+      const { data: member, error: memberErr } = await getMemberByIdSafe(member_id, { requireFresh: true });
+      if (memberErr || !member) {
+        return NextResponse.json({ error: 'Member not found' }, { status: 404 });
       }
+      if (!canModerateTarget(actor, member)) {
+        return NextResponse.json({ error: 'You cannot manage this profile.' }, { status: 403 });
+      }
+      const cycleDate = sleep_cycle_date || getSleepCycleDate(member, DateTime.utc());
 
       if (!cycleDate) {
         return NextResponse.json({ error: 'Could not resolve sleep cycle date' }, { status: 400 });
       }
 
-      const result = await modClearStrikeLog(member_id, cycleDate, authResult.moderatorId!);
+      const result = await modClearStrikeLog(member_id, cycleDate, actor);
       if (!result.success) {
-        return NextResponse.json({ error: result.error }, { status: 400 });
+        return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
       }
 
       return NextResponse.json({

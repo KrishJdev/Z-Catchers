@@ -5,7 +5,6 @@ import { DateTime } from 'luxon';
 process.env.NODE_ENV = 'test';
 process.env.PIN_SALT = process.env.PIN_SALT || 'test-salt-secret-12345';
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret-at-least-32-chars-long-for-testing!!';
-process.env.MOD_SECRET_PASSCODE = process.env.MOD_SECRET_PASSCODE || 'test-mod-secret-passcode';
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://placeholder.supabase.co';
 process.env.SUPABASE_SERVICE_ROLE_KEY = '';
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'placeholder-anon-key';
@@ -16,7 +15,6 @@ const { createSessionToken } = await import('../src/lib/auth.ts');
 const { computeMemberState, getSleepCycleDate } = await import('../src/lib/sleepEngine.ts');
 const { GET: getStrikes, POST: postStrikeVote } = await import('../src/app/api/members/strikes/route.ts');
 const { POST: postMetastrike } = await import('../src/app/api/members/strikes/metastrike/route.ts');
-const { POST: postModAction } = await import('../src/app/api/mod/route.ts');
 const { issueAutomaticBedtimeStrike } = await import('../src/lib/strikes.ts');
 
 console.log('🧪 Starting Community Strikes & Metastrikes API Routes Verification...\n');
@@ -277,25 +275,6 @@ async function run() {
       body: JSON.stringify({ target_member_id: targetCharlie.id }),
     }));
     testAssert(resVoteProtected.status === 403, 'Peer strike voting remains disabled (403)');
-  }
-
-  // 6. Moderator Clear Strike Log & Override
-  console.log('\n--- 6. Moderator Clear Strike Log & Override ---');
-  {
-    const resClearMod = await postModAction(new Request('http://localhost:3000/api/mod', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'clear_strike_log',
-        mod_passcode: process.env.MOD_SECRET_PASSCODE,
-        member_id: targetCharlie.id,
-      }),
-    }));
-    testAssert(resClearMod.status === 200, 'Moderator clear_strike_log action succeeds with 200 OK');
-
-    const resGetAfterMod = await getStrikes(new Request(`http://localhost:3000/api/members/strikes?memberId=${targetCharlie.id}`, { headers: { Authorization: 'Bearer ' + charlieToken } }));
-    const dataAfterMod = await resGetAfterMod.json();
-    testAssert(dataAfterMod.is_metastrike_active === false, 'Moderator clear removed active metastrike log');
   }
 
   if (failed) {

@@ -156,6 +156,7 @@ export default function HomePage() {
   };
 
   const handleCloseModal = () => setActiveModal(null);
+  const refreshModerationAccess = useCallback(() => retrySessionCheck(attempt => attempt + 1), []);
 
   useEffect(() => {
     let isMounted = true;
@@ -1132,7 +1133,8 @@ export default function HomePage() {
 
       {/* Passcode-Protected Moderator Drawer */}
       <ModDrawer
-        isOpen={activeModal === 'mod'}
+        isOpen={activeModal === 'mod' && Boolean(currentUser?.is_moderator)}
+        onAccessChanged={refreshModerationAccess}
         onClose={handleCloseModal}
         viewerTimezone={viewerTimezone}
         onRosterChanged={fetchRoster}

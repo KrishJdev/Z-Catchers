@@ -3,6 +3,8 @@ import {
   supabaseAdmin,
   Member,
   updateMemberSafe,
+  removeInMemorySleepLog,
+  setInMemorySleepLog,
   upsertSleepLog,
   deleteSleepLog,
   getMemberByIdSafe,
@@ -10,7 +12,7 @@ import {
   isTestMemberFixture,
 } from '@/lib/db';
 import { DateTime } from 'luxon';
-import { ownsDiscordProfile, getRequestSessionMemberId, verifyModeratorAuthorization } from '@/lib/auth';
+import { authorizeProfileAction, staffIdentity, staffWriteError } from '@/lib/moderation';
 import {
   calculateSleepStreak,
   getSleepCycleDate,
@@ -114,14 +116,8 @@ export async function POST(request: Request) {
 
     const member = rawMember;
 
-    const sessionMemberId = getRequestSessionMemberId(request);
-    if (!member.is_active || (!ownsDiscordProfile(request, member) &&
-        !(await verifyModeratorAuthorization(request)).authorized)) {
-      return NextResponse.json(
-        { error: 'Sign in with the Discord account linked to this profile.', code: sessionMemberId ? 'FORBIDDEN' : 'UNAUTHORIZED' },
-        { status: sessionMemberId ? 403 : 401 }
-      );
-    }
+    const staff = await authorizeProfileAction(request, member);
+    if (staff instanceof Response) return staff;
 
     const nowUtc = DateTime.utc();
     const sleeperNow = nowUtc.setZone(toValidLuxonZone(member.timezone));
@@ -137,6 +133,46 @@ export async function POST(request: Request) {
 
     if (!localDate) {
       return NextResponse.json({ error: 'Failed to compute local date' }, { status: 500 });
+    }
+
+    if (staff) {
+      if (!['cancel', 'wake_up', 'check_in'].includes(action)) {
+        return NextResponse.json({ error: 'Unknown check-in action.' }, { status: 400 });
+      }
+      const isInBed = action === 'check_in';
+      const isWokeUp = action === 'wake_up';
+      const entry = isInBed ? {
+        target_bedtime: activeCheckinWindow.activeBedtimeLocal,
+        target_wake_time: activeCheckinWindow.activeWakeTimeLocal,
+        in_bed_at: nowUtc.toISO(),
+        in_bed_local_time: sleeperNow.toFormat('HH:mm'),
+        woke_up_at: null,
+        woke_up_local_time: null,
+        wake_source: null,
+        duration_minutes: null,
+        status: activeCheckinWindow.diffMinutes > 5 ? 'late' : 'on_time',
+      } : isWokeUp ? {
+        woke_up_at: nowUtc.toISO(),
+        woke_up_local_time: sleeperNow.toFormat('HH:mm'),
+        wake_source: 'button',
+      } : null;
+      const { data, error } = await supabaseAdmin.rpc('moderate_sleep', {
+        ...staffIdentity(staff), p_target_id: member.id,
+        p_action: action === 'cancel' ? 'cancel_checkin' : action,
+        p_cycle: localDate, p_now: nowUtc.toISO(), p_expected_updated_at: member.updated_at, p_entry: entry,
+      });
+      if (error || !data) return staffWriteError(error);
+      if (data.sleep_log) setInMemorySleepLog(data.sleep_log);
+      if (action === 'cancel') removeInMemorySleepLog(member.id, localDate);
+
+      const { data: logs } = await supabaseAdmin.from('notification_logs')
+        .select('local_date').eq('member_id', member.id).eq('notification_type', 'IN_BED_EARLY')
+        .order('local_date', { ascending: false }).limit(60);
+      return NextResponse.json({
+        success: true, action, local_date: localDate, is_in_bed: isInBed, is_woke_up: isWokeUp,
+        streak_days: calculateSleepStreak((logs ?? []).map(log => log.local_date), sleeperNow),
+        message: 'Sleep status updated.',
+      });
     }
 
     if (action === 'cancel') {

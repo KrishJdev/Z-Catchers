@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Member, getMemberByIdSafe } from '@/lib/db';
-import { getRequestSessionMemberId, ownsDiscordProfile, getModeratorPasscode, verifyModeratorSession } from '@/lib/auth';
+import { authorizeProfileAction } from '@/lib/moderation';
 import {
   activeStrikeLog,
   useProactiveMetastrike,
@@ -8,10 +8,6 @@ import {
   getRecentEligibleStrikeLog,
 } from '@/lib/strikes';
 import { getSleepCycleDate } from '@/lib/sleepEngine';
-import {
-  getClientIp,
-  verifyRateLimitedModeratorPasscode,
-} from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
 /**
@@ -31,7 +27,6 @@ export async function POST(request: Request) {
       member_id,
       action = 'proactive',
       reason,
-      mod_passcode,
       sleep_cycle_date,
     } = body;
 
@@ -47,36 +42,8 @@ export async function POST(request: Request) {
     }
 
     const member = rawMember as Member;
-    const sessionMemberId = getRequestSessionMemberId(request);
-    const candidatePasscode = getModeratorPasscode(request, mod_passcode);
-    let moderator: string | undefined;
-
-    if (candidatePasscode) {
-      const attempt = await verifyRateLimitedModeratorPasscode(candidatePasscode, getClientIp(request), sessionMemberId);
-      if (attempt.unavailable) {
-        return NextResponse.json({ error: 'Could not verify moderator passcode. Try again.' }, { status: 503 });
-      }
-      if (attempt.retryAfterSeconds) {
-        return NextResponse.json(
-          { error: 'Too many failed moderator passcode attempts.' },
-          { status: 429, headers: { 'Retry-After': String(attempt.retryAfterSeconds) } }
-        );
-      }
-      if (!attempt.valid) {
-        return NextResponse.json({ error: 'Invalid moderator passcode.' }, { status: 401 });
-      }
-      moderator = 'master_mod';
-    } else if (!ownsDiscordProfile(request, member)) {
-      const session = await verifyModeratorSession(request);
-      if (session.authorized) moderator = session.moderatorId;
-    }
-
-    if (!member.is_active || (!moderator && !ownsDiscordProfile(request, member))) {
-      return NextResponse.json(
-        { error: 'Sign in with the Discord account linked to this profile.', code: sessionMemberId ? 'FORBIDDEN' : 'UNAUTHORIZED' },
-        { status: sessionMemberId ? 403 : 401 }
-      );
-    }
+    const moderator = await authorizeProfileAction(request, member);
+    if (moderator instanceof Response) return moderator;
 
     const nowUtc = DateTime.utc();
     const cycleDate = getSleepCycleDate(member, nowUtc);
@@ -96,11 +63,11 @@ export async function POST(request: Request) {
         reason || (moderator ? 'Moderator Retroactive Excuse' : 'Converted from Strike'),
         targetCycleDate,
         nowUtc,
-        moderator
+        moderator ?? undefined
       );
 
       if (!result.success) {
-        return NextResponse.json({ error: result.error }, { status: result.reason === 'stale_strike_cycle_month' ? 409 : 400 });
+        return NextResponse.json({ error: result.error }, { status: result.status ?? (result.reason === 'stale_strike_cycle_month' ? 409 : 400) });
       }
 
       return NextResponse.json({
@@ -122,11 +89,11 @@ export async function POST(request: Request) {
       reason || (moderator ? 'Moderator Excused Pass' : 'Excused Night'),
       cycleDate,
       nowUtc,
-      moderator
+      moderator ?? undefined
     );
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: result.reason === 'stale_strike_cycle_month' ? 409 : 400 });
+      return NextResponse.json({ error: result.error }, { status: result.status ?? (result.reason === 'stale_strike_cycle_month' ? 409 : 400) });
     }
 
     return NextResponse.json({

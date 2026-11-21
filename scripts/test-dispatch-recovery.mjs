@@ -4,7 +4,6 @@ import { DateTime } from 'luxon';
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://unit.invalid';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only';
 process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'disabled';
-process.env.MOD_SECRET_PASSCODE = 'dispatcher-fixture-mod';
 const { fetchAllRows, supabaseAdmin } = await import('../src/lib/db.ts');
 const { Settings } = await import('../src/lib/sleepEngine.ts');
 const { acquireCronLock, clearAllCronLocks, executeNotificationDispatcher, getCronLock, recordCronLockDeliveredSub } = await import('../src/lib/cronDispatcher.ts');
@@ -573,7 +572,8 @@ assert.deepEqual(bedtimeStage().metadata.delivered_sub_ids, ['replacement-receip
 // Roster loading and alert resumption both isolate a failed monthly rollover.
 const badRollover = { ...primary, strike_cycle_month: '2026-11' };
 const goodRollover = { ...otherWindDown, strike_cycle_month: '2026-12' };
-tables.members = [badRollover, goodRollover];
+const staffProfile = { ...goodRollover, role: 'moderator', discord_id: '234567895678' };
+tables.members = [badRollover, staffProfile];
 tables.notification_logs = tables.members.map(member => ({
   member_id: member.id, notification_type: 'BEDTIME_HIT', local_date: '2026-12-01',
 }));
@@ -596,7 +596,7 @@ assert.equal(rosterMembers[0].strikes_used, undefined);
 assert.equal(rosterMembers[0].metastrikes_count, undefined);
 assert.equal(rosterMembers[1].strike_counts_unavailable, false);
 const modRoster = await getModRoster(new Request('http://localhost/api/mod', {
-  headers: { 'x-mod-passcode': process.env.MOD_SECRET_PASSCODE },
+  headers: { Cookie: 'zcatchers_session=' + createSessionToken({ memberId: staffProfile.id, discordId: staffProfile.discord_id }) },
 }));
 assert.equal(modRoster.status, 200);
 const modMembers = (await modRoster.json()).members;
