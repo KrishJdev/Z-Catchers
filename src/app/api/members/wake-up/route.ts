@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(targetMemberId);
+    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(targetMemberId, { requireFresh: true });
 
     if (memberErr || !rawMember) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });

@@ -1,4 +1,5 @@
 import { supabaseAdmin, isSupabaseConfigured } from './db.ts';
+import { verifyModPasscode } from '@/lib/auth';
 
 /**
  * Serverless-persistent sliding window rate limiter for PIN verification, sensitive auth gates,
@@ -65,6 +66,66 @@ export interface RateLimitResult {
     onfulfilled?: ((value: RateLimitResult) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null
   ): Promise<TResult1 | TResult2>;
+}
+
+/** Reserve an attempt before checking the master passcode across concurrent requests. */
+export async function verifyRateLimitedModeratorPasscode(
+  passcode: string,
+  clientIp: string,
+  memberId: string | null
+): Promise<{ valid: boolean; retryAfterSeconds?: number; unavailable?: boolean }> {
+  const keys = [`master-passcode:ip:${clientIp}`];
+  if (memberId) keys.push(`master-passcode:member:${memberId}`);
+  const client = getSupabase();
+  if (!client) {
+    if (process.env.NODE_ENV === 'production') return { valid: false, unavailable: true };
+    const now = Date.now();
+    const entries = keys.map(key => {
+      const current = pinRateLimits.get(key);
+      return current && now < current.resetAt ? current : { attempts: 0, resetAt: now + 15 * 60 * 1000 };
+    });
+    const retryAfterSeconds = Math.max(0, ...entries.map(entry => entry.attempts >= 5
+      ? Math.ceil((entry.resetAt - now) / 1000) : 0));
+    if (retryAfterSeconds) return { valid: false, retryAfterSeconds };
+
+    // There is no await between admission and verification in the offline implementation.
+    const valid = verifyModPasscode(passcode);
+    if (!valid) {
+      keys.forEach((key, index) => {
+        entries[index].attempts++;
+        pinRateLimits.set(key, entries[index]);
+      });
+    }
+    return { valid };
+  }
+
+  const reserve = (key: string, releaseWindow?: string) => client.rpc('reserve_moderator_passcode_attempt', {
+    p_key: key,
+    p_release_window: releaseWindow ?? null,
+  });
+  const reserved: Array<{ key: string; window: string }> = [];
+  const release = () => Promise.allSettled(reserved.map(({ key, window }) => reserve(key, window)));
+  try {
+    for (const key of keys) {
+      const { data, error } = await reserve(key);
+      if (error || !data) {
+        await release();
+        return { valid: false, unavailable: true };
+      }
+      if (!data.window_start) {
+        await release();
+        return { valid: false, retryAfterSeconds: data.retry_after };
+      }
+      reserved.push({ key, window: data.window_start });
+    }
+  } catch {
+    await release();
+    return { valid: false, unavailable: true };
+  }
+
+  const valid = verifyModPasscode(passcode);
+  if (valid) await release();
+  return { valid };
 }
 
 /**

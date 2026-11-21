@@ -36,7 +36,7 @@ async function run() {
   const origFrom = supabaseAdmin.from;
   let queries = [];
 
-  function installQueryStub(mockError = null) {
+  function installQueryStub(mockError = null, results = []) {
     queries = [];
     supabaseAdmin.from = (table) => {
       if (table === 'members') {
@@ -58,8 +58,13 @@ async function run() {
           this.filters.push({ col, val });
           return this;
         },
+        is(col, val) {
+          this.filters.push({ col, val });
+          return this;
+        },
+        select() { return this; },
         then(resolve) {
-          return Promise.resolve({ data: null, error: mockError }).then(resolve);
+          return Promise.resolve({ data: results.shift() ?? null, error: mockError }).then(resolve);
         },
       };
       queries.push(q);
@@ -334,6 +339,17 @@ async function run() {
       pushModalContent.includes("fetch('/api/push/test'"),
       'PushModal.tsx injects Authorization Bearer header into /api/push/test'
     );
+
+    // A retry for a revoked credential may only fall back to unprovisioned rows.
+    installQueryStub(null, [[], []]);
+    const retriedUnlink = await handleUnsubscribePost(new Request('http://localhost:3000/api/push/unsubscribe', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${aliceToken}` },
+      body: JSON.stringify({ endpoint: aliceEndpoint, rotation_credential: 'ab'.repeat(32) }),
+    }));
+    assert.equal(retriedUnlink.status, 200);
+    assert.equal(queries.length, 2);
+    assert.ok(queries[1].filters.some(filter => filter.col === 'rotation_digest' && filter.val === null));
 
     // -------------------------------------------------------------
     // 8. Database Error Handling

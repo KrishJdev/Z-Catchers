@@ -5,16 +5,19 @@ import { runInNewContext } from 'node:vm';
 
 let device;
 let dbCreated = false;
-const store = {
-  get() { return { result: structuredClone(device) }; },
-  put(value) { device = structuredClone(value); return {}; },
-};
 const db = {
   createObjectStore() {},
   close() {},
-  transaction() {
-    const transaction = { objectStore: () => store };
-    queueMicrotask(() => transaction.oncomplete());
+  transaction(_store, mode) {
+    let next;
+    const transaction = { objectStore: () => ({
+      get() { return { result: structuredClone(device) }; },
+      put(value) { next = structuredClone(value); return {}; },
+    }) };
+    queueMicrotask(() => {
+      if (mode === 'readwrite') device = next;
+      transaction.oncomplete();
+    });
     return transaction;
   },
 };
@@ -45,10 +48,18 @@ const broadcasts = [];
 runInNewContext(readFileSync('public/sw.js', 'utf8'), {
   indexedDB,
   crypto: webcrypto,
+  AbortController,
+  setTimeout: (callback, delay) => setTimeout(callback, delay === 6000 ? 10 : delay),
+  clearTimeout,
   fetch: async (path, init) => {
     const body = JSON.parse(init.body);
     requests.push({ path, body, credentials: init.credentials });
     if (body.rotation_credential) assert.equal(device.credential, body.rotation_credential, 'Credential is durable before sending');
+    if (nextResponse === 'timeout') return new Promise((resolve, reject) => {
+      init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+    });
+    if (nextResponse === 'missing' && body.old_endpoint) return Response.json({ code: 'binding_missing' }, { status: 409 });
+    if (nextResponse === 'legacy' && body.rotation_credential) return Response.json({ code: 'credential_required' }, { status: 401 });
     if (nextResponse === 'offline') throw new TypeError('Network unavailable');
     if (nextResponse === 'unauthorized') return Response.json({}, { status: 401 });
     if (nextResponse === 'server_error') return Response.json({}, { status: 503 });
@@ -57,7 +68,10 @@ runInNewContext(readFileSync('public/sw.js', 'utf8'), {
   self: {
     addEventListener: (name, listener) => listeners.set(name, listener),
     navigator: { userAgent: 'worker fixture' },
-    registration: { pushManager: { getSubscription: async () => browserSubscription } },
+    registration: { pushManager: {
+      getSubscription: async () => browserSubscription,
+      subscribe: async () => { throw new Error('Unexpected registration failure'); },
+    } },
     clients: { matchAll: async () => [{ postMessage: message => broadcasts.push(structuredClone(message)) }] },
   },
 });
@@ -111,6 +125,44 @@ assert.equal(requests.at(-1).body.notify_personal, undefined);
 assert.equal(device.endpoint, later.endpoint);
 assert.equal(device.repair, undefined);
 assert.equal(device.notifyPersonal, false);
+
+// A superseded browser event leaves the confirmed binding and repair status intact.
+await dispatch('pushsubscriptionchange', { oldSubscription: initial, newSubscription: replacement });
+assert.equal(device.endpoint, later.endpoint);
+assert.equal(device.repair, undefined);
+
+nextResponse = 'timeout';
+const stalledSync = action('sync');
+const queuedStatus = action('status');
+assert.equal((await stalledSync).success, false);
+assert.equal((await queuedStatus).repair, 'retry');
+assert.equal(device.endpoint, later.endpoint);
+assert.equal((await action('unlink')).success, false);
+assert.equal(device.credential, credential);
+
+// Missing server row enrolls the current browser endpoint with the last confirmed preferences.
+browserSubscription = replacement;
+nextResponse = 'missing';
+assert.equal((await action('sync')).success, true);
+assert.equal(device.endpoint, replacement.endpoint);
+assert.equal(requests.at(-1).body.old_endpoint, undefined);
+assert.equal(requests.at(-1).body.notify_personal, false);
+
+// A previously staged credential must not block legacy rotation.
+device.credentialConfirmed = false;
+nextResponse = 'legacy';
+await change(replacement, later);
+assert.equal(device.credentialConfirmed, false);
+assert.equal(device.endpoint, later.endpoint);
+assert.equal(requests.at(-2).body.rotation_credential, credential);
+assert.equal(requests.at(-1).body.rotation_credential, undefined);
+
+browserSubscription = null;
+await dispatch('pushsubscriptionchange', { oldSubscription: later });
+assert.equal(device.endpoint, later.endpoint);
+assert.equal(device.repair, 'retry');
+assert.equal(broadcasts.at(-1).active, false);
+browserSubscription = later;
 
 nextResponse = 'server_error';
 assert.equal((await action('unlink')).success, false);

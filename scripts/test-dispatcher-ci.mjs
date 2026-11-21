@@ -90,10 +90,10 @@ async function signIn(account, id, isModerator, role) {
   return cookieFrom(state, 'zcatchers_session');
 }
 
-async function post(path, cookie, body, expectedStatus = 200) {
+async function post(path, cookie, body, expectedStatus = 200, headers = {}) {
   const response = await fetch(appOrigin + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    headers: { 'Content-Type': 'application/json', Cookie: cookie, ...headers },
     body: JSON.stringify(body),
   });
   const payload = await response.json();
@@ -325,6 +325,12 @@ try {
   const callback = await discordCallback('newcomer');
   const join = new URL(callback.headers.get('location'));
   assert.equal(join.origin + join.pathname, appOrigin + '/join');
+  const onboardingCookie = cookieFrom(callback, 'zcatchers_claim_token');
+  await post('/api/auth/claim-profile', onboardingCookie, { ...profile, journal_url: 123 }, 400);
+  await post('/api/auth/claim-profile', onboardingCookie, { ...profile, wake_time_local: profile.bedtime_local }, 400);
+  await post('/api/auth/claim-profile', onboardingCookie, {
+    ...profile, weekly_schedule: { mon: { bedtime: 123, wake_time: '07:00' } },
+  }, 400);
   const { member: newcomer } = await post('/api/auth/claim-profile', cookieFrom(callback, 'zcatchers_claim_token'), {
     ...profile, timezone: 'UTC', claim_token: join.searchParams.get('claim_token'), option: 'new',
   }, 201);
@@ -360,8 +366,23 @@ try {
     assert.equal(verified.moderatorId, moderator.id);
     await post('/api/mod', cookie, { action: 'approve_cooldown', member_id: regularId }, 403);
     await post('/api/mod', cookie, {
-      action: 'edit_member', member_id: regularId, timezone: 'Asia/Kolkata',
+      action: 'edit_member', member_id: regularId, timezone: profile.timezone === 'Asia/Kolkata' ? 'UTC' : 'Asia/Kolkata',
     }, 403);
+    if (account === 'database-mod') {
+      const failedAttemptIp = '203.0.113.42';
+      const responses = await Promise.all(Array.from({ length: 8 }, () => fetch(appOrigin + '/api/mod', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie, 'x-forwarded-for': failedAttemptIp },
+        body: JSON.stringify({ action: 'approve_cooldown', member_id: regularId, mod_passcode: 'incorrect' }),
+      })));
+      assert.deepEqual(responses.map(result => result.status).sort(), [401, 401, 401, 401, 401, 429, 429, 429]);
+      assert.ok(responses.find(result => result.status === 429).headers.get('Retry-After'));
+      await post('/api/mod', cookie, { action: 'verify' });
+      await post('/api/members/strikes/metastrike', cookie, { member_id: regularId, mod_passcode: '' },
+        429, { 'x-mod-passcode': moderatorPasscode, 'x-forwarded-for': '203.0.113.43' });
+      await post('/api/mod', regularCookie, { action: 'verify', mod_passcode: moderatorPasscode },
+        429, { 'x-forwarded-for': failedAttemptIp });
+    }
   }
 
   const previousBedtime = local.minus({ minutes: 16 }).toFormat('HH:mm');
@@ -407,6 +428,11 @@ try {
   await post('/api/mod', '', {
     action: 'approve_cooldown', member_id: regularId, mod_passcode: moderatorPasscode,
   });
+
+  const { data: approved } = await db.from('members').select('bedtime_local,pending_effective_at')
+    .eq('id', regularId).single().throwOnError();
+  assert.equal(approved.bedtime_local.slice(0, 5), profile.bedtime_local);
+  assert.equal(approved.pending_effective_at, null);
 
   const subscribePath = '/api/push/subscribe';
   const pushPayload = (endpoint) => ({

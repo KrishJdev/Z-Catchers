@@ -391,6 +391,8 @@ async function run() {
     );
 
     // 5C. /api/auth/login and /api/auth/register legacy redirect poisoning defense
+    const compatibilityOrigin = 'https://z-catchers.vercel.app';
+    process.env.NEXT_PUBLIC_APP_URL = compatibilityOrigin;
     const poisonLoginReq = new Request('https://z-catchers.vercel.app/api/auth/login', {
       headers: {
         'x-forwarded-host': 'attacker-phishing.com',
@@ -405,7 +407,7 @@ async function run() {
       'GET /api/auth/login redirect does NOT contain attacker-phishing.com'
     );
     assert(
-      loginLoc.endsWith('/join'),
+      loginLoc === compatibilityOrigin + '/join',
       'GET /api/auth/login redirects to canonical /join'
     );
 
@@ -423,11 +425,14 @@ async function run() {
       'GET /api/auth/register redirect does NOT contain attacker-phishing.com'
     );
     assert(
-      regLoc.endsWith('/join'),
+      regLoc === compatibilityOrigin + '/join',
       'GET /api/auth/register redirects to canonical /join'
     );
 
   } finally {
+    if (origAppUrl !== undefined) process.env.NEXT_PUBLIC_APP_URL = origAppUrl;
+    else delete process.env.NEXT_PUBLIC_APP_URL;
+
     if (origClientId !== undefined) process.env.DISCORD_CLIENT_ID = origClientId;
     else delete process.env.DISCORD_CLIENT_ID;
 

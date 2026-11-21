@@ -320,9 +320,21 @@ function withPushBinding(task) {
   return result;
 }
 
+async function requestPushApi(path, options, parseBody = false) {
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), 6000);
+  try {
+    const response = await fetch(path, { ...options, signal: controller.signal });
+    const data = parseBody ? await response.json().catch(() => ({})) : undefined;
+    return { response, data };
+  } finally {
+    clearTimeout(deadline);
+  }
+}
+
 async function sendPushBinding(subscription, binding, details) {
   try {
-    const response = await fetch('/api/push/subscribe', {
+    const { response, data } = await requestPushApi('/api/push/subscribe', {
       method: 'POST',
       credentials: details.background ? 'omit' : 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -333,11 +345,11 @@ async function sendPushBinding(subscription, binding, details) {
         rotation_credential: binding.credential,
         user_agent: self.navigator.userAgent,
       }),
-    });
-    const data = await response.json().catch(() => ({}));
+    }, true);
     if (!response.ok || !data.success) {
       return {
         success: false,
+        code: data.code,
         confirmedEndpoint: data.confirmedEndpoint,
         error: data.error || 'Could not sync device alerts. Try again.',
         repair: response.status === 401 || response.status === 403 ? 'sign_in' : 'retry',
@@ -366,7 +378,7 @@ self.addEventListener('message', event => {
     if (action === 'unlink') {
       const endpoint = binding.endpoint || subscription?.endpoint;
       if (endpoint || binding.credential) {
-        const response = await fetch('/api/push/unsubscribe', {
+        const { response } = await requestPushApi('/api/push/unsubscribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ endpoint, rotation_credential: binding.credential, member_id: memberId }),
@@ -403,7 +415,16 @@ self.addEventListener('message', event => {
     await save(staged);
     const details = { member_id: memberId, notify_personal: notifyPersonal, notify_community: notifyCommunity };
     let result = await sendPushBinding(subscription.toJSON(), staged, details);
-    if (result.confirmedEndpoint && result.confirmedEndpoint !== staged.endpoint) {
+    if (result.code === 'binding_missing') {
+      const current = await self.registration.pushManager.getSubscription();
+      if (current?.endpoint === subscription.endpoint) {
+        result = await sendPushBinding(current.toJSON(), { ...staged, endpoint: undefined }, {
+          ...details,
+          notify_personal: notifyPersonal ?? saved.notifyPersonal,
+          notify_community: notifyCommunity ?? saved.notifyCommunity,
+        });
+      }
+    } else if (result.confirmedEndpoint && result.confirmedEndpoint !== staged.endpoint) {
       const current = await self.registration.pushManager.getSubscription();
       if (current?.endpoint === subscription.endpoint) {
         result = await sendPushBinding(current.toJSON(), { ...staged, endpoint: result.confirmedEndpoint }, details);
@@ -416,6 +437,7 @@ self.addEventListener('message', event => {
     await save({
       memberId,
       credential,
+      credentialConfirmed: true,
       endpoint: subscription.endpoint,
       notifyPersonal: result.notifyPersonal,
       notifyCommunity: result.notifyCommunity,
@@ -433,8 +455,6 @@ self.addEventListener('pushsubscriptionchange', event => {
 
     const previous = binding.endpoint || event.oldSubscription?.endpoint;
     const staged = { ...binding, endpoint: previous };
-    await save({ ...staged, repair: 'retry' });
-
     let subscription;
     try {
       subscription = event.newSubscription || await self.registration.pushManager.getSubscription();
@@ -442,23 +462,35 @@ self.addEventListener('pushsubscriptionchange', event => {
         subscription = await self.registration.pushManager.subscribe(event.oldSubscription.options);
       }
     } catch {
-      return;
+      subscription = null;
     }
     if (!subscription || !previous) {
+      await save({ ...staged, repair: 'retry' });
       await notifyPushBindingChanged(false);
       return;
     }
     // A queued event may already have been superseded by a foreground sync.
     const browserSubscription = await self.registration.pushManager.getSubscription();
     if (browserSubscription && browserSubscription.endpoint !== subscription.endpoint) return;
-    const result = await sendPushBinding(subscription.toJSON(), staged, { background: true });
+    let usedCredential = Boolean(staged.credential);
+    let result = await sendPushBinding(subscription.toJSON(), staged, { background: true });
+    if (usedCredential && !staged.credentialConfirmed && result.code === 'credential_required') {
+      usedCredential = false;
+      result = await sendPushBinding(subscription.toJSON(), { ...staged, credential: undefined }, { background: true });
+    }
     if (!result.success) {
       await save({ ...staged, repair: result.repair });
       await notifyPushBindingChanged(false);
       return;
     }
     const { repair, ...confirmed } = staged;
-    await save({ ...confirmed, endpoint: subscription.endpoint });
+    await save({
+      ...confirmed,
+      credentialConfirmed: usedCredential,
+      endpoint: subscription.endpoint,
+      notifyPersonal: result.notifyPersonal,
+      notifyCommunity: result.notifyCommunity,
+    });
     await notifyPushBindingChanged(true);
   }).catch(() => {}));
 });

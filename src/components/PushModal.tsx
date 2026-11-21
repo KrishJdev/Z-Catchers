@@ -58,8 +58,8 @@ export function PushModal({
   onLogout,
 }: PushModalProps) {
   const [repair, setRepair] = useState<'sign_in' | 'retry'>();
-  const [notifyPersonal, setNotifyPersonal] = useState<boolean>(true);
-  const [notifyCommunity, setNotifyCommunity] = useState<boolean>(true);
+  const [savedPreferences, setSavedPreferences] = useState<{ notifyPersonal?: boolean; notifyCommunity?: boolean }>({});
+  const [preferenceEdits, setPreferenceEdits] = useState<{ notifyPersonal?: boolean; notifyCommunity?: boolean }>({});
   const [loading, setLoading] = useState<boolean>(false);
   const [testLoading, setTestLoading] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
@@ -75,6 +75,9 @@ export function PushModal({
   const memberId = currentUser?.id;
 
   useEffect(() => {
+    setRepair(undefined);
+    setSavedPreferences({});
+    setPreferenceEdits({});
     if (!isOpen || !isPushSupported()) return;
     let active = true;
     const refreshStatus = async () => {
@@ -82,8 +85,7 @@ export function PushModal({
       if (!active) return;
       setRepair(status.memberId && status.memberId !== memberId ? 'sign_in' : status.repair);
       if (status.memberId === memberId && memberId) {
-        setNotifyPersonal(status.notifyPersonal ?? true);
-        setNotifyCommunity(status.notifyCommunity ?? true);
+        setSavedPreferences({ notifyPersonal: status.notifyPersonal, notifyCommunity: status.notifyCommunity });
       }
     };
     const onMessage = (event: MessageEvent) => {
@@ -121,8 +123,7 @@ export function PushModal({
 
     const result = await subscribeToPush({
       memberId: currentUser.id,
-      notifyPersonal,
-      notifyCommunity,
+      ...preferenceEdits,
     });
 
     setLoading(false);
@@ -148,17 +149,29 @@ export function PushModal({
       onOpenLogin?.();
       return;
     }
+    if (repair === 'sign_in') {
+      onLogout?.();
+      return;
+    }
+    const currentPermission = getNotificationPermission();
+    if (currentPermission === 'denied') {
+      setFeedback({ type: 'error', message: 'Allow notifications in your browser settings, then retry.' });
+      return;
+    }
     setLoading(true);
-    const synced = await syncPushSubscriptionHealth();
+    const result = currentPermission === 'default'
+      ? await subscribeToPush({ memberId })
+      : { success: await syncPushSubscriptionHealth(), error: undefined };
     const status = await getPushDeviceStatus();
+    const repairReason = status.memberId && status.memberId !== memberId ? 'sign_in' : status.repair;
     setLoading(false);
-    onPushStateChanged(synced);
-    setRepair(synced ? undefined : status.repair || 'retry');
-    setFeedback(synced ? { type: 'success', message: 'Device alerts repaired.' } : {
+    onPushStateChanged(result.success);
+    setRepair(result.success ? undefined : repairReason || 'retry');
+    setFeedback(result.success ? { type: 'success', message: 'Device alerts repaired.' } : {
       type: 'error',
-      message: status.repair === 'sign_in'
+      message: repairReason === 'sign_in'
         ? 'Sign in again with the Discord account that linked this device.'
-        : 'Could not repair device alerts. Try again when online.',
+        : result.error || 'Could not repair device alerts. Try again when online.',
     });
   };
 
@@ -296,9 +309,9 @@ export function PushModal({
 
         {repair && (
           <div role="status" className="mb-4 rounded-xl border border-status-amber/40 bg-status-amber/10 p-3.5 text-xs text-cream-secondary">
-            <p>Device alerts need repair. {repair === 'sign_in' ? 'Sign out and sign back in with the Discord account that linked this device.' : 'Retry when you’re online.'}</p>
+            <p>Device alerts need repair. {repair === 'sign_in' ? 'Sign out and sign back in with the Discord account that linked this device.' : permission === 'denied' ? 'Allow notifications in your browser settings, then retry.' : 'Retry when you’re online.'}</p>
             <button type="button" disabled={loading} onClick={handleRepairPush} className="min-h-[44px] text-status-amber font-semibold disabled:opacity-50">
-              {currentUser ? 'Retry alert sync' : 'Sign in with Discord'}
+              {!currentUser ? 'Sign in with Discord' : repair === 'sign_in' ? 'Sign out' : permission === 'default' ? 'Allow notifications and retry' : 'Retry alert sync'}
             </button>
           </div>
         )}
@@ -388,8 +401,11 @@ export function PushModal({
           <label className="flex items-start gap-3 rounded-xl border border-night-border bg-night-bg/60 p-3 cursor-pointer hover:bg-night-bg transition-colors min-h-[44px]">
             <input
               type="checkbox"
-              checked={notifyPersonal}
-              onChange={(e) => setNotifyPersonal(e.target.checked)}
+              checked={preferenceEdits.notifyPersonal ?? savedPreferences.notifyPersonal ?? true}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setPreferenceEdits(previous => ({ ...previous, notifyPersonal: checked }));
+              }}
               className="mt-0.5 h-4 w-4 rounded border-night-border bg-night-elevated text-status-amber focus:ring-0"
             />
             <div>
@@ -406,8 +422,11 @@ export function PushModal({
           <label className="flex items-start gap-3 rounded-xl border border-night-border bg-night-bg/60 p-3 cursor-pointer hover:bg-night-bg transition-colors min-h-[44px]">
             <input
               type="checkbox"
-              checked={notifyCommunity}
-              onChange={(e) => setNotifyCommunity(e.target.checked)}
+              checked={preferenceEdits.notifyCommunity ?? savedPreferences.notifyCommunity ?? true}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setPreferenceEdits(previous => ({ ...previous, notifyCommunity: checked }));
+              }}
               className="mt-0.5 h-4 w-4 rounded border-night-border bg-night-elevated text-status-amber focus:ring-0"
             />
             <div>

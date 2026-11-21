@@ -47,11 +47,13 @@ export async function POST(request: Request) {
 
     let delivered = 0;
     let failed = 0;
-    const deadEndpoints: string[] = [];
+    let cleaned = 0;
 
     for (const target of targets) {
       const result = await sendPushNotification(
         {
+          id: target.id,
+          rotationDigest: target.rotation_digest,
           endpoint: target.endpoint,
           keys: {
             p256dh: target.p256dh_key,
@@ -69,22 +71,15 @@ export async function POST(request: Request) {
         delivered++;
       } else {
         failed++;
-        if (result.statusCode === 404 || result.statusCode === 410) {
-          deadEndpoints.push(target.endpoint);
-        }
+        if (result.pruned) cleaned++;
       }
-    }
-
-    // Clean up expired or dead subscriptions
-    if (deadEndpoints.length > 0) {
-      await supabaseAdmin.from('push_subscriptions').delete().eq('member_id', session.memberId).in('endpoint', deadEndpoints);
     }
 
     return NextResponse.json({
       success: delivered > 0,
       delivered,
       failed,
-      cleaned: deadEndpoints.length,
+      cleaned,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal push error';

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { FoxMascot } from './FoxMascot';
 import { Member } from '@/lib/db';
 import { DateTime } from 'luxon';
@@ -96,10 +96,16 @@ export function MyScheduleModal({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const activeMember = currentUser;
+  const draftMemberId = useRef<string | null>(null);
 
   // Populate the schedule editor for the signed-in member.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !activeMember) {
+      draftMemberId.current = null;
+      return;
+    }
+    if (draftMemberId.current === activeMember.id) return;
+    draftMemberId.current = activeMember.id;
 
     if (activeMember) {
       setUsername(activeMember.discord_username);

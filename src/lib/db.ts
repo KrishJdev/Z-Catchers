@@ -715,7 +715,7 @@ export function clearInMemoryMembers(): void {
 export async function getMemberByIdSafe(
   memberId: string, options: { requireFresh?: boolean } = {}
 ): Promise<{ data: Member | null; error: any }> {
-  if (!options.requireFresh && isTestMemberFixture(memberId)) {
+  if ((!options.requireFresh || process.env.NODE_ENV === 'test') && isTestMemberFixture(memberId)) {
     const inMem = memoryMembers.get(memberId);
     if (inMem) {
       return { data: inMem, error: null };

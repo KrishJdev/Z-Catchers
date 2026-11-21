@@ -9,6 +9,7 @@ const failures: Record<string, { status: number; message: string }> = {
   credential_required: { status: 401, message: 'Sign in with Discord to repair alerts on this device.' },
   inactive_owner: { status: 403, message: 'This subscription requires its active Discord account.' },
   endpoint_conflict: { status: 409, message: 'This push endpoint is already linked to a device.' },
+  binding_missing: { status: 409, message: 'The previous device binding expired. Retry notification setup.' },
   stale_endpoint: { status: 409, message: 'This device changed its subscription. Retry notification setup.' },
 };
 

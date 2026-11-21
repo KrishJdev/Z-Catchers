@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required field: memberId' }, { status: 400 });
     }
 
-    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(memberId);
+    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(memberId, { requireFresh: true });
 
     if (memberErr || !rawMember) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });

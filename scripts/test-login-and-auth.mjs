@@ -462,27 +462,24 @@ async function run() {
     assert(isModDiscordId(decodedClaim.discordId) === false, 'Live allowlist correctly marks revoked ID as non-moderator');
 
     if (isSupabaseConfigured && newMember?.id) {
-      // Verify session with stale token claims rejected by verifyModeratorAuthorization when member is not mod
-      const staleSessionToken = createSessionToken(
-        {
+      const initialAllowlist = process.env.MOD_DISCORD_IDS;
+      try {
+        process.env.MOD_DISCORD_IDS = newMember.discord_id;
+        const staleSessionToken = createSessionToken({
           memberId: newMember.id,
-          discordId: nonModDiscordId,
-          isModerator: true, // Stale token claims isModerator: true
-        },
-        90
-      );
-
-      const testReq = new Request('http://localhost:3000/api/mod', {
-        headers: {
-          cookie: `zcatchers_session=${staleSessionToken}`,
-        },
-      });
-
-      const modAuthResult = await verifyModeratorAuthorization(testReq);
-      assert(
-        modAuthResult.authorized === false,
-        'verifyModeratorAuthorization ignores stale isModerator session claim and checks live DB/allowlist'
-      );
+          discordId: newMember.discord_id,
+          isModerator: true,
+        }, 90);
+        const request = new Request('http://localhost:3000/api/mod', {
+          headers: { cookie: `zcatchers_session=${staleSessionToken}` },
+        });
+        assert((await verifyModeratorAuthorization(request)).authorized, 'The linked identity starts allowlisted');
+        process.env.MOD_DISCORD_IDS = '';
+        assert(!(await verifyModeratorAuthorization(request)).authorized, 'Revoking the allowlist denies the same linked Discord session');
+      } finally {
+        if (initialAllowlist === undefined) delete process.env.MOD_DISCORD_IDS;
+        else process.env.MOD_DISCORD_IDS = initialAllowlist;
+      }
     }
 
     // 5. Rolling Renewal Simulation on /api/auth/me

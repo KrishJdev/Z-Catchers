@@ -33,7 +33,7 @@ Members of an international Discord community want to keep each other accountabl
 
 4. **The Action (Discord Redirect):** Tapping the notification or the member's card opens their specific Discord Journal thread directly in the Discord app so friends can tell them goodnight or nag them off their screens.
 
-5. **Anti-Cheat Governance (48-Hour Cooldown):** To stop members from pushing their bedtime back 5 minutes before midnight to dodge nagging, any self-service schedule edit enters a **48-hour pending state** before becoming active. Moderators can add/remove members or override changes immediately.
+5. **Anti-Cheat Governance (48-Hour Cooldown):** To stop members from pushing their bedtime back 5 minutes before midnight to dodge nagging, any self-service schedule edit enters a **48-hour pending state** before becoming active. Moderators can remove members or override schedule changes immediately with the master passcode.
 
 6. **Monthly Strikes & Metastrikes Accountability System:**
    * **Strikes (Max 3 per month):** The dispatcher issues one strike for a missed check-in starting ten minutes after the scheduled bedtime.
@@ -350,7 +350,7 @@ Manual push nags require an active member session. Each sender, target, sleep cy
 
 * First-time members use `/join` and Discord OAuth to create a profile. Returning members sign in to the profile already linked to their Discord ID. Member writes require the active profile's linked Discord session.
 * Members can update their display name or journal link immediately. A change to an existing sleep schedule or timezone queues for 48 hours and the member can cancel it before it takes effect.
-* Moderator sessions are checked against the active profile's database role and the current `MOD_DISCORD_IDS` allowlist. Immediate schedule edits and early approvals also require `MOD_SECRET_PASSCODE`.
+* An active linked profile qualifies for moderator access if its database role is `moderator` or its Discord ID is on the current `MOD_DISCORD_IDS` allowlist. Immediate schedule edits and early approvals also require `MOD_SECRET_PASSCODE`.
 * A signed-in member links each device to their profile. The device's service worker uses its own rotation credential to recover updates after the Discord session expires.
 
 ### 5.6 Monthly Strikes & Metastrikes Accountability Engine
@@ -478,7 +478,7 @@ Follow these exact milestones in order. Verify each milestone compiles and passe
 
    * `POST /api/members/update-schedule` — Validates Discord profile ownership and writes to `pending_*` with `now + 48h`. If moderator passcode provided, writes directly to active columns.
 
-   * `POST /api/mod/members` — Moderator CRUD (Add member, delete member, approve pending cooldown immediately).
+   * `POST /api/mod` — Moderator roster management and master-passcode approval of pending schedules. New profiles are created through Discord onboarding.
 
 ### Milestone 3: Warm Dark UI, Responsive Desktop Dashboard & Sleepy Fox Mascot
 
@@ -500,7 +500,7 @@ Follow these exact milestones in order. Verify each milestone compiles and passe
 
 1. Build the **"My Schedule"** modal/tab (centered dialog on desktop, bottom sheet on mobile) where a signed-in member updates their Discord Journal thread URL, or requests a bedtime change (with a clear warning that bedtime edits take **48 hours** to take effect).
 
-2. Build the **"Mod Panel"** modal/tab unlocked via the Moderator Passcode, allowing instant member creation, removal, and one-click approval of pending 48-hour cooldowns.
+2. Build the **"Mod Panel"** modal/tab for eligible moderators to manage and remove roster members and approve pending schedules with the master passcode. Members create their own profiles through Discord onboarding.
 
 ### Milestone 5: PWA Configuration, Fox Mascot Assets & Web Push Notifications
 

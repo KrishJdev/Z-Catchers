@@ -323,13 +323,14 @@ async function run() {
     // -------------------------------------------------------------
     // A retired PIN cannot claim or change an unlinked row.
     currentMemberRow = { ...unclaimedMember };
+    const beforeLegacy = structuredClone(currentMemberRow);
     const legacy = await handleUpdateSchedule(new Request('http://localhost:3000/api/members/update-schedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ member_id: unclaimedMember.id, pin: '5555', bedtime_local: '01:00' }),
     }));
     testAssert(legacy.status === 401, 'Anonymous member PIN cannot change a schedule');
-    testAssert(currentMemberRow.passcode_hash === null, 'Legacy profile was not claimed');
+    assert.deepEqual(currentMemberRow, beforeLegacy, 'The rejected request cannot change the active schedule, pending schedule, or identity');
 
     // -------------------------------------------------------------
     // Test Case 4: Valid moderator passcode bypasses cooldown and resets failure count

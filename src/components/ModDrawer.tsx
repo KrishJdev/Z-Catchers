@@ -326,6 +326,7 @@ export function ModDrawer({
   const handleLock = () => {
     setIsUnlocked(false);
     setPasscode('');
+    setSchedulePasscode('');
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('z_catchers_mod_passcode');
     }

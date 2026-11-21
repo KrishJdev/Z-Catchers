@@ -31,9 +31,12 @@ export async function GET(request: Request) {
       .eq('id', session.memberId)
       .eq('discord_id', session.discordId)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
 
-    if (error || !memberData) {
+    if (error) {
+      return NextResponse.json({ error: 'Could not verify your session. Try again.' }, { status: 503 });
+    }
+    if (!memberData) {
       return NextResponse.json({ authenticated: false, member: null }, { status: 200 });
     }
 

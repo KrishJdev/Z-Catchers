@@ -188,7 +188,8 @@ export async function POST(request: Request) {
 
     const { data: updatedMember, error: updateError } = await updateMemberSafe(
       targetMemberId,
-      updateFields
+      updateFields,
+      { conditions: isModerator ? undefined : { is_active: true, discord_id: member.discord_id } }
     );
 
     if (updateError) {

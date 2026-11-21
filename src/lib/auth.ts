@@ -770,6 +770,11 @@ export interface ModAuthResult {
   error?: string;
 }
 
+export function getModeratorPasscode(request: Request, supplied?: unknown): string | undefined {
+  const bodyPasscode = typeof supplied === 'string' ? supplied.trim() : '';
+  return bodyPasscode || request.headers.get('x-mod-passcode')?.trim() || undefined;
+}
+
 /**
  * Enforces strict server-side moderator session and passcode validation.
  * Supports verified Discord moderator sessions and master passcode fallback.
@@ -784,8 +789,7 @@ export async function verifyModeratorAuthorization(
   passcodeFromBody?: string
 ): Promise<ModAuthResult> {
   // 1. Check Master Moderator Secret Passcode
-  const headerPasscode = request.headers.get('x-mod-passcode');
-  const candidatePasscode = typeof passcodeFromBody === 'string' ? passcodeFromBody.trim() || headerPasscode?.trim() : headerPasscode?.trim();
+  const candidatePasscode = getModeratorPasscode(request, passcodeFromBody);
 
   if (candidatePasscode) {
     const isPasscodeMatch = verifyModPasscode(candidatePasscode);
@@ -798,7 +802,10 @@ export async function verifyModeratorAuthorization(
     }
   }
 
-  // 2. Check Authenticated Moderator Session Token
+  return verifyModeratorSession(request);
+}
+
+export async function verifyModeratorSession(request: Request): Promise<ModAuthResult> {
   const session = getRequestSession(request);
   if (session?.discordId) {
     // Session token claims are used only for identity; always check live member record

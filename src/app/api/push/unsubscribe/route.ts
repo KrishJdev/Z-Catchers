@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     result = await remove().eq('rotation_digest', digest).select('id');
     // An incomplete provisioning attempt can still be linked under the previous endpoint.
     if (!result.error && result.data?.length === 0 && endpoint) {
-      result = await remove().eq('endpoint', endpoint.trim());
+      result = await remove().eq('endpoint', endpoint.trim()).is('rotation_digest', null);
     }
   } else {
     result = await (endpoint ? remove().eq('endpoint', endpoint.trim()) : remove());

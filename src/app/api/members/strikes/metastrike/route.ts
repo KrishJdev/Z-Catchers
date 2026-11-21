@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Member, getMemberByIdSafe } from '@/lib/db';
-import { getRequestSessionMemberId, ownsDiscordProfile, verifyModPasscode, verifyModeratorAuthorization } from '@/lib/auth';
+import { getRequestSessionMemberId, ownsDiscordProfile, getModeratorPasscode, verifyModeratorSession } from '@/lib/auth';
 import {
   useProactiveMetastrike,
   convertStrikeToMetastrike,
@@ -9,9 +9,7 @@ import {
 import { getSleepCycleDate } from '@/lib/sleepEngine';
 import {
   getClientIp,
-  checkPinRateLimitPersistent,
-  recordPinFailurePersistent,
-  resetPinFailurePersistent,
+  verifyRateLimitedModeratorPasscode,
 } from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
@@ -41,7 +39,7 @@ export async function POST(request: Request) {
     }
 
     // Fetch target member
-    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(member_id);
+    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(member_id, { requireFresh: true });
 
     if (memberErr || !rawMember) {
       return NextResponse.json({ error: 'Member not found.' }, { status: 404 });
@@ -49,27 +47,26 @@ export async function POST(request: Request) {
 
     const member = rawMember as Member;
     const sessionMemberId = getRequestSessionMemberId(request);
-    const candidatePasscode = mod_passcode ?? request.headers.get('x-mod-passcode');
+    const candidatePasscode = getModeratorPasscode(request, mod_passcode);
     let isModerator = false;
 
     if (candidatePasscode) {
-      const clientIp = getClientIp(request);
-      const limitKey = sessionMemberId ? `mod_gate_member:${sessionMemberId}` : `mod_gate_ip:${clientIp}`;
-      const rate = await checkPinRateLimitPersistent(clientIp, limitKey);
-      if (!rate.allowed) {
+      const attempt = await verifyRateLimitedModeratorPasscode(candidatePasscode, getClientIp(request), sessionMemberId);
+      if (attempt.unavailable) {
+        return NextResponse.json({ error: 'Could not verify moderator passcode. Try again.' }, { status: 503 });
+      }
+      if (attempt.retryAfterSeconds) {
         return NextResponse.json(
           { error: 'Too many failed moderator passcode attempts.' },
-          { status: 429, headers: { 'Retry-After': String(rate.retryAfterSeconds) } }
+          { status: 429, headers: { 'Retry-After': String(attempt.retryAfterSeconds) } }
         );
       }
-      if (typeof candidatePasscode !== 'string' || !verifyModPasscode(candidatePasscode.trim())) {
-        await recordPinFailurePersistent(clientIp, limitKey);
+      if (!attempt.valid) {
         return NextResponse.json({ error: 'Invalid moderator passcode.' }, { status: 401 });
       }
-      await resetPinFailurePersistent(clientIp, limitKey);
       isModerator = true;
     } else if (!ownsDiscordProfile(request, member)) {
-      isModerator = (await verifyModeratorAuthorization(request)).authorized;
+      isModerator = (await verifyModeratorSession(request)).authorized;
     }
 
     if (!member.is_active || (!isModerator && !ownsDiscordProfile(request, member))) {

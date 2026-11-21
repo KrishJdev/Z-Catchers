@@ -361,10 +361,15 @@ export async function POST(request: Request) {
     }
 
     // 7. Persist to Supabase
-    const { data: updatedMember, error: updateError } = await updateMemberSafe(member_id, updates);
+    const { data: updatedMember, error: updateError } = await updateMemberSafe(member_id, updates, {
+      conditions: isModeratorOverride ? undefined : { is_active: true, discord_id: currentMember.discord_id },
+    });
 
-    if (updateError || !updatedMember) {
-      return NextResponse.json({ error: updateError?.message || 'Failed to update member' }, { status: 500 });
+    if (updateError) {
+      return NextResponse.json({ error: 'Failed to update member.' }, { status: 500 });
+    }
+    if (!updatedMember) {
+      return NextResponse.json({ error: 'The profile changed. Reload and try again.' }, { status: 409 });
     }
 
     return NextResponse.json({

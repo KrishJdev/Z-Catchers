@@ -602,7 +602,7 @@ BEGIN
 
   IF binding.id IS NULL THEN
     IF p_previous IS NOT NULL THEN
-      RETURN jsonb_build_object('code', 'stale_endpoint');
+      RETURN jsonb_build_object('code', 'binding_missing');
     END IF;
     INSERT INTO public.push_subscriptions (
       member_id, endpoint, p256dh_key, auth_key, notify_personal,
@@ -620,10 +620,13 @@ BEGIN
       END IF;
       RETURN jsonb_build_object('code', 'stale_endpoint');
     END IF;
-    -- A signed-in worker can also provision its credential after a legacy rotation.
-    IF NOT background AND p_digest IS NOT NULL AND binding.rotation_digest IS DISTINCT FROM p_digest THEN
-      UPDATE public.push_subscriptions SET rotation_digest = p_digest
-        WHERE id = binding.id RETURNING * INTO binding;
+    IF NOT background AND (p_personal IS NOT NULL OR p_community IS NOT NULL
+       OR (p_digest IS NOT NULL AND binding.rotation_digest IS DISTINCT FROM p_digest)) THEN
+      UPDATE public.push_subscriptions SET
+        notify_personal = COALESCE(p_personal, notify_personal),
+        notify_community = COALESCE(p_community, notify_community),
+        rotation_digest = COALESCE(p_digest, rotation_digest)
+      WHERE id = binding.id RETURNING * INTO binding;
     END IF;
   ELSE
     IF background AND binding.endpoint = p_endpoint
@@ -655,4 +658,43 @@ $$;
 REVOKE ALL ON FUNCTION public.bind_push_subscription(uuid, text, text, text, text, text, text, boolean, boolean, text)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bind_push_subscription(uuid, text, text, text, text, text, text, boolean, boolean, text)
+  TO service_role;
+
+-- Reserve a master-passcode attempt atomically. A successful verification releases its slot.
+CREATE OR REPLACE FUNCTION public.reserve_moderator_passcode_attempt(
+  p_key text, p_release_window timestamptz DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql SET search_path = public AS $$
+DECLARE
+  now_at timestamptz := clock_timestamp();
+  started_at timestamptz;
+  expires_at_value timestamptz;
+BEGIN
+  IF p_release_window IS NOT NULL THEN
+    UPDATE public.rate_limits SET count = count - 1
+      WHERE key = p_key AND window_start = p_release_window AND count > 0;
+    RETURN jsonb_build_object('released', true);
+  END IF;
+
+  INSERT INTO public.rate_limits AS limits (key, count, window_start, expires_at)
+  VALUES (p_key, 1, now_at, now_at + interval '15 minutes')
+  ON CONFLICT (key) DO UPDATE SET
+    count = CASE WHEN limits.expires_at <= now_at THEN 1 ELSE limits.count + 1 END,
+    window_start = CASE WHEN limits.expires_at <= now_at THEN now_at ELSE limits.window_start END,
+    expires_at = CASE WHEN limits.expires_at <= now_at THEN now_at + interval '15 minutes' ELSE limits.expires_at END
+  WHERE limits.expires_at <= now_at OR limits.count < 5
+  RETURNING window_start INTO started_at;
+
+  IF FOUND THEN
+    RETURN jsonb_build_object('window_start', started_at);
+  END IF;
+
+  SELECT expires_at INTO expires_at_value FROM public.rate_limits WHERE key = p_key;
+  RETURN jsonb_build_object('retry_after', greatest(1, ceil(extract(epoch FROM expires_at_value - now_at))));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.reserve_moderator_passcode_attempt(text, timestamptz)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.reserve_moderator_passcode_attempt(text, timestamptz)
   TO service_role;

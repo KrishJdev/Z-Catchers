@@ -65,6 +65,9 @@ export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<Member | null>(null);
   const claimedMemberId = currentUser?.id;
 
+  const [sessionCheckFailed, setSessionCheckFailed] = useState(false);
+  const [sessionCheckAttempt, retrySessionCheck] = useState(0);
+
   // Starred accountability buddies
   const [starredMembers, setStarredMembers] = useState<string[]>([]);
   const [buddyFilter, setBuddyFilter] = useState<'all' | 'buddies'>('all');
@@ -140,27 +143,45 @@ export default function HomePage() {
 
   useEffect(() => {
     let isMounted = true;
-    fetch('/api/auth/me')
-      .then((res) => res.json())
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    fetch('/api/auth/me', { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error('Session verification unavailable');
+        return res.json();
+      })
       .then((data) => {
         if (!isMounted) return;
         if (data.authenticated && data.member) {
           setCurrentUser(data.member);
           setStoredAuthMember(data.member);
           if (data.token) setStoredAuthToken(data.token);
+          setSessionCheckFailed(false);
           setIsSessionChecked(true);
-        } else {
+        } else if (data.authenticated === false) {
           clearAuthSession();
           router.replace('/join');
+        } else {
+          throw new Error('Unexpected session response');
         }
       })
-      .catch((err) => {
-        if (!isMounted) return;
-        console.warn('Auth check error:', err);
-        router.replace('/join');
-      });
-    return () => { isMounted = false; };
-  }, [router]);
+      .catch(() => {
+        if (isMounted) setSessionCheckFailed(true);
+      })
+      .finally(() => window.clearTimeout(timeout));
+    return () => {
+      isMounted = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [router, sessionCheckAttempt]);
+
+  useEffect(() => {
+    if (!sessionCheckFailed) return;
+    const retry = () => retrySessionCheck(attempt => attempt + 1);
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [sessionCheckFailed]);
 
   // Detect viewer's local timezone (formatted as GMT offset to prevent disclosing physical location)
   useEffect(() => {
@@ -911,18 +932,28 @@ export default function HomePage() {
   };
 
   // If waiting for route guard session verification, show Warm Dark splash
-  if (!isSessionChecked) {
+  const sessionRetry = sessionCheckFailed && (
+    <div role="status" className="mx-auto flex max-w-lg flex-wrap items-center justify-center gap-x-4 px-4 text-xs text-cream-secondary">
+      <p>Session verification is unavailable.</p>
+      <button type="button" className="min-h-[44px] font-semibold text-status-amber" onClick={() => retrySessionCheck(attempt => attempt + 1)}>
+        Retry sign-in check
+      </button>
+    </div>
+  );
+
+  if (!isSessionChecked && !(sessionCheckFailed && members.length > 0)) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-night-bg text-cream-primary p-4">
         <FoxMascot state="sleeping" size={56} className="animate-pulse mb-3" />
         <h1 className="text-xl font-bold tracking-tight">Z Catchers</h1>
-        <p className="text-xs text-cream-secondary mt-1">Entering the Fox Den...</p>
+        {sessionRetry || <p className="text-xs text-cream-secondary mt-1">Entering the Fox Den...</p>}
       </main>
     );
   }
 
   return (
     <main className="flex min-h-screen flex-col bg-night-bg">
+      {sessionRetry}
       <Header
         viewerTimezone={viewerTimezone}
         isPushEnabled={isPushEnabled}

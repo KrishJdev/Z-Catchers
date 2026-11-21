@@ -60,7 +60,10 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const body = await request.json().catch(() => ({}));
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Invalid onboarding request.' }, { status: 400 });
+    }
     const {
       claim_token,
       option,
@@ -77,6 +80,12 @@ export async function POST(request: Request) {
 
     if (option !== undefined && option !== 'new') {
       return NextResponse.json({ error: 'This endpoint only supports new Discord profiles.' }, { status: 400 });
+    }
+
+    const stringFields = ['claim_token', 'discord_username', 'discord_handle', 'journal_url', 'bedtime_local',
+      'wake_time_local', 'timezone', 'weekend_bedtime_local', 'weekend_wake_time_local'];
+    if (stringFields.some(field => body[field] != null && typeof body[field] !== 'string')) {
+      return NextResponse.json({ error: 'Onboarding text fields must be strings.' }, { status: 400 });
     }
 
     // Verify the signed onboarding token
@@ -189,15 +198,9 @@ export async function POST(request: Request) {
       }
       for (const day of DAY_KEYS) {
         const ds = weekly_schedule[day];
-        if (!ds || typeof ds !== 'object' || !ds.bedtime || !ds.wake_time || !TIME_FORMAT_REGEX.test(ds.bedtime.trim()) || !TIME_FORMAT_REGEX.test(ds.wake_time.trim())) {
+        if (!ds || typeof ds !== 'object' || typeof ds.bedtime !== 'string' || typeof ds.wake_time !== 'string' || !TIME_FORMAT_REGEX.test(ds.bedtime.trim()) || !TIME_FORMAT_REGEX.test(ds.wake_time.trim())) {
           return NextResponse.json(
             { error: 'Invalid weekly_schedule format. Each day (mon through sun) must specify valid 24h HH:mm bedtime and wake_time.' },
-            { status: 400 }
-          );
-        }
-        if (ds.bedtime.trim() === ds.wake_time.trim()) {
-          return NextResponse.json(
-            { error: `Invalid schedule for "${day}": Bedtime and wake time cannot be identical.` },
             { status: 400 }
           );
         }
@@ -227,6 +230,14 @@ export async function POST(request: Request) {
         },
         sun: { bedtime: cleanBedtime, wake_time: cleanWakeTime },
       };
+    }
+
+    const matchingDay = DAY_KEYS.find(day => targetWeeklySchedule[day].bedtime === targetWeeklySchedule[day].wake_time);
+    if (matchingDay) {
+      return NextResponse.json(
+        { error: `Invalid schedule for "${matchingDay}": Bedtime and wake time cannot be identical.` },
+        { status: 400 }
+      );
     }
 
     const insertPayload: Record<string, unknown> = {

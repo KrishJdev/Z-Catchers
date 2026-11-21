@@ -6,12 +6,13 @@ import {
   hydrateMemberWeekendHours,
   getMemberByIdSafe,
 } from '@/lib/db';
-import {  sanitizeMember, verifyModeratorAuthorization, getRequestSessionMemberId } from '@/lib/auth';
+import { sanitizeMember, verifyModeratorAuthorization, verifyModeratorSession, getModeratorPasscode, getRequestSessionMemberId, type ModAuthResult } from '@/lib/auth';
 import {
   getClientIp,
   checkPinRateLimitPersistent,
   recordPinFailurePersistent,
   resetPinFailurePersistent,
+  verifyRateLimitedModeratorPasscode,
 } from '@/lib/rateLimit';
 import { DEMO_SEED_FINGERPRINTS, isDemoSeedMember } from '@/lib/demoSeed';
 import { checkCooldownPromotion, getSleepCycleDate } from '@/lib/sleepEngine';
@@ -138,34 +139,32 @@ export async function POST(request: Request) {
   try {
     const clientIp = getClientIp(request);
     const sessionMemberId = getRequestSessionMemberId(request);
-    const modTarget = sessionMemberId ? `mod_member:${sessionMemberId}` : `mod_ip:${clientIp}`;
-
-    const rateCheck = await checkPinRateLimitPersistent(clientIp, modTarget);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-        },
-        {
-          status: 429,
-          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-        }
-      );
-    }
-
     const body = await request.json();
     const { action, mod_passcode } = body;
+    const candidatePasscode = getModeratorPasscode(request, mod_passcode);
+    let authResult: ModAuthResult;
 
-    const authResult = await verifyModeratorAuthorization(request, mod_passcode);
-    if (!authResult.authorized) {
-      await recordPinFailurePersistent(clientIp, modTarget);
-      return NextResponse.json(
-        { error: authResult.error || 'Unauthorized: Invalid moderator secret passcode or session.' },
-        { status: 401 }
-      );
+    if (candidatePasscode) {
+      const attempt = await verifyRateLimitedModeratorPasscode(candidatePasscode, clientIp, sessionMemberId);
+      if (attempt.unavailable) {
+        return NextResponse.json({ error: 'Could not verify moderator passcode. Try again.' }, { status: 503 });
+      }
+      if (attempt.retryAfterSeconds) {
+        return NextResponse.json(
+          { error: 'Too many failed moderator passcode attempts.' },
+          { status: 429, headers: { 'Retry-After': String(attempt.retryAfterSeconds) } }
+        );
+      }
+      if (!attempt.valid) {
+        return NextResponse.json({ error: 'Invalid moderator passcode.' }, { status: 401 });
+      }
+      authResult = { authorized: true, moderatorId: 'master_mod', moderatorRole: 'master' };
+    } else {
+      authResult = await verifyModeratorSession(request);
+      if (!authResult.authorized) {
+        return NextResponse.json({ error: authResult.error }, { status: 401 });
+      }
     }
-
-    await resetPinFailurePersistent(clientIp, modTarget);
 
     // 1. Verify Passcode action
     if (action === 'verify') {

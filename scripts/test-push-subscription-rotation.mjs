@@ -32,6 +32,7 @@ try {
     CREATE ROLE anon;
     CREATE ROLE authenticated;
     CREATE ROLE service_role;
+    CREATE TABLE rate_limits (key text PRIMARY KEY, count integer, window_start timestamptz, expires_at timestamptz);
     CREATE TABLE members (id uuid PRIMARY KEY, discord_id text, is_active boolean DEFAULT true);
     CREATE TABLE push_subscriptions (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -93,6 +94,11 @@ try {
   const replaced = await post({ ...rotate('device', 'device-next', credential), notify_community: true }, 200);
   assert.equal(replaced.notifyCommunity, false);
   assert.equal((await post(rotate('device', 'device-next', credential), 200)).notifyCommunity, false);
+  const retried = await post(enroll('device-next', {
+    old_endpoint: at('device'), rotation_credential: credential, notify_personal: false,
+  }), 200, owners[0]);
+  assert.equal(retried.notifyPersonal, false);
+  assert.equal(retried.notifyCommunity, false);
   const inexact = rotate('device', 'device-next', credential);
   inexact.subscription.keys.auth = 'unconfirmed';
   await post(inexact, 409, null, 'stale_endpoint');
@@ -102,7 +108,7 @@ try {
     old_endpoint: at('device'), rotation_credential: credential,
   });
   assert.equal((await post(repair, 409, owners[0], 'stale_endpoint')).confirmedEndpoint, at('device-next'));
-  assert.equal((await post(repair, 409, owners[1], 'stale_endpoint')).confirmedEndpoint, undefined);
+  assert.equal((await post(repair, 409, owners[1], 'binding_missing')).confirmedEndpoint, undefined);
   repair.old_endpoint = at('device-next');
   assert.equal((await post(repair, 200, owners[0])).notifyCommunity, false);
 
@@ -115,6 +121,26 @@ try {
   }), 200, owners[0])).notifyPersonal, false);
   await post(rotate('legacy-next', 'legacy-final'), 401, null, 'credential_required');
   await post(rotate('legacy-next', 'legacy-final', legacyUpgrade), 200);
+
+  await post(rotate('deleted', 'other', 'ff'.repeat(32)), 401, null, 'credential_required');
+  const missing = enroll('fresh', { old_endpoint: at('deleted'), rotation_credential: 'ff'.repeat(32) });
+  await post(missing, 409, owners[0], 'binding_missing');
+  await post(enroll('other', { rotation_credential: 'ff'.repeat(32) }), 409, owners[0], 'endpoint_conflict');
+  delete missing.old_endpoint;
+  assert.equal((await post({ ...missing, notify_personal: false }, 200, owners[0])).notifyPersonal, false);
+
+  const reserve = async (key, release = null) => (await db.query(
+    'SELECT reserve_moderator_passcode_attempt($1, $2) AS result', [key, release],
+  )).rows[0].result;
+  const reserved = await Promise.all(Array.from({ length: 8 }, () => reserve('moderator')));
+  assert.equal(reserved.filter(attempt => attempt.window_start).length, 5);
+  assert.equal(reserved.filter(attempt => attempt.retry_after > 0).length, 3);
+  const window = reserved.find(attempt => attempt.window_start).window_start;
+  assert.ok((await reserve('moderator', '2000-01-01T00:00:00Z')).released);
+  assert.ok((await reserve('moderator')).retry_after > 0);
+  assert.ok((await reserve('moderator', window)).released);
+  assert.ok((await reserve('moderator')).window_start);
+  assert.ok((await reserve('another-moderator')).window_start);
 
   await db.query('UPDATE members SET is_active = false WHERE id = $1', [owners[0].id]);
   await post(rotate('current-browser-endpoint', 'disabled', credential), 403, null, 'inactive_owner');

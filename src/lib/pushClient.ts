@@ -137,12 +137,21 @@ export async function getExistingSubscription(): Promise<PushSubscription | null
   if (!isPushSupported()) return null;
 
   try {
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await waitForPushWorker();
     return await registration.pushManager.getSubscription();
   } catch (err) {
     console.error('Failed to get existing push subscription:', err);
     return null;
   }
+}
+
+function waitForPushWorker(): Promise<ServiceWorkerRegistration> {
+  return new Promise((resolve, reject) => {
+    const deadline = window.setTimeout(() => {
+      reject(new Error('Notification service is still starting. Try again.'));
+    }, 4000);
+    navigator.serviceWorker.ready.then(resolve, reject).finally(() => window.clearTimeout(deadline));
+  });
 }
 
 interface PushDeviceStatus {
@@ -162,7 +171,7 @@ async function requestPushDevice(
   action: 'status' | 'sync' | 'unlink',
   input: SubscribePushOptions & { enable?: boolean } = {}
 ): Promise<PushDeviceResult> {
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await waitForPushWorker();
   if (!registration.active) throw new Error('Notification service is still starting. Try again.');
   const worker = registration.active;
   return new Promise((resolve, reject) => {
@@ -170,7 +179,7 @@ async function requestPushDevice(
     const timeout = window.setTimeout(() => {
       channel.port1.close();
       reject(new Error('Notification service is updating or offline. Try again.'));
-    }, 8000);
+    }, 15000);
     channel.port1.onmessage = event => {
       window.clearTimeout(timeout);
       channel.port1.close();
@@ -235,7 +244,9 @@ export async function subscribeToPush(
 
   try {
     // 1. Request permission
-    const permission = await Notification.requestPermission();
+    const permission = Notification.permission === 'default'
+      ? await Notification.requestPermission()
+      : Notification.permission;
     if (permission !== 'granted') {
       return { success: false, error: 'Push notification permission was denied or dismissed.' };
     }
@@ -246,7 +257,7 @@ export async function subscribeToPush(
       return { success: false, error: 'Could not finish unlinking the previous device subscription. Try again.' };
     }
     // Keep the browser subscription request in the foreground permission flow.
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await waitForPushWorker();
     if (!await registration.pushManager.getSubscription()) {
       await registration.pushManager.subscribe({
         userVisibleOnly: true,
