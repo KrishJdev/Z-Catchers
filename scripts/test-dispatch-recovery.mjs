@@ -8,7 +8,7 @@ process.env.MOD_SECRET_PASSCODE = 'dispatcher-fixture-mod';
 const { fetchAllRows, supabaseAdmin } = await import('../src/lib/db.ts');
 const { Settings } = await import('../src/lib/sleepEngine.ts');
 const { acquireCronLock, clearAllCronLocks, executeNotificationDispatcher, getCronLock, recordCronLockDeliveredSub } = await import('../src/lib/cronDispatcher.ts');
-const { resolveMemberStrikeCounts } = await import('../src/lib/strikes.ts');
+const { resolveMemberStrikeCounts, getStrikeAlertTotal } = await import('../src/lib/strikes.ts');
 const { webpush } = await import('../src/lib/pushServer.ts');
 const { GET } = await import('../src/app/api/cron/dispatch-notifications/route.ts');
 const { GET: getRoster } = await import('../src/app/api/members/route.ts');
@@ -41,11 +41,13 @@ let nagDeleteAttempts = 0;
 let nextId = 0;
 let claimNag;
 let applyStrike;
+let cycleTotal = null;
 let refreshProjection = id => ({ data: null, error: { message: 'Unexpected refresh for ' + id } });
 supabaseAdmin.rpc = async (name, params) => {
   if (name === 'claim_manual_nag') return claimNag(params);
   if (name === 'apply_nightly_strike') return applyStrike(params);
   if (name === 'refresh_member_strike_projection') return refreshProjection(params.p_member_id);
+  if (name === 'get_strike_cycle_total') return { data: cycleTotal, error: null };
   const lease = tables.cron_locks.find(row => row.lock_key === params.p_key);
   if (name === 'renew_cron_lease') {
     if (lease?.locked_at !== params.p_previous_locked_at || lease.expires_at > params.p_locked_at || lease.metadata.completed) {
@@ -365,6 +367,9 @@ assert.deepEqual(promotionSends, ['concurrent', 'device-a']);
 refreshProjection = () => ({ data: { strikesUsed: 2, metastrikesUsed: 1, month: '2026-12', reset: false }, error: null });
 const november = { ...sleeper };
 const december = DateTime.fromISO('2026-12-01T00:02Z');
+cycleTotal = 9;
+assert.deepEqual(await getStrikeAlertTotal(november, '2026-11-30', december), { count: 9, month: '2026-11' });
+cycleTotal = null;
 assert.deepEqual(await resolveMemberStrikeCounts(november, december), {
   strikes_used: 2, metastrikes_used: 1, strike_cycle_month: '2026-12', reset: false,
 });
@@ -429,7 +434,7 @@ try {
   process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'disabled';
 }
 assert.equal(webhookPayloads.length, 1);
-assert.match(webhookPayloads[0].embeds[0].description, /2 strikes/);
+assert.match(webhookPayloads[0].embeds[0].description, /2 strikes.*November 2026/);
 assert.equal(strikeWrites, 1);
 assert.deepEqual(alertAttempts, ['device-a', 'device-b', 'device-b']);
 assert.equal(tables.cron_locks.find(row => row.lock_key === strikeKey).metadata.alert_outcome, 'complete');

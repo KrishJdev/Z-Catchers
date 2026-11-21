@@ -24,10 +24,12 @@ const items = member => rows(`SELECT * FROM public.punishment_task_status WHERE 
 const preview = async member => (await rows('SELECT * FROM public.november_punishment_preview() WHERE member_id = $1', [member]))[0];
 const seed = member => result('SELECT public.seed_november_punishments($1) AS result', [member]);
 async function apply(member, cycle, { previous = null, type = 'strike',
-  now = cycle + 'T23:15Z', cutoff = cycle + 'T23:10Z', deadline = '2026-12-01T23:00Z', moderator = null } = {}) {
+  now = cycle + 'T23:15Z', cutoff = cycle + 'T23:10Z', deadline = '2026-12-01T23:00Z', moderator = null,
+  expectedRevision } = {}) {
+  const revision = expectedRevision ?? await result('SELECT strike_schedule_revision AS result FROM public.members WHERE id = $1', [member]);
   return result(`SELECT public.apply_nightly_strike($1, $2, to_char($5::timestamptz, 'YYYY-MM'), $3, $4,
-    'fixture', $5, date_trunc('month', $5::timestamptz), $6, $7, $8) AS result`,
-  [member, cycle, previous, type, now, cutoff, deadline, moderator]);
+    'fixture', $5, date_trunc('month', $5::timestamptz), $6, $7, $8, $9) AS result`,
+  [member, cycle, previous, type, now, cutoff, deadline, moderator, revision]);
 }
 
 try {
@@ -56,6 +58,20 @@ try {
   assert.equal(await result('SELECT count(*)::int AS result FROM public.punishments'), 0);
   assert.deepEqual(await rows('SELECT activated_at, screens_visible FROM public.punishment_rollout'),
     [{ activated_at: null, screens_visible: false }]);
+  // An inactive rollover archives the outgoing balance even when it has no matching nightly passes.
+  await rows('UPDATE public.members SET metastrikes_used = 2 WHERE id = $1', [disputed]);
+  const advanced = await result("SELECT public.refresh_member_strike_projection($1, '2026-12-01T01:00Z') AS result", [disputed]);
+  assert.equal(advanced.metastrikesUsed, 0);
+  assert.equal((await preview(disputed)).used_passes, 2);
+  const datedPasses = await result(`INSERT INTO public.members
+    (discord_username, journal_url, bedtime_local, timezone, strike_cycle_month)
+    VALUES ('Dated passes', 'https://discord.com/channels/123/456', '23:00', 'UTC', '2026-12')
+    RETURNING id AS result`);
+  await rows(`INSERT INTO public.nightly_strike_logs(target_member_id, sleep_cycle_date, record_type, updated_at)
+    VALUES ($1,'2026-11-10','metastrike','2026-11-10T23:10Z'), ($1,'2026-11-11','metastrike','2026-11-11T23:10Z')`, [datedPasses]);
+  assert.equal((await preview(datedPasses)).used_passes, 2);
+  assert.equal(await result('SELECT count(*)::int AS result FROM public.strike_pass_months WHERE member_id = $1', [datedPasses]), 0);
+
   assert.equal((await preview(seeded)).verified_strikes, 2);
   assert.match((await preview(seeded)).verified_rows[0].replacement_until, /^2026-11-05T23:00/);
   await rows(`UPDATE public.nightly_strike_logs SET replacement_until = greatest(clock_timestamp() + interval '2 hours',
@@ -93,6 +109,14 @@ try {
     [firstSeed[0].id]), 1);
   assert.equal(await result(`SELECT used AS result FROM public.strike_pass_months
     WHERE member_id = $1 AND month_start = '2026-11-01'`, [seeded]), 2);
+
+  await seed(datedPasses);
+  assert.equal((await preview(datedPasses)).used_passes, 2);
+  const originalRevision = await result('SELECT strike_schedule_revision AS result FROM public.members WHERE id = $1', [live]);
+  await rows("UPDATE public.members SET bedtime_local = '23:30' WHERE id = $1", [live]);
+  await assert.rejects(apply(live, '2026-11-08', { expectedRevision: originalRevision }), /sleep schedule changed/);
+  assert.equal(await result('SELECT count(*)::int AS result FROM public.nightly_strike_logs WHERE target_member_id = $1', [live]), 0);
+  await rows("UPDATE public.members SET bedtime_local = '23:00' WHERE id = $1", [live]);
 
   assert.equal((await apply(live, '2026-11-07', { now: '2026-11-08T08:00Z' })).reason, 'cycle_before_activation');
   const assign = (id, action) => result(`SELECT public.manage_punishment_task($1, $2, 'mod-a', 'Journal check-in', NULL)
@@ -136,6 +160,8 @@ try {
     now: '2026-12-01T00:25Z', cutoff: '2026-12-01T00:10Z', deadline: borderDeadline.toISOString(),
   });
   assert.equal(border.cycleStrikesUsed, 11);
+  assert.equal(await result("SELECT public.get_strike_cycle_total($1, '2026-11-30') AS result", [live]), 11);
+  assert.equal(await result("SELECT public.get_strike_cycle_total($1, '2026-12-01') AS result", [live]), 0);
   assert.equal(border.strikesUsed, 0);
   await rows("UPDATE public.members SET timezone = 'Asia/Kolkata' WHERE id = $1", [live]);
   const converted = await apply(live, '2026-11-30', { previous: 'strike', type: 'metastrike', now: '2026-12-01T02:00Z' });

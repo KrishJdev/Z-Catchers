@@ -711,6 +711,24 @@ ALTER TABLE public.members
   ADD CONSTRAINT check_strikes_used_range CHECK (strikes_used >= 0),
   ADD CONSTRAINT check_strikes_count_range CHECK (strikes_count >= 0);
 
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS strike_schedule_revision integer NOT NULL DEFAULT 0;
+
+-- Fence cron's Luxon schedule calculation against a concurrent schedule edit.
+CREATE OR REPLACE FUNCTION public.bump_strike_schedule_revision()
+RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  NEW.strike_schedule_revision := OLD.strike_schedule_revision + 1;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS bump_strike_schedule_revision ON public.members;
+CREATE TRIGGER bump_strike_schedule_revision BEFORE UPDATE ON public.members FOR EACH ROW
+  WHEN ((NEW.timezone, NEW.bedtime_local, NEW.wake_time_local, NEW.weekend_bedtime_local,
+    NEW.weekend_wake_time_local, NEW.weekly_schedule, NEW.pending_effective_at) IS DISTINCT FROM
+    (OLD.timezone, OLD.bedtime_local, OLD.wake_time_local, OLD.weekend_bedtime_local,
+    OLD.weekend_wake_time_local, OLD.weekly_schedule, OLD.pending_effective_at))
+  EXECUTE FUNCTION public.bump_strike_schedule_revision();
+
 ALTER TABLE public.nightly_strike_logs
   ADD COLUMN IF NOT EXISTS replacement_until timestamptz,
   ADD COLUMN IF NOT EXISTS pass_used_on date;
@@ -938,8 +956,10 @@ BEGIN
       INSERT INTO public.punishment_actions(punishment_id, action, actor, occurred_at)
         VALUES (item.id, 'reopened', actor, now_at);
     ELSIF item.status IN ('pending', 'awaiting_assignment') THEN
-      UPDATE public.punishments SET status = next_status, assignable_at = threshold.assignable_at
-        WHERE id = item.id AND (status, assignable_at) IS DISTINCT FROM (next_status, threshold.assignable_at);
+      UPDATE public.punishments SET status = next_status, earned_cycle_date = threshold.earned_cycle_date,
+        qualified_at = threshold.qualified_at, assignable_at = threshold.assignable_at
+        WHERE id = item.id AND (status, earned_cycle_date, qualified_at, assignable_at) IS DISTINCT FROM
+          (next_status, threshold.earned_cycle_date, threshold.qualified_at, threshold.assignable_at);
     END IF;
   END LOOP;
 
@@ -955,8 +975,21 @@ BEGIN
 END;
 $$;
 
--- Preserve legacy usage (including adjustments with no dated record) the first time each
--- pass month is touched. A replacement debits the month in which the pass is used.
+-- Use the same read-only fallback when previewing and initializing the pass balance.
+CREATE OR REPLACE FUNCTION public.legacy_strike_passes(m public.members, month_start date)
+RETURNS integer LANGUAGE sql STABLE SET search_path = '' AS $$
+  SELECT CASE WHEN m.strike_cycle_month IS NULL OR m.strike_cycle_month = to_char(month_start, 'YYYY-MM')
+    THEN greatest(m.metastrikes_used, m.metastrikes_count)
+    ELSE (
+      SELECT least(3, count(*))::integer
+      FROM public.nightly_strike_logs AS n
+      CROSS JOIN LATERAL (SELECT COALESCE(n.pass_used_on,
+        (n.updated_at AT TIME ZONE public.strike_member_zone(m.timezone))::date) AS used_on) AS day
+      WHERE n.target_member_id = m.id AND n.record_type = 'metastrike'
+        AND day.used_on >= month_start AND day.used_on < month_start + interval '1 month'
+    ) END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.ensure_strike_pass_month(m public.members, month_start date)
 RETURNS integer LANGUAGE plpgsql SET search_path = '' AS $$
 DECLARE
@@ -964,20 +997,28 @@ DECLARE
 BEGIN
   SELECT used INTO total FROM public.strike_pass_months WHERE member_id = m.id AND strike_pass_months.month_start = $2;
   IF FOUND THEN RETURN total; END IF;
-  IF m.strike_cycle_month IS NULL OR m.strike_cycle_month = to_char(month_start, 'YYYY-MM') THEN
-    total := greatest(m.metastrikes_used, m.metastrikes_count);
-  ELSE
-    SELECT least(3, count(*)) INTO total
-    FROM public.nightly_strike_logs AS n
-    CROSS JOIN LATERAL (SELECT COALESCE(n.pass_used_on,
-      (n.updated_at AT TIME ZONE public.strike_member_zone(m.timezone))::date) AS used_on) AS day
-    WHERE n.target_member_id = m.id AND n.record_type = 'metastrike'
-      AND day.used_on >= month_start AND day.used_on < month_start + interval '1 month';
-  END IF;
+  total := public.legacy_strike_passes(m, month_start);
   INSERT INTO public.strike_pass_months VALUES (m.id, month_start, total);
   RETURN total;
 END;
 $$;
+
+-- Archive the outgoing balance for every writer, including legacy callers and inactive rollover.
+CREATE OR REPLACE FUNCTION public.archive_outgoing_strike_passes()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  previous_month date := public.strike_cycle_day(OLD.strike_cycle_month || '-01');
+BEGIN
+  IF previous_month IS NOT NULL THEN
+    PERFORM public.ensure_strike_pass_month(OLD, previous_month);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS archive_outgoing_strike_passes ON public.members;
+CREATE TRIGGER archive_outgoing_strike_passes BEFORE UPDATE OF strike_cycle_month ON public.members
+  FOR EACH ROW WHEN (OLD.strike_cycle_month IS DISTINCT FROM NEW.strike_cycle_month)
+  EXECUTE FUNCTION public.archive_outgoing_strike_passes();
 
 CREATE OR REPLACE FUNCTION public.project_member_strikes(m public.members, month_start date)
 RETURNS jsonb LANGUAGE plpgsql SET search_path = '' AS $$
@@ -985,11 +1026,7 @@ DECLARE
   total integer;
   passes integer;
   month_label text := to_char(month_start, 'YYYY-MM');
-  previous_month date := public.strike_cycle_day(m.strike_cycle_month || '-01');
 BEGIN
-  IF previous_month IS NOT NULL AND previous_month <> month_start THEN
-    PERFORM public.ensure_strike_pass_month(m, previous_month);
-  END IF;
   SELECT count(*) INTO total FROM public.verified_monthly_strikes(m, month_start);
   passes := public.ensure_strike_pass_month(m, month_start);
   UPDATE public.members SET strikes_used = total, strikes_count = total,
@@ -1028,7 +1065,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.apply_nightly_strike(
   p_member_id uuid, p_cycle text, p_month text, p_previous_type text, p_type text,
   p_reason text, p_now timestamptz, p_month_start timestamptz,
-  p_strike_cutoff timestamptz, p_replacement_until timestamptz, p_moderator text
+  p_strike_cutoff timestamptz, p_replacement_until timestamptz, p_moderator text, p_schedule_revision integer
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
   activation timestamptz;
@@ -1076,6 +1113,9 @@ BEGIN
   END IF;
 
   IF p_type = 'strike' THEN
+    IF m.strike_schedule_revision IS DISTINCT FROM p_schedule_revision OR m.pending_effective_at <= now_at THEN
+      RAISE SQLSTATE 'PT409' USING MESSAGE = 'The sleep schedule changed. Re-evaluate the cycle with the current schedule.';
+    END IF;
     IF cycle_month < date '2026-11-01' OR p_strike_cutoff < activation THEN
       RETURN jsonb_build_object('reason', 'cycle_before_activation');
     END IF;
@@ -1333,8 +1373,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
     CASE WHEN m.strike_cycle_month = '2026-11' THEN
       m.strikes_used <> ledger.total OR m.strikes_count <> ledger.total
     ELSE NULL END,
-    COALESCE(passes.used, CASE WHEN m.strike_cycle_month = '2026-11'
-      THEN greatest(m.metastrikes_used, m.metastrikes_count) END),
+    COALESCE(passes.used, public.legacy_strike_passes(m, date '2026-11-01')),
     thresholds.rows
   FROM public.members AS m
   LEFT JOIN public.strike_pass_months AS passes ON passes.member_id = m.id AND passes.month_start = date '2026-11-01'
@@ -1366,6 +1405,16 @@ BEGIN
   PERFORM public.reconcile_punishments(m, date '2026-11-01', now_at);
   RETURN public.project_member_strikes(m, date_trunc('month', now_at AT TIME ZONE public.strike_member_zone(m.timezone))::date);
 END;
+$$;
+
+-- Alert recovery may run in a later local month than the issued strike.
+-- A null result indicates the app should use the compatibility counters.
+CREATE OR REPLACE FUNCTION public.get_strike_cycle_total(p_member_id uuid, p_cycle text)
+RETURNS integer LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT (SELECT count(*)::integer FROM public.verified_monthly_strikes(m,
+    date_trunc('month', public.strike_cycle_day(p_cycle)::timestamp)::date))
+  FROM public.members AS m CROSS JOIN public.punishment_rollout AS rollout
+  WHERE m.id = p_member_id AND rollout.singleton AND rollout.activated_at IS NOT NULL;
 $$;
 
 -- A pending item becomes assignable at its deadline, even if no further strikes occur.
@@ -1418,7 +1467,8 @@ $$;
 
 REVOKE ALL ON FUNCTION
   public.apply_legacy_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz),
-  public.keep_strike_activation(), public.lock_member_for_sleep_evidence(),
+  public.keep_strike_activation(), public.lock_member_for_sleep_evidence(), public.bump_strike_schedule_revision(),
+  public.archive_outgoing_strike_passes(), public.legacy_strike_passes(public.members,date),
   public.strike_cycle_day(text), public.strike_member_zone(text), public.legacy_strike_deadline(public.members,date),
   public.verified_monthly_strikes(public.members,date), public.earned_punishment_thresholds(public.members,date),
   public.reconcile_punishments(public.members,date,timestamptz,text), public.ensure_strike_pass_month(public.members,date),
@@ -1428,18 +1478,18 @@ REVOKE ALL ON FUNCTION
 
 REVOKE ALL ON FUNCTION
   public.apply_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz),
-  public.apply_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz,timestamptz,timestamptz,text),
+  public.apply_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz,timestamptz,timestamptz,text,integer),
   public.refresh_member_strike_projection(uuid,timestamptz), public.reset_monthly_strikes(),
   public.adjust_member_strikes(uuid,integer,integer,boolean,text,text),
-  public.november_punishment_preview(), public.seed_november_punishments(uuid),
+  public.november_punishment_preview(), public.seed_november_punishments(uuid), public.get_strike_cycle_total(uuid,text),
   public.manage_punishment_task(uuid,text,text,text,text)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION
   public.apply_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz),
-  public.apply_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz,timestamptz,timestamptz,text),
+  public.apply_nightly_strike(uuid,text,text,text,text,text,timestamptz,timestamptz,timestamptz,timestamptz,text,integer),
   public.refresh_member_strike_projection(uuid,timestamptz), public.reset_monthly_strikes(),
   public.adjust_member_strikes(uuid,integer,integer,boolean,text,text),
-  public.november_punishment_preview(), public.seed_november_punishments(uuid),
+  public.november_punishment_preview(), public.seed_november_punishments(uuid), public.get_strike_cycle_total(uuid,text),
   public.manage_punishment_task(uuid,text,text,text,text)
   TO service_role;
 

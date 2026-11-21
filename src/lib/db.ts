@@ -75,6 +75,7 @@ export interface Member {
   passcode_hash?: string | null;
   has_pin?: boolean;
   is_active: boolean;
+  strike_schedule_revision?: number;
   // Monthly Strikes & Metastrikes Accountability System
   strikes_used?: number; // Monthly projection
   metastrikes_used?: number; // 0 to 3

@@ -510,7 +510,7 @@ try {
     'https://discord.com/channels/123/456', '23:00', 'UTC') RETURNING id;`);
   const automatic = (member, day) => `SELECT public.apply_nightly_strike('${member}', '2026-11-${day}',
     '2026-11', NULL, 'strike', 'smoke', '2026-11-${day}T23:15Z', '2026-11-01T00:00Z',
-    '2026-11-${day}T23:10Z', '2026-11-${Number(day) + 1}T23:00Z', NULL)`;
+    '2026-11-${day}T23:10Z', '2026-11-${Number(day) + 1}T23:00Z', NULL, 0)`;
   const dispatchRace = raceMember('Concurrent Dispatch');
   const [issued, repeated] = await concurrentSql(automatic(dispatchRace, 12), automatic(dispatchRace, 12));
   assert.equal(issued.cycleStrikesUsed, 1);

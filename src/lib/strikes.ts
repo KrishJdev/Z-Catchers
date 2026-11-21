@@ -853,6 +853,7 @@ async function applyNightlyStrike(
     p_strike_cutoff: bedtime?.plus({ minutes: 10 }).toISO() ?? null,
     p_replacement_until: bedtime ? getNextScheduledBedtimeAfter(member, bedtime).toISO() : null,
     p_moderator: moderator ?? null,
+    p_schedule_revision: member.strike_schedule_revision ?? null,
   });
   if (error || !data) {
     return {
@@ -863,6 +864,19 @@ async function applyNightlyStrike(
     };
   }
   return { ...data, success: true, strikeIssued: type === 'strike' && !data.reason && Boolean(data.log) };
+}
+
+export async function getStrikeAlertTotal(member: Member, cycleDate: string, nowUtc = DateTime.utc()) {
+  const cycleMonth = cycleDate.slice(0, 7);
+  if (isSupabaseConfigured && cycleMonth !== getCurrentStrikeMonth(member, nowUtc)) {
+    const { data, error } = await supabaseAdmin.rpc('get_strike_cycle_total', {
+      p_member_id: member.id, p_cycle: cycleDate,
+    });
+    if (error) throw new Error(error.message);
+    if (typeof data === 'number') return { count: data, month: cycleMonth };
+  }
+  const counts = await resolveMemberStrikeCounts(member, nowUtc);
+  return { count: counts.strikes_used, month: counts.strike_cycle_month };
 }
 
 /**
