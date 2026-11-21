@@ -59,9 +59,9 @@ reviews:
 
     - path: "src/app/api/mod/**"
       instructions: >
-        Verify authentication against MOD_SECRET_PASSCODE on all moderator endpoints.
-        Ensure moderation actions (instant cooldown approval, rejection, member create/update/delete,
-        PIN reset) sanitize input and return 401 Unauthorized when unauthenticated.
+        Verify a live database-role or configured Discord-ID moderator, or a rate-limited master
+        passcode, on all moderator endpoints. Immediate schedule overrides also require the master
+        passcode. Ensure moderation actions validate inputs and return 401 when unauthenticated.
 
     - path: "src/app/api/cron/**"
       instructions: >

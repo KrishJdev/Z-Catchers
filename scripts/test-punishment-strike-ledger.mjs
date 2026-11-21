@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite';
 
 const db = new PGlite();
 const migration = readFileSync('supabase/migrations/20261122_punishment_strike_ledger.sql', 'utf8');
-const schema = readFileSync('supabase/schema.sql', 'utf8').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
+const schema = readFileSync('supabase/schema.sql', 'utf8').split('-- Expose the punishment workflow')[0].trimEnd().concat('\n').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
 const setup = `
   CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
   CREATE SCHEMA auth; CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS 'SELECT current_user::text';

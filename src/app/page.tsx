@@ -1510,7 +1510,7 @@ export default function HomePage() {
               text:
                 metastrikeMode === 'convert_retroactive'
                   ? 'Metastrike pass applied! Strike successfully converted.'
-                  : 'Protected by Metastrike tonight! Strike votes disabled.',
+                  : 'Protected by Metastrike tonight.',
               type: 'success',
             });
             setTimeout(() => setToastMessage(null), 4000);

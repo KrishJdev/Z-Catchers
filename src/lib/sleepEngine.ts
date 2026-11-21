@@ -878,7 +878,6 @@ export interface MemberState {
   formattedWakeTime?: string;
   diffMinutes: number;
   graceMinutesLeft?: number;
-  canVoteStrike?: boolean;
   pendingNotice?: string | null;
   checkedInEarly?: boolean;
   streakMilestone?: StreakMilestone | null;
@@ -1591,7 +1590,6 @@ export function computeMemberState(
   let isSleepShieldActive = false;
   let checkedInEarly = false;
   let graceMinutesLeft = 0;
-  let canVoteStrike = false;
   let needsWakeUpLog = false;
   let isOverdue = false;
 
@@ -1664,7 +1662,6 @@ export function computeMemberState(
     statusText = 'Wide Awake • Rested';
     isSleepShieldActive = false;
     checkedInEarly = false;
-    canVoteStrike = false;
     needsWakeUpLog = false;
     isOverdue = false;
   } else if (effectiveInBed && !hasLoggedWakeUp && (diffMinutes >= -180 || isPastWakeTime)) {
@@ -1680,7 +1677,6 @@ export function computeMemberState(
       isSleepShieldActive = true;
     }
     checkedInEarly = true;
-    canVoteStrike = false;
     needsWakeUpLog = true;
     isOverdue = false;
   } else if (diffMinutes < 0 && diffMinutes >= -60) {
@@ -1688,7 +1684,6 @@ export function computeMemberState(
     bucket = 'WINDING_DOWN';
     status = 'WINDING_DOWN';
     statusText = `Bedtime in ${Math.abs(Math.floor(diffMinutes))}m`;
-    canVoteStrike = false;
     isSleepShieldActive = false;
     checkedInEarly = false;
     needsWakeUpLog = false;
@@ -1700,7 +1695,6 @@ export function computeMemberState(
     statusText = 'Wide Awake • Rested';
     isSleepShieldActive = false;
     checkedInEarly = false;
-    canVoteStrike = false;
     needsWakeUpLog = false;
     isOverdue = false;
   } else if (diffMinutes >= 0 && !isPastWakeTime) {
@@ -1711,12 +1705,11 @@ export function computeMemberState(
     bucket = 'BEDTIME_NOW';
     isOverdue = true;
     isSleepShieldActive = false;
-    canVoteStrike = false;
     needsWakeUpLog = false;
     checkedInEarly = false;
 
     if (diffMinutes <= 5) {
-      // 5-minute grace window: Strike voting is strictly locked
+      // 5-minute wind-down grace window
       status = 'BEDTIME_GRACE';
       graceMinutesLeft = Math.max(1, Math.ceil(5 - diffMinutes));
       statusText = `Grace Period: ${graceMinutesLeft}m left`;
@@ -1732,7 +1725,6 @@ export function computeMemberState(
     // Their missed bedtime remains un-checked-in and penalized.
     bucket = 'AWAKE';
     status = 'AWAKE';
-    canVoteStrike = false;
     isSleepShieldActive = false;
     needsWakeUpLog = false;
     isOverdue = false;
@@ -1783,7 +1775,6 @@ export function computeMemberState(
     formattedWakeTime,
     diffMinutes,
     graceMinutesLeft,
-    canVoteStrike,
     pendingNotice,
     checkedInEarly,
     streakMilestone,

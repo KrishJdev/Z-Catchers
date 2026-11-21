@@ -10,9 +10,10 @@ import {
   getInMemorySleepLogs,
 } from '@/lib/db';
 import { checkCooldownPromotion, calculateSleepStreak, getSleepCycleDate, getCurrentStrikeMonth } from '@/lib/sleepEngine';
-import { sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
+import { sanitizeMember, getRequestSession } from '@/lib/auth';
 import { toValidLuxonZone, isValidTimezone, formatGmtOffset } from '@/lib/timezone';
 import {
+  activeStrikeLog,
   resolveMemberStrikeCounts,
   getNightlyStrikeLogsBatch,
   getStrikeLogKey,
@@ -20,6 +21,7 @@ import {
   getMonthlyStrikeCountsBatch,
 } from '@/lib/strikes';
 import { DateTime } from 'luxon';
+import { getOpenPunishmentCount } from '@/lib/punishments';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -33,7 +35,7 @@ const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
  */
 export async function GET(request: Request) {
   try {
-    const sessionMemberId = getRequestSessionMemberId(request);
+    const session = getRequestSession(request);
     const { data: members, error } = await supabaseAdmin
       .from('members')
       .select('*')
@@ -44,6 +46,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    const viewer = session?.discordId && members?.find(member =>
+      member.id === session.memberId && member.discord_id === session.discordId
+    );
+    const openCount = viewer && session?.discordId
+      ? getOpenPunishmentCount(viewer.id, session.discordId)
+      : null;
     const nowUtc = DateTime.utc();
 
     // Query recent check-ins for streak calculation and today's status (paginated to avoid PostgREST row cap)
@@ -252,6 +260,7 @@ export async function GET(request: Request) {
       })
     );
 
+    const viewerOpenCount = await openCount;
     const processedMembers: Member[] = memberItems.map((item, index) => {
       const result = strikeInfos[index];
       if (result.status === 'rejected') {
@@ -259,11 +268,10 @@ export async function GET(request: Request) {
       }
       const strikeInfo = result.status === 'fulfilled' ? result.value : undefined;
       const logKey = getStrikeLogKey(item.hydratedMember.id, item.localDateStr);
-      const tonightLog = strikeLogsMap.get(logKey) || null;
+      const tonightLog = activeStrikeLog(strikeLogsMap.get(logKey));
       const is_metastrike_active = tonightLog?.record_type === 'metastrike';
       const metastrike_reason = tonightLog?.reason || null;
-      const has_voted_strike = Boolean(sessionMemberId && tonightLog?.voter_ids?.includes(sessionMemberId));
-      const convertibleLog = recentStrikesMap.get(item.hydratedMember.id) || null;
+      const convertibleLog = activeStrikeLog(recentStrikesMap.get(item.hydratedMember.id));
 
       return {
         ...sanitizeMember(item.hydratedMember),
@@ -281,11 +289,11 @@ export async function GET(request: Request) {
         convertible_strike_log: convertibleLog,
         is_metastrike_active,
         metastrike_reason,
-        has_voted_strike,
+        ...(viewer && viewer.id === item.hydratedMember.id ? { open_punishment_count: viewerOpenCount } : {}),
       };
     });
 
-    return NextResponse.json({ members: processedMembers });
+    return NextResponse.json({ members: processedMembers }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
