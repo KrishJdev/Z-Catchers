@@ -1,16 +1,16 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-22T04:08:22+05:30
-> **Active working branch:** `codex/moderation-1-owner-and-roles` with implementation `2349670`, smoke fixture fix `1169f8a` and origin verification fix `fcc0ae9`.
+> **Last Updated:** 2026-11-22T04:37:53+05:30
+> **Active working branch:** `codex/moderation-2-live-role-auth` with verified implementation commit `317215c`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
 > **Phase 6 review fix:** `2682c1c` on `krish`.
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active integration:** Moderation Phase 1 [PR #106](https://github.com/KrishJdev/Z-Catchers/pull/106) targets `dev` as requested. Phase 0 [PR #105](https://github.com/KrishJdev/Z-Catchers/pull/105) merged into `dev` at `9e65225`.
+> **Active integration:** Moderation Phase 2 targets `dev` as requested. Phase 1 [PR #106](https://github.com/KrishJdev/Z-Catchers/pull/106) merged into `dev` at `fef3e1a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit`, all 52 `npm run test:unit` suites, and `npm run build` passed for Moderation Phase 1.
+> **Build Status:** `npx tsc --noEmit`, all 52 `npm run test:unit` suites, and `npm run build` passed for Moderation Phase 2.
 
 ---
 
@@ -69,6 +69,16 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Moderation Phase 2 · Live Discord roles and passcode retirement
+
+- The active Discord-linked database profile supplies the role for staff routes and `/api/auth/me`. The shared passcode, its rate-limit path and the runtime Discord allowlist have been retired. The drawer uses the signed-in role and refreshes access after authorization errors.
+- The staff transactions lock and recheck the actor and target. `edit_schedule` applies the immediate edit and `approve_cooldown` compares the reviewed queue with the current request. Self-service retains the 48-hour queue for every role. Punishment writes resolve the member from the task ID. Staff corrections and legacy owner-only actions record the signed-in actor. Historical audit entries remain available.
+- Replaced passcode fixtures with signed Discord sessions and coverage for role mismatch, same-session revocation, stale approvals, concurrent promotions, and the audit actor. The hosted dispatcher smoke includes real PostgreSQL lock overlap scenarios.
+- Added `supabase/migrations/20261127_moderation_live_roles.sql`, `src/lib/moderation.ts`, `src/lib/pendingSchedule.ts` and `scripts/test-moderation-live-roles.mjs`.
+- Updated `supabase/schema.sql`, `.env.example`, `BACKEND_TZ_PWA_SPEC.md`, `MODERATION_ROLLOUT_CHECKLIST.md` and this handoff.
+- Updated `src/lib/{auth,db,rateLimit,strikes}.ts`, `src/app/api/auth/{claim-profile,discord/callback,me}/route.ts`, `src/app/api/members/{cancel-pending,in-bed,strikes/metastrike,update-schedule,wake-up}/route.ts`, `src/app/api/mod/route.ts`, `src/app/api/mod/{punishments,webhook}/route.ts`, `src/app/page.tsx` and `src/components/{ModDrawer,ModeratorPunishmentQueue}.tsx`.
+- Updated `scripts/run-tests.mjs` and `scripts/test-{cancel-pending-and-subscribe-rate-limiting,dispatch-recovery,dispatcher-ci,login-and-auth,moderation-owner-and-roles,punishment-task-apis,strikes-api-and-routes,strikes-system}.mjs`. Removed `scripts/test-update-schedule-mod-rate-limit.mjs`.
 
 ### Moderation Phase 1 · Owner bootstrap and role assignment
 
@@ -3065,7 +3075,9 @@ d:\Projects\Z Catchers\
 |---|---|---|
 | Phase 0 · Access inventory | DONE | Owner and zero moderator carryovers verified. Addressed the review on [PR #105](https://github.com/KrishJdev/Z-Catchers/pull/105). See the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md). |
 | Phase 1 · Owner and role assignment | DONE | Role migration, operator bootstrap and owner-only assignment API implemented at `2349670`. TypeScript, 52 unit suites and production build passed. |
-| Phase 2 · Live role authorization | TODO | Enforce the permission matrix across staff writes and remove the passcode compatibility paths. |
+| Phase 2 · Live role authorization | DONE | Live actor and target checks, explicit schedule actions, and passcode retirement implemented on the Phase 2 branch. |
+| Phase 3 · Drawer and moderator assignment | TODO | Add the Owner’s role-assignment actions in the roster and verify the flow on desktop and mobile. |
+| Phase 4 · Release rehearsal | TODO | Rehearse the owner bootstrap and application/database cutover in isolated Supabase and an installed PWA. |
 
 ### Historical Implementation Milestones (Completed & Verified)
 
@@ -3089,7 +3101,7 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-**Moderation Phase 2.** After the Phase 1 PR merges, sync `krish` with `dev` before creating `codex/moderation-2-live-role-auth`. Follow the [Phase 2 plan](MODERATION_PLAN.md#phase-2--check-live-roles-and-remove-the-passcode) to centralize live Discord role checks in `src/lib/auth.ts`, enforce target permissions through staff routes, convert the explicit schedule actions, and replace passcode and allowlist fixtures. Use the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md#application-and-database-cutover-order) for deployment and operator timing.
+**Moderation Phase 3.** After the Phase 2 PR merges, sync the integration base and start `codex/moderation-3-drawer-and-roster`. In `src/components/ModDrawer.tsx`, add Owner-only Make moderator and Remove moderator controls using `POST /api/mod` with `action: 'set_moderator'`, `member_id`, `expected_role` and `new_role`. Confirm the selected account, refresh the roster on save or conflict, and verify promotion, a Moderator’s approval, and same-session revocation on desktop and mobile. The drawer already opens from live staff permissions. Use the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md#application-and-database-cutover-order) to rehearse both role migrations, bootstrap, and the API and drawer cutover before a production release.
 
 **Punishments rollout.** Record live production verification against the [November cutover checklist](PUNISHMENTS_RELEASE_CHECKLIST.md).
 
