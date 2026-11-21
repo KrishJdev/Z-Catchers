@@ -9,6 +9,10 @@ import { parseEnv } from 'node:util';
 import { createClient } from '@supabase/supabase-js';
 import { DateTime } from 'luxon';
 import webpush from 'web-push';
+import {
+  insertLegacyNovemberFixtures, novemberAccounts, seedNovemberFixtures,
+  verifyNovemberPreview, verifyNovemberRollover,
+} from './fixtures/november-cutover-smoke.mjs';
 
 const workdir = process.env.DISPATCH_SMOKE_WORKDIR;
 assert.ok(process.env.GITHUB_ACTIONS === 'true' && workdir, 'Use the isolated dispatcher CI job.');
@@ -26,6 +30,7 @@ const discordAccounts = {
   'discord-mod': '100000000000000003',
   newcomer: '100000000000000004',
   'task-member': '100000000000000005',
+  ...novemberAccounts,
 };
 const { publicKey, privateKey } = webpush.generateVAPIDKeys();
 const localSupabase = parseEnv(execFileSync(
@@ -139,6 +144,16 @@ async function post(path, cookie, body, expectedStatus = 200, headers = {}) {
   return payload;
 }
 
+const memberTasks = '/api/members/punishments';
+const modTasks = '/api/mod/punishments';
+async function getTaskData(path, cookie, expectedStatus = 200) {
+  const response = await fetch(appOrigin + path, { headers: { Cookie: cookie } });
+  const body = await response.json();
+  assert.equal(response.status, expectedStatus, JSON.stringify(body));
+  assert.match(response.headers.get('Cache-Control'), /private, no-store/);
+  return body;
+}
+
 function setupCertificate() {
   const gateway = execFileSync('docker', [
     'inspect', container, '--format', '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}',
@@ -161,16 +176,23 @@ function setupCertificate() {
   return { gateway, certPath, keyPath };
 }
 
-sql(readFileSync('supabase/schema.sql', 'utf8'));
+const schema = readFileSync('supabase/schema.sql', 'utf8');
+const ledgerMigration = readFileSync('supabase/migrations/20261122_punishment_strike_ledger.sql', 'utf8');
+const ledgerStart = schema.indexOf(ledgerMigration.split('\n', 1)[0]);
+assert.ok(ledgerStart > 0, 'Expected the pre-ledger schema before the appended ledger migration.');
+sql(schema.slice(0, ledgerStart));
+sql('UPDATE public.members SET is_active = false');
 sql(readFileSync('supabase/migrations/20261118_sleep_logs_member_uuid.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261119_dispatch_accountability.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261120_cron_stage_completion.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261121_push_subscription_rotation.sql', 'utf8'));
-sql(readFileSync('supabase/migrations/20261122_punishment_strike_ledger.sql', 'utf8'));
+const novemberMembers = await insertLegacyNovemberFixtures(sql);
+sql(ledgerMigration);
+assert.equal(sql('SELECT count(*) FROM public.punishments'), '0');
 sql(readFileSync('supabase/migrations/20261123_punishment_task_apis.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261124_guard_active_wake.sql', 'utf8'));
+const novemberPreview = await verifyNovemberPreview(sql, novemberMembers);
 sql(`
-  UPDATE public.members SET is_active = false;
   CREATE EXTENSION IF NOT EXISTS pg_cron;
   CREATE EXTENSION IF NOT EXISTS pg_net;
   NOTIFY pgrst, 'reload schema';
@@ -256,6 +278,9 @@ try {
     { name: 'overdue', offset: -16, personal: true, community: false },
     { name: 'checked-in', offset: -16, personal: true, community: true },
     { name: 'awake', offset: 100, personal: false, community: true },
+    { name: 'pre-launch-miss', offset: -50, personal: false, community: false },
+    { name: 'quiet-before-bed', offset: 10, personal: false, community: true },
+    { name: 'rested', offset: -120, personal: true, community: true },
   ];
   const { data: members } = await db.from('members').insert(fixtures.map(({ name, offset }) => {
     const bed = local.plus({ minutes: offset });
@@ -274,9 +299,11 @@ try {
   const cycle = local.toISODate();
   const regularId = memberId('overdue');
   const regularCookie = await signIn('overdue', regularId, false, 'member');
-  await db.from('sleep_logs').insert({
-    member_id: memberId('checked-in'), cycle_date: cycle, in_bed_at: now.minus({ minutes: 19 }).toISO(),
-  }).throwOnError();
+  await db.from('sleep_logs').insert([
+    { member_id: memberId('checked-in'), cycle_date: cycle, in_bed_at: now.minus({ minutes: 19 }).toISO() },
+    { member_id: memberId('rested'), cycle_date: cycle, in_bed_at: now.minus({ minutes: 125 }).toISO(),
+      woke_up_at: now.minus({ minutes: 60 }).toISO(), wake_source: 'button' },
+  ]).throwOnError();
   const subscriptions = fixtures.map(({ name, personal, community }) => ({
     member_id: memberId(name), endpoint: relayOrigin + '/push/' + name,
     p256dh_key: createECDH('prime256v1').generateKeys().toString('base64url'),
@@ -295,13 +322,26 @@ try {
     },
   });
 
+  await getTaskData(memberTasks, regularCookie, 503);
+  assert.equal((await getTaskData('/api/members', regularCookie)).members
+    .find(member => member.id === regularId).open_punishment_count, null);
+  const dispatchState = () => sql(`SELECT (SELECT count(*) FROM public.nightly_strike_logs),
+    (SELECT count(*) FROM public.notification_logs), (SELECT count(*) FROM public.cron_locks),
+    (SELECT count(*) FROM public.punishments)`);
+  const beforeDryRun = dispatchState();
   const dryRun = await fetch(appOrigin + dispatcherPath + '?dry_run=true', {
     headers: { Authorization: 'Bearer ' + cronSecret },
   });
-  assert.equal(dryRun.status, 200, await dryRun.text());
+  const dryResult = await dryRun.json();
+  assert.equal(dryRun.status, 200, JSON.stringify(dryResult));
+  assert.deepEqual(dryResult.details.autoStrikeRecipients.sort(), ['overdue', 'pre-launch-miss']);
+  assert.equal(dispatchState(), beforeDryRun);
   assert.equal(pushes.length, 0);
-  assert.equal(sql('SELECT count(*) FROM public.nightly_strike_logs'), '0');
 
+  // Put the activation between the cutoffs for the pre-launch and live misses.
+  const activation = now.minus({ minutes: 30 }).toISO();
+  sql(`UPDATE public.punishment_rollout SET activated_at = '${activation}' WHERE singleton AND activated_at IS NULL`);
+  await getTaskData(memberTasks, regularCookie, 503);
   sql(`
     SELECT vault.create_secret('${relayOrigin}', 'zcatchers_app_url');
     SELECT vault.create_secret('${cronSecret}', 'zcatchers_cron_secret');
@@ -309,6 +349,9 @@ try {
   `);
   sql(readFileSync('supabase/schedule_dispatch.sql', 'utf8'));
   assert.equal(sql("SELECT schedule FROM cron.job WHERE jobname = 'zcatchers-dispatch' AND active"), '* * * * *');
+  const firstSeed = await seedNovemberFixtures(sql, novemberPreview);
+  await waitFor(() => scheduledRuns.length >= 1, 90_000, () => 'Expected a scheduled dispatch during the November cutover.');
+  assert.deepEqual(await seedNovemberFixtures(sql, novemberPreview), firstSeed);
   await waitFor(() => scheduledRuns.length >= 2, 150_000, () => {
     const http = sql("SELECT status_code, error_msg FROM net._http_response ORDER BY id DESC LIMIT 5");
     const cron = sql("SELECT status, return_message FROM cron.job_run_details ORDER BY runid DESC LIMIT 5");
@@ -321,6 +364,10 @@ try {
   assert.equal(first.body.bedtimeHitDispatched, 1);
   assert.equal(first.body.communityNagsDispatched, 1);
   assert.equal(first.body.autoStrikesDispatched, 1);
+  assert.deepEqual(first.body.details.autoStrikeRecipients, ['overdue']);
+  for (const name of ['checked-in', 'quiet-before-bed', 'rested']) {
+    assert.ok(first.body.details.suppressedDueToSleepShield.some(recipient => recipient.startsWith(name + ' (')), name);
+  }
   assert.equal(second.body.windDownDispatched + second.body.bedtimeHitDispatched
     + second.body.communityNagsDispatched + second.body.autoStrikesDispatched, 0);
   assert.deepEqual(pushes.sort(), ['awake', 'overdue', 'overdue', 'wind-down']);
@@ -329,9 +376,18 @@ try {
   sql("SELECT cron.unschedule('zcatchers-dispatch')");
 
   assert.equal(sql(`
-    SELECT sleep_cycle_date, record_type, strikes_used, strikes_count
-    FROM public.nightly_strike_logs JOIN public.members ON target_member_id = members.id
-  `), `${cycle}|strike|1|1`);
+    SELECT sleep_cycle_date, record_type, strikes_used, strikes_count, replacement_until IS NOT NULL
+    FROM public.nightly_strike_logs JOIN public.members ON target_member_id = members.id WHERE members.id = '${regularId}'
+  `), `${cycle}|strike|1|1|t`);
+  assert.equal(sql(`
+    SELECT count(*) FROM public.nightly_strike_logs WHERE target_member_id IN
+      ('${memberId('pre-launch-miss')}', '${memberId('checked-in')}', '${memberId('rested')}')
+  `), '0');
+  assert.equal(sql(`SELECT public.get_strike_cycle_total('${regularId}', '${cycle}')`), '1');
+  assert.equal(sql(`SELECT verified_strikes FROM public.november_punishment_preview() WHERE member_id = '${regularId}'`),
+    cycle.startsWith('2026-11-') ? '1' : '0');
+  console.log('Verified hidden rollout, authenticated dry run, active writer, skipped pre-launch miss, and two identical November seeds with active Cron.');
+  await verifyNovemberRollover(sql, novemberMembers);
   const senderPayload = Buffer.from(JSON.stringify({ memberId: memberId('awake'), exp: Date.now() + 60_000 })).toString('base64url');
   const senderSignature = createHmac('sha256', env.SESSION_SECRET).update(senderPayload).digest('base64url');
   const nag = (token) => fetch(appOrigin + '/api/members/nag-notif', {
@@ -352,7 +408,7 @@ try {
   });
   assert.equal(sql(`
     SELECT record_type, strikes_used, strikes_count, metastrikes_used, metastrikes_count
-    FROM public.nightly_strike_logs JOIN public.members ON target_member_id = members.id
+    FROM public.nightly_strike_logs JOIN public.members ON target_member_id = members.id WHERE members.id = '${regularId}'
   `), 'metastrike|0|0|1|1');
   console.log('Verified two authenticated Supabase Cron runs, encrypted pushes, Sleep Shield, atomic nag cooldown, and member strike replacement.');
 
@@ -514,14 +570,13 @@ try {
 
   console.log('Verified Discord onboarding and returning sessions, both moderator types, schedule cooldown and cancellation, check-in and undo, wake-up, Metastrikes, and push subscription and delivery.');
 
-  // Exercise overlapping transactions in distinct PostgreSQL sessions after the inactive HTTP rehearsal.
-  sql("UPDATE public.punishment_rollout SET activated_at = '2026-11-01T00:00Z'");
+  // Use an eligible cutoff and a closed replacement window for these synthetic transaction races.
   const raceMember = name => sql(`INSERT INTO public.members
     (discord_username, journal_url, bedtime_local, timezone) VALUES ('${name}',
     'https://discord.com/channels/123/456', '23:00', 'UTC') RETURNING id;`);
   const automatic = (member, day) => `SELECT public.apply_nightly_strike('${member}', '2026-11-${day}',
-    '2026-11', NULL, 'strike', 'smoke', '2026-11-${day}T23:15Z', '2026-11-01T00:00Z',
-    '2026-11-${day}T23:10Z', '2026-11-${Number(day) + 1}T23:00Z', NULL, 0)`;
+    '2026-11', NULL, 'strike', 'smoke', clock_timestamp(), '2026-11-01T00:00Z',
+    '${activation}'::timestamptz, '${activation}'::timestamptz, NULL, 0)`;
   const dispatchRace = raceMember('Concurrent Dispatch');
   const [issued, repeated] = await concurrentSql(automatic(dispatchRace, 12), automatic(dispatchRace, 12));
   assert.equal(issued.cycleStrikesUsed, 1);
@@ -547,15 +602,6 @@ try {
     WHERE member_id = '${seedRace}' AND action = 'earned'`), '1');
   console.log('Verified concurrent dispatch with another worker, durable check-in, and two November seed sessions.');
 
-  const memberTasks = '/api/members/punishments';
-  const modTasks = '/api/mod/punishments';
-  async function getTaskData(path, cookie, expectedStatus = 200) {
-    const response = await fetch(appOrigin + path, { headers: { Cookie: cookie } });
-    const body = await response.json();
-    assert.equal(response.status, expectedStatus, JSON.stringify(body));
-    assert.match(response.headers.get('Cache-Control'), /private, no-store/);
-    return body;
-  }
   await getTaskData(memberTasks, regularCookie, 503);
   assert.equal((await getTaskData('/api/members', regularCookie)).members
     .find(member => member.id === regularId).open_punishment_count, null);
@@ -567,6 +613,26 @@ try {
   await getTaskData(memberTasks, '', 401);
   await getTaskData(memberTasks + '?memberId=' + regularId, newcomerCookie, 403);
   await getTaskData(modTasks, regularCookie, 401);
+  for (const [account, strikes, openCount] of [['rollover-west', 3, 1], ['rollover-east', 6, 2]]) {
+    const id = novemberMembers[account];
+    await db.from('members').update({ is_active: true }).eq('id', id).throwOnError();
+    const cookie = await signIn(account, id, false, 'member');
+    const before = await getTaskData(memberTasks, cookie);
+    assert.equal(before.strikes_used, before.month === '2026-11' ? strikes : 0);
+    assert.equal(before.strikes_toward_next, 0);
+    assert.equal(before.open_count, openCount);
+    const [task] = before.open_items;
+    assert.equal(task.earned_month, '2026-11-01');
+    assert.equal(task.status, 'awaiting_assignment');
+    await post(modTasks, dbModCookie, { action: 'assign', punishment_id: task.id, title: 'Wind-down plan' });
+    const completed = await post(modTasks, discordModCookie, { action: 'complete', punishment_id: task.id });
+    assert.equal(completed.open_count, openCount - 1);
+    const after = await getTaskData(memberTasks, cookie);
+    assert.equal(after.strikes_used, before.strikes_used);
+    assert.equal(after.history[0].id, task.id);
+    assert.equal(after.open_count, openCount - 1);
+  }
+  console.log('Verified November-to-December rollover in Tokyo and Los Angeles and assignment and completion of November work.');
   const queue = await getTaskData(modTasks, dbModCookie);
   const { id: taskId } = queue.items.find(item => item.member_id === seedRace);
   const assignment = { action: 'assign', punishment_id: taskId, title: 'Wind-down plan' };
@@ -626,6 +692,16 @@ try {
   assert.equal(removed.open_count, 0);
   assert.equal(assignConflict.conflict, true);
   console.log('Verified authenticated punishment APIs, private roster counts, concurrent wake-up and task completion, and assignment racing a correction.');
+
+  // Rehearse the supported rollback after activation: hide screens and keep the active writer and history.
+  sql('UPDATE public.punishment_rollout SET screens_visible = false WHERE singleton');
+  await getTaskData(memberTasks, taskMemberCookie, 503);
+  await getTaskData(modTasks, dbModCookie, 503);
+  assert.equal(sql(`SELECT activated_at = '${activation}'::timestamptz FROM public.punishment_rollout`), 't');
+  const whileHidden = JSON.parse(sql(automatic(raceMember('Hidden Writer'), 17)));
+  assert.equal(whileHidden.cycleStrikesUsed, 1);
+  assert.equal(sql(`SELECT status FROM public.punishments WHERE id = '${taskId}'`), 'completed');
+  console.log('Verified visibility rollback preserves completed history and keeps the new writer active.');
 
 } finally {
   app?.kill();

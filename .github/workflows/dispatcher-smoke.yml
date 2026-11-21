@@ -7,6 +7,7 @@ on:
       - '.github/workflows/dispatcher-smoke.yml'
       - 'scripts/test-dispatcher-ci.mjs'
       - 'scripts/fixtures/discord-oauth-smoke.mjs'
+      - 'scripts/fixtures/november-cutover-smoke.mjs'
       - 'src/app/api/auth/**'
       - 'src/app/api/cron/**'
       - 'src/app/api/members/cancel-pending/**'

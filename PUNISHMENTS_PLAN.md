@@ -142,6 +142,8 @@ Start after the auth baseline in Phase 1. Implement and test the data path befor
 
 **Exit check.** `dev` CI and the device checks pass. Record the exact migration and activation steps, expected row counts, verified discrepancies, and supported rollback procedure in the release checklist. Hold production activation if any check fails.
 
+Use the [November cutover checklist](PUNISHMENTS_RELEASE_CHECKLIST.md) for the rehearsal and record any live checks deferred by the owner before Phase 6.
+
 ### Phase 6 · Release, verify, and recover
 
 1. Confirm the production database and deployment target, required prior migrations, and a restorable backup. Apply the new migration through the supported Supabase path. Deploy the tested `dev` changes through `main` with the punishment workflow inactive and its screens hidden. Confirm the existing sign-in and cron paths still work and run the read-only November preview against production.

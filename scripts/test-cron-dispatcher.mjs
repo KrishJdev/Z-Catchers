@@ -139,8 +139,14 @@ async function run() {
   testAssert(state10m.status === 'OVERDUE_NAG_NOW', 'At 10m past bedtime, status is OVERDUE_NAG_NOW');
   testAssert(state10m.isSleepShieldActive === false, 'Sleep Shield is strictly OFF at 10m without check-in');
 
-  // Trigger Cron Dispatcher at the 10-minute mark to verify automatic strike issuance
   const cycleDate = getSleepCycleDate(baseMember, timeBedtimePlus10m);
+  const beforeCutoff = await executeNotificationDispatcher({
+    testNowUtc: timeBedtimePlus10m.minus({ milliseconds: 1 }),
+    forcedMemberId: baseMember.id,
+  });
+  testAssert(beforeCutoff.autoStrikesDispatched === 0, 'Cron does not issue a strike before the 10-minute cutoff');
+  testAssert(!(await getNightlyStrikeLog(baseMember.id, cycleDate)), 'No nightly strike is written before the cutoff');
+
   const cronResult = await executeNotificationDispatcher({
     testNowUtc: timeBedtimePlus10m,
     forcedMemberId: baseMember.id,
