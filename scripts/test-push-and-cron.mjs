@@ -384,7 +384,7 @@ const metaStrikeRes = await issueAutomaticBedtimeStrike(metaProtectedSleeper, st
 assert(metaStrikeRes.strikeIssued === false, 'Member with active metastrike receives 0 normal strikes');
 assert(metaStrikeRes.reason === 'metastrike_active', 'Reason indicates metastrike is active');
 
-// Case 6F: Member at 3 strikes limit receives 0 new strikes (capped)
+// Case 6F: Member with three strikes can receive a fourth
 const cappedSleeper = {
   ...cronTestSleeper,
   id: 'cron-capped-sleeper',
@@ -392,9 +392,8 @@ const cappedSleeper = {
   strikes_count: 3,
 };
 const cappedStrikeRes = await issueAutomaticBedtimeStrike(cappedSleeper, strikeCycleDate, time10m);
-assert(cappedStrikeRes.strikeIssued === false, 'Member with 3 strikes receives 0 new strikes');
-assert(cappedStrikeRes.reason === 'already_at_max_strikes', 'Reason indicates already at max strikes');
-assert(cappedStrikeRes.strikesUsed === 3, 'Strikes used remains 3');
+assert(cappedStrikeRes.strikeIssued === true, 'Member with three strikes receives another strike');
+assert(cappedStrikeRes.strikesUsed === 4, 'Monthly count advances to four');
 
 // Case 6G: Dry-run safety: verify dry-run does not write strike logs or update member counts
 clearAllCronLocks();

@@ -568,11 +568,6 @@ export function ModDrawer({
 
   // Action: Moderator Adjust Strikes & Metastrikes
   const handleAdjustStrikes = async (member: Member, deltaStrikes: number, deltaMetas: number) => {
-    const currentStrikes = Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0);
-    const currentMetas = Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0);
-    const nextStrikes = Math.max(0, Math.min(3, currentStrikes + deltaStrikes));
-    const nextMetas = Math.max(0, Math.min(3, currentMetas + deltaMetas));
-
     setActionLoadingId(`strikes_${member.id}`);
     setErrorMessage(null);
 
@@ -584,8 +579,8 @@ export function ModDrawer({
           action: 'adjust_strikes',
           mod_passcode: passcode,
           member_id: member.id,
-          strikes_used: nextStrikes,
-          metastrikes_used: nextMetas,
+          strike_delta: deltaStrikes,
+          metastrike_delta: deltaMetas,
         }),
       });
 
@@ -595,7 +590,7 @@ export function ModDrawer({
         return;
       }
 
-      setSuccessMessage(`Updated strikes for ${member.discord_username}: ⚡ ${nextStrikes}/3 • 🛡️ ${nextMetas}/3`);
+      setSuccessMessage(`Updated strikes for ${member.discord_username}: ⚡ ${data.strikes_used} • 🛡️ ${data.metastrikes_used}/3`);
       await fetchModRoster(passcode);
       await onRosterChanged();
       setTimeout(() => setSuccessMessage(null), 3500);
@@ -1555,7 +1550,7 @@ export function ModDrawer({
                                   <span className="font-semibold text-fox-rust flex items-center gap-1">
                                     <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
                                     <span>Strikes:</span>
-                                    <strong className="tabular-nums font-bold">{Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0)}/3</strong>
+                                    <strong className="tabular-nums font-bold">{Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0)}</strong>
                                   </span>
                                   <div className="flex items-center gap-0.5 ml-1">
                                     <button
@@ -1570,7 +1565,7 @@ export function ModDrawer({
                                     <button
                                       type="button"
                                       onClick={() => handleAdjustStrikes(member, 1, 0)}
-                                      disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) >= 3}
+                                      disabled={actionLoadingId === `strikes_${member.id}`}
                                       className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                       title="Increment strikes"
                                     >

@@ -18,7 +18,7 @@ import { DateTime } from 'luxon';
  *
  * Allows a member or moderator to use an excused Metastrike pass:
  * 1. Proactive (Tonight): Claims a pass for tonight with an optional excuse reason ("Monthly Battle", "Family", etc.)
- * 2. Retroactive (24-Hour Swap): Converts a community-issued strike within a 24-hour window following the missed bedtime into an excused Metastrike.
+ * 2. Retroactive: Replaces a recorded strike before the next scheduled bedtime.
  *
  * @param request - Incoming HTTP request with member ID, action, reason, and auth credentials
  * @returns JSON response containing action result and updated strike counts
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     const member = rawMember as Member;
     const sessionMemberId = getRequestSessionMemberId(request);
     const candidatePasscode = getModeratorPasscode(request, mod_passcode);
-    let isModerator = false;
+    let moderator: string | undefined;
 
     if (candidatePasscode) {
       const attempt = await verifyRateLimitedModeratorPasscode(candidatePasscode, getClientIp(request), sessionMemberId);
@@ -64,12 +64,13 @@ export async function POST(request: Request) {
       if (!attempt.valid) {
         return NextResponse.json({ error: 'Invalid moderator passcode.' }, { status: 401 });
       }
-      isModerator = true;
+      moderator = 'master_mod';
     } else if (!ownsDiscordProfile(request, member)) {
-      isModerator = (await verifyModeratorSession(request)).authorized;
+      const session = await verifyModeratorSession(request);
+      if (session.authorized) moderator = session.moderatorId;
     }
 
-    if (!member.is_active || (!isModerator && !ownsDiscordProfile(request, member))) {
+    if (!member.is_active || (!moderator && !ownsDiscordProfile(request, member))) {
       return NextResponse.json(
         { error: 'Sign in with the Discord account linked to this profile.', code: sessionMemberId ? 'FORBIDDEN' : 'UNAUTHORIZED' },
         { status: sessionMemberId ? 403 : 401 }
@@ -91,10 +92,10 @@ export async function POST(request: Request) {
 
       const result = await convertStrikeToMetastrike(
         member,
-        reason || (isModerator ? 'Moderator Retroactive Excuse' : 'Converted from Strike'),
+        reason || (moderator ? 'Moderator Retroactive Excuse' : 'Converted from Strike'),
         targetCycleDate,
         nowUtc,
-        isModerator
+        moderator
       );
 
       if (!result.success) {
@@ -117,9 +118,10 @@ export async function POST(request: Request) {
     // Default: Proactive Metastrike pass for tonight
     const result = await useProactiveMetastrike(
       member,
-      reason || (isModerator ? 'Moderator Excused Pass' : 'Excused Night'),
+      reason || (moderator ? 'Moderator Excused Pass' : 'Excused Night'),
       cycleDate,
-      nowUtc
+      nowUtc,
+      moderator
     );
 
     if (!result.success) {

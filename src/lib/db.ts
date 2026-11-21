@@ -75,10 +75,11 @@ export interface Member {
   passcode_hash?: string | null;
   has_pin?: boolean;
   is_active: boolean;
+  strike_schedule_revision?: number;
   // Monthly Strikes & Metastrikes Accountability System
-  strikes_used?: number; // 0 to 3
+  strikes_used?: number; // Monthly projection
   metastrikes_used?: number; // 0 to 3
-  strikes_count?: number; // Alias 0 to 3
+  strikes_count?: number; // Alias of strikes_used
   metastrikes_count?: number; // Alias 0 to 3
   strike_cycle_month?: string; // "YYYY-MM"
   last_notified_stage?: string | null;
@@ -133,6 +134,7 @@ export interface NightlyStrikeLog {
   reason?: string | null;
   created_at: string;
   updated_at?: string;
+  replacement_until?: string | null;
 }
 
 export interface PushSubscriptionRecord {

@@ -155,7 +155,7 @@ async function run() {
   assert(peerVote.success === false, 'Peer strike voting is rejected');
   assert(peerVote.error && peerVote.error.includes('disabled'), 'Returns peer voting disabled message');
 
-  // Test 2F: Member already at 3 strikes limit receives 0 new strikes (capped)
+  // Test 2F: Member with three strikes can receive a fourth
   const maxStrikesMember = {
     ...dummyMember,
     id: 'test-max-strikes-sleeper',
@@ -163,9 +163,8 @@ async function run() {
     strikes_count: 3,
   };
   const maxStrikeRes = await issueAutomaticBedtimeStrike(maxStrikesMember, '2026-11-10', t10);
-  assert(maxStrikeRes.strikeIssued === false, 'Member with 3 strikes receives 0 new strikes');
-  assert(maxStrikeRes.reason === 'already_at_max_strikes', 'Reason indicates already at max strikes');
-  assert(maxStrikeRes.strikesUsed === 3, 'Strikes used remains capped at 3');
+  assert(maxStrikeRes.strikeIssued === true, 'Member with three strikes receives another strike');
+  assert(maxStrikeRes.strikesUsed === 4, 'Monthly count advances to four');
 
   // Test 2G: Next scheduled bedtime evaluation across midnight boundaries
   const midnightMember = {
@@ -441,7 +440,7 @@ async function run() {
 
   console.log('\n--- 6. Moderator Override Operations ---');
   // Mod Adjust Strikes
-  const modCountsRes = await modAdjustStrikes(dummyMember.id, 2, 1);
+  const modCountsRes = await modAdjustStrikes(dummyMember.id, 2, 1, false, 'test-mod');
   assert(modCountsRes.success === true, 'Mod adjusted strikes_used successfully');
   const modCounts = await resolveMemberStrikeCounts(dummyMember);
   assert(modCounts.strikes_used === 2, 'Mod adjusted strikes_used to 2');
@@ -457,9 +456,9 @@ async function run() {
     created_at: DateTime.utc().toISO(),
     updated_at: DateTime.utc().toISO(),
   });
-  await modAdjustStrikes(dummyMember.id, 3, 1);
+  await modAdjustStrikes(dummyMember.id, 3, 1, false, 'test-mod');
 
-  const clearSuccess = await modClearStrikeLog(dummyMember.id, '2026-11-13');
+  const clearSuccess = await modClearStrikeLog(dummyMember.id, '2026-11-13', 'test-mod');
   assert(clearSuccess.success === true, 'Mod successfully cleared strike log');
   const clearedLog = await getNightlyStrikeLog(dummyMember.id, '2026-11-13');
   assert(clearedLog === null, 'Log is cleanly removed from store');

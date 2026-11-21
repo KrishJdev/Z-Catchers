@@ -6,7 +6,7 @@ const db = new PGlite();
 try {
   await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
     CREATE SCHEMA auth; CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS 'SELECT current_user::text';`);
-  const schema = readFileSync('supabase/schema.sql', 'utf8');
+  const schema = readFileSync('supabase/schema.sql', 'utf8').split('-- Install the ledger without activating')[0];
   // gen_random_uuid is built into PostgreSQL. PGlite omits the optional pgcrypto extension.
   const localSchema = schema.replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
   await db.exec(localSchema);

@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import type { Member } from '@/lib/db';
 import { getStreakMilestoneBadge } from '@/lib/sleepEngine';
 import { formatGmtOffset } from '@/lib/timezone';
@@ -294,7 +295,8 @@ export async function sendNagAssistDiscordWebhook(
  * Mentions <@discord_id> when available.
  *
  * @param member - Target member entity
- * @param strikesUsed - Total strikes used this month
+ * @param strikesUsed - Strike count for the specified month
+ * @param month - Month represented by that count (YYYY-MM)
  * @param reason - Optional reason or note
  * @param options - Webhook dispatch options
  * @returns WebhookSendResult
@@ -302,20 +304,22 @@ export async function sendNagAssistDiscordWebhook(
 export async function sendStrikeDiscordWebhook(
   member: Member,
   strikesUsed: number,
+  month: string,
   reason?: string,
   options: { webhookUrl?: string | null } = {}
 ): Promise<WebhookSendResult> {
   const mention = formatMemberDiscordMention(member);
+  const strikeMonth = DateTime.fromISO(month, { zone: 'utc' }).setLocale('en').toFormat('LLLL yyyy');
 
   const embed: DiscordEmbed = {
     title: `⚡ Bedtime Strike Issued: ${member.discord_username}`,
-    description: `A bedtime strike has been recorded for ${mention}. **${strikesUsed}/3 strikes** used for this month.${reason ? ` Reason: ${reason}` : ''} 🦊⚡`,
+    description: `A bedtime strike has been recorded for ${mention}. **${strikesUsed} strikes** recorded for ${strikeMonth}.${reason ? ` Reason: ${reason}` : ''} 🦊⚡`,
     url: member.journal_url,
     color: DISCORD_EMBED_COLORS.CORAL_NAG,
     fields: [
       {
         name: '⚡ Strikes Status',
-        value: `${strikesUsed} of 3 maximum monthly strikes used`,
+        value: `${strikesUsed} in ${strikeMonth}`,
         inline: true,
       },
       {

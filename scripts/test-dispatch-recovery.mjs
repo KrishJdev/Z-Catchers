@@ -8,7 +8,7 @@ process.env.MOD_SECRET_PASSCODE = 'dispatcher-fixture-mod';
 const { fetchAllRows, supabaseAdmin } = await import('../src/lib/db.ts');
 const { Settings } = await import('../src/lib/sleepEngine.ts');
 const { acquireCronLock, clearAllCronLocks, executeNotificationDispatcher, getCronLock, recordCronLockDeliveredSub } = await import('../src/lib/cronDispatcher.ts');
-const { resolveMemberStrikeCounts } = await import('../src/lib/strikes.ts');
+const { resolveMemberStrikeCounts, getStrikeAlertTotal } = await import('../src/lib/strikes.ts');
 const { webpush } = await import('../src/lib/pushServer.ts');
 const { GET } = await import('../src/app/api/cron/dispatch-notifications/route.ts');
 const { GET: getRoster } = await import('../src/app/api/members/route.ts');
@@ -41,9 +41,13 @@ let nagDeleteAttempts = 0;
 let nextId = 0;
 let claimNag;
 let applyStrike;
+let cycleTotal = null;
+let refreshProjection = id => ({ data: null, error: { message: 'Unexpected refresh for ' + id } });
 supabaseAdmin.rpc = async (name, params) => {
   if (name === 'claim_manual_nag') return claimNag(params);
   if (name === 'apply_nightly_strike') return applyStrike(params);
+  if (name === 'refresh_member_strike_projection') return refreshProjection(params.p_member_id);
+  if (name === 'get_strike_cycle_total') return { data: cycleTotal, error: null };
   const lease = tables.cron_locks.find(row => row.lock_key === params.p_key);
   if (name === 'renew_cron_lease') {
     if (lease?.locked_at !== params.p_previous_locked_at || lease.expires_at > params.p_locked_at || lease.metadata.completed) {
@@ -360,20 +364,20 @@ assert.equal(afterPromotion.evaluatedMembersCount, 2);
 assert.deepEqual(promotionSends, ['concurrent', 'device-a']);
 
 // A competing monthly rollover returns the persisted counts. A DB error surfaces separately.
-memberUpdate = (member, fields) => {
-  if (fields.strike_cycle_month !== '2026-12') return;
-  Object.assign(member, { strike_cycle_month: '2026-12', strikes_used: 2, metastrikes_used: 1 });
-  return { data: [], error: null };
-};
+refreshProjection = () => ({ data: { strikesUsed: 2, metastrikesUsed: 1, month: '2026-12', reset: false }, error: null });
 const november = { ...sleeper };
 const december = DateTime.fromISO('2026-12-01T00:02Z');
+cycleTotal = 9;
+assert.deepEqual(await getStrikeAlertTotal(november, '2026-11-30', december), { count: 9, month: '2026-11' });
+cycleTotal = null;
 assert.deepEqual(await resolveMemberStrikeCounts(november, december), {
   strikes_used: 2, metastrikes_used: 1, strike_cycle_month: '2026-12', reset: false,
 });
-memberUpdate = () => ({ data: null, error: { message: 'rollover database unavailable' } });
+refreshProjection = () => ({ data: null, error: { message: 'rollover database unavailable' } });
 Object.assign(sleeper, november);
 await assert.rejects(resolveMemberStrikeCounts(november, december), /rollover database unavailable/);
 memberUpdate = undefined;
+refreshProjection = () => ({ data: { strikesUsed: 0, metastrikesUsed: 0, month: '2026-12', reset: true }, error: null });
 assert.deepEqual(await resolveMemberStrikeCounts(november, december), {
   strikes_used: 0, metastrikes_used: 0, strike_cycle_month: '2026-12', reset: true,
 });
@@ -430,7 +434,7 @@ try {
   process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'disabled';
 }
 assert.equal(webhookPayloads.length, 1);
-assert.match(webhookPayloads[0].embeds[0].description, /2\/3 strikes/);
+assert.match(webhookPayloads[0].embeds[0].description, /2 strikes.*November 2026/);
 assert.equal(strikeWrites, 1);
 assert.deepEqual(alertAttempts, ['device-a', 'device-b', 'device-b']);
 assert.equal(tables.cron_locks.find(row => row.lock_key === strikeKey).metadata.alert_outcome, 'complete');
@@ -578,7 +582,10 @@ tables.nightly_strike_logs = tables.members.map(member => ({
 }));
 tables.cron_locks = [];
 clearAllCronLocks();
-memberUpdate = member => member.id === primary.id ? { data: null, error: { message: 'rollover failed' } } : undefined;
+refreshProjection = id => {
+  assert.equal(id, primary.id);
+  return { data: null, error: { message: 'rollover failed' } };
+};
 Settings.now = () => Date.parse('2026-12-01T23:15Z');
 const roster = await getRoster(new Request('http://localhost/api/members'));
 assert.equal(roster.status, 200);
@@ -601,6 +608,42 @@ const resumed = await executeNotificationDispatcher({ testNowUtc: DateTime.fromI
 assert.match(resumed.details.errors[0], /AUTO_BEDTIME_STRIKE for sleeper.*rollover failed/);
 assert.ok(tables.notification_logs.some(row => row.member_id === other.id && row.notification_type === 'AUTO_BEDTIME_STRIKE'));
 assert.ok(!tables.notification_logs.some(row => row.member_id === primary.id && row.notification_type === 'AUTO_BEDTIME_STRIKE'));
+
+// A legacy writer can commit after midnight while still returning the issuance month's count.
+const monthEnd = { ...sleeper, id: 'month-end', bedtime_local: '23:40', wake_time_local: '07:00',
+  is_woke_up: false, last_wake_cycle_date: null, strike_cycle_month: '2026-11' };
+tables.members = [monthEnd];
+tables.notification_logs = [{ member_id: monthEnd.id, notification_type: 'BEDTIME_HIT', local_date: '2026-11-30' }];
+tables.nightly_strike_logs = [];
+tables.sleep_logs = [];
+tables.push_subscriptions = [];
+tables.cron_locks = [];
+clearAllCronLocks();
+let boundaryClock = Date.parse('2026-11-30T23:59:59Z');
+const previousClock = Settings.now;
+Settings.now = () => boundaryClock;
+const boundaryWebhooks = [];
+process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'https://discord.com/api/webhooks/123456789/fixture';
+globalThis.fetch = async (_url, options) => {
+  boundaryWebhooks.push(JSON.parse(options.body));
+  return new Response(null, { status: 204 });
+};
+applyStrike = async params => {
+  assert.equal(params.p_month, '2026-11');
+  boundaryClock = Date.parse('2026-12-01T00:00:01Z');
+  return { data: { log: { record_type: 'strike', updated_at: params.p_now }, strikesUsed: 3 } };
+};
+try {
+  const dispatch = await executeNotificationDispatcher({ forcedMemberId: monthEnd.id });
+  assert.deepEqual(dispatch.details.errors, []);
+  assert.equal(dispatch.autoStrikesDispatched, 1);
+  assert.equal(boundaryWebhooks.length, 1);
+  assert.match(boundaryWebhooks[0].embeds[0].description, /3 strikes.*November 2026/);
+} finally {
+  Settings.now = previousClock;
+  globalThis.fetch = originalFetch;
+  process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'disabled';
+}
 
 // Removing a subscription already read on page one must not shift the last row past page two.
 let rows = [{ id: 'a', endpoint: 'A' }, { id: 'b', endpoint: 'B' }, { id: 'c', endpoint: 'C' }];

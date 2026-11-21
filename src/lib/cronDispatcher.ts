@@ -12,11 +12,11 @@ import {
   getInMemorySleepLogs,
   getMemberByIdSafe,
 } from '@/lib/db';
-import { checkCooldownPromotion, computeMemberState, getSleepCycleDate, getNightScheduleDateTime, getNextScheduledBedtime, getPreviousScheduledBedtime, resolveActiveSleepCycleWindow } from '@/lib/sleepEngine';
+import { checkCooldownPromotion, computeMemberState, getCurrentStrikeMonth, getSleepCycleDate, getNightScheduleDateTime, getNextScheduledBedtime, getPreviousScheduledBedtime, resolveActiveSleepCycleWindow } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
 import { pushTtlBefore, sendPushNotification } from '@/lib/pushServer';
 import { sendBedtimeDiscordWebhook, sendStrikeDiscordWebhook } from '@/lib/discordWebhook';
-import { issueAutomaticBedtimeStrike, getNightlyStrikeLog, resolveMemberStrikeCounts } from '@/lib/strikes';
+import { issueAutomaticBedtimeStrike, getNightlyStrikeLog, getStrikeAlertTotal } from '@/lib/strikes';
 
 // Preserve in-memory fallback cron locks on globalThis across module reloads and chunks
 const globalForCronLocks = globalThis as unknown as {
@@ -902,14 +902,15 @@ export async function executeNotificationDispatcher(options: {
           await finishStrike('converted');
           continue;
         }
-        let issuedCount: number | undefined;
+        let alertTotal: { count: number; month: string } | undefined;
         if (!committed) {
           if (!shouldIssue) {
             await finishStrike('not_issued');
             continue;
           }
           await verifyCronLease(lease);
-          const strikeResult = await issueAutomaticBedtimeStrike(member, cycle, currentTime());
+          const issuedAt = currentTime();
+          const strikeResult = await issueAutomaticBedtimeStrike(member, cycle, issuedAt);
           if (!strikeResult.success) {
             results.details.errors.push(`Auto Bedtime Strike (${member.discord_username}): ${strikeResult.error}`);
             continue;
@@ -927,7 +928,11 @@ export async function executeNotificationDispatcher(options: {
             continue;
           }
           strike = strikeResult.log;
-          issuedCount = strikeResult.strikesUsed;
+          if (strikeResult.cycleStrikesUsed !== undefined) {
+            alertTotal = { count: strikeResult.cycleStrikesUsed, month: cycle.slice(0, 7) };
+          } else if (strikeResult.strikeIssued && strikeResult.strikesUsed !== undefined) {
+            alertTotal = { count: strikeResult.strikesUsed, month: getCurrentStrikeMonth(member, issuedAt) };
+          }
         }
 
         const committedAt = DateTime.fromISO(strike?.updated_at || strike?.created_at || '');
@@ -957,18 +962,18 @@ export async function executeNotificationDispatcher(options: {
         }
 
         if (!deliveredSubs.has('discord_webhook') && currentTime() < deadline) {
-          if (issuedCount === undefined) {
+          if (!alertTotal) {
             const stored = await getMemberByIdSafe(member.id, { requireFresh: true });
             if (stored.error || !stored.data) throw new Error('Could not read current member strike counts.');
             if (!stored.data.is_active) {
               await finishStrike('complete');
               continue;
             }
-            issuedCount = (await resolveMemberStrikeCounts(stored.data, currentTime())).strikes_used;
+            alertTotal = await getStrikeAlertTotal(stored.data, cycle, currentTime());
           }
           await verifyCronLease(lease);
           if (currentTime() < deadline) {
-            const webhookRes = await sendStrikeDiscordWebhook(member, issuedCount,
+            const webhookRes = await sendStrikeDiscordWebhook(member, alertTotal.count, alertTotal.month,
               'Automated 10-minute bedtime strike (missed bedtime check-in)');
             if (webhookRes.success) {
               results.discordWebhooksCount++;
