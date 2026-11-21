@@ -227,9 +227,9 @@ assert(
 assert(
   memberCardContent.includes('strikesUsed') &&
   memberCardContent.includes('metastrikesUsed') &&
-  memberCardContent.includes('key={`sheet-strike-${member.id}-${pip}`}') &&
+  memberCardContent.includes('Monthly strikes {strikesUsed}') &&
   memberCardContent.includes('key={`sheet-meta-${member.id}-${pip}`}'),
-  'Bottom sheet must disclose Monthly Strikes & Metastrikes accountability bar with status pips'
+  'Bottom sheet must disclose Monthly Strikes & Metastrikes monthly total and Metastrike status pips'
 );
 
 // SleepCalendarModal.tsx trigger

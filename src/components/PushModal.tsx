@@ -1,5 +1,6 @@
 'use client';
 
+import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import React, { useState, useEffect } from 'react';
 import { FoxMascot } from './FoxMascot';
 import { Member } from '@/lib/db';
@@ -237,8 +238,8 @@ export function PushModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-night-bg/85 backdrop-blur-md p-0 md:items-center md:p-4 animate-fade-in">
-      <div className="relative flex w-full max-w-md flex-col rounded-t-3xl border-t border-night-border bg-night-surface p-5 shadow-2xl max-h-[90dvh] overflow-y-auto md:rounded-2xl md:border md:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-6">
+    <ResponsiveDialog labelledBy="push-settings-title" onClose={onClose}
+      className="max-h-[90dvh] p-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:max-w-md md:p-6">
         {/* Mobile handle indicator */}
         <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-night-border md:hidden shrink-0" />
 
@@ -255,7 +256,7 @@ export function PushModal({
         <div className="flex items-center gap-3.5 mb-5 pr-8">
           <FoxMascot state={isPushEnabled ? 'alert' : 'lantern'} size={38} />
           <div>
-            <h2 className="text-lg font-bold text-cream-primary">Bedtime & Nag Alerts</h2>
+            <h2 id="push-settings-title" className="text-lg font-bold text-cream-primary">Notification settings</h2>
             <p className="text-xs text-cream-secondary">
               Real-time Web Push notifications guarded by the Sleep Shield
             </p>
@@ -292,7 +293,7 @@ export function PushModal({
                         setCopiedBraveUrl(true);
                         setTimeout(() => setCopiedBraveUrl(false), 2500);
                       }}
-                      className="inline-flex items-center gap-1 font-mono text-status-amber bg-night-elevated px-1.5 py-0.5 rounded hover:bg-night-border transition-colors"
+                      className="inline-flex items-center gap-1 font-mono text-status-amber bg-night-elevated px-1.5 py-0.5 rounded hover:bg-night-border transition-colors [overflow-wrap:anywhere]"
                       title="Click to copy brave://settings/privacy"
                     >
                       <span>brave://settings/privacy</span>
@@ -331,7 +332,7 @@ export function PushModal({
 
         {/* Logged in member badge */}
         {currentUser ? (
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-night-border bg-night-elevated p-3">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 rounded-xl border border-night-border bg-night-elevated p-3">
             <div className="flex items-center gap-2.5">
               <span className="flex h-2 w-2 rounded-full bg-status-sage" />
               <div>
@@ -349,7 +350,7 @@ export function PushModal({
                   onClose();
                   onOpenScheduleModal();
                 }}
-                className="text-[11px] font-medium text-status-amber hover:underline min-h-[44px] flex items-center"
+                className="text-[11px] font-medium text-status-amber hover:underline min-h-[44px] min-w-[44px] flex items-center"
               >
                 Edit Schedule
               </button>
@@ -360,7 +361,7 @@ export function PushModal({
                     onClose();
                     onLogout();
                   }}
-                  className="text-[11px] font-medium text-cream-muted hover:text-status-coral transition-colors min-h-[44px] flex items-center ml-1"
+                  className="text-[11px] font-medium text-cream-muted hover:text-status-coral transition-colors min-h-[44px] min-w-[44px] flex items-center ml-1"
                 >
                   Log Out
                 </button>
@@ -457,12 +458,12 @@ export function PushModal({
         {/* Action Buttons */}
         <div className="flex flex-col gap-2.5 mt-auto">
           {isPushEnabled ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleSendTestPush}
                 disabled={testLoading}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-night-border bg-night-elevated px-3 text-xs font-semibold text-cream-primary hover:bg-night-border transition-colors disabled:opacity-50 h-11 min-h-[44px] whitespace-nowrap"
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-night-border bg-night-elevated px-3 text-xs font-semibold text-cream-primary hover:bg-night-border transition-colors disabled:opacity-50 min-h-[44px] py-2"
               >
                 <Send className="h-3.5 w-3.5 text-status-amber" />
                 <span>{testLoading ? 'Sending...' : 'Send Test Alert'}</span>
@@ -472,7 +473,7 @@ export function PushModal({
                 type="button"
                 onClick={handleDisablePush}
                 disabled={loading}
-                className="flex items-center justify-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 text-xs font-semibold text-status-coral hover:bg-status-coral/20 transition-colors disabled:opacity-50 h-11 min-h-[44px] whitespace-nowrap"
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-status-coral/40 bg-status-coral/10 px-4 text-xs font-semibold text-status-coral hover:bg-status-coral/20 transition-colors disabled:opacity-50 min-h-[44px] py-2"
               >
                 <BellOff className="h-3.5 w-3.5" />
                 <span>Turn Off</span>
@@ -483,14 +484,13 @@ export function PushModal({
               type="button"
               onClick={handleEnablePush}
               disabled={loading || !supported || Boolean(repair)}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-status-amber px-4 text-xs font-bold text-night-bg shadow-lg hover:bg-status-amber/90 transition-all disabled:opacity-50 active:scale-95 h-11 min-h-[44px] whitespace-nowrap"
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-status-amber px-4 text-xs font-bold text-night-bg shadow-lg hover:bg-status-amber/90 transition-all disabled:opacity-50 active:scale-95 min-h-[44px] py-2"
             >
               <Bell className="h-4 w-4" />
               <span>{loading ? 'Registering Push...' : 'Turn On Bedtime & Nag Alerts'}</span>
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </ResponsiveDialog>
   );
 }

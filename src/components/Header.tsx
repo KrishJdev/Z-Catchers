@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Bell, BellOff, Clock, Shield, Moon, LogOut } from 'lucide-react';
+import { Bell, BellOff, Clock, Shield, Moon, UserRound } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import { FoxMascot } from '@/components/FoxMascot';
 import { DateTime } from 'luxon';
@@ -18,14 +18,13 @@ function DiscordIcon({ className = 'w-4 h-4' }: { className?: string }) {
 interface HeaderProps {
   viewerTimezone: string;
   isPushEnabled?: boolean;
-  onTogglePush?: () => void;
+  onOpenPush?: () => void;
   isSleepShieldActive?: boolean;
-  onToggleSleepShield?: () => void;
-  onOpenSchedule?: () => void;
+  onOpenProfile?: () => void;
   onOpenMod?: () => void;
   currentUser?: Member | null;
   onOpenLogin?: (initialTab?: 'login' | 'register') => void;
-  onLogout?: () => void;
+  onOpenMySleep?: () => void;
 }
 
 /**
@@ -38,14 +37,13 @@ interface HeaderProps {
 export function Header({
   viewerTimezone,
   isPushEnabled,
-  onTogglePush,
+  onOpenPush,
   isSleepShieldActive = false,
-  onToggleSleepShield,
-  onOpenSchedule,
+  onOpenProfile,
   onOpenMod,
   currentUser,
   onOpenLogin,
-  onLogout,
+  onOpenMySleep,
 }: HeaderProps) {
   const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
 
@@ -83,35 +81,24 @@ export function Header({
           </div>
         </div>
 
-        {/* Desktop Command Bar Center: Live Clock & Sleep Shield Toggle */}
+        {/* Live clock and Sleep Shield status */}
         <div className="hidden items-center gap-3 md:flex">
           {/* Live Clock & Timezone Pill */}
-          <div className="flex items-center gap-2 rounded-full border border-night-border bg-night-surface px-3 py-1.5 text-xs text-cream-secondary">
+          <div className="flex items-center gap-1.5 whitespace-nowrap text-xs text-cream-secondary lg:gap-2 lg:rounded-full lg:border lg:border-night-border lg:bg-night-surface lg:px-3 lg:py-1.5">
             <Clock className="h-3.5 w-3.5 text-status-amber" />
             <span className="font-semibold tabular-nums text-cream-primary">
               {currentTimeStr || '—'}
             </span>
-            <span className="text-cream-muted">•</span>
-            <span className="text-cream-secondary">{timezoneDisplayName}</span>
+            <span className="hidden text-cream-muted lg:inline">•</span>
+            <span className="hidden text-cream-secondary lg:inline">{timezoneDisplayName}</span>
           </div>
 
-          {/* Viewer's Personal Sleep Shield Status Toggle */}
-          <button
-            type="button"
-            onClick={onToggleSleepShield}
-            title="Toggle personal quiet hours (Sleep Shield suppresses incoming nag notifications)"
-            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
-              isSleepShieldActive
-                ? 'border-status-slumber/50 bg-status-slumber/20 text-cream-primary shadow-sm shadow-status-slumber/20'
-                : 'border-night-border bg-night-surface text-cream-muted hover:border-night-elevated hover:text-cream-secondary'
-            }`}
-          >
-            <Moon className={`h-3.5 w-3.5 ${isSleepShieldActive ? 'text-status-slumber' : 'text-cream-muted'}`} />
-            <span>Shield:</span>
-            <span className={`font-semibold ${isSleepShieldActive ? 'text-status-slumber' : 'text-cream-muted'}`}>
-              {isSleepShieldActive ? 'Active (Quiet)' : 'Off'}
+          {currentUser && (
+            <span className="flex items-center gap-1.5 rounded-full border border-night-border bg-night-surface px-3 py-1.5 text-xs text-cream-secondary" role="status">
+              <Moon className={`h-3.5 w-3.5 ${isSleepShieldActive ? 'text-status-amber' : 'text-cream-muted'}`} aria-hidden="true" />
+              Sleep Shield {isSleepShieldActive ? 'active' : 'off'}
             </span>
-          </button>
+          )}
         </div>
 
         {/* Right side: Compact profile pill on mobile; desktop command buttons on md:flex */}
@@ -120,6 +107,7 @@ export function Header({
             <button
               type="button"
               onClick={onOpenMod}
+              aria-haspopup="dialog"
               className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary h-11 min-h-[44px] whitespace-nowrap md:inline-flex"
             >
               <Shield className="h-3.5 w-3.5 text-cream-muted" />
@@ -127,66 +115,27 @@ export function Header({
             </button>
           )}
 
-          {/* Push Notification Toggle (Desktop only; on mobile accessed via Alerts bottom tab) */}
-          <button
-            type="button"
-            onClick={onTogglePush}
-            title={isPushEnabled ? 'Push notifications active' : 'Turn on bedtime & nag alerts'}
-            className={`hidden md:flex h-11 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-all min-h-[44px] whitespace-nowrap ${
-              isPushEnabled
-                ? 'border border-status-sage/40 bg-status-sage/15 text-status-sage'
-                : 'border border-night-border bg-night-surface text-cream-muted hover:border-night-elevated hover:text-cream-secondary'
-            }`}
-          >
-            {isPushEnabled ? (
-              <Bell className="h-4 w-4 text-status-sage" />
-            ) : (
-              <BellOff className="h-4 w-4 text-cream-muted" />
-            )}
-            <span>
-              {isPushEnabled ? 'Alerts On' : 'Alerts Off'}
-            </span>
-          </button>
-
-          {/* Member Profile / Log In / Log Out */}
           {currentUser ? (
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <button
-                type="button"
-                onClick={onOpenSchedule}
-                title={`Logged in as @${currentUser.discord_username}. Tap to view your profile & schedule.`}
-                className="flex items-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2.5 sm:px-3 text-xs font-semibold text-status-amber hover:bg-status-amber/20 transition-all shrink-0 h-11 min-h-[44px] whitespace-nowrap"
-              >
-                {currentUser.avatar_url ? (
-                  <img
-                    src={currentUser.avatar_url}
-                    alt={currentUser.discord_username}
-                    className="h-5 w-5 rounded-full object-cover border border-status-amber/40 shrink-0 bg-night-elevated"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <span className="h-2 w-2 rounded-full bg-status-sage shrink-0" />
-                )}
-                <span className="max-w-[70px] xs:max-w-[100px] truncate sm:max-w-[140px]">
-                  @{currentUser.discord_username}
-                </span>
+            <>
+              <button type="button" onClick={onOpenMySleep} aria-haspopup="dialog"
+                className="hidden min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-xl border border-night-border bg-night-surface px-3 text-xs font-semibold text-cream-primary md:inline-flex">
+                <Moon className="h-4 w-4 text-status-amber" aria-hidden="true" />
+                My Sleep
               </button>
-
-              {onLogout && (
-                <button
-                  type="button"
-                  onClick={onLogout}
-                  title={`Log out of @${currentUser.discord_username}`}
-                  aria-label="Log out"
-                  className="flex items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-2.5 text-xs font-medium text-cream-muted hover:border-status-coral/40 hover:bg-status-coral/10 hover:text-status-coral transition-all h-11 min-h-[44px] shrink-0 whitespace-nowrap"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline font-medium">Log Out</span>
-                </button>
-              )}
-            </div>
+              <button type="button" onClick={onOpenPush} aria-haspopup="dialog"
+                aria-label={`Notification settings. Push notifications ${isPushEnabled ? 'on' : 'off'} for this device`}
+                className={`relative grid h-11 w-11 place-items-center rounded-xl border bg-night-surface ${isPushEnabled ? 'border-status-sage/50 text-status-sage' : 'border-night-border text-cream-secondary'}`}>
+                {isPushEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+                {isPushEnabled && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-status-sage ring-2 ring-night-surface" />}
+              </button>
+              <button type="button" onClick={onOpenProfile} aria-haspopup="dialog" aria-label="Open profile"
+                className="flex h-11 min-w-[44px] items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2 text-xs font-semibold text-status-amber hover:bg-status-amber/20">
+                {currentUser.avatar_url ? (
+                  <img src={currentUser.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" />
+                ) : <UserRound className="h-5 w-5" aria-hidden="true" />}
+                <span className="hidden max-w-24 truncate lg:inline">{currentUser.discord_username}</span>
+              </button>
+            </>
           ) : (
             <button
               type="button"

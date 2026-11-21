@@ -14,7 +14,7 @@ import { BottomNav, type MobileNavTab } from '@/components/BottomNav';
 import { MetastrikeModal } from '@/components/MetastrikeModal';
 import { SleepCalendarModal } from '@/components/SleepCalendarModal';
 import { PinnedSelfActionBar } from '@/components/PinnedSelfActionBar';
-import { computeMemberState, MemberState } from '@/lib/sleepEngine';
+import { computeMemberState, hasRosterSleepShield, MemberState } from '@/lib/sleepEngine';
 import { formatGmtOffset } from '@/lib/timezone';
 import {
   registerServiceWorker,
@@ -35,13 +35,32 @@ import {
   Star,
   Users,
   KeyRound,
-  BedDouble,
-  Clock,
-  Calendar,
 } from 'lucide-react';
 
 const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
 const STORAGE_KEY_CACHED_ROSTER = 'zcatchers_cached_roster';
+
+function rosterWithoutPrivateCounts(members: Member[]): Member[] {
+  return members.map(({ open_punishment_count: _privateCount, ...member }) => member);
+}
+
+function readCachedRoster(): Member[] {
+  try {
+    const snapshot = JSON.parse(localStorage.getItem(STORAGE_KEY_CACHED_ROSTER) ?? 'null');
+    if (!Array.isArray(snapshot)) return [];
+    const roster = rosterWithoutPrivateCounts(snapshot);
+    if (snapshot.some(member => 'open_punishment_count' in member)) {
+      try {
+        localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(roster));
+      } catch {
+        // Keep the sanitized roster usable when storage cannot be written.
+      }
+    }
+    return roster;
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Main dashboard page for Z Catchers.
@@ -80,18 +99,21 @@ export default function HomePage() {
   const [metastrikeMode, setMetastrikeMode] = useState<'proactive' | 'convert_retroactive'>('proactive');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Dialog / Modal states: 'schedule' | 'mod' | 'push' | null
-  const [activeModal, setActiveModal] = useState<'schedule' | 'mod' | 'push' | null>(null);
-  const [mobileTab, setMobileTab] = useState<MobileNavTab>('roster');
-  const [calendarModalMemberId, setCalendarModalMemberId] = useState<string | null>(null);
-  const [calendarModalTab, setCalendarModalTab] = useState<'calendar' | 'timetable'>('calendar');
-  const [showHeroManualWake, setShowHeroManualWake] = useState(false);
-  const [heroManualWakeTime, setHeroManualWakeTime] = useState('07:30');
+  const [activeModal, setActiveModal] = useState<'profile' | 'schedule' | 'mod' | 'push' | null>(null);
+  const [calendarView, setCalendarView] = useState<{
+    memberId: string;
+    tab: 'calendar' | 'timetable' | 'punishments';
+    personal?: boolean;
+  } | null>(null);
 
-  const handleOpenMemberProfile = useCallback((memberId: string, initialTab: 'calendar' | 'timetable' = 'calendar') => {
-    setCalendarModalMemberId(memberId);
-    setCalendarModalTab(initialTab);
+  const handleOpenMemberProfile = useCallback((memberId: string, tab: 'calendar' | 'timetable' = 'calendar') => {
+    setCalendarView({ memberId, tab });
   }, []);
+
+  const openMySleep = (tab: 'calendar' | 'punishments' = 'calendar') => {
+    if (!currentUser) return;
+    setCalendarView({ memberId: currentUser.id, tab, personal: true });
+  };
 
   // Throttled foreground refetch tracking ref
   const lastForegroundSyncRef = useRef<number>(0);
@@ -112,6 +134,7 @@ export default function HomePage() {
       clearAuthSession();
       setCurrentUser(null);
       setActiveModal(null);
+      setCalendarView(null);
       setToastMessage({
         text: 'Logged out of Fox Den successfully.',
         type: 'info',
@@ -121,25 +144,18 @@ export default function HomePage() {
   };
 
   const handleMobileTabChange = (tab: MobileNavTab) => {
-    setMobileTab(tab);
     if (tab === 'roster') {
       setActiveModal(null);
-      if (typeof window !== 'undefined') {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-    } else if (tab === 'schedule') {
-      setActiveModal('schedule');
-    } else if (tab === 'alerts') {
-      setActiveModal('push');
-    } else if (tab === 'mod') {
+      setCalendarView(null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (tab === 'sleep') {
+      openMySleep();
+    } else if (currentUser?.is_moderator) {
       setActiveModal('mod');
     }
   };
 
-  const handleCloseModal = () => {
-    setActiveModal(null);
-    setMobileTab('roster');
-  };
+  const handleCloseModal = () => setActiveModal(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -225,7 +241,7 @@ export default function HomePage() {
             return updated ? { ...prev, ...updated, is_moderator: prev.is_moderator } : prev;
           });
           try {
-            localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(json.members));
+            localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(rosterWithoutPrivateCounts(json.members)));
           } catch {
             // Ignore quota errors
           }
@@ -233,18 +249,8 @@ export default function HomePage() {
       }
     } catch (err) {
       console.error('Failed to load roster:', err);
-      // Offline fallback: hydrate from cached snapshot if available
-      try {
-        const cached = localStorage.getItem(STORAGE_KEY_CACHED_ROSTER);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setMembers((prev) => (prev.length === 0 ? parsed : prev));
-          }
-        }
-      } catch {
-        // Ignore JSON parse errors
-      }
+      const cached = readCachedRoster();
+      if (cached.length) setMembers(prev => prev.length === 0 ? cached : prev);
     } finally {
       setLoading(false);
     }
@@ -252,17 +258,10 @@ export default function HomePage() {
 
   // Preload cached roster snapshot on initial mount & track online/offline connectivity
   useEffect(() => {
-    try {
-      const cached = localStorage.getItem(STORAGE_KEY_CACHED_ROSTER);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMembers((prev) => (prev.length === 0 ? parsed : prev));
-          setLoading(false);
-        }
-      }
-    } catch {
-      // Ignore
+    const cached = readCachedRoster();
+    if (cached.length) {
+      setMembers(prev => prev.length === 0 ? cached : prev);
+      setLoading(false);
     }
 
     if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') {
@@ -361,7 +360,7 @@ export default function HomePage() {
 
   // Wake Up handler (Instant Button or Manual Time Entry)
   const handleWakeUp = useCallback(
-    async (memberId: string, mode: 'button' | 'manual' = 'button', wokeUpTime?: string, cycleDate?: string) => {
+    async (memberId: string, mode: 'button' | 'manual' = 'button', wokeUpTime?: string, cycleDate?: string, expectedInBedAt?: string | null) => {
       try {
         setIsCheckingIn(true);
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -371,7 +370,7 @@ export default function HomePage() {
         const res = await fetch('/api/members/wake-up', {
           method: 'POST',
           headers,
-          body: JSON.stringify({ memberId, mode, wokeUpTime, cycleDate }),
+          body: JSON.stringify({ memberId, mode, wokeUpTime, cycleDate, expectedInBedAt }),
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
@@ -389,7 +388,6 @@ export default function HomePage() {
               : prev
           );
           setIsSleepShieldActive(false);
-          setShowHeroManualWake(false);
           setToastMessage({
             text:
               data.message ||
@@ -404,6 +402,7 @@ export default function HomePage() {
           router.push('/join');
           return false;
         } else {
+          if (res.status === 409) await fetchRoster();
           setToastMessage({
             text: data.error || 'Failed to log wake-up.',
             type: 'error',
@@ -501,181 +500,9 @@ export default function HomePage() {
     }
   }, [fetchRoster, router]);
 
-  // Cancel 48-hour pending schedule cooldown handler
-  const handleCancelPending = useCallback(
-    async (memberId: string): Promise<boolean> => {
-      // Capture prior pending fields before clearing
-      const priorPending =
-        currentUser?.id === memberId
-          ? {
-              pending_bedtime_local: currentUser.pending_bedtime_local,
-              pending_wake_time_local: currentUser.pending_wake_time_local,
-              pending_timezone: currentUser.pending_timezone,
-              pending_weekend_bedtime_local: currentUser.pending_weekend_bedtime_local,
-              pending_weekend_wake_time_local: currentUser.pending_weekend_wake_time_local,
-              pending_weekly_schedule: currentUser.pending_weekly_schedule,
-              pending_effective_at: currentUser.pending_effective_at,
-              is_in_bed: currentUser.is_in_bed,
-              is_woke_up: currentUser.is_woke_up,
-              in_bed_at: currentUser.in_bed_at,
-            }
-          : null;
-
-      const isScheduleOnly = Boolean(
-        currentUser?.pending_bedtime_local ||
-        currentUser?.pending_effective_at ||
-        currentUser?.pending_weekly_schedule
-      );
-
-      try {
-        setIsCheckingIn(true);
-        // Instant optimistic UI update: clear sleep fields only if server will clear them (not schedule-only)
-        setCurrentUser((prev) =>
-          prev && prev.id === memberId
-            ? {
-                ...prev,
-                pending_bedtime_local: null,
-                pending_wake_time_local: null,
-                pending_timezone: null,
-                pending_weekend_bedtime_local: null,
-                pending_weekend_wake_time_local: null,
-                pending_weekly_schedule: null,
-                pending_effective_at: null,
-                ...(isScheduleOnly
-                  ? {
-                      is_in_bed: priorPending?.is_in_bed ?? prev.is_in_bed,
-                      is_woke_up: priorPending?.is_woke_up ?? prev.is_woke_up,
-                      in_bed_at: priorPending?.in_bed_at ?? prev.in_bed_at,
-                    }
-                  : {
-                      is_in_bed: false,
-                      is_woke_up: false,
-                      in_bed_at: null,
-                    }),
-              }
-            : prev
-        );
-
-        const token = getStoredAuthToken();
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const res = await fetch('/api/members/cancel-pending', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ member_id: memberId }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
-          if (!isScheduleOnly) {
-            setIsSleepShieldActive(false);
-          }
-          setToastMessage({
-            text: data.message || 'Cancelled successfully.',
-            type: 'success',
-          });
-          try {
-            await fetchRoster();
-          } catch {
-            if (priorPending) {
-              setCurrentUser((prev) =>
-                prev && prev.id === memberId
-                  ? {
-                      ...prev,
-                      is_in_bed: priorPending.is_in_bed,
-                      is_woke_up: priorPending.is_woke_up,
-                      in_bed_at: priorPending.in_bed_at,
-                    }
-                  : prev
-              );
-            }
-          }
-          return true;
-        } else {
-          // Restore prior pending fields immediately
-          if (priorPending) {
-            setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, ...priorPending } : prev));
-          }
-          setToastMessage({
-            text: data.error || 'Failed to cancel pending schedule change.',
-            type: 'error',
-          });
-          try {
-            await fetchRoster();
-          } catch {
-            if (priorPending) {
-              setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, ...priorPending } : prev));
-            }
-          }
-          return false;
-        }
-      } catch (err) {
-        console.error('Failed to cancel pending schedule change:', err);
-        // Restore prior pending fields immediately
-        if (priorPending) {
-          setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, ...priorPending } : prev));
-        }
-        setToastMessage({
-          text: 'Network error cancelling pending schedule change.',
-          type: 'error',
-        });
-        try {
-          await fetchRoster();
-        } catch {
-          if (priorPending) {
-            setCurrentUser((prev) => (prev && prev.id === memberId ? { ...prev, ...priorPending } : prev));
-          }
-        }
-        return false;
-      } finally {
-        setIsCheckingIn(false);
-      }
-    },
-    [fetchRoster, currentUser]
-  );
-
-  // Synchronize currentUser in_bed status to active Sleep Shield
   useEffect(() => {
-    if (currentUser) {
-      if (currentUser.is_in_bed) {
-        const state = computeMemberState(currentUser, viewerTimezone);
-        setIsSleepShieldActive(Boolean(state.isSleepShieldActive));
-      } else {
-        setIsSleepShieldActive(false);
-      }
-    }
-  }, [currentUser, currentUser?.is_in_bed, viewerTimezone, tick]);
-
-  // Personal Sleep Shield toggle handler for Header
-  const handleToggleSleepShield = useCallback(async () => {
-    if (!currentUser) {
-      setToastMessage({
-        text: 'Please log in to your profile to toggle your personal Sleep Shield.',
-        type: 'info',
-      });
-      return;
-    }
-
-    try {
-      if (currentUser.is_in_bed) {
-        await handleCancelInBed(currentUser.id);
-        setIsSleepShieldActive(false);
-        setToastMessage({
-          text: 'Sleep Shield turned OFF. Bedtime reminders restored.',
-          type: 'info',
-        });
-      } else {
-        await handleCheckIn(currentUser.id);
-        setIsSleepShieldActive(true);
-        setToastMessage({
-          text: 'Sleep Shield turned ON! Community nag reminders are safely muted.',
-          type: 'success',
-        });
-      }
-    } catch (err) {
-      console.error('Failed to toggle Sleep Shield:', err);
-    }
-  }, [currentUser, handleCancelInBed, handleCheckIn]);
+    setIsSleepShieldActive(Boolean(currentUser && hasRosterSleepShield(currentUser)));
+  }, [currentUser, tick]);
 
   // Deep-Link Action Handler: /?action=in-bed
   const processDeepLinkAction = useCallback(
@@ -699,7 +526,6 @@ export default function HomePage() {
           const cleanedUrl = url.pathname + (url.search ? url.search : '') + url.hash;
           window.history.replaceState({}, '', cleanedUrl);
           setActiveModal('schedule');
-          setMobileTab('schedule');
         }
       } catch (err) {
         console.warn('Failed to parse or process deep link action:', err);
@@ -928,7 +754,6 @@ export default function HomePage() {
 
   const handleOpenPushModal = () => {
     setActiveModal('push');
-    setMobileTab('alerts');
   };
 
   // If waiting for route guard session verification, show Warm Dark splash
@@ -957,26 +782,20 @@ export default function HomePage() {
       <Header
         viewerTimezone={viewerTimezone}
         isPushEnabled={isPushEnabled}
-        onTogglePush={handleOpenPushModal}
+        onOpenPush={handleOpenPushModal}
         isSleepShieldActive={isSleepShieldActive}
-        onToggleSleepShield={handleToggleSleepShield}
-        onOpenSchedule={() => {
-          setActiveModal('schedule');
-          setMobileTab('schedule');
-        }}
-        onOpenMod={() => {
-          setActiveModal('mod');
-          setMobileTab('mod');
-        }}
+        onOpenProfile={() => setActiveModal('profile')}
+        onOpenMySleep={() => openMySleep()}
+        onOpenMod={() => handleMobileTabChange('mod')}
         currentUser={currentUser}
         onOpenLogin={handleOpenLogin}
-        onLogout={handleLogout}
       />
 
-      <div className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-4 md:py-6 pb-36 md:pb-24">
+      <div className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-4 md:py-6 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-24">
         {/* Floating Notification Toast */}
         {toastMessage && (
           <div
+            role="status"
             className={`mb-4 flex items-center justify-between rounded-xl border px-4 py-2.5 text-xs font-semibold shadow-lg transition-all animate-fade-in ${
               toastMessage.type === 'success'
                 ? 'border-status-sage/40 bg-status-sage/15 text-status-sage'
@@ -1033,189 +852,10 @@ export default function HomePage() {
               )}
 
               <div>
-                {/* Dynamic personalized greeting if viewer is claimed and near bedtime */}
-                {claimedMember && (claimedMember.is_in_bed || claimedMemberState?.needsWakeUpLog || claimedMemberState?.bucket === 'SLEEPING') ? (
-                  <div className="flex flex-col gap-2.5">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <div>
-                        <h2 className="text-sm font-bold tracking-wide text-status-amber sm:text-base">
-                          {claimedMember.is_in_bed ? `Goodnight, ${claimedMember.discord_username}!` : `Rise and shine, ${claimedMember.discord_username}!`}
-                        </h2>
-                        <p className="text-xs text-cream-secondary sm:text-sm">
-                          {claimedMember.is_in_bed
-                            ? "You're safely tucked in. Sleep Shield active; community nags are suppressed."
-                            : "Log your wake-up time to complete your sleep cycle and see duration stats."}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {/* Primary Instant ☀️ I Woke Up Button */}
-                        <button
-                          type="button"
-                          onClick={() => handleWakeUp(claimedMember.id, 'button')}
-                          disabled={isCheckingIn}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber text-night-bg px-3.5 h-11 min-h-[44px] text-xs font-bold hover:bg-status-amber/90 active:scale-95 transition-all whitespace-nowrap shadow-sm"
-                          title="Log wake-up right now"
-                        >
-                          <Sun className="h-4 w-4" />
-                          <span>☀️ I Woke Up</span>
-                        </button>
-
-                        {/* Secondary Enter Time Manually Button */}
-                        <button
-                          type="button"
-                          onClick={() => setShowHeroManualWake((prev) => !prev)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3 h-11 min-h-[44px] text-xs font-semibold text-cream-secondary hover:text-cream-primary hover:border-night-border/80 active:scale-95 transition-all whitespace-nowrap"
-                          title="Enter exact wake-up time manually"
-                        >
-                          <Clock className="h-3.5 w-3.5 text-status-amber" />
-                          <span>Enter Time Manually</span>
-                        </button>
-
-                        {/* Undo check-in Option (only when actively in bed) */}
-                        {claimedMember.is_in_bed && (
-                          <button
-                            type="button"
-                            onClick={() => handleCancelInBed(claimedMember.id)}
-                            disabled={isCheckingIn}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 h-11 min-h-[44px] text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all whitespace-nowrap shadow-sm"
-                            title="Undo check-in (returns from sleeping state to awake)"
-                          >
-                            <Sun className="h-4 w-4" />
-                            <span>Undo check-in</span>
-                          </button>
-                        )}
-
-                        {/* View My Calendar */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenMemberProfile(claimedMember.id, 'calendar')}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3 h-11 min-h-[44px] text-xs font-medium text-cream-muted hover:text-cream-secondary active:scale-95 transition-all whitespace-nowrap"
-                          title="Open my sleep history calendar"
-                        >
-                          <Calendar className="h-3.5 w-3.5 text-status-amber" />
-                          <span>Calendar</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Inline Manual Time Entry Form */}
-                    {showHeroManualWake && (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (!heroManualWakeTime) return;
-                          handleWakeUp(claimedMember.id, 'manual', heroManualWakeTime);
-                        }}
-                        className="flex items-center gap-2 p-2.5 rounded-xl bg-night-elevated/80 border border-night-border/70 flex-wrap"
-                      >
-                        <span className="text-xs font-semibold text-cream-secondary">What time did you wake up?</span>
-                        <input
-                          type="time"
-                          value={heroManualWakeTime}
-                          onChange={(e) => setHeroManualWakeTime(e.target.value)}
-                          required
-                          className="rounded-lg border border-night-border bg-night-surface px-2.5 py-1.5 text-xs text-cream-primary font-mono focus:border-status-amber focus:outline-none min-h-[44px]"
-                        />
-                        <button
-                          type="submit"
-                          disabled={isCheckingIn}
-                          className="h-11 min-h-[44px] px-3.5 rounded-lg bg-status-amber text-xs font-bold text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all whitespace-nowrap shrink-0"
-                        >
-                          {isCheckingIn ? 'Saving...' : 'Save Wake Time'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowHeroManualWake(false)}
-                          className="h-11 min-h-[44px] px-3 rounded-lg border border-night-border text-xs font-medium text-cream-secondary hover:text-cream-primary whitespace-nowrap shrink-0"
-                        >
-                          Cancel
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                ) : claimedMember && claimedMember.is_woke_up ? (
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div>
-                      <h2 className="text-sm font-bold tracking-wide text-cream-primary sm:text-base">
-                        Good Morning, {claimedMember.discord_username}!
-                      </h2>
-                      <p className="text-xs text-cream-secondary sm:text-sm">
-                        You&apos;re marked as awake. Ready for today&apos;s adventures in the den!
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => handleCheckIn(claimedMember.id)}
-                        disabled={isCheckingIn}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 h-11 min-h-[44px] text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 active:scale-95 transition-all whitespace-nowrap shadow-sm"
-                        title="Heading back to bed? Tap to silence outgoing community nag alerts."
-                      >
-                        <BedDouble className="h-4 w-4 text-status-amber" />
-                        <span>Back to Bed</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleOpenMemberProfile(claimedMember.id, 'calendar')}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-3.5 h-11 min-h-[44px] text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 active:scale-95 transition-all whitespace-nowrap shadow-sm"
-                        title="View monthly sleep & wake calendar"
-                      >
-                        <Calendar className="h-4 w-4 text-status-amber" />
-                        <span>Sleep Calendar</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : claimedMember &&
-                  claimedMemberState &&
-                  (claimedMemberState.bucket === 'BEDTIME_NOW' ||
-                    claimedMemberState.bucket === 'WINDING_DOWN' ||
-                    (claimedMemberState.diffMinutes >= -180 && claimedMemberState.diffMinutes < 0)) ? (
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div>
-                      <h2 className="text-sm font-bold tracking-wide text-status-amber sm:text-base">
-                        {claimedMemberState.bucket === 'BEDTIME_NOW'
-                          ? `Bedtime Hit for you, ${claimedMember.discord_username}!`
-                          : `Wind-Down Time, ${claimedMember.discord_username}!`}
-                      </h2>
-                      <p className="text-xs text-cream-secondary sm:text-sm">
-                        Heading to sleep? Tap to silence outgoing community nag alerts for tonight.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleCheckIn(claimedMember.id)}
-                      disabled={isCheckingIn}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-status-amber px-3.5 h-11 min-h-[44px] text-xs font-bold text-night-bg shadow hover:bg-status-amber/90 active:scale-95 transition-all whitespace-nowrap"
-                    >
-                      <BedDouble className="h-4 w-4" />
-                      <span>I&apos;m in Bed (Goodnight)</span>
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <h2 className="text-sm font-bold tracking-wide text-cream-primary sm:text-base">
-                      {categorized.overdue.length > 0
-                        ? `Overdue Alert: ${categorized.overdue.length} friend${
-                            categorized.overdue.length > 1 ? 's' : ''
-                          } past bedtime!`
-                        : categorized.windingDown.length > 0
-                        ? `Winding Down: ${categorized.windingDown.length} friend${
-                            categorized.windingDown.length > 1 ? 's' : ''
-                          } heading to bed soon`
-                        : 'The Fox Den is Peaceful'}
-                    </h2>
-                    <p className="text-xs text-cream-secondary sm:text-sm">
-                      {categorized.overdue.length > 0
-                        ? 'Check their Discord journal threads to nag them off screens and into bed.'
-                        : categorized.windingDown.length > 0
-                        ? 'Say your goodnights and remind them to turn down blue light.'
-                        : isSleepShieldActive
-                        ? 'Your personal Sleep Shield is active. Community nag notifications are suppressed.'
-                        : 'All friends are currently wide awake or resting safely in their sleep windows.'}
-                    </p>
-                  </>
-                )}
+                <h2 className="text-sm font-bold text-cream-primary sm:text-base">Roster</h2>
+                <p className="text-xs text-cream-secondary sm:text-sm">
+                  {claimedMemberState?.statusText ?? (categorized.overdue.length ? 'Friends are past bedtime.' : 'The den is quiet.')}
+                </p>
               </div>
             </div>
 
@@ -1343,6 +983,7 @@ export default function HomePage() {
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
                   onWakeUp={handleWakeUp}
+                  onOpenPunishments={() => openMySleep('punishments')}
                 />
               ))}
             </StatusBucket>
@@ -1373,6 +1014,7 @@ export default function HomePage() {
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
                   onWakeUp={handleWakeUp}
+                  onOpenPunishments={() => openMySleep('punishments')}
                 />
               ))}
             </StatusBucket>
@@ -1402,6 +1044,7 @@ export default function HomePage() {
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
                   onWakeUp={handleWakeUp}
+                  onOpenPunishments={() => openMySleep('punishments')}
                 />
               ))}
             </StatusBucket>
@@ -1433,6 +1076,7 @@ export default function HomePage() {
                   onOpenProfile={handleOpenMemberProfile}
                   onOpenSleepCalendar={handleOpenMemberProfile}
                   onWakeUp={handleWakeUp}
+                  onOpenPunishments={() => openMySleep('punishments')}
                 />
               ))}
             </StatusBucket>
@@ -1444,34 +1088,33 @@ export default function HomePage() {
       {currentUser && (
         <PinnedSelfActionBar
           currentUser={currentUser}
-          isSleepShieldActive={isSleepShieldActive}
           onCheckIn={handleCheckIn}
           onWakeUp={handleWakeUp}
-          onCancelPending={handleCancelPending}
           onCancelInBed={handleCancelInBed}
           isCheckingIn={isCheckingIn}
-          tick={tick}
         />
       )}
 
       {/* Sticky Bottom Navigation (Mobile Viewports Only: < 768px) */}
       <BottomNav
-        activeTab={mobileTab}
+        activeTab={calendarView?.personal ? 'sleep' : activeModal === 'mod' ? 'mod' : 'roster'}
         onChangeTab={handleMobileTabChange}
-        isPushEnabled={isPushEnabled}
         isModerator={Boolean(currentUser?.is_moderator)}
       />
 
       {/* Self-Service My Schedule Modal */}
-      <MyScheduleModal
-        isOpen={activeModal === 'schedule'}
-        onClose={handleCloseModal}
-        viewerTimezone={viewerTimezone}
-        onRefreshRoster={fetchRoster}
-        currentUser={currentUser}
-        onLogout={handleLogout}
-        onOpenSleepCalendar={(mId) => setCalendarModalMemberId(mId)}
-      />
+      {currentUser && (activeModal === 'profile' || activeModal === 'schedule') && (
+        <MyScheduleModal
+          key={`${currentUser.id}-${activeModal}`}
+          isOpen
+          initialView={activeModal}
+          onClose={handleCloseModal}
+          viewerTimezone={viewerTimezone}
+          onRefreshRoster={fetchRoster}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+        />
+      )}
 
       {/* Push Notification Settings & Sleep Shield Modal */}
       <PushModal
@@ -1481,7 +1124,6 @@ export default function HomePage() {
         onPushStateChanged={setIsPushEnabled}
         onOpenScheduleModal={() => {
           setActiveModal('schedule');
-          setMobileTab('schedule');
         }}
         currentUser={currentUser}
         onOpenLogin={handleOpenLogin}
@@ -1519,22 +1161,25 @@ export default function HomePage() {
       )}
 
       {/* Interactive Member Profile, Sleep & Wake History Calendar, and Weekly Timetable Modal */}
-      <SleepCalendarModal
-        isOpen={Boolean(calendarModalMemberId)}
-        onClose={() => setCalendarModalMemberId(null)}
-        memberId={calendarModalMemberId}
-        member={calendarModalMemberId ? members.find((m) => m.id === calendarModalMemberId) || null : null}
-        currentUser={currentUser}
-        onWakeUpUpdated={fetchRoster}
-        onToggleStar={handleToggleStar}
-        isStarred={calendarModalMemberId ? starredMembers.includes(calendarModalMemberId) : false}
-        initialTab={calendarModalTab}
-        onOpenScheduleModal={() => {
-          setCalendarModalMemberId(null);
-          setActiveModal('schedule');
-          setMobileTab('schedule');
-        }}
-      />
+      {calendarView && (!calendarView.personal || calendarView.memberId === currentUser?.id) && (
+        <SleepCalendarModal
+          key={`${calendarView.memberId}-${calendarView.personal ?? false}-${calendarView.tab}`}
+          isOpen
+          onClose={() => setCalendarView(null)}
+          memberId={calendarView.memberId}
+          member={members.find(member => member.id === calendarView.memberId) ?? null}
+          currentUser={currentUser}
+          onWakeUpUpdated={fetchRoster}
+          onToggleStar={handleToggleStar}
+          isStarred={starredMembers.includes(calendarView.memberId)}
+          initialTab={calendarView.tab}
+          isMySleep={calendarView.personal}
+          onOpenScheduleModal={() => {
+            setCalendarView(null);
+            setActiveModal('schedule');
+          }}
+        />
+      )}
     </main>
   );
 }

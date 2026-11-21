@@ -20,11 +20,12 @@ assert(fs.existsSync(bottomNavPath), 'BottomNav.tsx exists');
 const bottomNavContent = fs.readFileSync(bottomNavPath, 'utf8');
 
 assert(bottomNavContent.includes("id: 'roster'") && bottomNavContent.includes("label: 'Roster'"), 'Roster tab configured');
-assert(bottomNavContent.includes("id: 'schedule'") && bottomNavContent.includes("label: 'My Time'"), 'My Time tab configured');
-assert(bottomNavContent.includes("id: 'alerts'") && bottomNavContent.includes("label: 'Alerts'"), 'Alerts tab configured');
+assert(bottomNavContent.includes("id: 'sleep'") && bottomNavContent.includes("label: 'My Sleep'"), 'My Sleep tab configured');
+const headerContent = fs.readFileSync(path.resolve('src/components/Header.tsx'), 'utf8');
+assert(headerContent.includes('onClick={onOpenPush}') && headerContent.includes('Notification settings. Push notifications'), 'Header bell opens settings and reports device push status');
 assert(bottomNavContent.includes("id: 'mod'") && bottomNavContent.includes("label: 'Mod'"), 'Mod tab configured conditionally');
-assert(bottomNavContent.includes('isModerator ?') && bottomNavContent.includes('grid-cols-4') && bottomNavContent.includes('grid-cols-3'), 'Dynamic 3 vs 4 column layout for moderator status');
-assert(bottomNavContent.includes('navigator.vibrate'), 'Haptic feedback on tab tap');
+assert(bottomNavContent.includes('isModerator ?') && bottomNavContent.includes('grid-cols-3') && bottomNavContent.includes('grid-cols-2'), 'Dynamic 2 vs 3 column layout for moderator status');
+assert(bottomNavContent.includes('navigator.vibrate?.(10)'), 'Haptic feedback on tab tap');
 assert(bottomNavContent.includes('min-h-[44px] min-w-[44px]'), 'BottomNav tabs enforce >= 44x44px touch targets');
 assert(bottomNavContent.includes('env(safe-area-inset-bottom)'), 'BottomNav respects safe-area-inset-bottom');
 
@@ -66,7 +67,7 @@ assert(fs.existsSync(joinPath), '/join route page exists');
 const joinContent = fs.readFileSync(joinPath, 'utf8');
 assert(joinContent.includes('FoxMascot'), 'Join route incorporates Sleepy Fox Mascot');
 assert(joinContent.includes('min-h-[100dvh]'), 'Join route enforces 100dvh for mobile keyboards');
-assert(joinContent.includes('4-digit PIN') || joinContent.includes('4-Digit PIN') || joinContent.includes('pin'), 'Join route provides PIN authentication flow');
+assert(joinContent.includes('/api/auth/discord'), 'Join route provides Discord authentication');
 assert(joinContent.includes('timezone') || joinContent.includes('viewerTimezone'), 'Join route provides timezone selection');
 assert(joinContent.includes('navigator.vibrate'), 'Join route uses light haptic feedback');
 

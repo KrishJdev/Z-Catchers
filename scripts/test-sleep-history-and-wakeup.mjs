@@ -472,13 +472,11 @@ async function run() {
   // 6C. Page hero banner controls & calendar modal wiring
   const pageContent = fs.readFileSync(path.resolve('src/app/page.tsx'), 'utf8');
   testAssert(pageContent.includes('SleepCalendarModal'), 'page.tsx imports and renders SleepCalendarModal');
-  testAssert(pageContent.includes('I Woke Up') || pageContent.includes('☀️'), 'page.tsx hero banner provides "☀️ I Woke Up" button');
+  testAssert(pageContent.includes('<PinnedSelfActionBar') && pageContent.includes('onWakeUp={handleWakeUp}'), 'Roster routes wake-up through pinned actions');
   testAssert(pageContent.includes('handleWakeUp'), 'page.tsx implements handleWakeUp action handler');
 
-  // 6D. MyScheduleModal history trigger
-  const scheduleContent = fs.readFileSync(path.resolve('src/components/MyScheduleModal.tsx'), 'utf8');
-  testAssert(scheduleContent.includes('onOpenSleepCalendar'), 'MyScheduleModal accepts onOpenSleepCalendar prop');
-  testAssert(scheduleContent.includes('Calendar') || scheduleContent.includes('History'), 'MyScheduleModal provides calendar trigger button');
+  // 6D. My Sleep opens the existing personal calendar.
+  testAssert(pageContent.includes('onOpenMySleep={() => openMySleep()}') && pageContent.includes("tab: 'calendar' | 'punishments' = 'calendar'"), 'My Sleep opens the personal calendar by default');
 
   // -------------------------------------------------------------
   // Summary

@@ -6,6 +6,7 @@ import {
   upsertSleepLog,
   getMemberSleepLogs,
   getMemberByIdSafe,
+  setInMemorySleepLog,
   isSupabaseConfigured,
   isTestMemberFixture,
 } from '@/lib/db';
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
       body = {};
     }
 
-    const { memberId: requestedMemberId, mode = 'button', wokeUpTime, cycleDate } = body;
+    const { memberId: requestedMemberId, mode = 'button', wokeUpTime, cycleDate, expectedInBedAt } = body;
 
     // Authentication:
     const sessionMemberId = getRequestSessionMemberId(request);
@@ -61,6 +62,14 @@ export async function POST(request: Request) {
         { error: 'Sign in with the Discord account linked to this profile.', code: sessionMemberId ? 'FORBIDDEN' : 'UNAUTHORIZED' },
         { status: sessionMemberId ? 403 : 401 }
       );
+    }
+
+    const guardedWake = expectedInBedAt !== undefined;
+    const expectedCheckIn = typeof expectedInBedAt === 'string'
+      ? DateTime.fromISO(expectedInBedAt, { zone: 'utc' })
+      : null;
+    if (guardedWake && (cycleDate != null || (expectedInBedAt !== null && !expectedCheckIn?.isValid))) {
+      return NextResponse.json({ error: 'Provide the active check-in timestamp without a historical date.' }, { status: 400 });
     }
 
     const nowUtc = DateTime.utc();
@@ -149,6 +158,10 @@ export async function POST(request: Request) {
       }
     }
 
+    if (guardedWake && member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date) {
+      activeCycleDate = member.last_notified_cycle_date;
+    }
+
     // 2. Resolve target cycle date
     let targetCycleDate: string;
 
@@ -205,6 +218,20 @@ export async function POST(request: Request) {
         }
       } catch (err) {
         console.warn('[wake-up] Error querying in-bed notification log:', err);
+      }
+    }
+
+    if (guardedWake) {
+      existingInBedAt ??= member.in_bed_at ?? null;
+      const actualCheckIn = existingInBedAt ? DateTime.fromISO(existingInBedAt, { zone: 'utc' }) : null;
+      const hasCheckIn = Boolean(existingInBedAt || member.is_in_bed ||
+        (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date === targetCycleDate));
+      if (!hasCheckIn || member.last_wake_cycle_date === targetCycleDate || existingLog?.woke_up_at ||
+          (actualCheckIn?.toMillis() ?? null) !== (expectedCheckIn?.toMillis() ?? null)) {
+        return NextResponse.json({ error: 'This check-in changed. Refresh and try again.' }, { status: 409 });
+      }
+      if (actualCheckIn && !existingInBedLocalTime) {
+        existingInBedLocalTime = actualCheckIn.setZone(sleeperZone).toFormat('HH:mm');
       }
     }
 
@@ -308,8 +335,7 @@ export async function POST(request: Request) {
       durationMinutes = Math.min(1440, Math.max(1, Math.round(rawDiff)));
     }
 
-    // Upsert the sleep log entry
-    const { data: updatedSleepLog, error: upsertErr, isDurable } = await upsertSleepLog({
+    const sleepEntry = {
       member_id: member.id,
       cycle_date: targetCycleDate,
       timezone: member.timezone,
@@ -322,57 +348,81 @@ export async function POST(request: Request) {
       wake_source: wakeSource,
       duration_minutes: durationMinutes,
       status: existingLog?.status || 'on_time',
-    });
-
-    if (!updatedSleepLog) {
-      console.error('[wake-up] Error during sleep_logs upsert:', upsertErr);
-      return NextResponse.json(
-        { error: 'Failed to record sleep log.' },
-        { status: 500 }
-      );
-    }
-
-    // Update member record: update last_woke_up_at & last_wake_cycle_date only if newer
-    const isNewerWake =
-      !member.last_woke_up_at ||
-      wokeUpDateTime >= DateTime.fromISO(member.last_woke_up_at, { zone: 'utc' });
-
-    const memberUpdates: Record<string, any> = {
-      updated_at: nowUtc.toISO(),
-      is_in_bed: false,
-      is_woke_up: true,
-      in_bed_at: existingInBedAt || null,
     };
-
-    if (isNewerWake) {
-      memberUpdates.last_woke_up_at = wokeUpUtcIso;
-      memberUpdates.last_wake_cycle_date = targetCycleDate;
-    }
-
-    if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date === targetCycleDate) {
-      memberUpdates.last_notified_stage = null;
-    }
-
-    const { data: updatedMember } = await updateMemberSafe(member.id, memberUpdates);
-
-    // Record WOKE_UP notification log for backwards compatibility with roster queries
-    if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
-      await supabaseAdmin
-        .from('notification_logs')
-        .upsert(
-          {
-            member_id: member.id,
-            notification_type: 'WOKE_UP',
-            local_date: targetCycleDate,
-            dispatched_at: nowUtc.toISO(),
-          },
-          { onConflict: 'member_id,notification_type,local_date' }
-        );
-    }
 
     const formattedDuration = durationMinutes
       ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m`
       : null;
+
+    let updatedSleepLog;
+    let updatedMember: Member | null;
+    let isDurable;
+    if (guardedWake && isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+      const { data, error } = await supabaseAdmin.rpc('complete_active_check_in', {
+        p_discord_id: member.discord_id ?? null,
+        p_expected_in_bed_at: expectedCheckIn?.toISO() ?? null,
+        p_entry: sleepEntry,
+      });
+      if (error?.code === 'PT409' || error?.code === 'PT403') {
+        return NextResponse.json({ error: error.message }, { status: Number(error.code.slice(2)) });
+      }
+      if (error || !data?.member || !data?.sleep_log) {
+        console.error('[wake-up] Guarded wake request failed:', error?.code);
+        return NextResponse.json({ error: 'Wake logging is temporarily unavailable. Try again.' }, { status: 503 });
+      }
+      updatedSleepLog = data.sleep_log;
+      updatedMember = data.member;
+      isDurable = true;
+      setInMemorySleepLog(updatedSleepLog);
+    } else {
+      const log = await upsertSleepLog(sleepEntry);
+      ({ data: updatedSleepLog, isDurable } = log);
+      if (!updatedSleepLog) {
+        console.error('[wake-up] Error during sleep_logs upsert:', log.error);
+        return NextResponse.json(
+          { error: 'Failed to record sleep log.' },
+          { status: 500 }
+        );
+      }
+
+      // Update member record: update last_woke_up_at & last_wake_cycle_date only if newer
+      const isNewerWake =
+        !member.last_woke_up_at ||
+        wokeUpDateTime >= DateTime.fromISO(member.last_woke_up_at, { zone: 'utc' });
+
+      const memberUpdates: Record<string, any> = {
+        updated_at: nowUtc.toISO(),
+        is_in_bed: false,
+        is_woke_up: true,
+        in_bed_at: existingInBedAt || null,
+      };
+
+      if (isNewerWake) {
+        memberUpdates.last_woke_up_at = wokeUpUtcIso;
+        memberUpdates.last_wake_cycle_date = targetCycleDate;
+      }
+
+      if (member.last_notified_stage === 'IN_BED_EARLY' && member.last_notified_cycle_date === targetCycleDate) {
+        memberUpdates.last_notified_stage = null;
+      }
+
+      ({ data: updatedMember } = await updateMemberSafe(member.id, memberUpdates));
+
+      // Record WOKE_UP notification log for backwards compatibility with roster queries
+      if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+        await supabaseAdmin
+          .from('notification_logs')
+          .upsert(
+            {
+              member_id: member.id,
+              notification_type: 'WOKE_UP',
+              local_date: targetCycleDate,
+              dispatched_at: nowUtc.toISO(),
+            },
+            { onConflict: 'member_id,notification_type,local_date' }
+          );
+      }
+    }
 
     const responseMember = updatedMember ? sanitizeMember(updatedMember) : sanitizeMember(member);
     responseMember.is_in_bed = false;

@@ -1,99 +1,42 @@
 'use client';
 
 import React from 'react';
-import { Home, Clock, Bell, Shield } from 'lucide-react';
+import { Home, Moon, Shield } from 'lucide-react';
 
-export type MobileNavTab = 'roster' | 'schedule' | 'alerts' | 'mod';
+export type MobileNavTab = 'roster' | 'sleep' | 'mod';
 
-interface BottomNavProps {
+export function BottomNav({ activeTab, onChangeTab, isModerator = false }: {
   activeTab: MobileNavTab;
   onChangeTab: (tab: MobileNavTab) => void;
-  isPushEnabled?: boolean;
   isModerator?: boolean;
-}
-
-/**
- * Mobile bottom navigation bar supporting quick tab switching between Roster, Schedule, Alerts, and Mod drawer.
- * Fully styled with Warm Dark design tokens and safe-area padding for mobile viewports.
- *
- * @param props - Component props with activeTab, onChangeTab, isPushEnabled, and isModerator
- * @returns React JSX element
- */
-export function BottomNav({
-  activeTab,
-  onChangeTab,
-  isPushEnabled = false,
-  isModerator = false,
-}: BottomNavProps) {
+}) {
   const tabs = [
-    {
-      id: 'roster' as const,
-      label: 'Roster',
-      icon: Home,
-    },
-    {
-      id: 'schedule' as const,
-      label: 'My Time',
-      icon: Clock,
-    },
-    {
-      id: 'alerts' as const,
-      label: 'Alerts',
-      icon: Bell,
-      indicator: isPushEnabled,
-    },
-    ...(isModerator
-      ? [
-          {
-            id: 'mod' as const,
-            label: 'Mod',
-            icon: Shield,
-          },
-        ]
-      : []),
-  ];
-
-  const gridColsClass = isModerator ? 'grid-cols-4' : 'grid-cols-3';
+    { id: 'roster', label: 'Roster', icon: Home },
+    { id: 'sleep', label: 'My Sleep', icon: Moon },
+    ...(isModerator ? [{ id: 'mod', label: 'Mod', icon: Shield } as const] : []),
+  ] as const;
 
   return (
     <nav
-      className={`fixed inset-x-0 bottom-0 z-40 mx-auto grid ${gridColsClass} h-16 w-full items-center bg-night-surface/95 backdrop-blur-md border-t border-night-border px-2 pb-[env(safe-area-inset-bottom)] md:hidden`}
-      aria-label="Mobile Navigation Bar"
+      className={`fixed inset-x-0 bottom-0 z-40 grid ${isModerator ? 'grid-cols-3' : 'grid-cols-2'} h-[calc(4rem+env(safe-area-inset-bottom))] items-center border-t border-night-border bg-night-surface/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden`}
+      aria-label="Mobile navigation"
     >
-      {tabs.map((tab) => {
-        const Icon = tab.icon;
-        const isActive = activeTab === tab.id;
-
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => {
-              if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-                try {
-                  navigator.vibrate(10);
-                } catch {
-                  // Ignore vibration errors
-                }
-              }
-              onChangeTab(tab.id);
-            }}
-            className={`flex flex-col items-center justify-center gap-1 min-h-[44px] min-w-[44px] py-1 transition-colors ${
-              isActive
-                ? 'text-status-amber font-semibold'
-                : 'text-cream-muted hover:text-cream-secondary'
-            }`}
-          >
-            <div className="relative">
-              <Icon className="h-5 w-5" />
-              {tab.id === 'alerts' && isPushEnabled && (
-                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-status-sage ring-2 ring-night-surface" />
-              )}
-            </div>
-            <span className="text-[10px] tracking-tight">{tab.label}</span>
-          </button>
-        );
-      })}
+      {tabs.map(({ id, label, icon: Icon }) => (
+        <button
+          key={id}
+          type="button"
+          aria-current={activeTab === id ? 'page' : undefined}
+          aria-haspopup={id === 'roster' ? undefined : 'dialog'}
+          onClick={() => {
+            navigator.vibrate?.(10);
+            onChangeTab(id);
+          }}
+          className={`flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1 rounded-lg text-xs ${activeTab === id ? 'font-semibold text-status-amber' : 'text-cream-secondary'}`}
+        >
+          <Icon className="h-5 w-5" aria-hidden="true" />
+          {label}
+        </button>
+      ))}
     </nav>
   );
 }

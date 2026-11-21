@@ -168,6 +168,7 @@ sql(readFileSync('supabase/migrations/20261120_cron_stage_completion.sql', 'utf8
 sql(readFileSync('supabase/migrations/20261121_push_subscription_rotation.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261122_punishment_strike_ledger.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261123_punishment_task_apis.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261124_guard_active_wake.sql', 'utf8'));
 sql(`
   UPDATE public.members SET is_active = false;
   CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -453,7 +454,13 @@ try {
   assert.equal((await inBed('cancel')).is_in_bed, false);
   assert.deepEqual(await sleepRows(), []);
   assert.equal((await inBed('check_in')).local_date, checkIn.local_date);
-  const wake = await post('/api/members/wake-up', regularCookie, { memberId: regularId, mode: 'button' });
+  const activeCheckIn = (await sleepRows())[0].in_bed_at;
+  const wake = await post('/api/members/wake-up', regularCookie, {
+    memberId: regularId, mode: 'button', expectedInBedAt: activeCheckIn,
+  });
+  await post('/api/members/wake-up', regularCookie, {
+    memberId: regularId, mode: 'manual', wokeUpTime: '06:10', expectedInBedAt: activeCheckIn,
+  }, 409);
   assert.equal(wake.isDurable, true);
   assert.ok((await sleepRows())[0]?.woke_up_at);
   assert.equal((await sleepRows())[0].wake_source, 'button');
@@ -586,6 +593,22 @@ try {
   assert.ok(roster.filter(member => member.id !== seedRace).every(member => !('open_punishment_count' in member)));
   assert.ok(roster.every(member => !('has_voted_strike' in member) && !member.tonight_strike_log?.voter_ids));
 
+  const wakeRace = raceMember('Concurrent Wake');
+  sql(`INSERT INTO public.notification_logs (member_id, notification_type, local_date, dispatched_at)
+    VALUES ('${wakeRace}', 'IN_BED_EARLY', '2026-11-20', '2026-11-20T23:00:00Z')`);
+  const recordWake = (time, source) => `public.complete_active_check_in(NULL, '2026-11-20T23:00:00Z',
+    jsonb_build_object('member_id', '${wakeRace}', 'cycle_date', '2026-11-20', 'timezone', 'UTC',
+      'woke_up_at', '2026-11-21T${time}:00Z', 'woke_up_local_time', '${time}',
+      'wake_source', '${source}', 'status', 'on_time'))`;
+  const staleWake = `CREATE FUNCTION pg_temp.try_wake() RETURNS jsonb LANGUAGE plpgsql AS $$
+    BEGIN RETURN ${recordWake('06:20', 'manual')};
+    EXCEPTION WHEN SQLSTATE 'PT409' THEN RETURN jsonb_build_object('conflict', true); END; $$;
+    SELECT pg_temp.try_wake()`;
+  const [savedWake, wakeConflict] = await concurrentSql(`SELECT ${recordWake('06:35', 'button')}`, staleWake);
+  assert.equal(savedWake.sleep_log.woke_up_local_time, '06:35');
+  assert.equal(wakeConflict.conflict, true);
+  assert.equal(sql(`SELECT woke_up_local_time FROM public.sleep_logs WHERE member_id = '${wakeRace}'`), '06:35');
+
   const correctionRace = raceMember('Concurrent Correction');
   for (const day of ['14', '15', '16']) sql(automatic(correctionRace, day));
   const correctionTask = sql("SELECT id FROM public.punishments WHERE member_id = '" + correctionRace + "'");
@@ -602,7 +625,7 @@ try {
   assert.equal(removed.item.status, 'canceled');
   assert.equal(removed.open_count, 0);
   assert.equal(assignConflict.conflict, true);
-  console.log('Verified authenticated punishment APIs, private roster counts, concurrent completion, and assignment racing a correction.');
+  console.log('Verified authenticated punishment APIs, private roster counts, concurrent wake-up and task completion, and assignment racing a correction.');
 
 } finally {
   app?.kill();

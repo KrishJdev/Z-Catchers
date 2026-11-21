@@ -827,26 +827,11 @@ testAssert(
   'PinnedSelfActionBar uses computeMemberState from sleepEngine'
 );
 
-// 4.2 PinnedSelfActionBar: All 4 status bucket controls present
+// 4.2 PinnedSelfActionBar: Separate nightly actions
 testAssert(
-  pinnedBarSource.includes("☀️ I'm Awake") || pinnedBarSource.includes("☀️ I&apos;m Awake"),
-  'PinnedSelfActionBar renders "I\'m Awake" for sleeping state'
-);
-testAssert(
-  pinnedBarSource.includes('Undo / Cancel'),
-  'PinnedSelfActionBar renders "Undo / Cancel" for sleeping state'
-);
-testAssert(
-  pinnedBarSource.includes("🛏️ I'm in Bed (Late)"),
-  'PinnedSelfActionBar renders "I\'m in Bed (Late)" for overdue state'
-);
-testAssert(
-  pinnedBarSource.includes("🛏️ Early Check-In"),
-  'PinnedSelfActionBar renders "Early Check-In" when approaching bedtime'
-);
-testAssert(
-  pinnedBarSource.includes("🛏️ I'm in Bed"),
-  'PinnedSelfActionBar renders "I\'m in Bed" for winding down state'
+  pinnedBarSource.includes('I woke up') && pinnedBarSource.includes('Enter wake time') &&
+  pinnedBarSource.includes('Undo check-in') && pinnedBarSource.includes('I’m in bed'),
+  'Pinned bar provides check-in, wake now, manual wake time, and undo'
 );
 
 // 4.3 MemberCard: Viewer self-actions on compact card bottom row
@@ -891,16 +876,6 @@ testAssert(
   'page.tsx wires handleCancelInBed into PinnedSelfActionBar'
 );
 
-// 4.6 PinnedSelfActionBar: time-state useMemo recomputes on page clock ticks
-testAssert(
-  /\[currentUser,\s*optimisticInBed,\s*tick\]/.test(pinnedBarSource),
-  'PinnedSelfActionBar userState useMemo includes tick alongside currentUser and optimisticInBed'
-);
-testAssert(
-  pageSource.includes('tick={tick}'),
-  'page.tsx passes tick value into PinnedSelfActionBar'
-);
-
 // 4.7 MemberCard: inspects boolean cancellation result and clears transient optimistic overrides
 testAssert(
   memberCardSource.includes('const res = await onCancelInBed(member.id)') &&
@@ -913,20 +888,15 @@ testAssert(
   'MemberCard clears transient optimistic overrides when request settles'
 );
 
-// 4.8 page.tsx: captures and restores is_in_bed, is_woke_up, in_bed_at across failure paths
+// 4.8 Schedule cancellation and undo check-in use separate current entry points.
+const profileSource = fs.readFileSync(path.join(rootDir, 'src', 'components', 'MyScheduleModal.tsx'), 'utf8');
 testAssert(
-  /priorPending\s*=\s*[\s\S]*?is_in_bed:\s*currentUser\.is_in_bed/.test(pageSource) &&
-  /is_woke_up:\s*currentUser\.is_woke_up/.test(pageSource) &&
-  /in_bed_at:\s*currentUser\.in_bed_at/.test(pageSource),
-  'page.tsx captures is_in_bed, is_woke_up, and in_bed_at in priorPending'
+  profileSource.includes('/api/members/cancel-pending') && profileSource.includes("action: 'schedule'"),
+  'Profile only cancels the pending schedule'
 );
 testAssert(
   pageSource.includes('handleCancelInBed = useCallback(async (memberId: string): Promise<boolean>'),
   'page.tsx handleCancelInBed returns Promise<boolean> reflecting cancellation outcome'
-);
-testAssert(
-  /isScheduleOnly\s*\?[\s\S]*?is_in_bed:\s*priorPending\?\.is_in_bed[\s\S]*?:[\s\S]*?is_in_bed:\s*false/.test(pageSource),
-  'page.tsx handleCancelPending optimistic update conditionally retains sleep fields for schedule-only cancellations'
 );
 testAssert(
   /res\.status === 401[\s\S]*?router\.push\('\/join'\)[\s\S]*?res\.status === 403[\s\S]*?else\s*\{[\s\S]*?await fetchRoster\(\)/.test(pageSource),

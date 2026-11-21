@@ -86,15 +86,15 @@ Do **not** lock desktop viewports to a narrow mobile container. The application 
 * **Mobile View (< 768px):**
   * Single-column vertical stream optimized for one-handed operation.
   * Sticky 56px top header with the Fox logo, detected viewer timezone, and push alert bell.
-  * Sticky bottom navigation bar (`h-16`, `bg-night-surface/95 backdrop-blur-md`) with `Roster`, `My Time`, and `Mod` tabs.
+  * Sticky bottom navigation bar (`h-16`, `bg-night-surface/95 backdrop-blur-md`) with `Roster` and `My Sleep` tabs and a `Mod` tab for effective moderators.
   * Modals render as slide-up bottom sheets (`rounded-t-3xl`).
 
 * **Desktop & Tablet Website View (≥ 768px / 1024px+):**
   * Main container expands to `max-w-7xl mx-auto px-6 lg:px-8 py-6`.
   * **Top Header / Command Bar:** Full-width desktop navigation bar displaying:
     * Brand: Custom SVG Sleepy Fox logo + "Z Catchers" wordmark.
-    * Live Status / Clock: Live local digital clock (`tabular-nums`), viewer timezone pill, and personal Sleep Shield status toggle (`🌙 Sleep Shield: Active / Inactive`).
-    * Quick Actions: Direct buttons for `"My Schedule"`, `"Mod Panel"`, and `"Notification Settings"`.
+    * Live Status / Clock: Live local digital clock (`tabular-nums`), viewer timezone pill, and read-only Sleep Shield status.
+    * Quick Actions: My Sleep, Mod Panel for moderators, a device notification settings bell, and the Profile avatar.
   * **Status Buckets & Multi-Column Member Grid:**
     * Sections expand across the container width.
     * Member cards render inside a responsive CSS Grid: `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4`.

@@ -114,9 +114,9 @@ The mascot changes pose and expression depending on community activity and the v
 ### 4.1 Mobile View (< 768px)
 On mobile screens, Z Catchers operates as a high-density, thumb-accessible PWA:
 * **Container:** Single-column vertical flow with padding `px-4 py-3`, max width constrained to screen bounds.
-* **Header:** Compact 56px sticky bar showing the Fox logo, detected local timezone pill, and push notification bell toggle.
+* **Header:** Compact 56px sticky bar showing the Fox logo, detected local timezone, notification settings bell, and signed-in profile avatar.
 * **Status Buckets:** Collapsible accordion sections with status count pills and full-width `MemberCard` components.
-* **Bottom Navigation:** Fixed bottom bar (`h-16`, `border-t border-night-border`, `bg-night-surface/95 backdrop-blur-md`) with thumb-friendly touch targets ($\ge 44\text{px}$) and iOS `env(safe-area-inset-bottom)` spacing.
+* **Bottom Navigation:** Fixed bottom bar (`h-16`, `border-t border-night-border`, `bg-night-surface/95 backdrop-blur-md`) with touch targets of at least 44 px and iOS `env(safe-area-inset-bottom)` spacing. The Mod entry appears only for effective moderators. The pinned roster actions sit immediately above the navigation.
 
 ```
 +------------------------------------------+
@@ -133,7 +133,7 @@ On mobile screens, Z Catchers operates as a high-density, thumb-accessible PWA:
 | ▼ 🕯️ WINDING DOWN SOON               (2) |
 |   ...                                    |
 +------------------------------------------+
-|   [ 🏠 Roster ]  [ 🕒 My Time ] [ 🛡️ Mod ] | <- Sticky Bottom Nav (64px)
+|   [ 🏠 Roster ]  [ 🌙 My Sleep ] [ 🛡️ Mod ] | <- Sticky Bottom Nav (64px)
 +------------------------------------------+
 ```
 
@@ -142,11 +142,11 @@ On wider viewports, Z Catchers transforms into a spacious, multi-column communit
 * **Container:** `max-w-7xl mx-auto px-6 lg:px-8 py-6` to utilize wide monitors cleanly without awkward stretching.
 * **Top Header / Command Bar:**
   * Left: Fox mascot SVG logo + "Z Catchers" brand wordmark.
-  * Center: Live local digital clock (`tabular-nums`) with viewer's timezone string and Sleep Shield status toggle badge (`🌙 Sleep Shield: Active / Inactive`).
+  * Center: Live local digital clock (`tabular-nums`) with viewer's timezone string and a read-only Sleep Shield status.
   * Right: Desktop quick-action navigation buttons:
-    * `"My Schedule"` (opens centered schedule modal)
-    * `"Mod Panel"` (opens moderator passcode modal)
-    * `"Notifications"` (toggles Web Push / VAPID subscription)
+    * **My Sleep** opens the calendar, timetable, and punishments.
+    * **Mod Panel** opens the moderator drawer for effective moderators.
+    * The bell opens Notification settings and reflects this device’s push status. The adjacent avatar opens Profile, with Edit profile, Sleep schedule, and Sign out.
 * **Bottom Nav Hidden:** Sticky mobile bottom bar is completely hidden (`hidden md:hidden`) on desktop.
 * **Status Buckets & Multi-Column Member Grid:**
   * Status sections expand across the full container width.
@@ -156,7 +156,7 @@ On wider viewports, Z Catchers transforms into a spacious, multi-column communit
 
 ```
 +---------------------------------------------------------------------------------------------------------+
-| 🦊 Z Catchers   |  🕒 11:30 PM (Asia/Kolkata)  •  [ 🌙 Shield: Active ]  |  [My Schedule] [Mod] [🔔 Alerts]| <- Command Bar
+| 🦊 Z Catchers   |  🕒 11:30 PM (Asia/Kolkata)  •  [ 🌙 Shield: Active ]  |  [My Sleep] [Mod] [🔔] [Profile]| <- Command Bar
 +---------------------------------------------------------------------------------------------------------+
 | 🦊 Contextual Hero Banner: "Cozy Den • 2 friends winding down, 1 past bedtime"                         |
 +---------------------------------------------------------------------------------------------------------+
@@ -219,19 +219,12 @@ Whenever `member.pending_effective_at` is in the future, render a dashed sub-ban
 ### 5.6 Accountability Row & Indicator Pips (`MemberCard.tsx`)
 Every `MemberCard` includes a compact, warm dark accountability row positioned directly below the sleep schedule information:
 
-* **Strikes Indicator (`⚡ Strikes: X/3`):**
-  * Color token: Warm rust / terracotta (`#E07A5F` / `fox-rust` / `border-fox-rust/40 text-fox-rust`).
-  * Visual Pips: 3 horizontal mini-dots ($6\text{px} \times 6\text{px}$). Filled dots render in glowing rust (`bg-fox-rust shadow-[0_0_6px_rgba(224,122,95,0.4)]`), unfilled dots render in subtle border tone (`bg-night-border`).
-  * Counter text: `⚡ Strikes: 1/3` (cream text with rust accent).
+* **Monthly strikes:** Show the current month’s total in Warm Dark rust (`#E07A5F` / `fox-rust`). In My Sleep, show three progress segments with a separate label such as “1 of 3 toward your next punishment.” Every three eligible strikes earns a punishment and starts a new set of segments.
 * **Metastrikes Indicator (`🛡️ Meta: X/3`):**
   * Color token: Warm gold / amber (`#F4A261` / `fox-amber` / `border-fox-amber/40 text-fox-amber`).
   * Visual Pips: 3 horizontal mini-shield dots ($6\text{px} \times 6\text{px}$). Filled dots render in golden amber (`bg-fox-amber shadow-[0_0_6px_rgba(244,162,97,0.4)]`), unfilled dots render in subtle border tone (`bg-night-border`).
   * Counter text: `🛡️ Meta: 2/3` (cream text with amber accent).
-* **Max Strikes Alert State (3/3 Strikes Used):**
-  * When a member reaches `strikes_used >= 3`, a prominent Sleepy Fox caution badge renders:
-  * Style: `mt-2 px-2.5 py-1 rounded-xl bg-fox-rust/15 border border-fox-rust/50 text-fox-rust text-xs font-semibold flex items-center justify-between`
-  * Text: `"🦊 Out of Strikes • 0 Margin Left"`
-  * Informs the community that the member has exhausted all leeway for the current calendar month.
+* **Open punishments:** The signed-in member’s own card shows the open count as a link to the authenticated task list.
 
 ### 5.7 Action Bar Secondary Pill Variants
 Next to the primary `"Nag in Discord Journal ↗"` button, contextual secondary pills adapt based on bedtime proximity and strike states:
