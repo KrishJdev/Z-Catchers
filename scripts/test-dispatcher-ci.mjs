@@ -541,8 +541,9 @@ try {
   });
   assert.equal(override.cooldown_applied, true);
   const approval = { action: 'approve_cooldown', member_id: regularId, expected_pending: override.member };
+  const staleTimezone = override.member.pending_timezone === 'Asia/Kolkata' ? 'UTC' : 'Asia/Kolkata';
   await post('/api/mod', dbModCookie, {
-    ...approval, expected_pending: { ...override.member, pending_timezone: 'America/New_York' },
+    ...approval, expected_pending: { ...override.member, pending_timezone: staleTimezone },
   }, 409);
   await post('/api/mod', dbModCookie, approval);
   assert.equal(sql(`SELECT actor_id FROM public.moderation_actions WHERE target_id = '${regularId}' AND action = 'approve_cooldown'`),
