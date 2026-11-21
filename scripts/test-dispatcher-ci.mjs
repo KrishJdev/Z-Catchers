@@ -30,9 +30,11 @@ const discordAccounts = {
   'discord-mod': '100000000000000003',
   newcomer: '100000000000000004',
   'task-member': '100000000000000005',
-  owner: '100000000000000006',
+  owner: '100000000000000100',
   ...novemberAccounts,
 };
+assert.equal(new Set(Object.values(discordAccounts)).size, Object.keys(discordAccounts).length,
+  'Each smoke-test Discord account needs a distinct ID');
 const { publicKey, privateKey } = webpush.generateVAPIDKeys();
 const localSupabase = parseEnv(execFileSync(
   'supabase', ['status', '--workdir', workdir, '-o', 'env'], { encoding: 'utf8' },
