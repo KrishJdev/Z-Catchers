@@ -7,7 +7,7 @@ import {
   syncInMemoryMemberCache,
   getMemberByIdSafe,
 } from './db.ts';
-import type { Member, NightlyStrikeLog, StrikeRecordType } from './db.ts';
+import type { ActiveNightlyStrikeLog, Member, NightlyStrikeLog, StrikeRecordType } from './db.ts';
 import {
   computeMemberState,
   checkMonthlyStrikeReset,
@@ -50,9 +50,13 @@ export function clearInMemoryStrikeStore(): void {
   memoryStore.memberCounts.clear();
 }
 
-/**
- * Returns the store key for a nightly strike log
- */
+/** Omit obsolete voting data from member-facing logs. */
+export function activeStrikeLog(log?: NightlyStrikeLog | null): ActiveNightlyStrikeLog | null {
+  if (!log || log.record_type === 'pending_vote') return null;
+  const { voter_ids: _legacyVoters, record_type, ...active } = log;
+  return { ...active, record_type };
+}
+
 export function getStrikeLogKey(targetMemberId: string, sleepCycleDate: string): string {
   return `${targetMemberId}_${sleepCycleDate}`;
 }
@@ -974,28 +978,6 @@ export async function issueAutomaticBedtimeStrike(
 }
 
 /**
- * Peer strike voting has been disabled and superseded by the Automated 10-Minute Bedtime Strike Engine.
- */
-export async function recordStrikeVote(
-  _targetMember: Member,
-  _voterId: string,
-  _sleepCycleDate?: string,
-  _nowUtc = DateTime.utc()
-): Promise<{
-  success: boolean;
-  log?: NightlyStrikeLog;
-  strikeIssued?: boolean;
-  votesCount?: number;
-  strikesUsed?: number;
-  error?: string;
-}> {
-  return {
-    success: false,
-    error: 'Peer strike voting has been disabled. Bedtime strikes are issued automatically 10 minutes past scheduled bedtime.',
-  };
-}
-
-/**
  * PROACTIVE METASTRIKE (EXCUSE PASS) WORKFLOW
  *
  * Rules:
@@ -1003,7 +985,7 @@ export async function recordStrikeVote(
  * 2. Member must have metastrikes_used < 3 (max 3 per month).
  * 3. Consumes 1 Metastrike (metastrikes_used + 1).
  * 4. Locks tonight's sleep cycle date with record_type 'metastrike' and reason.
- * 5. Disables strike votes for the night.
+ * 5. Protects the cycle from an automatic strike.
  */
 export async function useProactiveMetastrike(
   member: Member,
@@ -1236,31 +1218,4 @@ export async function modClearStrikeLog(
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return { success: false, error: msg };
   }
-}
-
-/**
- * Hydrates a member profile with their tonight strike log and voting status for the client.
- */
-export async function hydrateMemberStrikes(
-  member: Member,
-  nowUtc = DateTime.utc(),
-  voterId?: string | null
-): Promise<Member> {
-  const counts = await resolveMemberStrikeCounts(member, nowUtc);
-  const cycleDate = getSleepCycleDate(member, nowUtc);
-  const tonightLog = await getNightlyStrikeLog(member.id, cycleDate);
-
-  const isMetastrikeActive = tonightLog?.record_type === 'metastrike';
-  const hasVotedStrike = Boolean(voterId && tonightLog?.voter_ids?.includes(voterId));
-
-  return {
-    ...member,
-    strikes_used: counts.strikes_used,
-    metastrikes_used: counts.metastrikes_used,
-    strike_cycle_month: counts.strike_cycle_month,
-    tonight_strike_log: tonightLog,
-    is_metastrike_active: isMetastrikeActive,
-    metastrike_reason: tonightLog?.reason || null,
-    has_voted_strike: hasVotedStrike,
-  };
 }

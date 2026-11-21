@@ -623,7 +623,7 @@ export function ModDrawer({
         return;
       }
 
-      setSuccessMessage(`Cleared tonight's strike log & accidental votes for ${member.discord_username}.`);
+      setSuccessMessage(`Cleared tonight's strike log for ${member.discord_username}.`);
       await fetchModRoster(passcode);
       await onRosterChanged();
       setTimeout(() => setSuccessMessage(null), 3500);
@@ -1609,13 +1609,13 @@ export function ModDrawer({
                               </>
                             )}
 
-                            {/* Clear Tonight's Log / Accidental Votes */}
+                            {/* Clear Tonight's Strike Log */}
                             <button
                               type="button"
                               onClick={() => handleClearNightlyLog(member)}
                               disabled={actionLoadingId === `clear_${member.id}`}
                               className="text-[10px] text-cream-muted hover:text-fox-rust underline transition-colors"
-                              title="Clear tonight's pending votes or accidental strike"
+                              title="Clear tonight's strike log"
                             >
                               Clear Tonight&apos;s Log
                             </button>

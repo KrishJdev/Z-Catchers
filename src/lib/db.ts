@@ -95,10 +95,9 @@ export interface Member {
   in_bed_at?: string | null;
   streak_days?: number;
   nag_assists_count?: number;
-  tonight_strike_log?: NightlyStrikeLog | null;
-  convertible_strike_log?: NightlyStrikeLog | null;
-  can_vote_strike?: boolean;
-  has_voted_strike?: boolean;
+  tonight_strike_log?: ActiveNightlyStrikeLog | null;
+  convertible_strike_log?: ActiveNightlyStrikeLog | null;
+  open_punishment_count?: number | null;
   is_metastrike_active?: boolean;
   metastrike_reason?: string | null;
 }
@@ -136,6 +135,10 @@ export interface NightlyStrikeLog {
   updated_at?: string;
   replacement_until?: string | null;
 }
+
+export type ActiveNightlyStrikeLog = Omit<NightlyStrikeLog, 'voter_ids' | 'record_type'> & {
+  record_type: Exclude<StrikeRecordType, 'pending_vote'>;
+};
 
 export interface PushSubscriptionRecord {
   id: string;

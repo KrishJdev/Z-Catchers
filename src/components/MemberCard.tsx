@@ -37,7 +37,6 @@ interface MemberCardProps {
   onCheckIn?: (memberId: string) => Promise<boolean | void> | void;
   onCancelInBed?: (memberId: string) => Promise<boolean | void>;
   isCheckingIn?: boolean;
-  onVoteStrike?: (targetMemberId: string) => Promise<void>;
   onOpenMetastrike?: (member: Member, mode: 'proactive' | 'convert_retroactive') => void;
   isVotingStrike?: boolean;
   isModerator?: boolean;
@@ -83,7 +82,6 @@ export function MemberCard({
   onCheckIn,
   onCancelInBed,
   isCheckingIn = false,
-  onVoteStrike,
   onOpenMetastrike,
   isVotingStrike = false,
   isModerator = false,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Member, getMemberByIdSafe } from '@/lib/db';
 import { getRequestSessionMemberId, ownsDiscordProfile, getModeratorPasscode, verifyModeratorSession } from '@/lib/auth';
 import {
+  activeStrikeLog,
   useProactiveMetastrike,
   convertStrikeToMetastrike,
   getRecentEligibleStrikeLog,
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
         action: 'convert_retroactive',
         member_id: member.id,
         sleep_cycle_date: targetCycleDate,
-        log: result.log,
+        log: activeStrikeLog(result.log),
         strikes_used: result.strikesUsed,
         strikes_count: result.strikesUsed,
         metastrikes_used: result.metastrikesUsed,
@@ -133,7 +134,7 @@ export async function POST(request: Request) {
       action: result.strikesUsed !== undefined ? 'convert_retroactive' : 'proactive',
       member_id: member.id,
       sleep_cycle_date: cycleDate,
-      log: result.log,
+      log: activeStrikeLog(result.log),
       strikes_used: result.strikesUsed,
       strikes_count: result.strikesUsed,
       metastrikes_used: result.metastrikesUsed,

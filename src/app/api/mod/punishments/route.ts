@@ -1,0 +1,87 @@
+import { getModeratorPasscode, getRequestSessionMemberId, verifyModeratorSession } from '@/lib/auth';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/db';
+import { punishmentResponse, punishmentRpcResponse, PUNISHMENTS_UNAVAILABLE, UUID_PATTERN } from '@/lib/punishments';
+import { getClientIp, verifyRateLimitedModeratorPasscode } from '@/lib/rateLimit';
+import { DateTime } from 'luxon';
+
+async function authorizeModerator(request: Request, suppliedPasscode?: unknown) {
+  const passcode = getModeratorPasscode(request, suppliedPasscode);
+  if (passcode) {
+    const attempt = await verifyRateLimitedModeratorPasscode(
+      passcode, getClientIp(request), getRequestSessionMemberId(request)
+    );
+    if (attempt.unavailable) {
+      return punishmentResponse({ error: 'Could not verify moderator passcode. Try again.' }, 503);
+    }
+    if (attempt.retryAfterSeconds) {
+      return punishmentResponse({ error: 'Too many failed moderator passcode attempts.' }, 429, {
+        'Retry-After': String(attempt.retryAfterSeconds),
+      });
+    }
+    return attempt.valid ? 'master_mod' : punishmentResponse({ error: 'Invalid moderator passcode.' }, 401);
+  }
+  const moderator = await verifyModeratorSession(request);
+  return moderator.moderatorId ?? punishmentResponse({ error: moderator.error }, 401);
+}
+
+export async function GET(request: Request) {
+  const actor = await authorizeModerator(request);
+  if (typeof actor !== 'string') return actor;
+  if (!isSupabaseConfigured) return punishmentResponse({ error: PUNISHMENTS_UNAVAILABLE }, 503);
+
+  const params = new URL(request.url).searchParams;
+  const id = params.get('punishment_id');
+  const status = params.get('status') ?? 'awaiting_assignment';
+  const offset = params.get('offset') ?? '0';
+  if ((id !== null && !UUID_PATTERN.test(id)) ||
+    !['awaiting_assignment', 'assigned', 'pending'].includes(status) ||
+    !/^\d{1,10}$/.test(offset) || Number(offset) > 2147483597) {
+    return punishmentResponse({ error: 'Invalid punishment queue filter.' }, 400);
+  }
+
+  const { data, error } = await supabaseAdmin.rpc('get_moderator_punishments', {
+    p_id: id,
+    p_status: status,
+    p_offset: Number(offset),
+  });
+  return punishmentRpcResponse(data, error);
+}
+
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => null);
+  const actor = await authorizeModerator(request, body?.mod_passcode);
+  if (typeof actor !== 'string') return actor;
+  if (!isSupabaseConfigured) return punishmentResponse({ error: PUNISHMENTS_UNAVAILABLE }, 503);
+
+  if (typeof body?.punishment_id !== 'string' || !UUID_PATTERN.test(body.punishment_id) || 'member_id' in body) {
+    return punishmentResponse({ error: 'Provide a punishment ID to identify the task and its member.' }, 400);
+  }
+
+  const { action, punishment_id, title, instructions, cycle_date, source_id, reason, request_id } = body;
+  const args: Record<string, string | null> = { p_id: punishment_id, p_action: action, p_actor: actor };
+  if (action === 'assign' || action === 'edit') {
+    if (typeof title !== 'string' || !title.trim() || title.trim().length > 120 ||
+      (instructions != null && (typeof instructions !== 'string' || instructions.trim().length > 2000))) {
+      return punishmentResponse({ error: 'Enter a task title of up to 120 characters and up to 2,000 characters of instructions.' }, 400);
+    }
+    args.p_title = title.trim();
+    args.p_instructions = instructions?.trim() || null;
+  } else if (action === 'add_strike' || action === 'remove_strike') {
+    if (typeof cycle_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(cycle_date) ||
+      !DateTime.fromISO(cycle_date, { zone: 'utc' }).isValid ||
+      typeof request_id !== 'string' || !UUID_PATTERN.test(request_id) ||
+      typeof reason !== 'string' || !reason.trim() || reason.trim().length > 500 ||
+      (action === 'remove_strike' ? typeof source_id !== 'string' || !UUID_PATTERN.test(source_id) : source_id != null)) {
+      return punishmentResponse({ error: 'Provide a cycle date, request ID, and reason. Removal requires a strike source ID.' }, 400);
+    }
+    args.p_cycle = cycle_date;
+    args.p_source = source_id ?? null;
+    args.p_reason = reason.trim();
+    args.p_request_id = request_id;
+  } else if (action !== 'complete') {
+    return punishmentResponse({ error: 'Unknown punishment action.' }, 400);
+  }
+
+  const { data, error } = await supabaseAdmin.rpc('update_punishment', args);
+  return punishmentRpcResponse(data, error);
+}

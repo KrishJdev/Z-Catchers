@@ -25,6 +25,7 @@ const discordAccounts = {
   'database-mod': '100000000000000002',
   'discord-mod': '100000000000000003',
   newcomer: '100000000000000004',
+  'task-member': '100000000000000005',
 };
 const { publicKey, privateKey } = webpush.generateVAPIDKeys();
 const localSupabase = parseEnv(execFileSync(
@@ -166,6 +167,7 @@ sql(readFileSync('supabase/migrations/20261119_dispatch_accountability.sql', 'ut
 sql(readFileSync('supabase/migrations/20261120_cron_stage_completion.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261121_push_subscription_rotation.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261122_punishment_strike_ledger.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261123_punishment_task_apis.sql', 'utf8'));
 sql(`
   UPDATE public.members SET is_active = false;
   CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -393,11 +395,13 @@ try {
   assert.equal(proactive.metastrikes_used, 1);
 
   await post('/api/mod', regularCookie, { action: 'verify' }, 401);
+  const moderatorSessions = new Map();
   for (const [account, role] of [['database-mod', 'moderator'], ['discord-mod', 'member']]) {
     const { data: moderator } = await db.from('members').insert({
       ...profile, role, discord_username: account, discord_id: discordAccounts[account],
     }).select('id').single().throwOnError();
     const cookie = await signIn(account, moderator.id, true, role);
+    moderatorSessions.set(account, cookie);
     assert.equal((await fetch(appOrigin + '/api/mod', { headers: { Cookie: cookie } })).status, 200);
     const verified = await post('/api/mod', cookie, { action: 'verify' });
     assert.equal(verified.moderatorId, moderator.id);
@@ -535,6 +539,70 @@ try {
   assert.equal(sql(`SELECT count(*) FROM public.punishment_actions JOIN public.punishments ON punishment_id = punishments.id
     WHERE member_id = '${seedRace}' AND action = 'earned'`), '1');
   console.log('Verified concurrent dispatch with another worker, durable check-in, and two November seed sessions.');
+
+  const memberTasks = '/api/members/punishments';
+  const modTasks = '/api/mod/punishments';
+  async function getTaskData(path, cookie, expectedStatus = 200) {
+    const response = await fetch(appOrigin + path, { headers: { Cookie: cookie } });
+    const body = await response.json();
+    assert.equal(response.status, expectedStatus, JSON.stringify(body));
+    assert.match(response.headers.get('Cache-Control'), /private, no-store/);
+    return body;
+  }
+  await getTaskData(memberTasks, regularCookie, 503);
+  assert.equal((await getTaskData('/api/members', regularCookie)).members
+    .find(member => member.id === regularId).open_punishment_count, null);
+  sql("UPDATE public.punishment_rollout SET screens_visible = true");
+
+  const dbModCookie = moderatorSessions.get('database-mod');
+  const discordModCookie = moderatorSessions.get('discord-mod');
+  assert.ok(dbModCookie && discordModCookie);
+  await getTaskData(memberTasks, '', 401);
+  await getTaskData(memberTasks + '?memberId=' + regularId, newcomerCookie, 403);
+  await getTaskData(modTasks, regularCookie, 401);
+  const queue = await getTaskData(modTasks, dbModCookie);
+  const { id: taskId } = queue.items.find(item => item.member_id === seedRace);
+  const assignment = { action: 'assign', punishment_id: taskId, title: 'Wind-down plan' };
+  await post(modTasks, regularCookie, assignment, 401);
+  await post(modTasks, dbModCookie, assignment);
+  const edited = await post(modTasks, discordModCookie, { ...assignment, action: 'edit', title: 'Journal' });
+  assert.equal(edited.item.title, 'Journal');
+  assert.equal(edited.open_count, 1);
+
+  const complete = "SELECT public.update_punishment('" + taskId + "', 'complete', 'moderator-fixture')";
+  const completions = await concurrentSql(complete, complete);
+  assert.deepEqual(completions.map(result => result.open_count), [0, 0]);
+  assert.deepEqual(completions.map(result => result.item.status), ['completed', 'completed']);
+  assert.equal(sql("SELECT count(*) FROM public.punishment_actions WHERE punishment_id = '" + taskId +
+    "' AND action = 'completed'"), '1');
+
+  await db.from('members').update({ discord_id: discordAccounts['task-member'] }).eq('id', seedRace).throwOnError();
+  const taskMemberCookie = await signIn('task-member', seedRace, false, 'member');
+  const ownSummary = await getTaskData(memberTasks, taskMemberCookie);
+  const { members: roster } = await getTaskData('/api/members', taskMemberCookie);
+  assert.equal(ownSummary.history[0].id, taskId);
+  assert.equal(ownSummary.open_count, 0);
+  assert.equal(roster.find(member => member.id === seedRace).open_punishment_count, 0);
+  assert.ok(roster.filter(member => member.id !== seedRace).every(member => !('open_punishment_count' in member)));
+  assert.ok(roster.every(member => !('has_voted_strike' in member) && !member.tonight_strike_log?.voter_ids));
+
+  const correctionRace = raceMember('Concurrent Correction');
+  for (const day of ['14', '15', '16']) sql(automatic(correctionRace, day));
+  const correctionTask = sql("SELECT id FROM public.punishments WHERE member_id = '" + correctionRace + "'");
+  const source = sql("SELECT id FROM public.nightly_strike_logs WHERE target_member_id = '" + correctionRace +
+    "' AND sleep_cycle_date = '2026-11-16'");
+  const remove = "SELECT public.update_punishment('" + correctionTask + "', 'remove_strike', 'moderator-fixture', " +
+    "p_cycle => '2026-11-16', p_source => '" + source + "', p_reason => 'Verified check-in', " +
+    "p_request_id => gen_random_uuid())";
+  const tryAssign = `CREATE FUNCTION pg_temp.try_assign() RETURNS jsonb LANGUAGE plpgsql AS $$
+    BEGIN RETURN public.update_punishment('${correctionTask}', 'assign', 'moderator-fixture', 'Journal');
+    EXCEPTION WHEN SQLSTATE 'PT409' THEN RETURN jsonb_build_object('conflict', true); END; $$;
+    SELECT pg_temp.try_assign()`;
+  const [removed, assignConflict] = await concurrentSql(remove, tryAssign);
+  assert.equal(removed.item.status, 'canceled');
+  assert.equal(removed.open_count, 0);
+  assert.equal(assignConflict.conflict, true);
+  console.log('Verified authenticated punishment APIs, private roster counts, concurrent completion, and assignment racing a correction.');
 
 } finally {
   app?.kill();

@@ -36,9 +36,9 @@ Members of an international Discord community want to keep each other accountabl
 5. **Anti-Cheat Governance (48-Hour Cooldown):** To stop members from pushing their bedtime back 5 minutes before midnight to dodge nagging, any self-service schedule edit enters a **48-hour pending state** before becoming active. Moderators can remove members or override schedule changes immediately with the master passcode.
 
 6. **Monthly Strikes & Metastrikes Accountability System:**
-   * **Strikes (Max 3 per month):** The dispatcher issues one strike for a missed check-in starting ten minutes after the scheduled bedtime.
+   * **Strikes and punishments:** The dispatcher issues one strike for a missed check-in starting ten minutes after bedtime. Each third verified strike in a local calendar month earns a separate task.
    * **Metastrikes (Max 3 per month):** Excused passes used for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
-   * **Monthly Reset:** Both Strikes and Metastrikes reset to 0 used (3 remaining) on the 1st of every calendar month via lazy evaluation.
+   * **Monthly rollover:** Strike progress and used Metastrikes reset on the first day of the member’s local month. Unfinished tasks carry forward.
    * **Nightly evidence:** An in-app check-in, completed sleep log or Metastrike protects that cycle. See section 5.6 for the automatic strike and replacement rules.
 
 ## 2. Recommended Tech Stack (For Antigravity Execution)
@@ -141,7 +141,7 @@ CREATE TABLE members (
   is_active BOOLEAN NOT NULL DEFAULT true,
 
   -- Monthly Strikes & Metastrikes Accountability System
-  strikes_used INT NOT NULL DEFAULT 0 CHECK (strikes_used >= 0 AND strikes_used <= 3),
+  strikes_used INT NOT NULL DEFAULT 0 CHECK (strikes_used >= 0),
   metastrikes_used INT NOT NULL DEFAULT 0 CHECK (metastrikes_used >= 0 AND metastrikes_used <= 3),
   strike_cycle_month TEXT NOT NULL DEFAULT '2026-11', -- 'YYYY-MM' for lazy monthly reset
 
@@ -359,9 +359,9 @@ Manual push nags require an active member session. Each sender, target, sleep cy
    * **Automated 10-Minute Bedtime Strike Engine:** Automatically issues 1 normal strike if a member has not logged "In Bed" within 10 minutes past their scheduled bedtime (`currentLocalTime >= scheduledBedtime + 10 minutes`). Evaluated per active member according to their active daily or weekly timetable in their local timezone.
    * **Scope Restriction:** Strikes apply strictly to missed bedtimes. Wake-up actions in `src/app/api/members/wake-up/route.ts` must never trigger strikes.
    * **Peer Strike Voting Removed:** Manual peer strike voting has been removed and disabled (`POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`). Regular members cannot vote to strike others.
-   * **Strikes (Max 3 per month):** Each member can accumulate up to 3 strikes per calendar month.
+   * **Monthly thresholds:** Every third verified strike earns a separate punishment (3, 6, 9, and so on). The stored local sleep-cycle date determines its month, including a November 30 strike dispatched on December 1.
    * **Metastrikes (Max 3 per month):** Excused passes used for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
-   * **Monthly Reset:** Both Strikes and Metastrikes reset to 0 used (3 remaining each) on the 1st of every calendar month via automatic lazy evaluation (`strike_cycle_month`).
+   * **Monthly rollover:** Progress toward the next punishment resets on the first day of the member’s local month. All open tasks carry over. The member has three Metastrikes per local month.
 
 2. **5-Minute Grace Period & 10-Minute Cutoff Logic:**
    * `diffMinutes >= 0 && diffMinutes <= 5`: Status is `BEDTIME_GRACE` (`"Grace Period: Xm left"`).
@@ -372,7 +372,12 @@ Manual push nags require an active member session. Each sender, target, sleep cy
 3. **Metastrike Prevention & Pre-Next-Bedtime Replacement Workflows:**
    * **Applied Before Bedtime (+10m Cutoff):** If a member activates a Metastrike before the 10-minute auto-strike cutoff, the cycle is marked with `record_type: 'metastrike'`, preventing any normal strike from being issued.
    * **Pre-Next-Bedtime Replacement Window:** If an automatic normal strike was already issued at +10 minutes, the member can apply a Metastrike at any point—all the way until their next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`), including the next morning or afternoon. Doing so decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` from `'strike'` to `'metastrike'`. Once the next scheduled bedtime arrives, this replacement window expires.
-   * **Moderator Override:** Inside the Moderator Drawer (`src/components/ModDrawer.tsx` and `src/app/api/mod/route.ts`), moderators can manually add, adjust, or remove Strikes or Metastrikes (0 to 3) and clear accidental strike records via `clear_strike_log`.
+
+4. **Punishment status and moderation**
+   * An earned punishment counts as open immediately. It shows **Pending** while replacement can undo the threshold and **Awaiting assignment** afterward. Assigned tasks also count as open.
+   * A moderator assigns a short title and optional instructions, can edit an assigned task, and completes each task individually. Completion lowers the open count by one and moves the task to history.
+   * A dated correction or Metastrike replacement cancels any disqualified open threshold. Earning it again reuses its record. Completed tasks stay in history.
+   * Members read their own progress, tasks, and completed history. The roster includes only the signed-in member’s own open count and includes no task instructions. Effective moderators can read the queue and manage tasks. See the [accountability API contract](BACKEND_TZ_PWA_SPEC.md#23-monthly-strikes--metastrikes-accountability-system-engine).
 
 ### 5.7 "I Woke Up" Mechanic & State Transition Engine
 
@@ -446,7 +451,7 @@ Manual push nags require an active member session. Each sender, target, sleep cy
 
 * [x] **Sleep Consistency Streaks:** Track consecutive days a member checks in on time without using schedule changes.
 
-* [x] **Monthly Strikes & Metastrikes Accountability System:** 3 strikes max, 3 excused metastrikes max, 5-minute grace period (`BEDTIME_GRACE`), automatic evaluation at +10 minutes, replacement before the next bedtime, and moderator controls.
+* [x] **Monthly Strikes & Metastrikes Accountability System:** A separate punishment at every third valid strike, three Metastrikes per local month, 5-minute grace period (`BEDTIME_GRACE`), automatic evaluation at +10 minutes, replacement before the next bedtime, and moderator controls.
 
 * [x] **7-Day Variable Sleep Schedule Engine:** Full `mon` through `sun` custom routine support stored in `weekly_schedule JSONB`, with cross-midnight cycle resolution, fallback synchronization to flat columns, 48-hour cooldown enforcement, and 3-mode mobile-friendly schedule editor (Every Day, Weekdays/Weekends, Custom Per Day).
 

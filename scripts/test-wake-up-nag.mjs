@@ -97,7 +97,6 @@ assert.strictEqual(stateOverdueAfterWake.status, 'AWAKE', 'Overdue member 1 minu
 assert.strictEqual(stateOverdueAfterWake.isOverdue, false, 'isOverdue must be false once wake time passes');
 assert.strictEqual(stateOverdueAfterWake.needsWakeUpLog, false, 'needsWakeUpLog must be false for user who never checked in');
 assert.strictEqual(stateOverdueAfterWake.isSleepShieldActive, false, 'isSleepShieldActive is false for awake member');
-assert.strictEqual(stateOverdueAfterWake.canVoteStrike, false, 'canVoteStrike is false');
 assert(stateOverdueAfterWake.statusText.startsWith('Awake'), 'Status text must show Awake for upcoming cycle');
 console.log('✅ PASSED: (b) Overdue user 1 minute past scheduled wake_time automatically becomes awake.');
 
