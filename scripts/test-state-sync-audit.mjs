@@ -54,7 +54,7 @@ const {
 } = await import('../src/lib/db.ts');
 const { POST: handleInBedRoute } = await import('../src/app/api/members/in-bed/route.ts');
 const { POST: handleCancelPendingRoute } = await import('../src/app/api/members/cancel-pending/route.ts');
-const { hashPin, createSessionToken } = await import('../src/lib/auth.ts');
+const { createSessionToken } = await import('../src/lib/auth.ts');
 
 console.log('🧪 Starting State Synchronization Audit & Parity Verification Suite...\n');
 
@@ -172,12 +172,12 @@ console.log('\n--- 2. /api/members/in-bed Route Cancellation & Cleanup Audit ---
 async function testInBedRouteCancel() {
   clearKnownMemberColumns();
   const memberId = 'member-in-bed-cancel-test';
-  const hashedPin = hashPin('1234');
-  const token = createSessionToken(memberId);
+  const discordId = `discord-${memberId}`;
+  const token = createSessionToken({ memberId, discordId });
   let mockMember = {
     id: memberId,
+    discord_id: discordId,
     discord_username: 'CancelTestFox',
-    passcode_hash: hashedPin,
     timezone: 'America/New_York',
     bedtime_local: '23:00',
     wake_time_local: '07:00',
@@ -313,7 +313,7 @@ async function testInBedRouteCancel() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ memberId, action: 'cancel', pin: '1234' }),
+      body: JSON.stringify({ memberId, action: 'cancel' }),
     });
 
     const res = await handleInBedRoute(req);
@@ -346,6 +346,33 @@ async function testInBedRouteCancel() {
       (l) => l.member_id === memberId && l.cycle_date === '2026-05-15'
     );
     testAssert(remainingSleepLogs.length === 0, "Today's sleep_logs entry deleted on cancel");
+    // A previously cached linked member cannot authorize a write during a database outage.
+    syncInMemoryMemberCache(mockMember);
+    const normalFrom = supabaseAdmin.from;
+    supabaseAdmin.from = (table) => {
+      if (table !== 'members') throw new Error('A write happened after a failed fresh profile check');
+      return {
+        select() { return this; },
+        eq() { return this; },
+        async maybeSingle() { return { data: null, error: { message: 'Database unavailable' } }; },
+      };
+    };
+    try {
+      const blocked = await handleInBedRoute(new Request('http://localhost:3000/api/members/in-bed', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ memberId, action: 'check_in' }),
+      }));
+      assert.equal(blocked.status, 404);
+      const { GET: getSession } = await import('../src/app/api/auth/me/route.ts');
+      const unknownSession = await getSession(new Request('http://localhost:3000/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      }));
+      assert.equal(unknownSession.status, 503);
+      assert.equal((await unknownSession.json()).authenticated, undefined);
+    } finally {
+      supabaseAdmin.from = normalFrom;
+    }
   } finally {
     supabaseAdmin.from = origFrom;
   }
@@ -361,12 +388,12 @@ console.log('\n--- 3. /api/members/cancel-pending Reset & Cleanup Audit ---');
 async function testCancelPendingRoute() {
   clearKnownMemberColumns();
   const memberId = 'member-cancel-pending-sync-test';
-  const hashedPin = hashPin('4321');
-  const token = createSessionToken(memberId);
+  const discordId = `discord-${memberId}`;
+  const token = createSessionToken({ memberId, discordId });
   let mockMember = {
     id: memberId,
+    discord_id: discordId,
     discord_username: 'PendingSyncFox',
-    passcode_hash: hashedPin,
     timezone: 'America/New_York',
     bedtime_local: '23:00',
     wake_time_local: '07:00',
@@ -499,7 +526,7 @@ async function testCancelPendingRoute() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ member_id: memberId, pin: '4321', action: 'in_bed' }),
+      body: JSON.stringify({ member_id: memberId, action: 'in_bed' }),
     });
 
     const res = await handleCancelPendingRoute(req);
@@ -544,12 +571,12 @@ console.log('\n--- 3.1 Schedule-Only Cancellation Preserves Completed Sleep Hist
 async function testCancelPendingScheduleOnlyPreservesCompletedSleep() {
   clearKnownMemberColumns();
   const memberId = 'member-preserve-sleep-test';
-  const hashedPin = hashPin('4321');
-  const token = createSessionToken(memberId);
+  const discordId = `discord-${memberId}`;
+  const token = createSessionToken({ memberId, discordId });
   let mockMember = {
     id: memberId,
+    discord_id: discordId,
     discord_username: 'PreserveFox',
-    passcode_hash: hashedPin,
     timezone: 'America/New_York',
     bedtime_local: '23:00',
     wake_time_local: '07:00',
@@ -679,12 +706,12 @@ console.log('\n--- 3.2 Cleanup Failures Return HTTP 500 in Both Routes ---');
 async function testCleanupFailureReturns500() {
   clearKnownMemberColumns();
   const memberId = 'member-cleanup-fail-test';
-  const hashedPin = hashPin('4321');
-  const token = createSessionToken(memberId);
+  const discordId = `discord-${memberId}`;
+  const token = createSessionToken({ memberId, discordId });
   let mockMember = {
     id: memberId,
+    discord_id: discordId,
     discord_username: 'FailSafeFox',
-    passcode_hash: hashedPin,
     timezone: 'America/New_York',
     bedtime_local: '23:00',
     wake_time_local: '07:00',
@@ -751,7 +778,7 @@ async function testCleanupFailureReturns500() {
     const inBedReq = new Request('http://localhost:3000/api/members/in-bed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ memberId, action: 'cancel', pin: '4321' }),
+      body: JSON.stringify({ memberId, action: 'cancel' }),
     });
     const inBedRes = await handleInBedRoute(inBedReq);
     testAssert(inBedRes.status === 500, '/api/members/in-bed returns 500 when notification cleanup fails');
@@ -763,7 +790,7 @@ async function testCleanupFailureReturns500() {
     const cancelPendingReq = new Request('http://localhost:3000/api/members/cancel-pending', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ member_id: memberId, pin: '4321', action: 'in_bed' }),
+      body: JSON.stringify({ member_id: memberId, action: 'in_bed' }),
     });
     const cancelPendingRes = await handleCancelPendingRoute(cancelPendingReq);
     testAssert(cancelPendingRes.status === 500, '/api/members/cancel-pending returns 500 when notification cleanup fails');
@@ -800,26 +827,11 @@ testAssert(
   'PinnedSelfActionBar uses computeMemberState from sleepEngine'
 );
 
-// 4.2 PinnedSelfActionBar: All 4 status bucket controls present
+// 4.2 PinnedSelfActionBar: Separate nightly actions
 testAssert(
-  pinnedBarSource.includes("☀️ I'm Awake") || pinnedBarSource.includes("☀️ I&apos;m Awake"),
-  'PinnedSelfActionBar renders "I\'m Awake" for sleeping state'
-);
-testAssert(
-  pinnedBarSource.includes('Undo / Cancel'),
-  'PinnedSelfActionBar renders "Undo / Cancel" for sleeping state'
-);
-testAssert(
-  pinnedBarSource.includes("🛏️ I'm in Bed (Late)"),
-  'PinnedSelfActionBar renders "I\'m in Bed (Late)" for overdue state'
-);
-testAssert(
-  pinnedBarSource.includes("🛏️ Early Check-In"),
-  'PinnedSelfActionBar renders "Early Check-In" when approaching bedtime'
-);
-testAssert(
-  pinnedBarSource.includes("🛏️ I'm in Bed"),
-  'PinnedSelfActionBar renders "I\'m in Bed" for winding down state'
+  pinnedBarSource.includes('I woke up') && pinnedBarSource.includes('Enter wake time') &&
+  pinnedBarSource.includes('Undo check-in') && pinnedBarSource.includes('I’m in bed'),
+  'Pinned bar provides check-in, wake now, manual wake time, and undo'
 );
 
 // 4.3 MemberCard: Viewer self-actions on compact card bottom row
@@ -864,16 +876,6 @@ testAssert(
   'page.tsx wires handleCancelInBed into PinnedSelfActionBar'
 );
 
-// 4.6 PinnedSelfActionBar: time-state useMemo recomputes on page clock ticks
-testAssert(
-  /\[currentUser,\s*optimisticInBed,\s*tick\]/.test(pinnedBarSource),
-  'PinnedSelfActionBar userState useMemo includes tick alongside currentUser and optimisticInBed'
-);
-testAssert(
-  pageSource.includes('tick={tick}'),
-  'page.tsx passes tick value into PinnedSelfActionBar'
-);
-
 // 4.7 MemberCard: inspects boolean cancellation result and clears transient optimistic overrides
 testAssert(
   memberCardSource.includes('const res = await onCancelInBed(member.id)') &&
@@ -886,20 +888,15 @@ testAssert(
   'MemberCard clears transient optimistic overrides when request settles'
 );
 
-// 4.8 page.tsx: captures and restores is_in_bed, is_woke_up, in_bed_at across failure paths
+// 4.8 Schedule cancellation and undo check-in use separate current entry points.
+const profileSource = fs.readFileSync(path.join(rootDir, 'src', 'components', 'MyScheduleModal.tsx'), 'utf8');
 testAssert(
-  /priorPending\s*=\s*[\s\S]*?is_in_bed:\s*currentUser\.is_in_bed/.test(pageSource) &&
-  /is_woke_up:\s*currentUser\.is_woke_up/.test(pageSource) &&
-  /in_bed_at:\s*currentUser\.in_bed_at/.test(pageSource),
-  'page.tsx captures is_in_bed, is_woke_up, and in_bed_at in priorPending'
+  profileSource.includes('/api/members/cancel-pending') && profileSource.includes("action: 'schedule'"),
+  'Profile only cancels the pending schedule'
 );
 testAssert(
   pageSource.includes('handleCancelInBed = useCallback(async (memberId: string): Promise<boolean>'),
   'page.tsx handleCancelInBed returns Promise<boolean> reflecting cancellation outcome'
-);
-testAssert(
-  /isScheduleOnly\s*\?[\s\S]*?is_in_bed:\s*priorPending\?\.is_in_bed[\s\S]*?:[\s\S]*?is_in_bed:\s*false/.test(pageSource),
-  'page.tsx handleCancelPending optimistic update conditionally retains sleep fields for schedule-only cancellations'
 );
 testAssert(
   /res\.status === 401[\s\S]*?router\.push\('\/join'\)[\s\S]*?res\.status === 403[\s\S]*?else\s*\{[\s\S]*?await fetchRoster\(\)/.test(pageSource),

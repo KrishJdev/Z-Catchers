@@ -31,7 +31,6 @@ import {
   getNextScheduledBedtime,
 } from '../src/lib/sleepEngine.ts';
 import {
-  recordStrikeVote,
   convertStrikeToMetastrike,
   useProactiveMetastrike,
   issueAutomaticBedtimeStrike,
@@ -45,11 +44,6 @@ import {
   getRecentEligibleStrikeLogsBatch,
   saveNightlyStrikeLog,
 } from '../src/lib/strikes.ts';
-import {
-  checkVoteRateLimitPersistent,
-  recordVoteAttemptPersistent,
-  checkPinRateLimitSync,
-} from '../src/lib/rateLimit.ts';
 
 console.log('🧪 Starting Monthly Strikes & Metastrikes Accountability System Verification...\n');
 
@@ -96,29 +90,18 @@ async function run() {
   const state0 = computeMemberState(dummyMember, 'GMT+00:00', t0);
   assert(state0.bucket === 'BEDTIME_NOW', 'At 23:00, bucket is BEDTIME_NOW');
   assert(state0.status === 'BEDTIME_GRACE', 'At 23:00, status is BEDTIME_GRACE');
-  assert(state0.canVoteStrike === false, 'At 23:00, strike voting is locked');
   assert(state0.statusText.includes('Grace Period'), 'At 23:00, statusText displays grace period');
 
   // Test 1B: 3 minutes past bedtime (23:03 UTC) -> diffMinutes = 3
   const t3 = DateTime.fromISO('2026-11-10T23:03:00.000Z');
   const state3 = computeMemberState(dummyMember, 'GMT+00:00', t3);
   assert(state3.status === 'BEDTIME_GRACE', 'At 23:03, status remains BEDTIME_GRACE');
-  assert(state3.canVoteStrike === false, 'At 23:03, strike voting is still locked');
 
   // Test 1C: 6 minutes past bedtime (23:06 UTC) -> diffMinutes = 6
   const t6 = DateTime.fromISO('2026-11-10T23:06:00.000Z');
   const state6 = computeMemberState(dummyMember, 'GMT+00:00', t6);
   assert(state6.bucket === 'BEDTIME_NOW', 'At 23:06, bucket is BEDTIME_NOW');
   assert(state6.status === 'OVERDUE_NAG_NOW', 'At 23:06, status transitions to OVERDUE_NAG_NOW');
-  assert(state6.canVoteStrike === false, 'At 23:06, peer strike voting is disabled');
-
-  // Test 1D: Peer strike voting disabled check
-  const disabledVoteResult = await recordStrikeVote(dummyMember, 'friend-voter-1', '2026-11-10', t3);
-  assert(disabledVoteResult.success === false, 'recordStrikeVote rejected as peer voting is disabled');
-  assert(
-    disabledVoteResult.error && disabledVoteResult.error.includes('disabled'),
-    'recordStrikeVote returns disabled error message'
-  );
 
   console.log('\n--- 2. Automated 10-Minute Bedtime Strike Engine ---');
   // Test 2A: Member is 9 minutes past bedtime without checking in -> 0 strikes issued
@@ -150,12 +133,7 @@ async function run() {
   assert(inBedStrike.strikeIssued === false, 'Automatic strike strictly prevented when member is in bed');
   assert(inBedStrike.reason === 'already_checked_in', 'Reason indicates member checked into bed');
 
-  // Test 2E: Peer strike voting is strictly disabled
-  const peerVote = await recordStrikeVote(dummyMember, 'voter-alice', '2026-11-10', t10);
-  assert(peerVote.success === false, 'Peer strike voting is rejected');
-  assert(peerVote.error && peerVote.error.includes('disabled'), 'Returns peer voting disabled message');
-
-  // Test 2F: Member already at 3 strikes limit receives 0 new strikes (capped)
+  // Test 2F: Member with three strikes can receive a fourth
   const maxStrikesMember = {
     ...dummyMember,
     id: 'test-max-strikes-sleeper',
@@ -163,9 +141,8 @@ async function run() {
     strikes_count: 3,
   };
   const maxStrikeRes = await issueAutomaticBedtimeStrike(maxStrikesMember, '2026-11-10', t10);
-  assert(maxStrikeRes.strikeIssued === false, 'Member with 3 strikes receives 0 new strikes');
-  assert(maxStrikeRes.reason === 'already_at_max_strikes', 'Reason indicates already at max strikes');
-  assert(maxStrikeRes.strikesUsed === 3, 'Strikes used remains capped at 3');
+  assert(maxStrikeRes.strikeIssued === true, 'Member with three strikes receives another strike');
+  assert(maxStrikeRes.strikesUsed === 4, 'Monthly count advances to four');
 
   // Test 2G: Next scheduled bedtime evaluation across midnight boundaries
   const midnightMember = {
@@ -441,7 +418,7 @@ async function run() {
 
   console.log('\n--- 6. Moderator Override Operations ---');
   // Mod Adjust Strikes
-  const modCountsRes = await modAdjustStrikes(dummyMember.id, 2, 1);
+  const modCountsRes = await modAdjustStrikes(dummyMember.id, 2, 1, false, 'test-mod');
   assert(modCountsRes.success === true, 'Mod adjusted strikes_used successfully');
   const modCounts = await resolveMemberStrikeCounts(dummyMember);
   assert(modCounts.strikes_used === 2, 'Mod adjusted strikes_used to 2');
@@ -457,9 +434,9 @@ async function run() {
     created_at: DateTime.utc().toISO(),
     updated_at: DateTime.utc().toISO(),
   });
-  await modAdjustStrikes(dummyMember.id, 3, 1);
+  await modAdjustStrikes(dummyMember.id, 3, 1, false, 'test-mod');
 
-  const clearSuccess = await modClearStrikeLog(dummyMember.id, '2026-11-13');
+  const clearSuccess = await modClearStrikeLog(dummyMember.id, '2026-11-13', 'test-mod');
   assert(clearSuccess.success === true, 'Mod successfully cleared strike log');
   const clearedLog = await getNightlyStrikeLog(dummyMember.id, '2026-11-13');
   assert(clearedLog === null, 'Log is cleanly removed from store');
@@ -502,23 +479,6 @@ async function run() {
   assert(recentBatch.has('batch-sleeper-1'), 'Batched recent strikes includes strike within 24h');
   assert(recentBatch.get('batch-sleeper-1')?.id === 'batch-recent-1', 'Resolves correct strike log ID');
   assert(!recentBatch.has('batch-sleeper-2'), 'Batched recent strikes excludes strike older than 24h');
-
-  // 7C: Voter-scoped persistent rate limiting isolation
-  const voterKey = 'voter-isolated-test-1';
-  const initialVoterCheck = await checkVoteRateLimitPersistent(voterKey, 3, 60000);
-  assert(initialVoterCheck.allowed === true, 'Initial voter rate limit check is allowed');
-
-  await recordVoteAttemptPersistent(voterKey, 60000);
-  await recordVoteAttemptPersistent(voterKey, 60000);
-  await recordVoteAttemptPersistent(voterKey, 60000);
-
-  const blockedVoterCheck = await checkVoteRateLimitPersistent(voterKey, 3, 60000);
-  assert(blockedVoterCheck.allowed === false, 'Voter blocked after exceeding max attempts');
-  assert(blockedVoterCheck.retryAfterSeconds > 0, 'Returns retryAfterSeconds');
-
-  // Confirm PIN rate limiting is NOT affected by voter counter
-  const pinCheck = checkPinRateLimitSync('127.0.0.1', voterKey);
-  assert(pinCheck.allowed === true, 'PIN rate limit remains allowed and unaffected by voter rate limit');
 
   // 7D: Batched Recent Eligible Strikes Database-Backed Integration Test
   const runnerMode = process.env.RUNNER_MODE || (process.argv.includes('--all') ? 'all' : 'unit');

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
-import { hashPin, verifyPin, verifyModPasscode, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
+import { ownsDiscordProfile, verifyModPasscode, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
 import { isValidTimezone, formatGmtOffset, DAY_KEYS, type DayKey, type WeeklySchedule, type DailySchedule } from '@/lib/timezone';
 import {
   getClientIp,
@@ -16,7 +16,7 @@ const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 /**
  * POST: Update a member's bedtime schedule with 48-hour cooldown protection or moderator override.
  *
- * @param request - Incoming HTTP request containing schedule updates and PIN/passcode
+ * @param request - Incoming HTTP request containing schedule updates and optional moderator passcode
  * @returns JSON response with updated or pending schedule status
  */
 export async function POST(request: Request) {
@@ -24,8 +24,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     const {
       member_id,
-      pin,
-      new_pin,
       discord_username,
       discord_handle,
       journal_url,
@@ -39,8 +37,8 @@ export async function POST(request: Request) {
       weekend_wake_time_local,
       weekend_wake_time: legacyWeekendWakeTime,
       weekly_schedule,
-      mod_passcode,
     } = body;
+    const mod_passcode = body.mod_passcode ?? request.headers.get('x-mod-passcode');
 
     if (!member_id) {
       return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
@@ -60,9 +58,9 @@ export async function POST(request: Request) {
     const currentMember = memberData as Member;
     const clientIp = getClientIp(request);
 
-    // 2. PIN verification / Session Authorization / Claiming profile
+    // 2. Require the owner session or a valid master override
     const sessionMemberId = getRequestSessionMemberId(request);
-    const isSessionOwner = Boolean(sessionMemberId && sessionMemberId === currentMember.id);
+    const isSessionOwner = ownsDiscordProfile(request, currentMember);
     let isModeratorOverride = false;
     const hasModPasscode =
       mod_passcode !== undefined &&
@@ -96,98 +94,11 @@ export async function POST(request: Request) {
         await resetPinFailurePersistent(clientIp, modGateTarget);
       }
     }
-    const isFirstTimeClaim = !isModeratorOverride && !isSessionOwner && !currentMember.passcode_hash;
-
-    let updatedPasscodeHash = currentMember.passcode_hash;
-
-    if (isModeratorOverride) {
-      const pinCandidate = new_pin || (!currentMember.passcode_hash ? pin : undefined);
-      if (pinCandidate) {
-        if (typeof pinCandidate !== 'string' || !/^\d{4,6}$/.test(pinCandidate.trim())) {
-          return NextResponse.json(
-            { error: 'PIN must be 4 to 6 digits.' },
-            { status: 400 }
-          );
-        }
-        updatedPasscodeHash = hashPin(pinCandidate.trim());
-      }
-    } else {
-      if (isSessionOwner) {
-        if (!currentMember.is_active) {
-          return NextResponse.json({ error: 'Member is inactive.' }, { status: 403 });
-        }
-        // Authenticated owner session: no PIN required; allow PIN update if new_pin supplied
-        if (new_pin) {
-          if (typeof new_pin !== 'string' || !/^\d{4,6}$/.test(new_pin.trim())) {
-            return NextResponse.json(
-              { error: 'New PIN must be 4 to 6 digits.' },
-              { status: 400 }
-            );
-          }
-          updatedPasscodeHash = hashPin(new_pin.trim());
-        }
-      } else {
-        // Non-owner: If profile is linked to Discord, only authenticated owner or moderator can update it
-        if (currentMember.discord_id) {
-          return NextResponse.json(
-            { error: 'This profile is linked to a Discord account and can only be updated by its owner or a moderator.' },
-            { status: 403 }
-          );
-        }
-
-        const rateCheck = await checkPinRateLimitPersistent(clientIp, currentMember.id);
-        if (!rateCheck.allowed) {
-          return NextResponse.json(
-            {
-              error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-            },
-            {
-              status: 429,
-              headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-            }
-          );
-        }
-
-        if (!currentMember.passcode_hash) {
-          if (currentMember.role === 'moderator') {
-            await recordPinFailurePersistent(clientIp, currentMember.id);
-            return NextResponse.json(
-              { error: 'Claiming an initial moderator profile requires moderator authorization.' },
-              { status: 403 }
-            );
-          }
-          // Unclaimed unlinked profile: user must set a 4-digit PIN to claim and protect it
-          if (!pin || typeof pin !== 'string' || pin.trim().length < 4 || !/^\d{4,6}$/.test(pin.trim())) {
-            return NextResponse.json(
-              { error: 'Please choose a 4-to-6 digit PIN to claim and protect your profile.' },
-              { status: 400 }
-            );
-          }
-          updatedPasscodeHash = hashPin(pin.trim());
-          await resetPinFailurePersistent(clientIp, currentMember.id);
-        } else {
-          // Profile already claimed: verify PIN with rate limit protection
-          if (!pin || typeof pin !== 'string' || !verifyPin(pin.trim(), currentMember.passcode_hash)) {
-            await recordPinFailurePersistent(clientIp, currentMember.id);
-            return NextResponse.json(
-              { error: 'Invalid 4-digit PIN. Please enter your correct PIN.' },
-              { status: 401 }
-            );
-          }
-          await resetPinFailurePersistent(clientIp, currentMember.id);
-
-          // If updating PIN
-          if (new_pin) {
-            if (typeof new_pin !== 'string' || !/^\d{4,6}$/.test(new_pin.trim())) {
-              return NextResponse.json(
-                { error: 'New PIN must be 4 to 6 digits.' },
-                { status: 400 }
-              );
-            }
-            updatedPasscodeHash = hashPin(new_pin.trim());
-          }
-        }
-      }
+    if (!isModeratorOverride && !isSessionOwner) {
+      return NextResponse.json(
+        { error: 'Sign in with the Discord account linked to this profile.' },
+        { status: sessionMemberId ? 403 : 401 }
+      );
     }
 
     // 3. Validate Journal URL
@@ -412,7 +323,6 @@ export async function POST(request: Request) {
           ? discord_handle?.trim() || null
           : currentMember.discord_handle,
       journal_url: journal_url?.trim() || currentMember.journal_url,
-      passcode_hash: updatedPasscodeHash,
       updated_at: DateTime.utc().toISO() as string,
     };
 
@@ -451,26 +361,15 @@ export async function POST(request: Request) {
     }
 
     // 7. Persist to Supabase
-    const { data: updatedMember, error: updateError } = await updateMemberSafe(
-      member_id,
-      updates,
-      {
-        isFirstTimeClaim,
-        requireUnlinkedDiscord: isFirstTimeClaim && !isSessionOwner && !isModeratorOverride,
-      }
-    );
+    const { data: updatedMember, error: updateError } = await updateMemberSafe(member_id, updates, {
+      conditions: isModeratorOverride ? undefined : { is_active: true, discord_id: currentMember.discord_id },
+    });
 
-    if (updateError || !updatedMember) {
-      return NextResponse.json(
-        {
-          error:
-            updateError?.message ||
-            (isFirstTimeClaim
-              ? 'Profile has already been claimed or could not be updated. Please try logging in.'
-              : 'Failed to update member'),
-        },
-        { status: updateError ? 500 : isFirstTimeClaim ? 409 : 500 }
-      );
+    if (updateError) {
+      return NextResponse.json({ error: 'Failed to update member.' }, { status: 500 });
+    }
+    if (!updatedMember) {
+      return NextResponse.json({ error: 'The profile changed. Reload and try again.' }, { status: 409 });
     }
 
     return NextResponse.json({

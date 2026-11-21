@@ -104,7 +104,7 @@ z-catchers/
 ## 5. Anti-Bloat & Scope Creep Rules
 
 * **Stay in Phase 1 (MVP):** Do not build Phase 2 or Phase 3 features (such as Discord bots, streak counters, or buddy watchlists) unless the user explicitly commands you to start Phase 2.
-* **No Heavy Auth Dependencies:** Do not block MVP progress by setting up complex multi-provider OAuth flows. Use the lightweight 4-digit Member PIN + `MOD_SECRET_PASSCODE` flow defined in `PROJECT_SPEC.md`.
+* **No Heavy Auth Dependencies:** Use the existing Discord OAuth session for member actions and live role checks for moderator access. Require `MOD_SECRET_PASSCODE` for immediate schedule overrides.
 * **Minimal Dependencies:** Only install packages that are directly required (`luxon`, `web-push`, `lucide-react`, and your DB client). Do not install heavy UI component libraries (like Material UI or Ant Design).
 
 ---

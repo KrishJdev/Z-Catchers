@@ -181,7 +181,7 @@ export function MetastrikeModal({
               </p>
             ) : (
               <p>
-                🛡️ <strong>Shield Guarantee:</strong> Activating this pass puts an excused badge on your profile for tonight, disabling community strike votes so you can attend your event stress-free.
+                🛡️ <strong>Shield Guarantee:</strong> Activating this pass puts an excused badge on your profile for tonight, protecting this sleep cycle from an automatic strike.
               </p>
             )}
           </div>

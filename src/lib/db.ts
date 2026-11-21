@@ -75,10 +75,11 @@ export interface Member {
   passcode_hash?: string | null;
   has_pin?: boolean;
   is_active: boolean;
+  strike_schedule_revision?: number;
   // Monthly Strikes & Metastrikes Accountability System
-  strikes_used?: number; // 0 to 3
+  strikes_used?: number; // Monthly projection
   metastrikes_used?: number; // 0 to 3
-  strikes_count?: number; // Alias 0 to 3
+  strikes_count?: number; // Alias of strikes_used
   metastrikes_count?: number; // Alias 0 to 3
   strike_cycle_month?: string; // "YYYY-MM"
   last_notified_stage?: string | null;
@@ -94,10 +95,9 @@ export interface Member {
   in_bed_at?: string | null;
   streak_days?: number;
   nag_assists_count?: number;
-  tonight_strike_log?: NightlyStrikeLog | null;
-  convertible_strike_log?: NightlyStrikeLog | null;
-  can_vote_strike?: boolean;
-  has_voted_strike?: boolean;
+  tonight_strike_log?: ActiveNightlyStrikeLog | null;
+  convertible_strike_log?: ActiveNightlyStrikeLog | null;
+  open_punishment_count?: number | null;
   is_metastrike_active?: boolean;
   metastrike_reason?: string | null;
 }
@@ -133,7 +133,12 @@ export interface NightlyStrikeLog {
   reason?: string | null;
   created_at: string;
   updated_at?: string;
+  replacement_until?: string | null;
 }
+
+export type ActiveNightlyStrikeLog = Omit<NightlyStrikeLog, 'voter_ids' | 'record_type'> & {
+  record_type: Exclude<StrikeRecordType, 'pending_vote'>;
+};
 
 export interface PushSubscriptionRecord {
   id: string;
@@ -424,8 +429,6 @@ export async function sanitizeMemberPayload<T extends Record<string, any>>(paylo
 
 export interface SafeUpdateOptions {
   select?: string;
-  isFirstTimeClaim?: boolean;
-  requireUnlinkedDiscord?: boolean;
   conditions?: Record<string, any>;
 }
 
@@ -496,12 +499,6 @@ export async function updateMemberSafe(
 
   const performUpdate = async (fields: Record<string, any>) => {
     let query = supabaseAdmin.from('members').update(fields).eq('id', memberId);
-    if (options.isFirstTimeClaim) {
-      query = query.is('passcode_hash', null);
-    }
-    if (options.requireUnlinkedDiscord) {
-      query = query.is('discord_id', null);
-    }
     if (activeConditions) {
       for (const [col, val] of Object.entries(activeConditions)) {
         if (val === null || val === undefined) {
@@ -613,7 +610,10 @@ export async function insertMemberSafe(
     }
   }
 
-  let cleanPayload = await sanitizeMemberPayload(payload);
+  const cleanPayload = await sanitizeMemberPayload(payload);
+  if (payload.discord_id && !cleanPayload.discord_id) {
+    return { data: null, error: { message: 'Discord profile binding is unavailable in the current schema.' } };
+  }
 
   const performInsert = async (fields: Record<string, any>) => {
     return supabaseAdmin.from('members').insert(fields).select(select).single();
@@ -625,6 +625,7 @@ export async function insertMemberSafe(
     const match = error.message.match(/Could not find the '([^']+)' column/);
     if (match && match[1] && match[1] in cleanPayload) {
       const missingCol = match[1];
+      if (missingCol === 'discord_id') break;
       console.warn(`[Supabase Safe Insert] Column '${missingCol}' not found in Supabase schema cache; stripping and retrying.`);
       if (knownMemberColumns) {
         knownMemberColumns.delete(missingCol);
@@ -719,7 +720,7 @@ export function clearInMemoryMembers(): void {
 export async function getMemberByIdSafe(
   memberId: string, options: { requireFresh?: boolean } = {}
 ): Promise<{ data: Member | null; error: any }> {
-  if (!options.requireFresh && isTestMemberFixture(memberId)) {
+  if ((!options.requireFresh || process.env.NODE_ENV === 'test') && isTestMemberFixture(memberId)) {
     const inMem = memoryMembers.get(memberId);
     if (inMem) {
       return { data: inMem, error: null };

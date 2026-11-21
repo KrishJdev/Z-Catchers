@@ -1,5 +1,7 @@
 'use client';
 
+import { ResponsiveDialog } from '@/components/ResponsiveDialog';
+import { MemberPunishmentList } from '@/components/PunishmentList';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X,
@@ -87,7 +89,8 @@ export interface SleepCalendarModalProps {
   onWakeUpUpdated?: () => Promise<void>;
   onToggleStar?: (memberId: string) => void;
   isStarred?: boolean;
-  initialTab?: 'calendar' | 'timetable';
+  initialTab?: 'calendar' | 'timetable' | 'punishments';
+  isMySleep?: boolean;
   onOpenScheduleModal?: () => void;
 }
 
@@ -148,12 +151,13 @@ export function SleepCalendarModal({
   onToggleStar,
   isStarred = false,
   initialTab = 'calendar',
+  isMySleep = false,
   onOpenScheduleModal,
 }: SleepCalendarModalProps) {
   const [data, setData] = useState<SleepHistoryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'calendar' | 'timetable'>(initialTab);
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   // Active month in "YYYY-MM" format
   const [currentMonth, setCurrentMonth] = useState<string>(() => {
@@ -483,12 +487,8 @@ export function SleepCalendarModal({
   const monthTitle = DateTime.fromISO(`${currentMonth}-01`).toFormat('MMMM yyyy');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-night-bg/85 backdrop-blur-md transition-opacity">
-      {/* Container: Bottom Sheet on Mobile, Centered Dialog on Desktop */}
-      <div
-        className="w-full sm:max-w-2xl lg:max-w-3xl max-h-[92vh] sm:max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-night-border/90 bg-night-surface p-4 sm:p-6 shadow-2xl flex flex-col gap-4 text-cream-primary transition-all animate-in fade-in duration-200"
-        style={{ paddingBottom: 'calc(1rem + var(--safe-area-bottom, 0px))' }}
-      >
+    <ResponsiveDialog labelledBy="sleep-calendar-title" onClose={onClose}
+      className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-2xl md:p-6 lg:max-w-3xl">
         {/* Mobile Drag Indicator */}
         <div className="flex justify-center sm:hidden -mt-1 -mb-1">
           <div className="w-12 h-1.5 rounded-full bg-cream-muted/30" />
@@ -517,8 +517,8 @@ export function SleepCalendarModal({
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <h2 className="text-lg font-bold text-cream-primary truncate max-w-[180px] sm:max-w-[260px]">
-                    {resolvedProfile.name}
+                  <h2 id="sleep-calendar-title" className="text-lg font-bold text-cream-primary [overflow-wrap:anywhere]">
+                    {isMySleep ? 'My Sleep' : resolvedProfile.name}
                   </h2>
 
                   {isViewer && (
@@ -588,7 +588,7 @@ export function SleepCalendarModal({
                   onClose();
                 }}
                 className="flex items-center justify-center rounded-xl p-2 text-cream-secondary hover:text-cream-primary hover:bg-night-elevated transition-colors min-h-[44px] min-w-[44px]"
-                aria-label="Close profile modal"
+                aria-label={isMySleep ? 'Close My Sleep' : 'Close member sleep history'}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -606,31 +606,32 @@ export function SleepCalendarModal({
             </div>
 
             {/* Strikes & Meta Indicators */}
-            {resolvedProfile.strikeCountsUnavailable ? (
+            {!isMySleep && (resolvedProfile.strikeCountsUnavailable ? (
               <span className="text-[11px] text-cream-secondary">Strike and pass counts unavailable</span>
             ) : (
               <div className="flex items-center gap-3 text-[11px]">
                 <span className="flex items-center gap-1 font-semibold text-status-coral">
                   <Zap className="h-3 w-3 fill-status-coral text-status-coral" />
-                  <span>Strikes: {resolvedProfile.strikesUsed}/3</span>
+                  <span>Monthly strikes {resolvedProfile.strikesUsed}</span>
                 </span>
                 <span className="flex items-center gap-1 font-semibold text-status-amber">
                   <Shield className="h-3 w-3 fill-status-amber/20 text-status-amber" />
                   <span>Meta: {resolvedProfile.metastrikesUsed}/3</span>
                 </span>
               </div>
-            )}
+            ))}
           </div>
 
           {/* Profile Section Tabs */}
           <div className="flex items-center gap-1.5 p-1 rounded-xl bg-night-elevated border border-night-border/80">
             <button
               type="button"
+              aria-pressed={activeTab === 'calendar'}
               onClick={() => {
                 triggerHaptic(10);
                 setActiveTab('calendar');
               }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all min-h-[40px] ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all min-h-[44px] ${
                 activeTab === 'calendar'
                   ? 'bg-status-amber text-night-bg shadow-sm'
                   : 'text-cream-secondary hover:text-cream-primary'
@@ -642,25 +643,36 @@ export function SleepCalendarModal({
 
             <button
               type="button"
+              aria-pressed={activeTab === 'timetable'}
               onClick={() => {
                 triggerHaptic(10);
                 setActiveTab('timetable');
               }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all min-h-[40px] ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all min-h-[44px] ${
                 activeTab === 'timetable'
                   ? 'bg-status-amber text-night-bg shadow-sm'
                   : 'text-cream-secondary hover:text-cream-primary'
               }`}
             >
               <Clock className="h-4 w-4" />
-              <span>Weekly Timetable</span>
+              <span>{isMySleep ? 'Timetable' : 'Weekly Timetable'}</span>
             </button>
+            {isMySleep && isViewer && (
+              <button type="button" aria-pressed={activeTab === 'punishments'} onClick={() => setActiveTab('punishments')}
+                className={`min-h-[44px] flex-1 rounded-lg px-2 text-xs font-bold ${activeTab === 'punishments' ? 'bg-status-amber text-night-bg shadow-sm' : 'text-cream-secondary hover:text-cream-primary'}`}>
+                Punishments
+              </button>
+            )}
           </div>
         </div>
 
+        {activeTab === 'punishments' && isMySleep && isViewer && memberId && (
+          <div className="mt-4"><MemberPunishmentList key={memberId} memberId={memberId} /></div>
+        )}
+
         {/* Tab 1: Calendar Streak View */}
         {activeTab === 'calendar' && (
-          <div className="flex flex-col gap-4 animate-in fade-in duration-150">
+          <div className="mt-4 flex flex-col gap-4 animate-in fade-in duration-150">
             {/* Month Switcher Bar */}
             <div className="flex items-center justify-between rounded-xl bg-night-elevated/70 border border-night-border/60 px-3 py-2">
               <button
@@ -964,7 +976,7 @@ export function SleepCalendarModal({
 
         {/* Tab 2: Weekly Timetable View */}
         {activeTab === 'timetable' && (
-          <div className="flex flex-col gap-4 animate-in fade-in duration-150">
+          <div className="mt-4 flex flex-col gap-4 animate-in fade-in duration-150">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-cream-primary">
@@ -1100,7 +1112,6 @@ export function SleepCalendarModal({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </ResponsiveDialog>
   );
 }

@@ -36,7 +36,7 @@ CREATE TABLE members (
   is_active BOOLEAN NOT NULL DEFAULT true,
 
   -- Monthly Strikes & Metastrikes Accountability System
-  strikes_used INT NOT NULL DEFAULT 0 CHECK (strikes_used >= 0 AND strikes_used <= 3),
+  strikes_used INT NOT NULL DEFAULT 0 CHECK (strikes_used >= 0),
   metastrikes_used INT NOT NULL DEFAULT 0 CHECK (metastrikes_used >= 0 AND metastrikes_used <= 3),
   strike_cycle_month TEXT NOT NULL DEFAULT '2026-11', -- 'YYYY-MM' for lazy monthly reset
 
@@ -268,9 +268,9 @@ The accountability system ensures members adhere to their bedtimes with automate
 * **Automated 10-Minute Bedtime Strike Engine:** Automatically issues 1 normal strike if an active member has not logged "In Bed" within 10 minutes past their scheduled bedtime (`currentLocalTime >= scheduledBedtime + 10 minutes`). Evaluated per member according to their active daily or weekly timetable in their local timezone.
 * **Scope Restriction:** Strikes apply strictly to missed bedtimes. Wake-up actions in `/api/members/wake-up` must never trigger strikes.
 * **Peer Strike Voting Removed:** Manual peer strike voting has been removed and disabled (`POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`). Regular members cannot vote to strike others.
-* **Strikes (Max 3 per calendar month):** Up to 3 strikes per month before community consequences.
+* **Strike thresholds:** Every third verified strike in a member’s local calendar month earns a distinct punishment. Automatic strikes continue beyond three.
 * **Metastrikes (Max 3 per calendar month):** Excused passes for unexpected or important events (e.g. Monthly Battle, Family Event, Birthday Celebration, Health Emergency).
-* **Automatic Lazy Monthly Reset:** Both `strikes_used` and `metastrikes_used` reset to 0 used (3 remaining each) on the 1st of every calendar month. Stored in `members.strike_cycle_month` (`YYYY-MM`) and evaluated lazily whenever a profile is read or updated via `checkMonthlyStrikeReset()`.
+* **Monthly rollover:** Strike progress and Metastrike usage use the member’s local calendar month. The stored sleep-cycle date determines the strike month. Open tasks carry over. Progress reads use the pending timezone once its existing cooldown expires.
 
 #### 2. Timezone & 10-Minute Cutoff State Machine
 * **`BEDTIME_GRACE` ($0 \le \text{diffMinutes} \le 5$):**
@@ -287,15 +287,28 @@ The Supabase service role calls `apply_nightly_strike` to change a nightly recor
 * **Proactive Metastrike (Applied before +10m Cutoff):** Member taps `"Use Metastrike Tonight"` on their own card and selects or types a reason. Consumes 1 Metastrike (`metastrikes_used + 1`), sets `record_type = 'metastrike'` for tonight's `sleep_cycle_date`, and locks the cycle against automatic normal strikes with a `"Protected by Metastrike: [Reason]"` shield badge.
 * **Pre-Next-Bedtime Replacement Window:** If a member receives an automatic normal strike at +10 minutes, they can apply a Metastrike at any point—all the way until their next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`), including the next morning or afternoon. Doing so decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` from `'strike'` to `'metastrike'`. Once the next scheduled bedtime arrives, this replacement window expires.
 
-#### 4. Moderator Override & Nightly Log Administration
-* Authenticated moderators using `MOD_SECRET_PASSCODE` can manually increment or decrement any member's `strikes_used` and `metastrikes_used` (bounded within $[0, 3]$).
-* Moderators can clear accidental strike votes or nightly logs via `POST /api/mod` with action `clear_strike_log`.
+#### 4. Punishment records and dated corrections
 
-#### 5. REST API Endpoints for Strikes (Canonical)
-* `POST /api/members/strikes`: Returns 403 `PEER_VOTING_DISABLED` (peer strike voting disabled).
-* `GET /api/members/strikes`: Retrieves strike counts and tonight's active log for a member.
-* `POST /api/members/strikes/metastrike`: Activates a proactive pass or performs a pre-next-bedtime replacement.
-* `POST /api/mod`: Handles `adjust_strikes` and `clear_strike_log` moderator actions.
+Each full group of three verified strikes in the member's local calendar month earns one task. A strike is attributed to its stored sleep-cycle date even if posting crosses midnight or the member changes timezone. The ledger uses nightly strikes and dated, auditable moderator corrections. The monthly member counters serve existing callers as projections.
+
+An open task starts as `pending` while replacement could undo its threshold. At the deadline, reads show `awaiting_assignment`. Only that state accepts a new assignment. Assigned work supports edits or completion. A correction or Metastrike that disqualifies a threshold cancels its open task. Re-earning the threshold reopens the same record, and completed work remains in history. Open tasks carry over across months.
+
+#### 5. REST API endpoints
+
+| Endpoint | Authorization and response |
+| --- | --- |
+| `GET /api/members/punishments` | Active Discord profile owner. Returns `month`, `strikes_used`, `metastrikes_used`, `strikes_toward_next`, `strikes_per_punishment`, `open_count`, `open_items` oldest first, and completed `history` newest first. An optional `memberId` must match the authenticated member. |
+| `GET /api/members` | Only the viewer's own active Discord-linked row receives `open_punishment_count`. The value is an integer across all months or `null` when unavailable. Task details stay private. |
+| `GET /api/mod/punishments` | Verifies a live database-role or configured Discord-ID moderator, or the rate-limited master passcode. Defaults to the `awaiting_assignment` queue. Pass `status=assigned` or `status=pending` for other sections and `offset` for the next page of up to 50. A `punishment_id` query instead returns `item`, `open_count`, and `verified_strikes` for that earned month. |
+| `POST /api/mod/punishments` | Same moderator authorization. Accepts `punishment_id` and `action`. For `assign` and `edit`, supply `title` (1–120 characters) and optional `instructions` (up to 2,000). For `complete`, supply the task ID alone with the action. For `add_strike` or `remove_strike`, supply `cycle_date` in the earned month, `reason` (1–500 characters), and a UUID `request_id` reused on retry. Removal also requires a matching `source_id` from the detail read. Returns `success`, `item`, `open_count`, and `correction_id` for dated changes. |
+| `GET /api/members/strikes` | Active Discord profile owner. Returns the current cycle log and compatibility counts. |
+| `POST /api/members/strikes` | Compatibility endpoint returns 403 `PEER_VOTING_DISABLED` for vote requests. Legacy vote columns and rows remain in storage. |
+| `POST /api/members/strikes/metastrike` | Activates a proactive pass or replaces a strike before the next scheduled bedtime for the owner or an authorized moderator. |
+| `POST /api/mod` | Retains compatibility actions `adjust_strikes` and `clear_strike_log` for authorized moderators. The Metastrike balance is bounded at three. |
+
+Apply `20261123_punishment_task_apis.sql` after the strike ledger migration. Service-role RPCs enforce ownership for member reads. The API and badge become available after `punishment_rollout.screens_visible` is enabled following activation and seed. Hidden or unavailable punishment APIs return HTTP 503. Invalid input returns 400, unknown tasks return 404, and invalid task transitions or conflicting correction retries return 409.
+
+Moderator writes lock the same member row as the ledger and return the updated task and all-month open count from that transaction. The audit records the action time and either the verified moderator's member ID or `master_mod`. Retrying completion preserves its timestamp and audit record. Exact dated correction retries reuse the original correction.
 
 ---
 
@@ -386,6 +399,8 @@ self.addEventListener('notificationclick', function(event) {
 });
 ```
 
+The service worker stores the device's last confirmed push endpoint, rotation credential, and repair status in IndexedDB. It commits a new credential to device storage before submitting it with an authenticated enrollment or sync. Supabase stores only its digest. Background rotation presents the credential and expected previous endpoint. A single database update preserves the subscription ID and alert preferences, and an exact retry confirms a prior success. Existing devices can rotate with the old endpoint until their service worker provisions a credential. A failed rotation leaves the last confirmed endpoint available for signed-in repair. Unlinking deletes the subscription and its credential.
+
 ### 3.2 Notification Dispatcher Logic (Canonical Cron Endpoint: `/api/cron/dispatch-notifications`)
 The one-minute Supabase job is installed separately with `supabase/schedule_dispatch.sql`. Vercel is configured for a daily run and GitHub Actions provides a best-effort fallback. Each invocation enforces the **Sleep Shield** and distributed idempotency:
 
@@ -445,6 +460,10 @@ Allows authenticated members to log when they woke up for their active or recent
   * Inserts `WOKE_UP` in `notification_logs` for backwards compatibility.
 * **State Transition:**
   * `computeMemberState` immediately moves member to `AWAKE`, deactivates Sleep Shield, and clears `needsWakeUpLog`.
+
+The pinned check-in bar supplies `expectedInBedAt` for wake-now and manual wake. The timestamp identifies the check-in that opened the flow. It can be null for a legacy open check-in with no timestamp. The active check-in RPC locks the member and commits the sleep log, member wake marker, and notification receipt in one transaction. A changed or completed check-in returns HTTP 409. Manual calendar edits still use their explicit `cycleDate`.
+
+Apply `20261124_guard_active_wake.sql` after the punishment task API migration before deploying the Phase 4 app.
 
 ### 6.2 `GET /api/members/sleep-history`
 Retrieves monthly sleep & wake logs and summary statistics for self or any community member.

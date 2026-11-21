@@ -14,23 +14,12 @@ function assert(condition, message) {
 }
 
 async function run() {
-  // 1. Header Component Logout Option
-  console.log('--- 1. Header Component Logout UI ---');
   const headerContent = fs.readFileSync(path.resolve('src/components/Header.tsx'), 'utf8');
-  assert(headerContent.includes('LogOut') && headerContent.includes('lucide-react'), 'Header imports LogOut icon from lucide-react');
-  assert(headerContent.includes('onLogout?: () => void'), 'HeaderProps defines onLogout callback');
-  assert(headerContent.includes('title={`Log out of @${currentUser.discord_username}`}') || headerContent.includes('title="Log out'), 'Header renders accessible tooltip/title for logout');
-  assert(headerContent.includes('aria-label="Log out"'), 'Header renders aria-label for accessibility');
-  assert(headerContent.includes('onClick={onLogout}'), 'Header triggers onLogout on click');
-
-  // 2. My Schedule / Profile Modal Logout Option
-  console.log('\n--- 2. MyScheduleModal Logout UI & Session Card ---');
-  const scheduleContent = fs.readFileSync(path.resolve('src/components/MyScheduleModal.tsx'), 'utf8').replace(/\r\n/g, '\n');
-  assert(scheduleContent.includes('LogOut') && scheduleContent.includes('lucide-react'), 'MyScheduleModal imports LogOut icon');
-  assert(scheduleContent.includes('onLogout?: () => void'), 'MyScheduleModalProps defines onLogout callback');
-  assert(scheduleContent.includes('Log Out of Fox Den'), 'MyScheduleModal provides prominent "Log Out of Fox Den" session card');
-  assert(scheduleContent.includes('Signed in as @{currentUser.discord_username}'), 'MyScheduleModal clearly displays authenticated member name');
-  assert(scheduleContent.includes('onClick={() => {\n                  onClose();\n                  onLogout();\n                }}'), 'MyScheduleModal header provides quick logout button adjacent to Close');
+  const scheduleContent = fs.readFileSync(path.resolve('src/components/MyScheduleModal.tsx'), 'utf8');
+  assert(headerContent.includes('onClick={onOpenProfile}'), 'Header opens Profile');
+  assert(!headerContent.includes('onLogout'), 'Sign out lives inside Profile');
+  assert(scheduleContent.includes('onClick={onLogout}') && scheduleContent.includes('Sign out'), 'Profile provides accessible sign out');
+  assert(scheduleContent.includes('@{currentUser.discord_username}'), 'Profile identifies the signed-in member');
 
   // 3. Push Modal Quick Logout
   console.log('\n--- 3. PushModal Member Profile Logout ---');
@@ -46,7 +35,7 @@ async function run() {
   assert(pageContent.includes('/api/auth/logout'), 'handleLogout calls /api/auth/logout endpoint');
   assert(pageContent.includes('clearAuthSession()'), 'handleLogout wipes localStorage credentials');
   assert(pageContent.includes("router.replace('/join')"), 'handleLogout redirects user to /join onboarding');
-  assert(pageContent.includes('onLogout={handleLogout}'), 'handleLogout passed to Header and modals');
+  assert(pageContent.includes('onLogout={handleLogout}'), 'handleLogout passed to Profile and notification settings');
 
   // 5. Auth API Logout Route Verification
   console.log('\n--- 5. API Auth Logout Route (/api/auth/logout) ---');

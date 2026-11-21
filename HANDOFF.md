@@ -1,15 +1,16 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-20T18:30:15+05:30
-> **Active Working Branch:** `krish`  
+> **Last Updated:** 2026-11-21T20:59:15+05:30
+> **Active working branch:** `krish`, fast-forwarded to the Phase 5 merge at `f759dbb` before implementing Phase 6.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest implementation commit:** `cde52f4` on `krish`
+> **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
+> **Phase 6 review fix:** `2682c1c` on `krish`.
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active Integration Pull Requests:** [#95](https://github.com/KrishJdev/Z-Catchers/pull/95) is ready for review from `krish` into `dev`.
+> **Active integration:** Phase 6 [PR #103](https://github.com/KrishJdev/Z-Catchers/pull/103) targets `dev` from `krish`. Phase 5 [PR #102](https://github.com/KrishJdev/Z-Catchers/pull/102) merged into `dev` at `f759dbb`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
-> **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
-> **Build Status:** On `cde52f4`, `npx tsc --noEmit`, `npm run test:unit` (44 suites), and `npm run build` passed locally. See [PR #95 checks](https://github.com/KrishJdev/Z-Catchers/pull/95/checks) for hosted results.
+> **Active Production Release Pull Request:** The punishments release is pending Phase 6 integration. The current `origin/main` commit is `69ff880` from [PR #96](https://github.com/KrishJdev/Z-Catchers/pull/96).
+> **Build Status:** `npx tsc --noEmit` and all 51 unit suites passed with the Phase 6 review fix. The original Phase 6 head passed the production build and hosted Supabase rehearsal. Updated hosted checks run on PR #103.
 
 ---
 
@@ -69,6 +70,131 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Punishments Phase 6 · Cutover verification and recovery
+
+- Added an operator-only audit for mismatched ledger thresholds, replacement windows, missing earned actions, and missing November pass archives. The visibility function takes the rollout lock and verifies November before opening screens. Completed records remain valid history after a strike correction. Both functions exclude public, authenticated, and service-role execution.
+- Added `supabase/migrations/20261125_verify_punishment_cutover.sql` and mirrored it in `supabase/schema.sql`. Updated `scripts/test-november-cutover.mjs`, `scripts/test-guarded-active-wake.mjs`, and `scripts/test-dispatcher-ci.mjs` to exercise permissions, rejection of unseeded data, successful retry, a visibility check waiting on active seeding, and reopening after recovery. The wake test now locates its migration within the full schema.
+- Updated `PUNISHMENTS_PLAN.md`, `PUNISHMENTS_RELEASE_CHECKLIST.md`, and this handoff. The checklist covers backup and target identification, ordered migrations, preview and seed evidence, scheduled HTTP verification, controlled member and moderator checks, and recovery with the active writer.
+- Production target confirmation, backup verification, migration, activation, seed, and live Discord and device checks are pending the separate release. The Phase 5 rehearsal used Discord fixtures and an encrypted push relay.
+
+#### Phase 6 CodeRabbit follow-up
+
+- Addressed the [single review finding](https://github.com/KrishJdev/Z-Catchers/pull/103#discussion_r4653373699). The ledger audit now uses one wall-clock timestamp taken during the audit, after the visibility function acquires the rollout lock. A task can become assignable while the visibility function waits without triggering a false rejection. Tasks with genuinely future deadlines still fail verification if marked assignable.
+- Updated `supabase/migrations/20261125_verify_punishment_cutover.sql`, `supabase/schema.sql`, `scripts/test-november-cutover.mjs`, and this handoff. The new deadline regression reproduced the error before the fix and passed afterward.
+
+### Punishments Phase 5 · November cutover rehearsal
+
+- The disposable Supabase smoke starts with legacy rows and applies the ledger while inactive. It verifies the 0/2/3/6-strike preview, the counter-only anomaly and capped legacy counter, the dated correction, one open replacement window, and preservation of two used Metastrikes.
+- The production server starts with punishment screens hidden. The smoke exercises the authenticated dry run, activation, the pre-launch cutoff, two November seeds during scheduled dispatch, and repeated Cron calls without duplicate strikes or pushes. It also covers both moderator roles, rollback by hiding the screens, and November tasks across the Los Angeles and Tokyo month boundaries.
+- The hosted rehearsal recorded two scheduled HTTP 200 responses, one new live strike, no strike for the pre-launch miss, and three seeded tasks with one earned action each after both seed passes. The relay accepted four encrypted scheduled pushes and received none for the protected recipients.
+- Created `scripts/fixtures/november-cutover-smoke.mjs`, `scripts/test-november-cutover.mjs`, and `PUNISHMENTS_RELEASE_CHECKLIST.md`. Updated `.github/workflows/dispatcher-smoke.yml`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-cron-dispatcher.mjs`, `scripts/run-tests.mjs`, `PUNISHMENTS_PLAN.md`, and this handoff.
+- The owner asked to skip the live Discord and physical device checks. The rehearsal uses test identities at the Discord API boundary and an encrypted Web Push receiver.
+
+#### Phase 5 CodeRabbit follow-up
+
+- Addressed both findings in the [CodeRabbit review](https://github.com/KrishJdev/Z-Catchers/pull/102#pullrequestreview-6005499050). Updated `PUNISHMENTS_RELEASE_CHECKLIST.md` to separate additions from removals and document the effect of `p_void_source`. Updated `scripts/test-dispatcher-ci.mjs` to verify the response month and strike count against the member's configured timezone before and after task completion. A request spanning local midnight can report either month within its measured request window.
+
+### Punishments Phase 4 · Mobile and desktop screens
+
+- Added the compact Profile sheet, session-based moderator navigation, the device notification bell, and the My Sleep calendar, timetable and punishment views. The roster badge links the signed-in member to their own list. Monthly totals and progress toward the next punishment use separate labels. Task and history reads use the existing visibility-gated APIs.
+- Moved check-in, wake now, manual wake time, and undo into the pinned mobile action bar. Desktop shows Sleep Shield status. The full schedule editor and pending change timing remain accessible from Profile.
+- Organized the moderator drawer into Approvals, Roster and Punishments, with webhook tools in Advanced. The punishment queue displays eligible work first and verifies assignment, editing, and completion against the returned status and open count.
+- Production browser verification used isolated member, database-role moderator, and Discord-ID moderator fixtures at 320, 375 and 1280 px with a registered service worker and emulated 24 px top and 34 px bottom safe-area insets. It covered Profile and pending schedule timing, focus restoration, notification settings, My Sleep, the direct roster badge, unavailable data, both wake modes, undo, desktop indicator, and moderator assignment, edit, completion, and Advanced. Run the installed-PWA and real subscribed-device checks during the disposable dev rehearsal.
+- The previous local planning edits are preserved in the Git stash named `Preserve pre-Phase-4 local handoff and punishment plan`.
+- Updated `src/app/page.tsx`, `BottomNav.tsx`, `Header.tsx`, `MemberCard.tsx`, `ModDrawer.tsx`, `MyScheduleModal.tsx`, `PinnedSelfActionBar.tsx`, `PushModal.tsx`, `SleepCalendarModal.tsx`, `DESIGN_SYSTEM.md`, `PROJECT_SPEC.md`, and this handoff. Added `ModeratorPunishmentQueue.tsx`, `PunishmentList.tsx`, and `ResponsiveDialog.tsx` under `src/components`.
+- Added `scripts/test-punishment-screens.mjs` to `scripts/run-tests.mjs`. Updated the compact member card, sign-out, member profile and overflow, mobile navigation, phone PWA, pinned action bar, profile and schedule, sleep history and wake-up, state synchronization, UI normalization, and wake-up and overflow suites.
+
+#### Phase 4 CodeRabbit follow-up
+
+- [CodeRabbit](https://github.com/KrishJdev/Z-Catchers/pull/101#pullrequestreview-6004592559) completed its first review. The fixes keep the tablet clock visible, show active Metastrike and completed-cycle Sleep Shield protection, remove cached private badge counts, preserve queue rows after a pagination failure, and restore keyboard focus after canceling or saving. The member details focus loop excludes mobile-hidden controls. The touch-target test now checks the actual Save wake time button.
+- The two suggestions to restore the monthly `x/3` limit and “Out of Strikes” message conflict with Phase 4’s stacked-threshold behavior. The design specification now documents the monthly total and the separate three-segment threshold meter.
+- Quick wake binds the request to the check-in that opened the action. A changed or previously completed check-in returns HTTP 409. The new service-role RPC commits the sleep log, member marker, and wake receipt together. Calendar corrections still use the dated manual path.
+- Added `supabase/migrations/20261124_guard_active_wake.sql` and `scripts/test-guarded-active-wake.mjs`. Updated `supabase/schema.sql`, the wake API, `sleepEngine.ts`, the roster page, Header, MemberCard, ModeratorPunishmentQueue, PinnedSelfActionBar, the unit runner, task-API schema test, touch-target test and hosted dispatcher fixture. Updated the backend, design, and rollout documentation.
+- Browser checks passed at 320, 375, 800, and 1280 px, including stale manual wake, focus recovery on the member and moderator flows, and visible task rows after a pagination error. The hosted disposable Supabase fixture checks that an overlapping manual wake leaves the first recorded wake intact.
+
+- The final production browser run also verified offline cache cleanup for existing snapshots and the mobile safe-area layout. The hosted smoke confirmed overlapping database wake-up writes preserve the first result. All 10 inline CodeRabbit threads were resolved. [CodeRabbit rate-limited the follow-up review](https://github.com/KrishJdev/Z-Catchers/pull/101#issuecomment-7061042753).
+
+### Punishments Phase 3 · Member and moderator APIs
+
+- Added authenticated member progress, open tasks, and completed history. The roster performs one targeted count for the verified viewer and keeps task details private.
+- Added the moderator queue, assignment, editing, completion, and dated strike corrections. Task mutations serialize with strike writes, record the moderator and action time, and return the updated item and all-month open count. Task APIs and the badge are unavailable until the rollout is visible.
+- Removed obsolete application vote state and response fields. Preserved the disabled POST response and stored vote history for legacy consumers.
+- Added `src/app/api/members/punishments/route.ts`, `src/app/api/mod/punishments/route.ts`, `src/lib/punishments.ts`, `supabase/migrations/20261123_punishment_task_apis.sql`, and `scripts/test-punishment-task-apis.mjs`. Mirrored the migration in `supabase/schema.sql`.
+- Updated `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `HANDOFF.md`, `src/app/api/members/route.ts`, the two strike routes, `src/app/page.tsx`, `MemberCard.tsx`, `MetastrikeModal.tsx`, `ModDrawer.tsx`, and the database, rate limit, sleep engine, and strike libraries. Updated `.coderabbit.yaml`, `.github/workflows/dispatcher-smoke.yml`, the hosted smoke script, the unit runner, and the existing ledger, strike, and wake-up suites.
+- Local endpoint tests cover both Discord moderator types, owner-only task reads, unavailable versus zero, pending assignment denial, edits, correction retries, and completed history. The hosted smoke exercises separate PostgreSQL transactions for concurrent completion and assignment racing a dated correction.
+
+- [CodeRabbit](https://github.com/KrishJdev/Z-Catchers/pull/100#pullrequestreview-6004263221) found one issue. After an elapsed cooldown, monthly progress now uses the effective timezone. The regression checks the November/December boundary before and at the effective time.
+
+### Punishments Phase 2 · Strike ledger and migration
+
+- Added an immutable ledger activation time and a separate screen visibility flag. The migration leaves both off and creates no punishment records. Apply the migration before deploying the compatible app.
+- The active writer keeps one automatic strike per stored cycle date and continues past three. Dated nightly rows and audited moderator corrections qualify thresholds at 3, 6, 9, and so on. Strikes reconcile in the cycle's month and Metastrikes debit the local month of use. The current-month counter aliases are projections. Stored legacy pass balances carry forward.
+- Strike posting, replacement, corrections, seed, check-ins and wake evidence serialize on the same member row. Assignment checks the replacement deadline on the server. A correction cancels an open threshold when it falls below eligibility. Re-earning reuses the canceled item. Completed work and its audit history remain available.
+- Created `supabase/migrations/20261122_punishment_strike_ledger.sql` and `scripts/test-punishment-strike-ledger.mjs`. Mirrored the migration in `supabase/schema.sql`.
+- Updated `src/lib/strikes.ts`, `src/lib/db.ts`, `src/lib/cronDispatcher.ts`, `src/lib/discordWebhook.ts`, `src/app/api/members/strikes/metastrike/route.ts`, `src/app/api/mod/route.ts`, and `src/components/ModDrawer.tsx`.
+- Updated `scripts/run-tests.mjs`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-dispatch-recovery.mjs`, `scripts/test-nightly-strike-transaction.mjs`, `scripts/test-push-and-cron.mjs`, and `scripts/test-strikes-system.mjs`. Disposable PostgreSQL tests covered the upgrade with existing data, strikes 3/6/9, duplicate seed, check-in evidence, rollback and retry, cross-month writes, reopening, and completed history. The GitHub smoke adds overlapping transactions in separate PostgreSQL sessions. The first hosted run passed the inactive app rehearsal and then failed because it tried to remove the cron fixture a second time. The smoke now reuses the existing scheduler cleanup.
+
+- [CodeRabbit's first Phase 2 review](https://github.com/KrishJdev/Z-Catchers/pull/99#pullrequestreview-6001955282) identified the duplicate smoke cleanup and six related correctness points. Cron now verifies the fetched schedule revision under lock and labels both new and recovered Discord notices with the month they count. Rollover archives outgoing legacy pass usage. Preview and seed share the pass fallback, and unassigned thresholds refresh their dates after a correction.
+- [Hosted Supabase smoke after the first review fixes](https://github.com/KrishJdev/Z-Catchers/actions/runs/44853169161) passed and recorded the overlapping database sessions. The review fixes add coverage for stale schedules, archived and dated passes, earning dates after corrections, and cross-month alert totals. [The follow-up CodeRabbit review](https://github.com/KrishJdev/Z-Catchers/pull/99#pullrequestreview-6003967744) completed after the rate limit reset. The fixes preserve the issuance month when a legacy strike write crosses midnight and signal the smoke barrier only after the first PostgreSQL statement finishes. GitHub checks for the current head are on the Phase 2 PR.
+
+#### November rehearsal sequence
+
+1. Apply the Phase 2 migration to the rehearsal database after the prior migrations. Deploy the compatible app with the rollout row inactive. Existing writes follow the legacy writer until activation.
+2. Run `SELECT * FROM public.november_punishment_preview() ORDER BY member_id;`. Review verified rows, discrepancy flags and threshold windows. Record independently verified November corrections through `public.record_verified_november_correction(member_id, cycle_date, evidence_key, actor, reason, void_source)`. Supply the verified source ID when voiding a strike and a distinct durable evidence reference for every correction. Legacy rows without a stored window use the member's current weekly schedule until first reconciliation snapshots the deadline.
+3. Verify the running app supports the new writer. Use `UPDATE public.punishment_rollout SET activated_at = clock_timestamp() WHERE singleton AND activated_at IS NULL RETURNING activated_at;`. Keep visibility off. Run `SELECT public.seed_november_punishments(id) FROM public.members ORDER BY id;` twice and compare with the preview. The seed locks each member and uses dated evidence. Once active, keep serving an app that supports the new writer.
+4. Verify the hosted checks and merge Phase 2 into dev before starting [Phase 3](PUNISHMENTS_PLAN.md#phase-3--member-and-moderator-apis). Build authenticated reads and moderator endpoints against the effective task status view and the database task transition function. Keep the rehearsal in Phase 5 and production activation in Phase 6.
+
+### Punishments Phase 1 · Discord-only authentication and role handling
+
+- Preserved new and returning Discord profiles, rolling sessions, and the 48-hour schedule queue. Retired PIN writes, prototype claims, manual member creation, and the unused login modal. The compatibility login and registration redirects point to `/join`.
+- Member writes require the active linked Discord account. Moderator routes verify active database-role or Discord-ID authorization. Early schedule approvals and direct schedule changes require the master passcode.
+- Push enrollment stores a device-owned rotation credential in the worker before enabling it on the server. The SQL function rotates a single row atomically, protects preferences and ownership, and accepts an exact retry. A staged worker preserves the last confirmed binding and exposes repair in Notification Settings.
+- Local verification passed for TypeScript, 46 unit suites, and the production build. The new suites run the migration in PostgreSQL and exercise service worker repair on network and HTTP failures. The expanded GitHub smoke test covers onboarding with Discord fixtures, both moderator types, anonymous and cross-account failures, schedule gating, and device rotation on disposable Supabase. Live Discord consent and a physical device are rehearsal checks.
+
+- Created `scripts/test-push-subscription-rotation.mjs`, `scripts/test-push-worker-repair.mjs`, `supabase/migrations/20261121_push_subscription_rotation.sql`.
+- Updated `HANDOFF.md`, `.github/workflows/dispatcher-smoke.yml`, `AGENT_RULES.md`, `BACKEND_TZ_PWA_SPEC.md`, `PROJECT_SPEC.md`, `README.md`, `public/sw.js`, `scripts/run-tests.mjs`, `scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/test-oauth-redirect-host-validation.mjs`, `scripts/test-phase1-pwa-push.mjs`, `scripts/test-push-unsubscribe-security.mjs`, `scripts/test-state-sync-audit.mjs`, `scripts/test-strikes-api-and-routes.mjs`, `scripts/test-update-schedule-mod-rate-limit.mjs`, `scripts/test-wake-up-and-overflow.mjs`, `src/app/api/auth/claim-profile/route.ts`, `src/app/api/auth/discord/callback/route.ts`, `src/app/api/auth/login/route.ts`, `src/app/api/auth/me/route.ts`, `src/app/api/auth/register/route.ts`, `src/app/api/members/cancel-pending/route.ts`, `src/app/api/members/in-bed/route.ts`, `src/app/api/members/strikes/metastrike/route.ts`, `src/app/api/members/update-schedule/route.ts`, `src/app/api/members/wake-up/route.ts`, `src/app/api/mod/route.ts`, `src/app/api/push/subscribe/route.ts`, `src/app/api/push/test/route.ts`, `src/app/api/push/unsubscribe/route.ts`, `src/app/join/page.tsx`, `src/app/page.tsx`, `src/components/Header.tsx`, `src/components/ModDrawer.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/PushModal.tsx`, `src/components/UnifiedOnboardingCard.tsx`, `src/lib/auth.ts`, `src/lib/db.ts`, `src/lib/pushClient.ts`, `supabase/schema.sql`.
+- Deleted `src/components/LoginModal.tsx`.
+
+### Punishments Phase 1 · CodeRabbit review fixes
+
+- The [manual review](https://github.com/KrishJdev/Z-Catchers/pull/98#issuecomment-7054237618) found gaps in moderator passcode throttling, active Discord identity checks, onboarding validation, and push-device recovery. Applied the substantive fixes on the Phase 1 feature branch and expanded regressions for concurrent passcode attempts, stale profile reads, lost rotation responses, legacy upgrade, and worker deadlines.
+- Conditional owner writes guard against changed profile identity. The existing multi-write sleep cancellation can still race with deactivation between its separate database operations. The review identified atomic sleep cancellation as a follow-up.
+- Session verification failures offer a retry and leave the cached roster available without an authenticated profile. The profile editor retains unsaved drafts, and push enrollment only submits explicit preference edits.
+- The rollout requires the updated push rotation migration, which also installs the atomic moderator passcode limit. Check for unlinked active profiles before deploying.
+- Updated `HANDOFF.md`, `PROJECT_SPEC.md`, `README.md`, `public/sw.js`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-login-and-auth.mjs`, `scripts/test-oauth-redirect-host-validation.mjs`, `scripts/test-push-subscription-rotation.mjs`, `scripts/test-push-unsubscribe-security.mjs`, `scripts/test-push-worker-repair.mjs`, `scripts/test-state-sync-audit.mjs`, `scripts/test-update-schedule-mod-rate-limit.mjs`, `src/app/api/auth/claim-profile/route.ts`, `src/app/api/auth/me/route.ts`, `src/app/api/members/cancel-pending/route.ts`, `src/app/api/members/in-bed/route.ts`, `src/app/api/members/strikes/metastrike/route.ts`, `src/app/api/members/update-schedule/route.ts`, `src/app/api/members/wake-up/route.ts`, `src/app/api/mod/route.ts`, `src/app/api/push/subscribe/route.ts`, `src/app/api/push/test/route.ts`, `src/app/api/push/unsubscribe/route.ts`, `src/app/page.tsx`, `src/components/ModDrawer.tsx`, `src/components/MyScheduleModal.tsx`, `src/components/PushModal.tsx`, `src/lib/auth.ts`, `src/lib/db.ts`, `src/lib/pushClient.ts`, `src/lib/pushServer.ts`, `src/lib/rateLimit.ts`, `supabase/migrations/20261121_push_subscription_rotation.sql`, `supabase/schema.sql`.
+
+### Punishments Phase 0 · PR #97 review follow-up
+
+- Updated `.github/workflows/dispatcher-smoke.yml` so changes to the exercised auth, member, moderator and push routes trigger disposable Supabase coverage.
+- Updated `PUNISHMENTS_PLAN.md` and `PUNISHMENTS_BASELINE.md` to specify device-scoped background push rotation, compatibility through device upgrade, and visible recovery for HTTP and network failures. Updated `HANDOFF.md`.
+
+### Punishments Phase 0 · Baseline and inventory
+
+- Added the approved [punishments plan](PUNISHMENTS_PLAN.md) and [Phase 0 inventory](PUNISHMENTS_BASELINE.md). The inventory identifies the auth callers, moderator entry points, strike writers, cap, scheduler, and existing authorization and mobile access gaps.
+- Updated `scripts/test-dispatcher-ci.mjs` and `.github/workflows/dispatcher-smoke.yml`, and added `scripts/fixtures/discord-oauth-smoke.mjs`. The expanded test runs Discord fixture sign-ins and member flows alongside the existing real Supabase Cron and encrypted push checks. Updated `HANDOFF.md`.
+
+| Punishments milestone | Status | Verification |
+| --- | --- | --- |
+| Phase 0 local baseline and inventory | DONE | TypeScript, 44 unit suites, production build and source inventory on the latest `dev` baseline |
+| Phase 0 expanded disposable Supabase baseline | DONE | Member and moderator flows, two authenticated minute-job responses, encrypted push, and strike replacement passed on `9ad991b` |
+| Phase 0 CodeRabbit changes | DONE | Rotation requirements specified for Phase 1 and workflow filters checked against all 14 exercised API routes |
+| Phase 1 Discord-only authentication | DONE | TypeScript, 46 unit suites, and production build passed |
+| Phase 1 CodeRabbit fixes | DONE | TypeScript, 46 unit suites, and production build passed |
+| Phase 1 disposable Supabase smoke test | DONE | [PR #98 dispatcher integration](https://github.com/KrishJdev/Z-Catchers/actions/runs/44843350966) |
+| Phase 2 strike ledger and migration | DONE | Merged to dev at `6a96815`. |
+| Phase 3 member and moderator APIs | DONE | [PR #100](https://github.com/KrishJdev/Z-Catchers/pull/100) contains the verified implementation and the CodeRabbit fix. |
+| Phase 4 member and moderator screens | DONE | Implemented on `krish` from the merged Phase 3 baseline. |
+| Phase 4 hosted checks and CodeRabbit review | DONE | PR checks passed and the first review is complete. |
+| Phase 4 integration | DONE | [PR #101](https://github.com/KrishJdev/Z-Catchers/pull/101) merged into dev at `bfec72c`. |
+| Phase 5 disposable dev rehearsal | DONE | Local and hosted checks passed on [PR #102](https://github.com/KrishJdev/Z-Catchers/pull/102). |
+| Phase 5 CodeRabbit fixes | DONE | Both findings addressed in the checklist and rollover smoke assertions. |
+| Phase 5 integration into dev | DONE | [PR #102](https://github.com/KrishJdev/Z-Catchers/pull/102) merged at `f759dbb` and the merged CI build passed. |
+| Phase 5 live Discord and device checks | TODO | Skipped at the owner's request during this session. |
+| Phase 6 cutover tooling and checklist | DONE | Operator audit, checked visibility switch, regression coverage, and release checklist on `krish`. |
+| Phase 6 CodeRabbit fix | DONE | Fixed the stale deadline comparison and verified the regression. |
+| Phase 6 integration into dev | IN PROGRESS | See [PR #103](https://github.com/KrishJdev/Z-Catchers/pull/103) for checks and merge status. |
+| Phase 6 production cutover and live verification | TODO | Apply the checklist through a separate `dev` → `main` release PR. |
 
 ### Phase 126 · Consolidated PR #95 review
 
@@ -147,7 +273,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 
 - Production site [z-catchers.vercel.app](https://z-catchers.vercel.app/) · Vercel project ID `prj_VRuKjjYf82CbGSVmx2pycP86mgtl`.
 - Supabase project ref `shmcmieqytyegbeyemkn` · Organization ID `yoekbzhlsbvynmsxpiua`. [Project dashboard](https://supabase.com/dashboard/project/shmcmieqytyegbeyemkn)
-- On this Windows account, the encrypted API credentials are at `%LOCALAPPDATA%\ZCatchersollout-credentials.xml`. Use `Import-Clixml` to load `VercelToken` and `SupabaseToken` without printing their values. Both tokens require live permission checks before rollout.
+- On this Windows account, the encrypted API credentials are at `%LOCALAPPDATA%\ZCatchers\rollout-credentials.xml`. Use `Import-Clixml` to load `VercelToken` and `SupabaseToken` without printing their values. Both tokens require live permission checks before rollout.
 - This update modified only `HANDOFF.md` in Git. Local credential storage was verified. Production rollout remains TODO, and the previously recorded implementation checks still apply.
 
 ### Rollout clarification
@@ -2933,6 +3059,8 @@ d:\Projects\Z Catchers\
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
+
+**Punishments rollout.** Review the Phase 6 PR from `krish` to `dev` and verify the merged build. Open the separate `dev` → `main` release PR. Confirm the production target and restorable backup, apply pending migrations in the [November cutover checklist](PUNISHMENTS_RELEASE_CHECKLIST.md), and deploy the compatible app with the rollout inactive and hidden. Capture the production preview before activation. Seed and compare the November ledger, verify the scheduled HTTP responses, then enable the screens with `show_verified_november_punishments()`. Record the release commit, activation timestamp, seed totals, and controlled live verification.
 
 1. **Review PR #95 and prepare the production rollout separately.**
    - PR #95 uses the isolated `Supabase Cron and push smoke test` check for the `dev` integration. Review the PR and merge to `dev` when approved.

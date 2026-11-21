@@ -12,20 +12,20 @@ export async function POST() {
       error:
         'Legacy 4-digit PIN authentication has been deprecated in favor of Discord OAuth2. Please log in via /api/auth/discord or /join.',
       deprecated: true,
-      auth_url: '/api/auth/discord',
+      auth_url: '/join',
     },
     { status: 410 }
   );
 }
 
 /**
- * GET: Browser redirect to Discord OAuth initiation endpoint.
+ * GET: Browser redirect to Discord sign-in and onboarding.
  * Sanitizes base URL via getAppBaseUrl to prevent host header poisoning.
  *
  * @param request - Incoming HTTP request
- * @returns 302 redirect to /api/auth/discord
+ * @returns 302 redirect to /join
  */
 export async function GET(request: Request) {
   const baseUrl = getAppBaseUrl(request);
-  return Response.redirect(`${baseUrl}/api/auth/discord`, 302);
+  return Response.redirect(`${baseUrl}/join`, 302);
 }

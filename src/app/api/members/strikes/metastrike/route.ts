@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured, Member, getMemberByIdSafe } from '@/lib/db';
-import { getRequestSessionMemberId, verifyPin, verifyModPasscode } from '@/lib/auth';
+import { Member, getMemberByIdSafe } from '@/lib/db';
+import { getRequestSessionMemberId, ownsDiscordProfile, getModeratorPasscode, verifyModeratorSession } from '@/lib/auth';
 import {
+  activeStrikeLog,
   useProactiveMetastrike,
   convertStrikeToMetastrike,
   getRecentEligibleStrikeLog,
@@ -9,9 +10,7 @@ import {
 import { getSleepCycleDate } from '@/lib/sleepEngine';
 import {
   getClientIp,
-  checkPinRateLimitPersistent,
-  recordPinFailurePersistent,
-  resetPinFailurePersistent,
+  verifyRateLimitedModeratorPasscode,
 } from '@/lib/rateLimit';
 import { DateTime } from 'luxon';
 
@@ -20,7 +19,7 @@ import { DateTime } from 'luxon';
  *
  * Allows a member or moderator to use an excused Metastrike pass:
  * 1. Proactive (Tonight): Claims a pass for tonight with an optional excuse reason ("Monthly Battle", "Family", etc.)
- * 2. Retroactive (24-Hour Swap): Converts a community-issued strike within a 24-hour window following the missed bedtime into an excused Metastrike.
+ * 2. Retroactive: Replaces a recorded strike before the next scheduled bedtime.
  *
  * @param request - Incoming HTTP request with member ID, action, reason, and auth credentials
  * @returns JSON response containing action result and updated strike counts
@@ -32,7 +31,6 @@ export async function POST(request: Request) {
       member_id,
       action = 'proactive',
       reason,
-      pin,
       mod_passcode,
       sleep_cycle_date,
     } = body;
@@ -42,119 +40,41 @@ export async function POST(request: Request) {
     }
 
     // Fetch target member
-    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(member_id);
+    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(member_id, { requireFresh: true });
 
     if (memberErr || !rawMember) {
       return NextResponse.json({ error: 'Member not found.' }, { status: 404 });
     }
 
     const member = rawMember as Member;
-    const clientIp = getClientIp(request);
-
-    // Rate limit check before verifying auth
-    const rateCheck = await checkPinRateLimitPersistent(clientIp, member.id);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds.`,
-        },
-        {
-          status: 429,
-          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-        }
-      );
-    }
-
-    // Security check: Target member ownership OR Moderator authorization
     const sessionMemberId = getRequestSessionMemberId(request);
-    let isAuthorized = false;
-    let isModerator = false;
+    const candidatePasscode = getModeratorPasscode(request, mod_passcode);
+    let moderator: string | undefined;
 
-    // 1. Check moderator passcode
-    const headerPasscode = request.headers.get('x-mod-passcode');
-    const candidatePasscode = mod_passcode || headerPasscode;
     if (candidatePasscode) {
-      if (verifyModPasscode(candidatePasscode)) {
-        isAuthorized = true;
-        isModerator = true;
-      } else {
-        await recordPinFailurePersistent(clientIp, member.id);
+      const attempt = await verifyRateLimitedModeratorPasscode(candidatePasscode, getClientIp(request), sessionMemberId);
+      if (attempt.unavailable) {
+        return NextResponse.json({ error: 'Could not verify moderator passcode. Try again.' }, { status: 503 });
+      }
+      if (attempt.retryAfterSeconds) {
         return NextResponse.json(
-          { error: 'Invalid moderator passcode.' },
-          { status: 401 }
+          { error: 'Too many failed moderator passcode attempts.' },
+          { status: 429, headers: { 'Retry-After': String(attempt.retryAfterSeconds) } }
         );
       }
+      if (!attempt.valid) {
+        return NextResponse.json({ error: 'Invalid moderator passcode.' }, { status: 401 });
+      }
+      moderator = 'master_mod';
+    } else if (!ownsDiscordProfile(request, member)) {
+      const session = await verifyModeratorSession(request);
+      if (session.authorized) moderator = session.moderatorId;
     }
 
-    // 2. Check session token (matching target member OR live-verified moderator role)
-    if (!isAuthorized && sessionMemberId) {
-      if (sessionMemberId === member.id) {
-        isAuthorized = true;
-      } else {
-        // Enforce fail-closed live database verification for moderator privileges
-        let isSessionMod = false;
-        if (isSupabaseConfigured) {
-          try {
-            const { data: dbUser, error: dbErr } = await supabaseAdmin
-              .from('members')
-              .select('id, role, is_moderator, is_active')
-              .eq('id', sessionMemberId)
-              .maybeSingle();
-
-            if (!dbErr && dbUser && dbUser.is_active && (dbUser.role === 'moderator' || dbUser.is_moderator)) {
-              isSessionMod = true;
-            }
-          } catch {
-            isSessionMod = false;
-          }
-        } else {
-          const { data: sessionUser } = await getMemberByIdSafe(sessionMemberId);
-          if (sessionUser && sessionUser.is_active && (sessionUser.role === 'moderator' || sessionUser.is_moderator)) {
-            isSessionMod = true;
-          }
-        }
-
-        if (isSessionMod) {
-          isAuthorized = true;
-          isModerator = true;
-        }
-      }
-    }
-
-    // 3. Check 4-digit PIN for target member
-    if (!isAuthorized && pin !== undefined && pin !== null) {
-      if (typeof pin !== 'string') {
-        return NextResponse.json({ error: 'PIN must be a string.' }, { status: 400 });
-      }
-
-      if (member.passcode_hash && verifyPin(pin, member.passcode_hash)) {
-        isAuthorized = true;
-        await resetPinFailurePersistent(clientIp, member.id);
-      } else {
-        await recordPinFailurePersistent(clientIp, member.id);
-        return NextResponse.json(
-          { error: 'Invalid 4-digit PIN for this profile.' },
-          { status: 401 }
-        );
-      }
-    }
-
-    if (!isAuthorized) {
-      if (sessionMemberId && sessionMemberId !== member.id) {
-        return NextResponse.json(
-          {
-            error: 'Forbidden. You cannot manage Metastrikes for another member without moderator privileges.',
-            code: 'FORBIDDEN',
-          },
-          { status: 403 }
-        );
-      }
+    if (!member.is_active || (!moderator && !ownsDiscordProfile(request, member))) {
       return NextResponse.json(
-        {
-          error: 'Authentication required. Please log in with your profile or moderator passcode to use a Metastrike.',
-          code: 'UNAUTHORIZED',
-        },
-        { status: 401 }
+        { error: 'Sign in with the Discord account linked to this profile.', code: sessionMemberId ? 'FORBIDDEN' : 'UNAUTHORIZED' },
+        { status: sessionMemberId ? 403 : 401 }
       );
     }
 
@@ -173,10 +93,10 @@ export async function POST(request: Request) {
 
       const result = await convertStrikeToMetastrike(
         member,
-        reason || (isModerator ? 'Moderator Retroactive Excuse' : 'Converted from Strike'),
+        reason || (moderator ? 'Moderator Retroactive Excuse' : 'Converted from Strike'),
         targetCycleDate,
         nowUtc,
-        isModerator
+        moderator
       );
 
       if (!result.success) {
@@ -188,7 +108,7 @@ export async function POST(request: Request) {
         action: 'convert_retroactive',
         member_id: member.id,
         sleep_cycle_date: targetCycleDate,
-        log: result.log,
+        log: activeStrikeLog(result.log),
         strikes_used: result.strikesUsed,
         strikes_count: result.strikesUsed,
         metastrikes_used: result.metastrikesUsed,
@@ -199,9 +119,10 @@ export async function POST(request: Request) {
     // Default: Proactive Metastrike pass for tonight
     const result = await useProactiveMetastrike(
       member,
-      reason || (isModerator ? 'Moderator Excused Pass' : 'Excused Night'),
+      reason || (moderator ? 'Moderator Excused Pass' : 'Excused Night'),
       cycleDate,
-      nowUtc
+      nowUtc,
+      moderator
     );
 
     if (!result.success) {
@@ -213,7 +134,7 @@ export async function POST(request: Request) {
       action: result.strikesUsed !== undefined ? 'convert_retroactive' : 'proactive',
       member_id: member.id,
       sleep_cycle_date: cycleDate,
-      log: result.log,
+      log: activeStrikeLog(result.log),
       strikes_used: result.strikesUsed,
       strikes_count: result.strikesUsed,
       metastrikes_used: result.metastrikesUsed,

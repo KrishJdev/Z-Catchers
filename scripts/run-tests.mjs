@@ -32,6 +32,8 @@ const UNIT_TESTS = [
   'test-profile-and-schedule-tab.mjs',
   'test-push-and-cron.mjs',
   'test-push-unsubscribe-security.mjs',
+  'test-push-subscription-rotation.mjs',
+  'test-push-worker-repair.mjs',
   'test-schedule-cooldown.mjs',
   'test-signup-and-profiles.mjs',
   'test-sleep-history-and-wakeup.mjs',
@@ -55,6 +57,11 @@ const UNIT_TESTS = [
   'test-cron-dispatcher.mjs',
   'test-dispatch-recovery.mjs',
   'test-nightly-strike-transaction.mjs',
+  'test-punishment-strike-ledger.mjs',
+  'test-punishment-task-apis.mjs',
+  'test-november-cutover.mjs',
+  'test-punishment-screens.mjs',
+  'test-guarded-active-wake.mjs',
   'test-state-sync-audit.mjs',
 ];
 

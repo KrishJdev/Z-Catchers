@@ -1,46 +1,31 @@
 import { NextResponse } from 'next/server';
-import { Member, getMemberByIdSafe } from '@/lib/db';
-import { resolveMemberStrikeCounts, getNightlyStrikeLog } from '@/lib/strikes';
+import { getMemberByIdSafe } from '@/lib/db';
+import { resolveMemberStrikeCounts, getNightlyStrikeLog, activeStrikeLog } from '@/lib/strikes';
 import { getSleepCycleDate } from '@/lib/sleepEngine';
 import { DateTime } from 'luxon';
+import { getRequestSession, ownsDiscordProfile } from '@/lib/auth';
+import { punishmentResponse } from '@/lib/punishments';
 
-/**
- * GET /api/members/strikes?memberId=...
- *
- * Retrieves current month strike counts and tonight's strike log for a member.
- */
-/**
- * GET: Retrieve a member's current sleep cycle date strike log and monthly strike counts.
- *
- * @param request - Incoming HTTP request with memberId query parameter
- * @returns JSON response with member strikes summary
- */
+/** The signed-in member’s current cycle and compatibility strike counters. */
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const memberId = searchParams.get('memberId');
+    const session = getRequestSession(request);
+    if (!session?.discordId) return punishmentResponse({ error: 'Sign in with Discord.' }, 401);
+    const memberId = new URL(request.url).searchParams.get('memberId') ?? session.memberId;
+    if (memberId !== session.memberId) return punishmentResponse({ error: 'Only your own strikes are available here.' }, 403);
 
-    if (!memberId) {
-      return NextResponse.json(
-        { error: 'Missing memberId query parameter.' },
-        { status: 400 }
-      );
+    const { data: member, error } = await getMemberByIdSafe(memberId, { requireFresh: true });
+    if (error) return punishmentResponse({ error: 'Could not verify your session. Try again.' }, 503);
+    if (!member || !ownsDiscordProfile(request, member)) {
+      return punishmentResponse({ error: 'Sign in with the Discord account linked to this profile.' }, 403);
     }
-
-    const { data: rawMember, error: memberErr } = await getMemberByIdSafe(memberId);
-
-    if (memberErr || !rawMember) {
-      return NextResponse.json({ error: 'Member not found.' }, { status: 404 });
-    }
-
-    const member = rawMember as Member;
     const nowUtc = DateTime.utc();
     const cycleDate = getSleepCycleDate(member, nowUtc);
 
     const counts = await resolveMemberStrikeCounts(member, nowUtc);
-    const tonightLog = await getNightlyStrikeLog(member.id, cycleDate);
+    const tonightLog = activeStrikeLog(await getNightlyStrikeLog(member.id, cycleDate));
 
-    return NextResponse.json({
+    return punishmentResponse({
       member_id: member.id,
       sleep_cycle_date: cycleDate,
       strikes_used: counts.strikes_used,
@@ -51,11 +36,9 @@ export async function GET(request: Request) {
       tonight_log: tonightLog,
       is_metastrike_active: tonightLog?.record_type === 'metastrike',
       is_strike_issued: tonightLog?.record_type === 'strike',
-      pending_votes: tonightLog?.record_type === 'pending_vote' ? tonightLog.voter_ids.length : 0,
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown server error';
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return punishmentResponse({ error: 'Strike data is currently unavailable.' }, 503);
   }
 }
 

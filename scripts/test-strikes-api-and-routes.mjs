@@ -46,6 +46,7 @@ async function run() {
   const futureWake90mLocal = nowUtc.plus({ hours: 6, minutes: 30 }).toFormat('HH:mm');
 
   const voterAlice = {
+    discord_id: '100000000000000111',
     id: 'mem_voter_alice_001',
     discord_username: 'AliceVoter',
     discord_handle: 'alice#0001',
@@ -66,6 +67,7 @@ async function run() {
   };
 
   const voterBob = {
+    discord_id: '100000000000000222',
     id: 'mem_voter_bob_002',
     discord_username: 'BobVoter',
     discord_handle: 'bob#0002',
@@ -86,6 +88,7 @@ async function run() {
   };
 
   const targetCharlie = {
+    discord_id: '100000000000000333',
     id: 'mem_target_charlie_003',
     discord_username: 'CharlieSleeper',
     discord_handle: 'charlie#0003',
@@ -156,25 +159,25 @@ async function run() {
   setInMemoryMember(targetDaveCheckedIn);
   setInMemoryMember(targetEve90mOverdue);
 
-  const aliceToken = createSessionToken(voterAlice.id);
-  const bobToken = createSessionToken(voterBob.id);
-  const charlieToken = createSessionToken(targetCharlie.id);
+  const aliceToken = createSessionToken({ memberId: voterAlice.id, discordId: voterAlice.discord_id });
+  const bobToken = createSessionToken({ memberId: voterBob.id, discordId: voterBob.discord_id });
+  const charlieToken = createSessionToken({ memberId: targetCharlie.id, discordId: targetCharlie.discord_id });
 
   testAssert(Boolean(aliceToken && bobToken && charlieToken), 'Generated valid session tokens for members');
 
   // 2. GET /api/members/strikes Validation
   console.log('\n--- 2. GET /api/members/strikes Endpoint ---');
   {
-    // Missing memberId parameter
-    const resNoParam = await getStrikes(new Request('http://localhost:3000/api/members/strikes'));
-    testAssert(resNoParam.status === 400, 'GET /api/members/strikes rejects missing memberId with 400');
+    const anonymous = await getStrikes(new Request('http://localhost:3000/api/members/strikes'));
+    testAssert(anonymous.status === 401, 'GET /api/members/strikes requires sign-in');
 
-    // Non-existent memberId
-    const resNotFound = await getStrikes(new Request('http://localhost:3000/api/members/strikes?memberId=non-existent-uuid'));
-    testAssert(resNotFound.status === 404, 'GET /api/members/strikes returns 404 for unknown member');
+    const otherMember = await getStrikes(new Request('http://localhost:3000/api/members/strikes?memberId=other-member', {
+      headers: { Authorization: 'Bearer ' + charlieToken },
+    }));
+    testAssert(otherMember.status === 403, 'GET /api/members/strikes rejects cross-account reads');
 
     // Valid existing member
-    const resValid = await getStrikes(new Request(`http://localhost:3000/api/members/strikes?memberId=${targetCharlie.id}`));
+    const resValid = await getStrikes(new Request(`http://localhost:3000/api/members/strikes?memberId=${targetCharlie.id}`, { headers: { Authorization: 'Bearer ' + charlieToken } }));
     testAssert(resValid.status === 200, 'GET /api/members/strikes returns 200 for existing member via safe memory fallback');
     const dataValid = await resValid.json();
     testAssert(dataValid.member_id === targetCharlie.id, 'Response contains target member_id');
@@ -213,9 +216,10 @@ async function run() {
     testAssert(autoStrikeDupe.reason === 'already_issued', 'Reason indicates already_issued');
 
     // Verified by GET endpoint
-    const resGetAfterStrike = await getStrikes(new Request(`http://localhost:3000/api/members/strikes?memberId=${targetCharlie.id}`));
+    const resGetAfterStrike = await getStrikes(new Request(`http://localhost:3000/api/members/strikes?memberId=${targetCharlie.id}`, { headers: { Authorization: 'Bearer ' + charlieToken } }));
     const dataAfterStrike = await resGetAfterStrike.json();
     testAssert(dataAfterStrike.is_strike_issued === true, 'GET reflects is_strike_issued: true for tonight');
+    testAssert(!('pending_votes' in dataAfterStrike) && !('voter_ids' in dataAfterStrike.tonight_log), 'Legacy voter state is omitted');
     testAssert(dataAfterStrike.strikes_used >= 1, 'GET reflects updated strikes_used count');
   }
 
@@ -224,7 +228,6 @@ async function run() {
   {
     const stateEve = computeMemberState(targetEve90mOverdue, targetEve90mOverdue.timezone, nowUtc, false);
     testAssert(stateEve.status === 'OVERDUE_NAG_NOW', '90m overdue member without check-in has status: OVERDUE_NAG_NOW');
-    testAssert(stateEve.canVoteStrike === false, '90m overdue member has canVoteStrike: false (peer voting disabled)');
 
     const resVoteEve = await postStrikeVote(new Request('http://localhost:3000/api/members/strikes', {
       method: 'POST',
@@ -262,7 +265,7 @@ async function run() {
     testAssert(convertBody.metastrikes_used >= 1, 'Metastrikes count incremented upon conversion');
 
     // Verified by GET endpoint
-    const resGetAfterConvert = await getStrikes(new Request(`http://localhost:3000/api/members/strikes?memberId=${targetCharlie.id}`));
+    const resGetAfterConvert = await getStrikes(new Request(`http://localhost:3000/api/members/strikes?memberId=${targetCharlie.id}`, { headers: { Authorization: 'Bearer ' + charlieToken } }));
     const dataAfterConvert = await resGetAfterConvert.json();
     testAssert(dataAfterConvert.is_metastrike_active === true, 'GET confirms is_metastrike_active: true');
     testAssert(dataAfterConvert.is_strike_issued === false, 'GET confirms strike was cleared/converted');
@@ -290,7 +293,7 @@ async function run() {
     }));
     testAssert(resClearMod.status === 200, 'Moderator clear_strike_log action succeeds with 200 OK');
 
-    const resGetAfterMod = await getStrikes(new Request(`http://localhost:3000/api/members/strikes?memberId=${targetCharlie.id}`));
+    const resGetAfterMod = await getStrikes(new Request(`http://localhost:3000/api/members/strikes?memberId=${targetCharlie.id}`, { headers: { Authorization: 'Bearer ' + charlieToken } }));
     const dataAfterMod = await resGetAfterMod.json();
     testAssert(dataAfterMod.is_metastrike_active === false, 'Moderator clear removed active metastrike log');
   }

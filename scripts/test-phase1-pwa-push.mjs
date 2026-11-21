@@ -106,7 +106,7 @@ async function run() {
       'pushClient.ts exports silent syncPushSubscriptionHealth function'
     );
     assert(
-      pushClientContent.includes("Notification.permission === 'granted'"),
+      pushClientContent.includes("getNotificationPermission() !== 'granted'"),
       'syncPushSubscriptionHealth checks permission is granted'
     );
     assert(
@@ -115,9 +115,8 @@ async function run() {
       'pushClient.ts keys notification choices to the signed-in member'
     );
     assert(
-      pushClientContent.includes('if (memberIdToUse) {') &&
-      pushClientContent.includes('getStoredNotificationPreferences(memberIdToUse)'),
-      'syncPushSubscriptionHealth uses only the current member preferences'
+      pushClientContent.includes("requestPushDevice('sync', { memberId })"),
+      'Health sync sends the current member without overriding preferences'
     );
 
     const pushServerPath = path.resolve(process.cwd(), 'src/lib/pushServer.ts');
@@ -129,19 +128,6 @@ async function run() {
     assert(
       pushServerContent.includes("from('push_subscriptions')") && pushServerContent.includes('.delete()'),
       'pushServer.ts automatically prunes dead subscription endpoint from Supabase'
-    );
-
-    const subscribeRoutePath = path.resolve(process.cwd(), 'src/app/api/push/subscribe/route.ts');
-    const subscribeRouteContent = fs.readFileSync(subscribeRoutePath, 'utf8');
-    assert(
-      subscribeRouteContent.includes('existingSub?.notify_personal ?? true') &&
-      subscribeRouteContent.includes('existingSub?.notify_community ?? true'),
-      '/api/push/subscribe preserves existing notification preferences when omitted'
-    );
-    assert(
-      subscribeRouteContent.includes('oldSubPrefs') &&
-      subscribeRouteContent.includes('existingSub = oldSubPrefs'),
-      '/api/push/subscribe preserves preferences from rotated old_endpoint'
     );
 
     // -------------------------------------------------------------

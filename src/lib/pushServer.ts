@@ -30,6 +30,8 @@ export interface PushSubscriptionKeys {
 }
 
 export interface PushSubscriptionData {
+  id?: string;
+  rotationDigest?: string | null;
   endpoint: string;
   keys: PushSubscriptionKeys;
 }
@@ -69,19 +71,21 @@ export async function sendPushNotification(
     // Prune stale/expired endpoints (404 Not Found, 410 Gone)
     if (statusCode === 404 || statusCode === 410) {
       try {
-        const { error: delErr } = await supabaseAdmin
-          .from('push_subscriptions')
-          .delete()
-          .eq('endpoint', subscription.endpoint);
-
-        if (!delErr) {
-          pruned = true;
-          console.warn(`[PushServer] Pruned dead/uninstalled push subscription (${statusCode}): ${subscription.endpoint}`);
-        } else {
-          console.error('[PushServer] Failed to prune dead subscription from database:', delErr);
+        let deletion = supabaseAdmin.from('push_subscriptions').delete()
+          .eq('endpoint', subscription.endpoint)
+          .eq('p256dh_key', subscription.keys.p256dh)
+          .eq('auth_key', subscription.keys.auth);
+        if (subscription.id) deletion = deletion.eq('id', subscription.id);
+        if (subscription.rotationDigest !== undefined) {
+          deletion = subscription.rotationDigest === null
+            ? deletion.is('rotation_digest', null)
+            : deletion.eq('rotation_digest', subscription.rotationDigest);
         }
-      } catch (dbErr) {
-        console.error('[PushServer] Database error while pruning dead subscription:', dbErr);
+        const { data, error } = await deletion.select('id');
+        pruned = !error && Boolean(data?.length);
+        if (error) console.error('[PushServer] Failed to prune dead subscription');
+      } catch {
+        console.error('[PushServer] Failed to prune dead subscription');
       }
     }
 

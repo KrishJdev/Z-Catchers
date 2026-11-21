@@ -42,6 +42,10 @@ Detailed blueprints are available in this repository:
 
 ## 🚀 Getting Started
 
+### Discord sign-in and push subscription rollout
+
+Before deploying to an existing database, inventory active profiles where `discord_id IS NULL`. Verify the owner before linking an existing row to Discord, and record any rows intentionally left unlinked. Apply the [push rotation migration](./supabase/migrations/20261121_push_subscription_rotation.sql) before deploying the Discord-only auth changes. This adds the credential digest and transactional binding function without changing existing device rows. As members launch the updated app, their service worker upgrades existing subscriptions. Monitor legacy rotation usage through the `[push-rotation] legacy_rotation` server log. Failed rotations log a reason code and can be repaired from notification settings after signing in with the Discord account that linked the device.
+
 ### Automated reminders and strikes
 
 The same dispatcher sends wind-down reminders and evaluates missed bedtimes. It needs an authenticated request every minute, even when nobody has the app open.

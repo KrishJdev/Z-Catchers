@@ -37,10 +37,10 @@ interface MemberCardProps {
   onCheckIn?: (memberId: string) => Promise<boolean | void> | void;
   onCancelInBed?: (memberId: string) => Promise<boolean | void>;
   isCheckingIn?: boolean;
-  onVoteStrike?: (targetMemberId: string) => Promise<void>;
   onOpenMetastrike?: (member: Member, mode: 'proactive' | 'convert_retroactive') => void;
   isVotingStrike?: boolean;
   isModerator?: boolean;
+  onOpenPunishments?: () => void;
   onOpenSleepCalendar?: (memberId: string) => void;
   onOpenProfile?: (memberId: string, initialTab?: 'calendar' | 'timetable') => void;
   onWakeUp?: (memberId: string, mode?: 'button' | 'manual', wokeUpTime?: string) => Promise<boolean | void>;
@@ -83,11 +83,11 @@ export function MemberCard({
   onCheckIn,
   onCancelInBed,
   isCheckingIn = false,
-  onVoteStrike,
   onOpenMetastrike,
   isVotingStrike = false,
   isModerator = false,
   onOpenSleepCalendar,
+  onOpenPunishments,
   onOpenProfile,
   onWakeUp,
 }: MemberCardProps) {
@@ -145,11 +145,14 @@ export function MemberCard({
 
     previousFocusRef.current = document.activeElement as HTMLElement | null;
 
-    // Focus first interactive element inside sheet dialog (or sheet itself as fallback)
+    const focusableControls = () => Array.from(sheetDialogRef.current?.querySelectorAll<HTMLElement>(
+      'button, [href], input, [tabindex]'
+    ) ?? []).filter(element => element.tabIndex >= 0 && !element.matches(':disabled') &&
+      element.getClientRects().length > 0 && getComputedStyle(element).visibility === 'visible');
+
+    // Focus the first visible control inside the dialog.
     const focusTimer = setTimeout(() => {
-      const firstFocusable = sheetDialogRef.current?.querySelector<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
+      const firstFocusable = focusableControls()[0];
       if (firstFocusable) {
         firstFocusable.focus();
       } else {
@@ -166,9 +169,7 @@ export function MemberCard({
 
       if (e.key === 'Tab') {
         if (!sheetDialogRef.current) return;
-        const focusables = sheetDialogRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        );
+        const focusables = focusableControls();
         if (focusables.length === 0) {
           e.preventDefault();
           return;
@@ -778,13 +779,24 @@ export function MemberCard({
           </div>
         </div>
 
+        {isViewer && typeof member.open_punishment_count === 'number' && onOpenPunishments && (
+          <button type="button" aria-label={`View punishments, ${member.open_punishment_count} open`} aria-haspopup="dialog"
+            onClick={event => {
+              event.stopPropagation();
+              onOpenPunishments();
+            }}
+            className="inline-flex min-h-[44px] min-w-[44px] items-center self-start rounded-lg border border-status-amber/40 bg-status-amber/10 px-3 text-xs font-semibold text-status-amber">
+            {member.open_punishment_count} open
+          </button>
+        )}
+
         {/* Action & Disclosure Zone: Contextual Action / Journal Link + Details Trigger */}
         <div className="flex items-center gap-2 w-full min-w-0 mt-auto pt-1">
           {isViewer ? (
             /* Viewer Self-Action Controls */
             isInBed ? (
               /* Viewer in bed (Sleeping / Resting): Wake up CTA + optional Undo */
-              <div className="flex-1 min-w-0 flex items-center gap-1.5">
+              <div className="hidden flex-1 min-w-0 items-center gap-1.5 md:flex">
                 {onCancelInBed && (
                   <button
                     type="button"
@@ -825,7 +837,7 @@ export function MemberCard({
                   handleCheckInClick();
                 }}
                 disabled={isCheckingIn}
-                className={`flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold text-night-bg shadow transition-transform active:scale-[0.98] whitespace-nowrap ${
+                className={`hidden flex-1 min-w-0 h-11 min-h-[44px] md:flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold text-night-bg shadow transition-transform active:scale-[0.98] whitespace-nowrap ${
                   isNagNow
                     ? 'bg-status-coral hover:bg-status-coral/90'
                     : 'bg-status-amber hover:bg-status-amber/90'
@@ -847,7 +859,7 @@ export function MemberCard({
                   handleCheckInClick();
                 }}
                 disabled={isCheckingIn}
-                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 text-status-amber px-3 text-xs font-semibold hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm whitespace-nowrap"
+                className="hidden flex-1 min-w-0 h-11 min-h-[44px] md:flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 text-status-amber px-3 text-xs font-semibold hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm whitespace-nowrap"
                 title="Check into bed early"
                 aria-label="Early check-in into bed"
               >
@@ -1042,17 +1054,6 @@ export function MemberCard({
               </div>
 
               {/* Notice Zone */}
-              {/* Out of Strikes Alert */}
-              {!member.strike_counts_unavailable && strikesUsed >= 3 && (
-                <div className="flex items-center justify-between rounded-xl border border-fox-rust/50 bg-fox-rust/15 px-3 py-2 text-[11px] font-semibold text-fox-rust">
-                  <div className="flex items-center gap-1.5">
-                    <FoxMascot state="alert" size={16} />
-                    <span>Out of Strikes • 0 Margin Left</span>
-                  </div>
-                  <span className="text-[10px] text-cream-secondary">Resets on 1st</span>
-                </div>
-              )}
-
               {/* Pending 48-Hour Cooldown Notice */}
               {pendingNotice && (
                 <div
@@ -1092,7 +1093,7 @@ export function MemberCard({
                     <button
                       onClick={handleCancelInBedClick}
                       disabled={isCheckingIn}
-                      className="text-xs underline opacity-80 hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-end shrink-0 ml-2"
+                      className="hidden text-xs underline opacity-80 hover:opacity-100 min-h-[44px] min-w-[44px] md:flex items-center justify-end shrink-0 ml-2"
                     >
                       Undo
                     </button>
@@ -1112,7 +1113,7 @@ export function MemberCard({
                       type="button"
                       onClick={handleCancelInBedClick}
                       disabled={isCheckingIn}
-                      className="inline-flex items-center gap-1 font-bold underline hover:opacity-100 min-h-[44px] px-2 shrink-0 ml-2"
+                      className="hidden md:inline-flex items-center gap-1 font-bold underline hover:opacity-100 min-h-[44px] px-2 shrink-0 ml-2"
                       title="Undo check-in and return to awake status"
                     >
                       <Sun className="h-3.5 w-3.5" />
@@ -1153,26 +1154,10 @@ export function MemberCard({
                   <p className="text-xs text-cream-secondary">Strike and pass counts unavailable</p>
                 ) : (
                   <div className="flex items-center justify-between px-3 py-2 rounded-xl text-xs whitespace-nowrap border border-night-border bg-night-elevated">
-                    {/* Strikes Indicator */}
-                    <div className="flex items-center gap-1.5" title={`${strikesUsed} of 3 monthly strikes used`}>
-                      <span className="font-semibold text-fox-rust flex items-center gap-1">
-                        <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
-                        <span>Strikes:</span>
-                        <span className="tabular-nums font-bold">{strikesUsed}/3</span>
-                      </span>
-                      <div className="flex items-center gap-1 ml-0.5">
-                        {[1, 2, 3].map((pip) => (
-                          <span
-                            key={`sheet-strike-${member.id}-${pip}`}
-                            className={`h-1.5 w-1.5 rounded-full transition-colors ${
-                              pip <= strikesUsed
-                                ? 'bg-fox-rust ring-1 ring-fox-rust/40 shadow-sm shadow-fox-rust/50'
-                                : 'bg-night-border border border-night-border/80'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    </div>
+                    <p className="flex items-center gap-1.5 font-semibold text-fox-rust">
+                      <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+                      Monthly strikes {strikesUsed}
+                    </p>
 
                     {/* Metastrikes Indicator */}
                     <div
@@ -1280,7 +1265,7 @@ export function MemberCard({
                 <button
                   onClick={handleCheckInClick}
                   disabled={isCheckingIn}
-                  className="flex h-11 min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-3 font-bold text-night-bg shadow transition-transform hover:bg-status-amber/90 active:scale-[0.98] whitespace-nowrap"
+                  className="hidden md:flex h-11 min-h-[44px] min-w-[44px] w-full items-center justify-center gap-2 rounded-xl bg-status-amber px-3 font-bold text-night-bg shadow transition-transform hover:bg-status-amber/90 active:scale-[0.98] whitespace-nowrap"
                 >
                   <BedDouble className="h-4 w-4 shrink-0" />
                   <span className="truncate">{isNagNow ? "I'm in Bed Now (Mute Nags)" : "I'm in Bed (Goodnight)"}</span>
@@ -1297,7 +1282,7 @@ export function MemberCard({
                   <button
                     onClick={handleCheckInClick}
                     disabled={isCheckingIn}
-                    className="flex h-11 min-h-[44px] min-w-0 w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/15 text-xs font-semibold text-status-amber transition-colors hover:bg-status-amber/25"
+                    className="hidden md:flex h-11 min-h-[44px] min-w-0 w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/15 text-xs font-semibold text-status-amber transition-colors hover:bg-status-amber/25"
                   >
                     <BedDouble className="h-4 w-4 shrink-0" />
                     <span className="truncate">Early Bedtime Check-In</span>
@@ -1476,7 +1461,7 @@ export function MemberCard({
                 {bucket === 'SLEEPING' && (
                   <div className="flex flex-col gap-2 w-full">
                     {isViewer ? (
-                      <div className="flex flex-col gap-2 w-full">
+                      <div className="hidden flex-col gap-2 w-full md:flex">
                         <div className="flex items-center gap-2 w-full flex-wrap sm:flex-nowrap">
                           {/* Primary ☀️ I Woke Up Button */}
                           <button
@@ -1639,7 +1624,7 @@ export function MemberCard({
                 )}
 
                 {bucket === 'AWAKE' && (
-                  <div className={isViewer && (state.needsWakeUpLog || (isWokeUp && onCheckIn)) ? "grid grid-cols-2 gap-2 w-full" : "w-full"}>
+                  <div className={isViewer && (state.needsWakeUpLog || (isWokeUp && onCheckIn)) ? "grid md:grid-cols-2 gap-2 w-full" : "w-full"}>
                     {isViewer && state.needsWakeUpLog && (
                       <button
                         type="button"
@@ -1658,7 +1643,7 @@ export function MemberCard({
                             setOptimisticWokeUp(prevWokeUp);
                           }
                         }}
-                        className="w-full min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-bold rounded-xl border border-status-amber bg-status-amber text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all shadow-sm whitespace-nowrap"
+                        className="w-full min-w-0 hidden md:inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-bold rounded-xl border border-status-amber bg-status-amber text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all shadow-sm whitespace-nowrap"
                         title="Log when you woke up"
                       >
                         <Sun className="h-4 w-4 shrink-0" />
@@ -1670,7 +1655,7 @@ export function MemberCard({
                         type="button"
                         onClick={handleCheckInClick}
                         disabled={isCheckingIn}
-                        className="w-full min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-semibold rounded-xl border border-status-amber/40 bg-status-amber/15 text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm whitespace-nowrap"
+                        className="w-full min-w-0 hidden md:inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-semibold rounded-xl border border-status-amber/40 bg-status-amber/15 text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm whitespace-nowrap"
                         title="Go to bed and turn on Sleep Shield"
                       >
                         <BedDouble className="h-3.5 w-3.5 text-status-amber shrink-0" />

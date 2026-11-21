@@ -878,7 +878,6 @@ export interface MemberState {
   formattedWakeTime?: string;
   diffMinutes: number;
   graceMinutesLeft?: number;
-  canVoteStrike?: boolean;
   pendingNotice?: string | null;
   checkedInEarly?: boolean;
   streakMilestone?: StreakMilestone | null;
@@ -1346,6 +1345,20 @@ export function getPreviousScheduledBedtime(
 }
 
 /**
+ * Personal protection shown on the roster, using the hydrated sleep cycle and Metastrike evidence.
+ */
+export function hasRosterSleepShield(member: Member, at = DateTime.utc()): boolean {
+  if ((member.is_in_bed && !member.is_woke_up) ||
+      member.is_metastrike_active || member.tonight_strike_log?.record_type === 'metastrike') {
+    return true;
+  }
+
+  const previous = getPreviousScheduledBedtime(member, at);
+  return member.last_wake_cycle_date === previous.cycleEveningDate &&
+    at < previous.bedtimeDateTime.plus({ hours: 8 });
+}
+
+/**
  * Canonical result describing an active sleep cycle window.
  */
 export interface ActiveSleepCycleWindow {
@@ -1591,7 +1604,6 @@ export function computeMemberState(
   let isSleepShieldActive = false;
   let checkedInEarly = false;
   let graceMinutesLeft = 0;
-  let canVoteStrike = false;
   let needsWakeUpLog = false;
   let isOverdue = false;
 
@@ -1664,7 +1676,6 @@ export function computeMemberState(
     statusText = 'Wide Awake • Rested';
     isSleepShieldActive = false;
     checkedInEarly = false;
-    canVoteStrike = false;
     needsWakeUpLog = false;
     isOverdue = false;
   } else if (effectiveInBed && !hasLoggedWakeUp && (diffMinutes >= -180 || isPastWakeTime)) {
@@ -1680,7 +1691,6 @@ export function computeMemberState(
       isSleepShieldActive = true;
     }
     checkedInEarly = true;
-    canVoteStrike = false;
     needsWakeUpLog = true;
     isOverdue = false;
   } else if (diffMinutes < 0 && diffMinutes >= -60) {
@@ -1688,7 +1698,6 @@ export function computeMemberState(
     bucket = 'WINDING_DOWN';
     status = 'WINDING_DOWN';
     statusText = `Bedtime in ${Math.abs(Math.floor(diffMinutes))}m`;
-    canVoteStrike = false;
     isSleepShieldActive = false;
     checkedInEarly = false;
     needsWakeUpLog = false;
@@ -1700,7 +1709,6 @@ export function computeMemberState(
     statusText = 'Wide Awake • Rested';
     isSleepShieldActive = false;
     checkedInEarly = false;
-    canVoteStrike = false;
     needsWakeUpLog = false;
     isOverdue = false;
   } else if (diffMinutes >= 0 && !isPastWakeTime) {
@@ -1711,12 +1719,11 @@ export function computeMemberState(
     bucket = 'BEDTIME_NOW';
     isOverdue = true;
     isSleepShieldActive = false;
-    canVoteStrike = false;
     needsWakeUpLog = false;
     checkedInEarly = false;
 
     if (diffMinutes <= 5) {
-      // 5-minute grace window: Strike voting is strictly locked
+      // 5-minute wind-down grace window
       status = 'BEDTIME_GRACE';
       graceMinutesLeft = Math.max(1, Math.ceil(5 - diffMinutes));
       statusText = `Grace Period: ${graceMinutesLeft}m left`;
@@ -1732,7 +1739,6 @@ export function computeMemberState(
     // Their missed bedtime remains un-checked-in and penalized.
     bucket = 'AWAKE';
     status = 'AWAKE';
-    canVoteStrike = false;
     isSleepShieldActive = false;
     needsWakeUpLog = false;
     isOverdue = false;
@@ -1783,7 +1789,6 @@ export function computeMemberState(
     formattedWakeTime,
     diffMinutes,
     graceMinutesLeft,
-    canVoteStrike,
     pendingNotice,
     checkedInEarly,
     streakMilestone,
