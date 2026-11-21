@@ -1,7 +1,7 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-22T04:02:06+05:30
-> **Active working branch:** `codex/moderation-1-owner-and-roles` with implementation `2349670` and smoke fixture fix `1169f8a`.
+> **Last Updated:** 2026-11-22T04:08:22+05:30
+> **Active working branch:** `codex/moderation-1-owner-and-roles` with implementation `2349670`, smoke fixture fix `1169f8a` and origin verification fix `fcc0ae9`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
@@ -77,6 +77,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 - Updated `src/app/api/mod/route.ts` with the same-origin, signed Owner action `set_moderator`. The database verifies both actor IDs and the target's expected role under row locks and writes the audit record in the same transaction. Generic edits reject role fields, and `src/components/ModDrawer.tsx` omits the old role selector. The Owner's schedule uses self-service, with a guard against legacy overrides in `src/app/api/members/update-schedule/route.ts`.
 - Added `scripts/test-moderation-owner-and-roles.mjs`, registered it in `scripts/run-tests.mjs`, and extended `scripts/test-dispatcher-ci.mjs` with disposable Supabase coverage. Local tests exercised a fresh schema and an upgrade with pending schedule data, owner protection, bootstrap retries, authorization, concurrent requests and audit rollback.
 - The first hosted smoke run exposed a duplicate Discord ID in the new fixture. Assigned the Owner fixture its own ID and added a uniqueness check for all smoke accounts.
+- The hosted smoke run showed that Next.js can rewrite the request URL hostname. Origin verification now uses the incoming Host and the request protocol, with regression tests for rewritten hosts and cross-origin requests.
 - Updated `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `MODERATION_ROLLOUT_CHECKLIST.md` and this handoff with the roles, endpoint contract, operator steps and Phase 2 entry point.
 
 ### Moderation Phase 0 · [PR #105](https://github.com/KrishJdev/Z-Catchers/pull/105) review fix
