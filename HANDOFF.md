@@ -1,16 +1,16 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-21T08:23:29.842Z
+> **Last Updated:** 2026-11-21T08:29:27.345Z
 > **Primary checkout:** `krish` at `b754cf9`
 > **Active Phase 3 worktree:** `codex/punishments-3-task-apis` from `origin/dev` at `6a96815`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest implementation:** The Phase 3 commit in this worktree contains the implementation and local verification.
+> **Latest implementation commit:** `a533050` on `codex/punishments-3-task-apis`.
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active integration:** Phase 3 targets `dev`. Phase 2 [PR #99](https://github.com/KrishJdev/Z-Catchers/pull/99) merged at `6a96815`.
+> **Active integration:** Phase 3 [PR #100](https://github.com/KrishJdev/Z-Catchers/pull/100) targets `dev`. Phase 2 [PR #99](https://github.com/KrishJdev/Z-Catchers/pull/99) merged at `6a96815`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
-> **Build Status:** `npx tsc --noEmit`, all 48 unit suites, and the production build passed locally. The PR runs the disposable Supabase check.
+> **Build Status:** `npx tsc --noEmit`, all 48 unit suites, and the production build passed locally. [Hosted CI](https://github.com/KrishJdev/Z-Catchers/actions/runs/44884749943) and the [disposable Supabase check](https://github.com/KrishJdev/Z-Catchers/actions/runs/44884749940) passed on `a533050`.
 
 ---
 
@@ -138,7 +138,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 | Phase 1 CodeRabbit fixes | DONE | TypeScript, 46 unit suites, and production build passed |
 | Phase 1 disposable Supabase smoke test | DONE | [PR #98 dispatcher integration](https://github.com/KrishJdev/Z-Catchers/actions/runs/44843350966) |
 | Phase 2 strike ledger and migration | DONE | Merged to dev at `6a96815`. |
-| Phase 3 member and moderator APIs | IN PROGRESS | TypeScript, all 48 unit suites, and the production build passed locally. Hosted verification is pending. |
+| Phase 3 member and moderator APIs | IN PROGRESS | TypeScript, 48 unit suites, build, and the disposable Supabase check passed. CodeRabbit initially reported a quota reset. |
 | Phase 4 member and moderator screens | TODO | Start after the Phase 3 PR merges to dev. |
 
 ### Phase 126 · Consolidated PR #95 review
