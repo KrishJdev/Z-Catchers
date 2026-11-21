@@ -154,6 +154,19 @@ async function getTaskData(path, cookie, expectedStatus = 200) {
   return body;
 }
 
+async function getRolloverProgress(cookie, timezone, novemberStrikes) {
+  const localMonth = () => DateTime.utc().setZone(timezone).toFormat('yyyy-MM');
+  const requestMonth = localMonth();
+  const summary = await getTaskData(memberTasks, cookie);
+  const responseMonth = localMonth();
+  // A request that spans local midnight can read either month's progress.
+  const expectedMonth = [requestMonth, responseMonth].find(month => month === summary.month);
+  assert.ok(expectedMonth, `Expected ${timezone} month ${requestMonth} or ${responseMonth}, got ${summary.month}`);
+  assert.equal(summary.strikes_used, expectedMonth === '2026-11' ? novemberStrikes : 0);
+  assert.equal(summary.strikes_toward_next, 0);
+  return summary;
+}
+
 function setupCertificate() {
   const gateway = execFileSync('docker', [
     'inspect', container, '--format', '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}',
@@ -615,11 +628,10 @@ try {
   await getTaskData(modTasks, regularCookie, 401);
   for (const [account, strikes, openCount] of [['rollover-west', 3, 1], ['rollover-east', 6, 2]]) {
     const id = novemberMembers[account];
-    await db.from('members').update({ is_active: true }).eq('id', id).throwOnError();
+    const { data: { timezone } } = await db.from('members').update({ is_active: true }).eq('id', id)
+      .select('timezone').single().throwOnError();
     const cookie = await signIn(account, id, false, 'member');
-    const before = await getTaskData(memberTasks, cookie);
-    assert.equal(before.strikes_used, before.month === '2026-11' ? strikes : 0);
-    assert.equal(before.strikes_toward_next, 0);
+    const before = await getRolloverProgress(cookie, timezone, strikes);
     assert.equal(before.open_count, openCount);
     const [task] = before.open_items;
     assert.equal(task.earned_month, '2026-11-01');
@@ -627,8 +639,7 @@ try {
     await post(modTasks, dbModCookie, { action: 'assign', punishment_id: task.id, title: 'Wind-down plan' });
     const completed = await post(modTasks, discordModCookie, { action: 'complete', punishment_id: task.id });
     assert.equal(completed.open_count, openCount - 1);
-    const after = await getTaskData(memberTasks, cookie);
-    assert.equal(after.strikes_used, before.strikes_used);
+    const after = await getRolloverProgress(cookie, timezone, strikes);
     assert.equal(after.history[0].id, task.id);
     assert.equal(after.open_count, openCount - 1);
   }

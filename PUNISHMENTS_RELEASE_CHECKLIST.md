@@ -21,11 +21,16 @@ Use the [Phase 5 dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for the 
           (SELECT count(*) FROM public.punishment_actions) AS actions;
    ```
 
-3. Save the read-only preview in the operator's restricted release notes. Check the dated evidence behind each discrepancy. If a documented correction is missing, use `public.record_verified_november_correction(member_id, cycle_date, evidence_key, actor, reason[, source_id])` once per verified reference, then refresh the preview. A legacy counter alone provides no basis for a correction.
+3. Save the read-only preview in the operator's restricted release notes. Check the dated evidence behind each discrepancy. A legacy counter alone provides no basis for a correction.
 
    ```sql
    SELECT * FROM public.november_punishment_preview() ORDER BY member_id;
    ```
+
+   - To add a missing strike backed by dated evidence, call `public.record_verified_november_correction(member_id, cycle_date, evidence_key, actor, reason)` once per verified reference.
+   - For a documented removal, match the member, cycle date, and source ID in the preview. Call the same function with that ID as the named sixth argument, `p_void_source => source_id`. It deletes a matching nightly strike and saves a copy in the correction audit, or records a `void_adjustment` for a moderator-added strike.
+
+   Refresh the preview after recording any corrections.
 
    | Rehearsal fixture | Verified November strikes | Legacy counter | Expected task records |
    | --- | ---: | ---: | --- |
