@@ -1,16 +1,16 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-21T00:18:38+00:00
+> **Last Updated:** 2026-11-21T00:26:42+00:00
 > **Primary checkout:** `krish` at `b754cf9`
 > **Active Phase 1 worktree:** `codex/punishments-1-discord-auth` from `origin/dev` at `a69a3ce`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Latest implementation commit:** `5447a3d` on `codex/punishments-1-discord-auth`
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active integration:** Punishments Phase 1 targets `dev`. [PR #97](https://github.com/KrishJdev/Z-Catchers/pull/97) merged at `a69a3ce`.
+> **Active integration:** [PR #98](https://github.com/KrishJdev/Z-Catchers/pull/98) proposes Phase 1 for `dev`. [PR #97](https://github.com/KrishJdev/Z-Catchers/pull/97) merged at `a69a3ce`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
-> **Build Status:** On `5447a3d`, `npx tsc --noEmit`, `npm run test:unit` (46 suites), and `npm run build` passed. The disposable Supabase smoke test runs on the Phase 1 PR.
+> **Build Status:** On `5447a3d`, `npx tsc --noEmit`, `npm run test:unit` (46 suites), and `npm run build` passed. On `b45bd8b`, [GitHub build and tests](https://github.com/KrishJdev/Z-Catchers/actions/runs/44843350925), the [disposable Supabase smoke test](https://github.com/KrishJdev/Z-Catchers/actions/runs/44843350966), and the Vercel preview passed.
 
 ---
 
@@ -98,7 +98,7 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 | Phase 0 expanded disposable Supabase baseline | DONE | Member and moderator flows, two authenticated minute-job responses, encrypted push, and strike replacement passed on `9ad991b` |
 | Phase 0 CodeRabbit changes | DONE | Rotation requirements specified for Phase 1 and workflow filters checked against all 14 exercised API routes |
 | Phase 1 Discord-only authentication | DONE | TypeScript, 46 unit suites, and production build passed |
-| Phase 1 disposable Supabase smoke test | IN PROGRESS | Runs on the Phase 1 PR |
+| Phase 1 disposable Supabase smoke test | DONE | [PR #98 dispatcher integration](https://github.com/KrishJdev/Z-Catchers/actions/runs/44843350966) |
 | Phase 2 strike ledger and migration | TODO | Start after the Phase 1 PR passes checks and merges to dev |
 
 ### Phase 126 · Consolidated PR #95 review
@@ -2966,7 +2966,7 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-**Punishments rollout.** Review the Phase 1 PR and verify the expanded disposable Supabase smoke test. Apply `supabase/migrations/20261121_push_subscription_rotation.sql` before deploying the Phase 1 app to an existing environment. Monitor the `legacy_rotation` reason as signed-in devices upgrade. After the Phase 1 PR merges to `dev`, branch from the updated `origin/dev` as `codex/punishments-2-strike-ledger`. Follow [Phase 2](PUNISHMENTS_PLAN.md#phase-2--strike-ledger-punishment-records-and-migration) to add the dated ledger, punishment records, and reconciliation while keeping the new writer inactive.
+**Punishments rollout.** Review [Phase 1 PR #98](https://github.com/KrishJdev/Z-Catchers/pull/98). The expanded disposable Supabase smoke test passed. Apply `supabase/migrations/20261121_push_subscription_rotation.sql` before deploying the Phase 1 app to an existing environment. Monitor the `legacy_rotation` reason as signed-in devices upgrade. After the Phase 1 PR merges to `dev`, branch from the updated `origin/dev` as `codex/punishments-2-strike-ledger`. Follow [Phase 2](PUNISHMENTS_PLAN.md#phase-2--strike-ledger-punishment-records-and-migration) to add the dated ledger, punishment records, and reconciliation while keeping the new writer inactive.
 
 1. **Review PR #95 and prepare the production rollout separately.**
    - PR #95 uses the isolated `Supabase Cron and push smoke test` check for the `dev` integration. Review the PR and merge to `dev` when approved.
