@@ -909,7 +909,8 @@ export async function executeNotificationDispatcher(options: {
             continue;
           }
           await verifyCronLease(lease);
-          const strikeResult = await issueAutomaticBedtimeStrike(member, cycle, currentTime());
+          const issuedAt = currentTime();
+          const strikeResult = await issueAutomaticBedtimeStrike(member, cycle, issuedAt);
           if (!strikeResult.success) {
             results.details.errors.push(`Auto Bedtime Strike (${member.discord_username}): ${strikeResult.error}`);
             continue;
@@ -930,7 +931,7 @@ export async function executeNotificationDispatcher(options: {
           if (strikeResult.cycleStrikesUsed !== undefined) {
             alertTotal = { count: strikeResult.cycleStrikesUsed, month: cycle.slice(0, 7) };
           } else if (strikeResult.strikeIssued && strikeResult.strikesUsed !== undefined) {
-            alertTotal = { count: strikeResult.strikesUsed, month: getCurrentStrikeMonth(member, currentTime()) };
+            alertTotal = { count: strikeResult.strikesUsed, month: getCurrentStrikeMonth(member, issuedAt) };
           }
         }
 

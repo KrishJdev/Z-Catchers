@@ -609,6 +609,42 @@ assert.match(resumed.details.errors[0], /AUTO_BEDTIME_STRIKE for sleeper.*rollov
 assert.ok(tables.notification_logs.some(row => row.member_id === other.id && row.notification_type === 'AUTO_BEDTIME_STRIKE'));
 assert.ok(!tables.notification_logs.some(row => row.member_id === primary.id && row.notification_type === 'AUTO_BEDTIME_STRIKE'));
 
+// A legacy writer can commit after midnight while still returning the issuance month's count.
+const monthEnd = { ...sleeper, id: 'month-end', bedtime_local: '23:40', wake_time_local: '07:00',
+  is_woke_up: false, last_wake_cycle_date: null, strike_cycle_month: '2026-11' };
+tables.members = [monthEnd];
+tables.notification_logs = [{ member_id: monthEnd.id, notification_type: 'BEDTIME_HIT', local_date: '2026-11-30' }];
+tables.nightly_strike_logs = [];
+tables.sleep_logs = [];
+tables.push_subscriptions = [];
+tables.cron_locks = [];
+clearAllCronLocks();
+let boundaryClock = Date.parse('2026-11-30T23:59:59Z');
+const previousClock = Settings.now;
+Settings.now = () => boundaryClock;
+const boundaryWebhooks = [];
+process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'https://discord.com/api/webhooks/123456789/fixture';
+globalThis.fetch = async (_url, options) => {
+  boundaryWebhooks.push(JSON.parse(options.body));
+  return new Response(null, { status: 204 });
+};
+applyStrike = async params => {
+  assert.equal(params.p_month, '2026-11');
+  boundaryClock = Date.parse('2026-12-01T00:00:01Z');
+  return { data: { log: { record_type: 'strike', updated_at: params.p_now }, strikesUsed: 3 } };
+};
+try {
+  const dispatch = await executeNotificationDispatcher({ forcedMemberId: monthEnd.id });
+  assert.deepEqual(dispatch.details.errors, []);
+  assert.equal(dispatch.autoStrikesDispatched, 1);
+  assert.equal(boundaryWebhooks.length, 1);
+  assert.match(boundaryWebhooks[0].embeds[0].description, /3 strikes.*November 2026/);
+} finally {
+  Settings.now = previousClock;
+  globalThis.fetch = originalFetch;
+  process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'disabled';
+}
+
 // Removing a subscription already read on page one must not shift the last row past page two.
 let rows = [{ id: 'a', endpoint: 'A' }, { id: 'b', endpoint: 'B' }, { id: 'c', endpoint: 'C' }];
 let pageReads = 0;

@@ -59,9 +59,9 @@ async function concurrentSql(first, second) {
   const writer = sqlSession('zc_ledger_writer');
   let waiter;
   try {
-    writer.child.stdin.write(first + ';\n');
+    writer.child.stdin.write(first + ";\nSET LOCAL application_name = 'zc_ledger_writer_ready';\n");
     await waitFor(() => sql(`SELECT 1 FROM pg_stat_activity
-      WHERE application_name = 'zc_ledger_writer' AND state = 'idle in transaction'`), 10_000,
+      WHERE application_name = 'zc_ledger_writer_ready' AND state = 'idle in transaction'`), 10_000,
     () => 'First PostgreSQL session did not reach its transaction barrier');
     waiter = sqlSession('zc_ledger_waiter');
     waiter.child.stdin.end(second + '; COMMIT;\n');
