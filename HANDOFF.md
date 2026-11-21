@@ -1,15 +1,15 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-21T16:00:59+05:30
-> **Active working branch:** `krish`, fast-forwarded to `origin/dev` at `3b6da2c` before implementing Phase 4.
+> **Last Updated:** 2026-11-21T16:23:52+05:30
+> **Active working branch:** `krish`, fast-forwarded to the Phase 4 merge at `bfec72c` before implementing Phase 5.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Latest implementation commit:** `dd1c101` on `krish`.
+> **Latest implementation commit:** `a2b2077` on `krish`.
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active integration:** Phase 4 [PR #101](https://github.com/KrishJdev/Z-Catchers/pull/101) is open against `dev` from `krish`. Phase 3 [PR #100](https://github.com/KrishJdev/Z-Catchers/pull/100) merged at `3b6da2c`.
+> **Active integration:** Phase 4 [PR #101](https://github.com/KrishJdev/Z-Catchers/pull/101) merged into `dev` at `bfec72c`. The Phase 5 rehearsal targets `dev` from `krish`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Active Production Release Pull Request:** None. [PR #88](https://github.com/KrishJdev/Z-Catchers/pull/88) merged on November 18.
-> **Build Status:** The review changes passed TypeScript, 50 local unit suites, the production build, and browser verification. Hosted CI and Vercel passed on the original Phase 4 head. The review-fix hosted checks are pending.
+> **Build Status:** Phase 5 passed `npx tsc --noEmit`, all 51 local unit suites, and the production build. The merged Phase 4 [dev CI run](https://github.com/KrishJdev/Z-Catchers/actions/runs/44895844728) passed. Phase 5 hosted verification runs on the integration PR.
 
 ---
 
@@ -71,6 +71,13 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ## 4. Comprehensive Task Changelog
 
 
+### Punishments Phase 5 · November cutover rehearsal
+
+- The disposable Supabase smoke starts with legacy rows and applies the ledger while inactive. It verifies the 0/2/3/6-strike preview, the counter-only anomaly and capped legacy counter, the dated correction, one open replacement window, and preservation of two used Metastrikes.
+- The production server starts with punishment screens hidden. The smoke exercises the authenticated dry run, activation, the pre-launch cutoff, two November seeds during scheduled dispatch, and repeated Cron calls without duplicate strikes or pushes. It also covers both moderator roles, rollback by hiding the screens, and November tasks across the Los Angeles and Tokyo month boundaries.
+- Created `scripts/fixtures/november-cutover-smoke.mjs`, `scripts/test-november-cutover.mjs`, and `PUNISHMENTS_RELEASE_CHECKLIST.md`. Updated `.github/workflows/dispatcher-smoke.yml`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-cron-dispatcher.mjs`, `scripts/run-tests.mjs`, `PUNISHMENTS_PLAN.md`, and this handoff.
+- The owner asked to skip the live Discord and physical device checks. The rehearsal uses test identities at the Discord API boundary and an encrypted Web Push receiver.
+
 ### Punishments Phase 4 · Mobile and desktop screens
 
 - Added the compact Profile sheet, session-based moderator navigation, the device notification bell, and the My Sleep calendar, timetable and punishment views. The roster badge links the signed-in member to their own list. Monthly totals and progress toward the next punishment use separate labels. Task and history reads use the existing visibility-gated APIs.
@@ -88,6 +95,8 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 - Quick wake binds the request to the check-in that opened the action. A changed or previously completed check-in returns HTTP 409. The new service-role RPC commits the sleep log, member marker, and wake receipt together. Calendar corrections still use the dated manual path.
 - Added `supabase/migrations/20261124_guard_active_wake.sql` and `scripts/test-guarded-active-wake.mjs`. Updated `supabase/schema.sql`, the wake API, `sleepEngine.ts`, the roster page, Header, MemberCard, ModeratorPunishmentQueue, PinnedSelfActionBar, the unit runner, task-API schema test, touch-target test and hosted dispatcher fixture. Updated the backend, design, and rollout documentation.
 - Browser checks passed at 320, 375, 800, and 1280 px, including stale manual wake, focus recovery on the member and moderator flows, and visible task rows after a pagination error. The hosted disposable Supabase fixture checks that an overlapping manual wake leaves the first recorded wake intact.
+
+- The final production browser run also verified offline cache cleanup for existing snapshots and the mobile safe-area layout. The hosted smoke confirmed overlapping database wake-up writes preserve the first result. All 10 inline CodeRabbit threads were resolved. [CodeRabbit rate-limited the follow-up review](https://github.com/KrishJdev/Z-Catchers/pull/101#issuecomment-7061042753).
 
 ### Punishments Phase 3 · Member and moderator APIs
 
@@ -159,8 +168,11 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 | Phase 2 strike ledger and migration | DONE | Merged to dev at `6a96815`. |
 | Phase 3 member and moderator APIs | DONE | [PR #100](https://github.com/KrishJdev/Z-Catchers/pull/100) contains the verified implementation and the CodeRabbit fix. |
 | Phase 4 member and moderator screens | DONE | Implemented on `krish` from the merged Phase 3 baseline. |
-| Phase 4 hosted review and integration | IN PROGRESS | [PR #101](https://github.com/KrishJdev/Z-Catchers/pull/101) is open. The first CodeRabbit review and fixes are complete. Verify the hosted checks on the review-fix head before merging. |
-| Phase 5 disposable dev rehearsal | TODO | Start from merged Phase 4. |
+| Phase 4 hosted checks and CodeRabbit review | DONE | PR checks passed and the first review is complete. |
+| Phase 4 integration | DONE | [PR #101](https://github.com/KrishJdev/Z-Catchers/pull/101) merged into dev at `bfec72c`. |
+| Phase 5 disposable dev rehearsal | IN PROGRESS | Implementation and local checks completed. Hosted checks run on the Phase 5 PR. |
+| Phase 5 live Discord and device checks | TODO | Skipped at the owner's request during this session. |
+| Phase 6 production cutover | TODO | Follow the release checklist after Phase 5 integration and verification. |
 
 ### Phase 126 · Consolidated PR #95 review
 
@@ -3026,7 +3038,7 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-**Punishments rollout.** After Phase 4 merges into dev, start the [Phase 5 disposable dev rehearsal](PUNISHMENTS_PLAN.md#phase-5--rehearse-the-november-cutover-in-dev). Apply the Phase 2 ledger, Phase 3 task API migration, and `20261124_guard_active_wake.sql` to the isolated database before deploying Phase 4. Run the November preview, activate the writer while visibility remains off, run the seed twice during dispatch, compare counts, then verify rollover and the installed PWA with member and moderator test accounts and a subscribed device. Keep production activation and visibility off until Phase 6.
+**Punishments rollout.** Review the Phase 5 PR's hosted dispatcher smoke and build checks, then verify the merged `dev` build before starting Phase 6. Use the [November cutover checklist](PUNISHMENTS_RELEASE_CHECKLIST.md) to confirm the migration order, timestamp, ledger discrepancies, seed counts, and recovery procedure. Verify actual Discord consent and delivery to a subscribed device when an isolated setup is available. Keep production activation and visibility off pending Phase 6 release verification.
 
 1. **Review PR #95 and prepare the production rollout separately.**
    - PR #95 uses the isolated `Supabase Cron and push smoke test` check for the `dev` integration. Review the PR and merge to `dev` when approved.
