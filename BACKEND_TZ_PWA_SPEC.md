@@ -440,6 +440,14 @@ All user-submitted journal links must be validated against this strict regex bef
 
 ## 6. "I Woke Up" & Sleep History API Endpoints
 
+### Staff authorization and schedule writes after the moderation cutover
+
+The [moderation rollout](MODERATION_PLAN.md) adds the `owner` role alongside `member` and `moderator`. The database enforces at most one Owner, whose row must be active and Discord-linked. Staff endpoints match the Discord session’s member ID and Discord ID to the active row and authorize using its current role. Guard the target’s role in the staff write so a concurrent promotion cannot grant access to a protected target.
+
+`POST /api/members/update-schedule` is the profile owner’s self-service route. Schedule changes in every role write to the 48-hour queue. An immediate schedule edit or early approval uses a dedicated action in `POST /api/mod`. Moderators can target members and the Owner can target members or moderators. Early approval must still match the queued schedule the actor reviewed. Audit staff actions with the signed-in member ID and retain historical `master_mod` records.
+
+The API descriptions for legacy credentials apply until the application and database are switched in the [documented cutover order](MODERATION_ROLLOUT_CHECKLIST.md#application-and-database-cutover-order).
+
 ### 6.1 `POST /api/members/wake-up`
 Allows authenticated members to log when they woke up for their active or recent sleep cycle.
 

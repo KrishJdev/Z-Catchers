@@ -252,6 +252,14 @@ When a user edits their existing bedtime or timezone, display a clear callout bo
 * **Style:** `bg-status-amber/10 border border-status-amber/30 rounded-xl p-3 text-xs text-cream-secondary leading-relaxed`
 * **Copy:** `"🛡️ Accountability Cooldown: Changing your bedtime or timezone takes 48 hours to take effect so nobody can dodge their bedtime at the last minute. Updating your Discord Journal link is instant."`
 
+The same callout applies to every role after the [moderation cutover](MODERATION_PLAN.md). Show immediate edits and early approval as explicit actions in **Mod Panel** for eligible targets.
+
+### Mod Panel after the moderation cutover
+
+Show the Mod entry for signed-in Owners and Moderators based on current server permissions. Open the Warm Dark desktop dialog or mobile sheet directly, with the **Owner** or **Moderator** badge, **Close**, the Sleepy Fox and touch targets of at least 44 px.
+
+In **Roster**, give the Owner **Make moderator** and **Remove moderator** on eligible rows. Confirm the account and change before saving, then refresh the row. Gate other actions by the server’s capabilities and refresh those capabilities on role-related errors.
+
 ### 6.3 PWA & Push Permission Banner (`PwaBanner.tsx`)
 * **Condition 1 (iOS Browser, Not Installed):** If detected on iOS Safari and `window.navigator.standalone !== true`, render a collapsible warm card:
   * `"📲 Install Z Catchers for Bedtime Alerts: Tap Share and select 'Add to Home Screen' to unlock push notifications."`

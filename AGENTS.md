@@ -8,9 +8,9 @@
 
 ## 1. Golden Operating Rules
 
-1. **Active Branch:** Always work on and commit to the **`krish`** branch. Never commit directly to `dev` or `main`.
+1. **Active Branch:** Work on and commit to **`krish`** by default. Follow the [moderation rollout workflow](MODERATION_PLAN.md#feature-branch-workflow) for its phase branches. Never commit directly to `dev` or `main`.
 2. **Timezone Math:** Always use `luxon`. Never use native JavaScript `new Date().getTimezoneOffset()` or manual offset math.
-3. **48-Hour Cooldown:** Regular member schedule changes **must** enter a 48-hour pending state. Never bypass this unless authenticated with `MOD_SECRET_PASSCODE`.
+3. **48-Hour Cooldown:** Self-service schedule changes for every role enter a 48-hour pending state once role-only moderation ships. Early approval and immediate edits use explicit, server-authorized staff actions in `/api/mod` with target role checks. The current release uses the legacy passcode for schedule overrides until the [moderation cutover](MODERATION_ROLLOUT_CHECKLIST.md#application-and-database-cutover-order).
 4. **Sleep Shield:** Members who have not checked in may receive personal notifications and nags after bedtime. Suppress pushes for open check-ins and for members who have slept during the eight-hour sleep window. The 15-minute pre-bedtime community quiet period still applies.
 5. **Discord URL Sanitization:** Enforce the regex `^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$` for all journal links.
 6. **Warm Dark UI:** Strictly adhere to the Warm Dark low-blue-light design system (`#120F0D` background, `#F5EBE1` text) and include the Sleepy Fox mascot.
@@ -27,7 +27,7 @@
 ### What Must Be Updated in `HANDOFF.md`:
 1. **Header Metadata:**
    * Update the `Last Updated` ISO timestamp.
-   * Verify and record the active working branch (`krish`).
+   * Verify and record the active working branch (`krish` or the current moderation phase branch).
    * Record the latest commit hash and verification check results (`npx tsc --noEmit` and `npm run test:unit`).
 2. **Task Changelog:**
    * Summarize what was accomplished during the current task.
