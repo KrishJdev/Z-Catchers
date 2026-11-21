@@ -73,6 +73,17 @@ export async function resolveMemberStrikeCounts(
   reset: boolean;
 }> {
   const currentMonth = getCurrentStrikeMonth(member, nowUtc);
+  // A projection moved by a read must take the same database lock as the ledger writers.
+  if (isSupabaseConfigured && member.strike_cycle_month && member.strike_cycle_month !== currentMonth) {
+    const { data, error } = await supabaseAdmin.rpc('refresh_member_strike_projection', {
+      p_member_id: member.id, p_now: nowUtc.toISO(),
+    });
+    if (error || !data) throw new Error(error?.message || 'Could not refresh the member strike projection.');
+    return {
+      strikes_used: data.strikesUsed, metastrikes_used: data.metastrikesUsed,
+      strike_cycle_month: data.month, reset: data.reset,
+    };
+  }
   const fallback = memoryStore.memberCounts.get(member.id);
   const inMem = getInMemoryMember(member.id);
 
@@ -135,29 +146,10 @@ export async function resolveMemberStrikeCounts(
 
   const { reset, activeMember } = checkMonthlyStrikeReset(dummyMember, nowUtc);
 
-  if (reset && strike_cycle_month < currentMonth) {
+  if (!isSupabaseConfigured && reset && strike_cycle_month < currentMonth) {
     const nextCycleMonth = activeMember.strike_cycle_month || currentMonth;
-
-    // Keep memory store and Supabase in sync with aliases (strikes_used/strikes_count)
-    const result = await updateMemberStrikeCounts(member.id, 0, 0, nextCycleMonth,
-      isSupabaseConfigured ? { strike_cycle_month: member.strike_cycle_month } : undefined);
-
-    if (result.success && (!isSupabaseConfigured || result.data?.strike_cycle_month === nextCycleMonth)) {
-      return { strikes_used: 0, metastrikes_used: 0, strike_cycle_month: nextCycleMonth, reset: true };
-    }
-    if (result.error) {
-      throw new Error(result.error.message || String(result.error));
-    }
-    const refreshed = await getMemberByIdSafe(member.id, { requireFresh: true });
-    if (refreshed.error || !refreshed.data) {
-      throw new Error(refreshed.error?.message || 'Could not verify the member’s strike counts after rollover.');
-    }
-    return {
-      strikes_used: Math.max(refreshed.data.strikes_used ?? 0, refreshed.data.strikes_count ?? 0),
-      metastrikes_used: Math.max(refreshed.data.metastrikes_used ?? 0, refreshed.data.metastrikes_count ?? 0),
-      strike_cycle_month: refreshed.data.strike_cycle_month || currentMonth,
-      reset: false,
-    };
+    await updateMemberStrikeCounts(member.id, 0, 0, nextCycleMonth);
+    return { strikes_used: 0, metastrikes_used: 0, strike_cycle_month: nextCycleMonth, reset: true };
   }
 
   // When DB read failed or DB is not configured, reconcile with verified strike logs from nightly_strike_logs
@@ -181,38 +173,16 @@ export async function resolveMemberStrikeCounts(
     }
 
     if (effectiveLoggedStrikes > strikes_used) {
-      strikes_used = Math.min(3, effectiveLoggedStrikes);
+      strikes_used = effectiveLoggedStrikes;
     }
     if (effectiveLoggedMetas > metastrikes_used) {
       metastrikes_used = Math.min(3, effectiveLoggedMetas);
     }
   }
 
-  // Auto-heal member row if stored counts were lagging behind verified strike records or if stored month is missing
-  const needsMonthPersist = !member.strike_cycle_month && Boolean(strike_cycle_month);
-  if (member.id && (strikes_used > memberStrikes || metastrikes_used > memberMetas || needsMonthPersist)) {
-    const repairConditions: Record<string, any> = {};
-    if (typeof member.strikes_used === 'number') {
-      repairConditions.strikes_used = member.strikes_used;
-    } else if (typeof member.strikes_count === 'number') {
-      repairConditions.strikes_count = member.strikes_count;
-    }
-    if (typeof member.metastrikes_used === 'number') {
-      repairConditions.metastrikes_used = member.metastrikes_used;
-    } else if (typeof member.metastrikes_count === 'number') {
-      repairConditions.metastrikes_count = member.metastrikes_count;
-    }
-    if (member.strike_cycle_month === null || member.strike_cycle_month === undefined) {
-      repairConditions.strike_cycle_month = null;
-    }
-    // Wait for the repair to settle before returning so subsequent strike mutations cannot be overwritten by a late repair
-    await updateMemberStrikeCounts(
-      member.id,
-      strikes_used,
-      metastrikes_used,
-      strike_cycle_month,
-      Object.keys(repairConditions).length > 0 ? repairConditions : undefined
-    );
+  // Keep fallback counters repaired without overwriting the database projection.
+  if (!isSupabaseConfigured && (strikes_used > memberStrikes || metastrikes_used > memberMetas || !member.strike_cycle_month)) {
+    await updateMemberStrikeCounts(member.id, strikes_used, metastrikes_used, strike_cycle_month);
   }
 
   return {
@@ -233,7 +203,7 @@ export async function updateMemberStrikeCounts(
   cycleMonth: string,
   conditions?: Record<string, any>
 ): Promise<{ success: boolean; data?: Member | null; error?: any }> {
-  const clampedStrikes = Math.max(0, Math.min(3, strikesUsed));
+  const clampedStrikes = Math.max(0, strikesUsed);
   const clampedMetastrikes = Math.max(0, Math.min(3, metastrikesUsed));
 
   // If no conditions required, update in-memory cache optimistically
@@ -371,6 +341,7 @@ export async function getNightlyStrikeLog(
             reason: data.reason || null,
             created_at: data.created_at,
             updated_at: data.updated_at,
+            replacement_until: data.replacement_until,
           };
           memoryStore.logs.set(key, parsedLog);
           return parsedLog;
@@ -474,7 +445,7 @@ export async function getMonthlyStrikeCountsBatch(
     const current = result.get(id) || { strikes: 0, metastrikes: 0 };
     const memStrikes = inMemoryStrikesByMember.get(id)?.size || 0;
     const memMetas = inMemoryMetasByMember.get(id)?.size || 0;
-    current.strikes = Math.min(3, Math.max(current.strikes, memStrikes));
+    current.strikes = Math.max(current.strikes, memStrikes);
     current.metastrikes = Math.min(3, Math.max(current.metastrikes, memMetas));
     result.set(id, current);
   }
@@ -521,6 +492,7 @@ export async function getNightlyStrikeLogsBatch(
               reason: row.reason || null,
               created_at: row.created_at,
               updated_at: row.updated_at,
+              replacement_until: row.replacement_until,
             };
             result.set(key, parsedLog);
             memoryStore.logs.set(key, parsedLog);
@@ -562,6 +534,7 @@ export function isStrikeEligibleForReplacement(
 ): boolean {
   if (isModerator) return true;
   if (strikeLog.record_type !== 'strike') return false;
+  if (strikeLog.replacement_until) return nowUtc < DateTime.fromISO(strikeLog.replacement_until);
 
   const normalizedZone = toValidLuxonZone(member.timezone);
   const sleeperZone = DateTime.now().setZone(normalizedZone).isValid ? normalizedZone : 'UTC';
@@ -624,6 +597,7 @@ export async function getRecentEligibleStrikeLog(
             reason: data.reason || null,
             created_at: data.created_at,
             updated_at: data.updated_at,
+            replacement_until: data.replacement_until,
           };
           const isEligible = member
             ? isStrikeEligibleForReplacement(member, log, nowUtc)
@@ -714,6 +688,7 @@ export async function getRecentEligibleStrikeLogsBatch(
               reason: row.reason || null,
               created_at: row.created_at,
               updated_at: row.updated_at,
+              replacement_until: row.replacement_until,
             };
             const member = resolvedMembers.get(row.target_member_id);
             const isEligible = member
@@ -815,6 +790,7 @@ export async function saveNightlyStrikeLog(
           reason: data.reason || null,
           created_at: data.created_at,
           updated_at: data.updated_at,
+          replacement_until: data.replacement_until,
         };
         memoryStore.logs.set(key, persisted);
         return persisted;
@@ -861,16 +837,22 @@ export async function deleteNightlyStrikeLog(
  * and rechecks both the nightly record and monthly allowance before writing. */
 async function applyNightlyStrike(
   member: Member, cycleDate: string, previousType: StrikeRecordType | null,
-  type: 'strike' | 'metastrike' | 'clear', reason: string, nowUtc: DateTime
+  type: 'strike' | 'metastrike' | 'clear', reason: string, nowUtc: DateTime, moderator?: string
 ): Promise<{
   success: boolean; strikeIssued: boolean; log?: NightlyStrikeLog;
-  strikesUsed?: number; metastrikesUsed?: number; reason?: string; error?: string;
+  strikesUsed?: number; metastrikesUsed?: number; cycleStrikesUsed?: number; reason?: string; error?: string;
 }> {
   const localNow = nowUtc.setZone(toValidLuxonZone(member.timezone));
+  const bedtime = type === 'strike'
+    ? getNightScheduleDateTime(member, DateTime.fromISO(cycleDate, { zone: localNow.zoneName! })).bedtimeDateTime
+    : null;
   const { data, error } = await supabaseAdmin.rpc('apply_nightly_strike', {
     p_member_id: member.id, p_cycle: cycleDate, p_previous_type: previousType,
     p_type: type, p_reason: reason, p_now: nowUtc.toISO(),
     p_month: localNow.toFormat('yyyy-MM'), p_month_start: localNow.startOf('month').toUTC().toISO(),
+    p_strike_cutoff: bedtime?.plus({ minutes: 10 }).toISO() ?? null,
+    p_replacement_until: bedtime ? getNextScheduledBedtimeAfter(member, bedtime).toISO() : null,
+    p_moderator: moderator ?? null,
   });
   if (error || !data) {
     return {
@@ -880,7 +862,7 @@ async function applyNightlyStrike(
       error: error?.message || 'Missing strike transaction result.',
     };
   }
-  return { ...data, success: true, strikeIssued: type === 'strike' && Boolean(data.log) };
+  return { ...data, success: true, strikeIssued: type === 'strike' && !data.reason && Boolean(data.log) };
 }
 
 /**
@@ -901,6 +883,7 @@ export async function issueAutomaticBedtimeStrike(
   strikeIssued: boolean;
   log?: NightlyStrikeLog;
   strikesUsed?: number;
+  cycleStrikesUsed?: number;
   reason?: string;
   error?: string;
 }> {
@@ -924,8 +907,8 @@ export async function issueAutomaticBedtimeStrike(
     };
   }
 
-  // 2. Check existing nightly strike log for this cycle (idempotency & metastrike protection)
-  const existingLog = await getNightlyStrikeLog(member.id, cycleDate);
+  // Check existing ledger evidence before issuing or recovering an alert.
+  const existingLog = await getNightlyStrikeLog(member.id, cycleDate, { requireFresh: isSupabaseConfigured });
   if (existingLog) {
     if (existingLog.record_type === 'metastrike') {
       return {
@@ -954,18 +937,8 @@ export async function issueAutomaticBedtimeStrike(
       'Automated 10-minute bedtime strike (missed bedtime check-in)', nowUtc);
   }
 
-  // 3. Resolve member's monthly strike counts and verify not already capped
+  // The local development fallback tracks strikes without creating durable punishments.
   const counts = await resolveMemberStrikeCounts(member, nowUtc);
-  if (counts.strikes_used >= 3) {
-    return {
-      success: true,
-      strikeIssued: false,
-      reason: 'already_at_max_strikes',
-      strikesUsed: counts.strikes_used,
-      error: 'Member has already reached the maximum limit of 3 strikes for this month.',
-    };
-  }
-
   const newStrikesUsed = counts.strikes_used + 1;
 
   await updateMemberStrikeCounts(member.id, newStrikesUsed, counts.metastrikes_used, counts.strike_cycle_month);
@@ -1022,7 +995,8 @@ export async function useProactiveMetastrike(
   member: Member,
   reason: string,
   sleepCycleDate?: string,
-  nowUtc = DateTime.utc()
+  nowUtc = DateTime.utc(),
+  moderator?: string
 ): Promise<{
   success: boolean;
   log?: NightlyStrikeLog;
@@ -1031,17 +1005,8 @@ export async function useProactiveMetastrike(
   reason?: string;
   error?: string;
 }> {
-  const counts = await resolveMemberStrikeCounts(member, nowUtc);
-
-  if (counts.metastrikes_used >= 3) {
-    return {
-      success: false,
-      error: 'You have used all 3 Metastrikes for this month. Excuses reset on the 1st of next month.',
-    };
-  }
-
   const cycleDate = sleepCycleDate || getSleepCycleDate(member, nowUtc);
-  const existingLog = await getNightlyStrikeLog(member.id, cycleDate);
+  const existingLog = await getNightlyStrikeLog(member.id, cycleDate, { requireFresh: isSupabaseConfigured });
 
   if (existingLog) {
     if (existingLog.record_type === 'metastrike') {
@@ -1052,7 +1017,7 @@ export async function useProactiveMetastrike(
     }
     if (existingLog.record_type === 'strike') {
       if (isStrikeEligibleForReplacement(member, existingLog, nowUtc)) {
-        return convertStrikeToMetastrike(member, reason, cycleDate, nowUtc);
+        return convertStrikeToMetastrike(member, reason, cycleDate, nowUtc, moderator);
       }
       return {
         success: false,
@@ -1062,11 +1027,9 @@ export async function useProactiveMetastrike(
     }
   }
 
-  const newMetastrikesUsed = counts.metastrikes_used + 1;
-
   if (isSupabaseConfigured) {
     const result = await applyNightlyStrike(member, cycleDate, existingLog?.record_type ?? null,
-      'metastrike', reason.trim() || 'Excused Night', nowUtc);
+      'metastrike', reason.trim() || 'Excused Night', nowUtc, moderator);
     // The API distinguishes a proactive pass from a conversion by this response shape.
     return {
       success: result.success, log: result.log, metastrikesUsed: result.metastrikesUsed,
@@ -1074,6 +1037,16 @@ export async function useProactiveMetastrike(
     };
   }
 
+  const counts = await resolveMemberStrikeCounts(member, nowUtc);
+
+  if (counts.metastrikes_used >= 3) {
+    return {
+      success: false,
+      error: 'You have used all 3 Metastrikes for this month. Excuses reset on the 1st of next month.',
+    };
+  }
+
+  const newMetastrikesUsed = counts.metastrikes_used + 1;
   await updateMemberStrikeCounts(
     member.id,
     counts.strikes_used,
@@ -1119,7 +1092,7 @@ export async function convertStrikeToMetastrike(
   reason: string,
   sleepCycleDate?: string,
   nowUtc = DateTime.utc(),
-  isModeratorOverride = false
+  moderator?: string
 ): Promise<{
   success: boolean;
   log?: NightlyStrikeLog;
@@ -1128,22 +1101,13 @@ export async function convertStrikeToMetastrike(
   reason?: string;
   error?: string;
 }> {
-  const counts = await resolveMemberStrikeCounts(member, nowUtc);
-
-  if (counts.metastrikes_used >= 3) {
-    return {
-      success: false,
-      error: 'You have used all 3 Metastrikes for this month. No passes remaining.',
-    };
-  }
-
   let cycleDate = sleepCycleDate;
   if (!cycleDate) {
     const recent = await getRecentEligibleStrikeLog(member.id, nowUtc, member);
     cycleDate = recent ? recent.sleep_cycle_date : getSleepCycleDate(member, nowUtc);
   }
 
-  const existingLog = await getNightlyStrikeLog(member.id, cycleDate);
+  const existingLog = await getNightlyStrikeLog(member.id, cycleDate, { requireFresh: isSupabaseConfigured });
 
   if (!existingLog || existingLog.record_type !== 'strike') {
     return {
@@ -1153,7 +1117,7 @@ export async function convertStrikeToMetastrike(
   }
 
   // Verify eligibility window (pre-next-bedtime replacement)
-  if (!isModeratorOverride && !isStrikeEligibleForReplacement(member, existingLog, nowUtc, isModeratorOverride)) {
+  if (!isStrikeEligibleForReplacement(member, existingLog, nowUtc, Boolean(moderator))) {
     return {
       success: false,
       error: 'The window to convert this strike to a Metastrike has expired (next scheduled bedtime has arrived).',
@@ -1162,7 +1126,16 @@ export async function convertStrikeToMetastrike(
 
   if (isSupabaseConfigured) {
     return applyNightlyStrike(member, cycleDate, 'strike', 'metastrike',
-      reason.trim() || 'Retroactive Conversion', nowUtc);
+      reason.trim() || 'Retroactive Conversion', nowUtc, moderator);
+  }
+
+  const counts = await resolveMemberStrikeCounts(member, nowUtc);
+
+  if (counts.metastrikes_used >= 3) {
+    return {
+      success: false,
+      error: 'You have used all 3 Metastrikes for this month. No passes remaining.',
+    };
   }
 
   const newStrikesUsed = Math.max(0, counts.strikes_used - 1);
@@ -1183,46 +1156,31 @@ export async function convertStrikeToMetastrike(
   return { success: true, log: saved, strikesUsed: newStrikesUsed, metastrikesUsed: newMetastrikesUsed };
 }
 
-/**
- * MODERATOR OVERRIDE OPERATIONS
- */
-/**
- * Moderator action to manually override a member's strikes and metastrikes count.
- *
- * @param memberId - Target member ID
- * @param strikesUsed - New strikes count (0-3)
- * @param metastrikesUsed - New metastrikes count (0-3)
- * @returns Result object with success flag and optional error message
- */
+/** Record moderator corrections through the same transaction as nightly strikes. */
 export async function modAdjustStrikes(
   memberId: string,
-  strikesUsed: number,
-  metastrikesUsed: number
-): Promise<{ success: boolean; error?: string }> {
+  strikes: number | null,
+  passes: number | null,
+  relative: boolean,
+  actor: string
+): Promise<{ success: true; strikesUsed: number; metastrikesUsed: number } | { success: false; error: string }> {
   if (!isSupabaseConfigured) {
-    const counts = await resolveMemberStrikeCounts({ id: memberId } as Member);
-    await updateMemberStrikeCounts(
-      memberId,
-      strikesUsed,
-      metastrikesUsed,
-      counts.strike_cycle_month
-    );
-    return { success: true };
+    const member = getInMemoryMember(memberId) || { id: memberId } as Member;
+    const counts = await resolveMemberStrikeCounts(member);
+    const strikesUsed = relative ? Math.max(0, counts.strikes_used + (strikes ?? 0)) : (strikes ?? counts.strikes_used);
+    const metastrikesUsed = relative
+      ? Math.max(0, Math.min(3, counts.metastrikes_used + (passes ?? 0)))
+      : (passes ?? counts.metastrikes_used);
+    await updateMemberStrikeCounts(memberId, strikesUsed, metastrikesUsed, counts.strike_cycle_month);
+    return { success: true, strikesUsed, metastrikesUsed };
   }
-  try {
-    const { data: member } = await getMemberByIdSafe(memberId);
 
-    if (!member) {
-      return { success: false, error: 'Member not found.' };
-    }
-
-    const counts = await resolveMemberStrikeCounts(member as Member);
-    const result = await updateMemberStrikeCounts(memberId, strikesUsed, metastrikesUsed, counts.strike_cycle_month);
-    return result.success ? { success: true } : { success: false, error: result.error?.message || 'Could not update strike counts.' };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return { success: false, error: msg };
-  }
+  const { data, error } = await supabaseAdmin.rpc('adjust_member_strikes', {
+    p_member_id: memberId, p_strikes: strikes, p_passes: passes, p_relative: relative,
+    p_actor: actor, p_reason: 'Moderator count correction',
+  });
+  if (error || !data) return { success: false, error: error?.message || 'Could not update strike counts.' };
+  return { success: true, strikesUsed: data.strikesUsed, metastrikesUsed: data.metastrikesUsed };
 }
 
 /**
@@ -1234,10 +1192,11 @@ export async function modAdjustStrikes(
  */
 export async function modClearStrikeLog(
   memberId: string,
-  sleepCycleDate: string
+  sleepCycleDate: string,
+  moderator: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const existingLog = await getNightlyStrikeLog(memberId, sleepCycleDate);
+    const existingLog = await getNightlyStrikeLog(memberId, sleepCycleDate, { requireFresh: isSupabaseConfigured });
     if (!existingLog) {
       return { success: true };
     }
@@ -1246,7 +1205,8 @@ export async function modClearStrikeLog(
 
     if (isSupabaseConfigured) {
       if (!rawMember) return { success: false, error: 'Member not found.' };
-      const result = await applyNightlyStrike(rawMember, sleepCycleDate, existingLog.record_type, 'clear', '', DateTime.utc());
+      const result = await applyNightlyStrike(rawMember, sleepCycleDate, existingLog.record_type, 'clear',
+        'Moderator cleared nightly record', DateTime.utc(), moderator);
       if (result.success) memoryStore.logs.delete(getStrikeLogKey(memberId, sleepCycleDate));
       return { success: result.success, error: result.error };
     }

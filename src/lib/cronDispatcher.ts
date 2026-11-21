@@ -927,7 +927,7 @@ export async function executeNotificationDispatcher(options: {
             continue;
           }
           strike = strikeResult.log;
-          issuedCount = strikeResult.strikesUsed;
+          issuedCount = strikeResult.cycleStrikesUsed ?? strikeResult.strikesUsed;
         }
 
         const committedAt = DateTime.fromISO(strike?.updated_at || strike?.created_at || '');

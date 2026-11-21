@@ -607,15 +607,24 @@ export async function POST(request: Request) {
 
     // 10. Adjust Member Strikes & Metastrikes
     if (action === 'adjust_strikes') {
-      const { member_id, strikes_used, metastrikes_used } = body;
+      const { member_id, strikes_used, metastrikes_used, strike_delta, metastrike_delta } = body;
       if (!member_id) {
         return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
       }
 
-      const strikesNum = Math.max(0, Math.min(3, parseInt(String(strikes_used ?? 0), 10)));
-      const metasNum = Math.max(0, Math.min(3, parseInt(String(metastrikes_used ?? 0), 10)));
+      const relative = strike_delta !== undefined || metastrike_delta !== undefined;
+      const strikes = relative ? (strike_delta ?? null) : (strikes_used ?? null);
+      const passes = relative ? (metastrike_delta ?? null) : (metastrikes_used ?? null);
+      const validCount = (value: unknown, min: number, max: number) =>
+        value === null || (typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max);
+      if ((strikes === null && passes === null)
+        || (relative && (strikes_used !== undefined || metastrikes_used !== undefined))
+        || !validCount(strikes, relative ? -1 : 0, relative ? 1 : 2_147_483_647)
+        || !validCount(passes, relative ? -1 : 0, relative ? 1 : 3)) {
+        return NextResponse.json({ error: 'Enter valid strike and Metastrike adjustments.' }, { status: 400 });
+      }
 
-      const result = await modAdjustStrikes(member_id, strikesNum, metasNum);
+      const result = await modAdjustStrikes(member_id, strikes, passes, relative, authResult.moderatorId!);
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
@@ -623,10 +632,10 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message: 'Member strikes and metastrikes updated successfully.',
-        strikes_used: strikesNum,
-        strikes_count: strikesNum,
-        metastrikes_used: metasNum,
-        metastrikes_count: metasNum,
+        strikes_used: result.strikesUsed,
+        strikes_count: result.strikesUsed,
+        metastrikes_used: result.metastrikesUsed,
+        metastrikes_count: result.metastrikesUsed,
       });
     }
 
@@ -652,7 +661,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Could not resolve sleep cycle date' }, { status: 400 });
       }
 
-      const result = await modClearStrikeLog(member_id, cycleDate);
+      const result = await modClearStrikeLog(member_id, cycleDate, authResult.moderatorId!);
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }

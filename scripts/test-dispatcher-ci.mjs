@@ -36,10 +36,46 @@ const serviceKey = localSupabase.SERVICE_ROLE_KEY || localSupabase.SECRET_KEY;
 assert.ok(anonKey && serviceKey, 'Supabase CLI must provide local API keys.');
 assert.equal(new URL(apiUrl).origin, 'http://127.0.0.1:54321', 'Only the disposable CI Data API is supported.');
 
+const psql = ['exec', '-i', container, 'psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres'];
+
 function sql(input) {
-  return execFileSync('docker', [
-    'exec', '-i', container, 'psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'postgres',
-  ], { input, encoding: 'utf8' }).trim();
+  return execFileSync('docker', psql, { input, encoding: 'utf8' }).trim();
+}
+
+function sqlSession(name) {
+  const child = spawn('docker', psql);
+  let output = '';
+  let errors = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { errors += chunk; });
+  const done = new Promise(resolve => {
+    child.on('close', code => resolve({ code, output: output.trim(), errors }));
+  });
+  child.stdin.write(`BEGIN; SET LOCAL application_name = '${name}'; SET LOCAL statement_timeout = '30s';\n`);
+  return { child, done };
+}
+
+async function concurrentSql(first, second) {
+  const writer = sqlSession('zc_ledger_writer');
+  let waiter;
+  try {
+    writer.child.stdin.write(first + ';\n');
+    await waitFor(() => sql(`SELECT 1 FROM pg_stat_activity
+      WHERE application_name = 'zc_ledger_writer' AND state = 'idle in transaction'`), 10_000,
+    () => 'First PostgreSQL session did not reach its transaction barrier');
+    waiter = sqlSession('zc_ledger_waiter');
+    waiter.child.stdin.end(second + '; COMMIT;\n');
+    await waitFor(() => sql(`SELECT 1 FROM pg_stat_activity
+      WHERE application_name = 'zc_ledger_waiter' AND wait_event_type = 'Lock'`), 10_000,
+    () => 'Second PostgreSQL session did not wait on a lock');
+    writer.child.stdin.end('COMMIT;\n');
+    const results = await Promise.all([writer.done, waiter.done]);
+    for (const row of results) assert.equal(row.code, 0, row.errors);
+    return results.map(row => JSON.parse(row.output));
+  } finally {
+    if (writer.child.exitCode === null) writer.child.kill();
+    if (waiter && waiter.child.exitCode === null) waiter.child.kill();
+  }
 }
 
 async function waitFor(check, timeoutMs, failureMessage) {
@@ -129,6 +165,7 @@ sql(readFileSync('supabase/migrations/20261118_sleep_logs_member_uuid.sql', 'utf
 sql(readFileSync('supabase/migrations/20261119_dispatch_accountability.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261120_cron_stage_completion.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261121_push_subscription_rotation.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261122_punishment_strike_ledger.sql', 'utf8'));
 sql(`
   UPDATE public.members SET is_active = false;
   CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -465,6 +502,41 @@ try {
   console.log('Verified legacy push upgrade, sessionless rotation, exact retry and credential revocation.');
 
   console.log('Verified Discord onboarding and returning sessions, both moderator types, schedule cooldown and cancellation, check-in and undo, wake-up, Metastrikes, and push subscription and delivery.');
+
+  // Exercise overlapping transactions in distinct PostgreSQL sessions after the inactive HTTP rehearsal.
+  sql(`SELECT cron.unschedule('zcatchers-dispatch');
+    UPDATE public.punishment_rollout SET activated_at = '2026-11-01T00:00Z';`);
+  const raceMember = name => sql(`INSERT INTO public.members
+    (discord_username, journal_url, bedtime_local, timezone) VALUES ('${name}',
+    'https://discord.com/channels/123/456', '23:00', 'UTC') RETURNING id;`);
+  const automatic = (member, day) => `SELECT public.apply_nightly_strike('${member}', '2026-11-${day}',
+    '2026-11', NULL, 'strike', 'smoke', '2026-11-${day}T23:15Z', '2026-11-01T00:00Z',
+    '2026-11-${day}T23:10Z', '2026-11-${Number(day) + 1}T23:00Z', NULL)`;
+  const dispatchRace = raceMember('Concurrent Dispatch');
+  const [issued, repeated] = await concurrentSql(automatic(dispatchRace, 12), automatic(dispatchRace, 12));
+  assert.equal(issued.cycleStrikesUsed, 1);
+  assert.equal(repeated.reason, 'already_issued');
+  assert.equal(repeated.log.id, issued.log.id);
+
+  const checkInRace = raceMember('Concurrent Check-In');
+  const [, protectedCycle] = await concurrentSql(`INSERT INTO public.notification_logs(member_id, notification_type, local_date)
+    VALUES ('${checkInRace}', 'IN_BED_EARLY', '2026-11-12') RETURNING to_jsonb(id)`, automatic(checkInRace, 12));
+  assert.equal(protectedCycle.reason, 'already_checked_in');
+  assert.equal(sql(`SELECT count(*) FROM public.nightly_strike_logs WHERE target_member_id = '${checkInRace}'`), '0');
+
+  const seedRace = raceMember('Concurrent November Seed');
+  sql(`INSERT INTO public.nightly_strike_logs(target_member_id, sleep_cycle_date, record_type, created_at, updated_at)
+    VALUES ('${seedRace}', '2026-11-10', 'strike', '2026-11-10T23:10Z', '2026-11-10T23:10Z'),
+      ('${seedRace}', '2026-11-11', 'strike', '2026-11-11T23:10Z', '2026-11-11T23:10Z');`);
+  const seed = `SELECT public.seed_november_punishments('${seedRace}')`;
+  const [, threshold] = await concurrentSql(seed, automatic(seedRace, 12));
+  assert.equal(threshold.cycleStrikesUsed, 3);
+  await concurrentSql(seed, seed);
+  assert.equal(sql(`SELECT count(*) FROM public.punishments WHERE member_id = '${seedRace}'`), '1');
+  assert.equal(sql(`SELECT count(*) FROM public.punishment_actions JOIN public.punishments ON punishment_id = punishments.id
+    WHERE member_id = '${seedRace}' AND action = 'earned'`), '1');
+  console.log('Verified concurrent dispatch with another worker, durable check-in, and two November seed sessions.');
+
 } finally {
   app?.kill();
   await new Promise(resolve => relay.close(resolve));

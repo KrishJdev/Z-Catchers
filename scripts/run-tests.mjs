@@ -57,6 +57,7 @@ const UNIT_TESTS = [
   'test-cron-dispatcher.mjs',
   'test-dispatch-recovery.mjs',
   'test-nightly-strike-transaction.mjs',
+  'test-punishment-strike-ledger.mjs',
   'test-state-sync-audit.mjs',
 ];
 

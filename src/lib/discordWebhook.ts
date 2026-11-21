@@ -309,13 +309,13 @@ export async function sendStrikeDiscordWebhook(
 
   const embed: DiscordEmbed = {
     title: `⚡ Bedtime Strike Issued: ${member.discord_username}`,
-    description: `A bedtime strike has been recorded for ${mention}. **${strikesUsed}/3 strikes** used for this month.${reason ? ` Reason: ${reason}` : ''} 🦊⚡`,
+    description: `A bedtime strike has been recorded for ${mention}. **${strikesUsed} strikes** used for this month.${reason ? ` Reason: ${reason}` : ''} 🦊⚡`,
     url: member.journal_url,
     color: DISCORD_EMBED_COLORS.CORAL_NAG,
     fields: [
       {
         name: '⚡ Strikes Status',
-        value: `${strikesUsed} of 3 maximum monthly strikes used`,
+        value: `${strikesUsed} this month`,
         inline: true,
       },
       {

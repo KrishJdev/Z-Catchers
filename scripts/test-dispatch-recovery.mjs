@@ -41,9 +41,11 @@ let nagDeleteAttempts = 0;
 let nextId = 0;
 let claimNag;
 let applyStrike;
+let refreshProjection = id => ({ data: null, error: { message: 'Unexpected refresh for ' + id } });
 supabaseAdmin.rpc = async (name, params) => {
   if (name === 'claim_manual_nag') return claimNag(params);
   if (name === 'apply_nightly_strike') return applyStrike(params);
+  if (name === 'refresh_member_strike_projection') return refreshProjection(params.p_member_id);
   const lease = tables.cron_locks.find(row => row.lock_key === params.p_key);
   if (name === 'renew_cron_lease') {
     if (lease?.locked_at !== params.p_previous_locked_at || lease.expires_at > params.p_locked_at || lease.metadata.completed) {
@@ -360,20 +362,17 @@ assert.equal(afterPromotion.evaluatedMembersCount, 2);
 assert.deepEqual(promotionSends, ['concurrent', 'device-a']);
 
 // A competing monthly rollover returns the persisted counts. A DB error surfaces separately.
-memberUpdate = (member, fields) => {
-  if (fields.strike_cycle_month !== '2026-12') return;
-  Object.assign(member, { strike_cycle_month: '2026-12', strikes_used: 2, metastrikes_used: 1 });
-  return { data: [], error: null };
-};
+refreshProjection = () => ({ data: { strikesUsed: 2, metastrikesUsed: 1, month: '2026-12', reset: false }, error: null });
 const november = { ...sleeper };
 const december = DateTime.fromISO('2026-12-01T00:02Z');
 assert.deepEqual(await resolveMemberStrikeCounts(november, december), {
   strikes_used: 2, metastrikes_used: 1, strike_cycle_month: '2026-12', reset: false,
 });
-memberUpdate = () => ({ data: null, error: { message: 'rollover database unavailable' } });
+refreshProjection = () => ({ data: null, error: { message: 'rollover database unavailable' } });
 Object.assign(sleeper, november);
 await assert.rejects(resolveMemberStrikeCounts(november, december), /rollover database unavailable/);
 memberUpdate = undefined;
+refreshProjection = () => ({ data: { strikesUsed: 0, metastrikesUsed: 0, month: '2026-12', reset: true }, error: null });
 assert.deepEqual(await resolveMemberStrikeCounts(november, december), {
   strikes_used: 0, metastrikes_used: 0, strike_cycle_month: '2026-12', reset: true,
 });
@@ -430,7 +429,7 @@ try {
   process.env.DISCORD_COMMUNITY_WEBHOOK_URL = 'disabled';
 }
 assert.equal(webhookPayloads.length, 1);
-assert.match(webhookPayloads[0].embeds[0].description, /2\/3 strikes/);
+assert.match(webhookPayloads[0].embeds[0].description, /2 strikes/);
 assert.equal(strikeWrites, 1);
 assert.deepEqual(alertAttempts, ['device-a', 'device-b', 'device-b']);
 assert.equal(tables.cron_locks.find(row => row.lock_key === strikeKey).metadata.alert_outcome, 'complete');
@@ -578,7 +577,10 @@ tables.nightly_strike_logs = tables.members.map(member => ({
 }));
 tables.cron_locks = [];
 clearAllCronLocks();
-memberUpdate = member => member.id === primary.id ? { data: null, error: { message: 'rollover failed' } } : undefined;
+refreshProjection = id => {
+  assert.equal(id, primary.id);
+  return { data: null, error: { message: 'rollover failed' } };
+};
 Settings.now = () => Date.parse('2026-12-01T23:15Z');
 const roster = await getRoster(new Request('http://localhost/api/members'));
 assert.equal(roster.status, 200);
