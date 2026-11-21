@@ -504,8 +504,7 @@ try {
   console.log('Verified Discord onboarding and returning sessions, both moderator types, schedule cooldown and cancellation, check-in and undo, wake-up, Metastrikes, and push subscription and delivery.');
 
   // Exercise overlapping transactions in distinct PostgreSQL sessions after the inactive HTTP rehearsal.
-  sql(`SELECT cron.unschedule('zcatchers-dispatch');
-    UPDATE public.punishment_rollout SET activated_at = '2026-11-01T00:00Z';`);
+  sql("UPDATE public.punishment_rollout SET activated_at = '2026-11-01T00:00Z'");
   const raceMember = name => sql(`INSERT INTO public.members
     (discord_username, journal_url, bedtime_local, timezone) VALUES ('${name}',
     'https://discord.com/channels/123/456', '23:00', 'UTC') RETURNING id;`);
