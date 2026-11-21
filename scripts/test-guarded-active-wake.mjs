@@ -6,7 +6,8 @@ import { hasRosterSleepShield } from '../src/lib/sleepEngine.ts';
 
 const schema = readFileSync('supabase/schema.sql', 'utf8').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
 const migration = readFileSync('supabase/migrations/20261124_guard_active_wake.sql', 'utf8');
-assert.ok(schema.endsWith(migration), 'The fresh-install schema mirrors the active wake migration');
+const migrationStart = schema.indexOf(migration);
+assert.ok(migrationStart > 0, 'The fresh-install schema mirrors the active wake migration');
 
 const db = new PGlite();
 try {
@@ -14,7 +15,7 @@ try {
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
     CREATE SCHEMA auth; CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS 'SELECT current_user::text';
   `);
-  await db.exec(schema.slice(0, -migration.length));
+  await db.exec(schema.slice(0, migrationStart));
   const date = '2026-11-20';
   const checkedInAt = '2026-11-20T23:00:00Z';
   const changedAt = '2026-11-20T23:30:00Z';

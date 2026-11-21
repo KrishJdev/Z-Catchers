@@ -204,6 +204,7 @@ sql(ledgerMigration);
 assert.equal(sql('SELECT count(*) FROM public.punishments'), '0');
 sql(readFileSync('supabase/migrations/20261123_punishment_task_apis.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261124_guard_active_wake.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261125_verify_punishment_cutover.sql', 'utf8'));
 const novemberPreview = await verifyNovemberPreview(sql, novemberMembers);
 sql(`
   CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -362,6 +363,9 @@ try {
   `);
   sql(readFileSync('supabase/schedule_dispatch.sql', 'utf8'));
   assert.equal(sql("SELECT schedule FROM cron.job WHERE jobname = 'zcatchers-dispatch' AND active"), '* * * * *');
+  for (const id of sql('SELECT id FROM public.members ORDER BY id').split('\n')) {
+    if (!Object.values(novemberMembers).includes(id)) sql(`SELECT public.seed_november_punishments('${id}')`);
+  }
   const firstSeed = await seedNovemberFixtures(sql, novemberPreview);
   await waitFor(() => scheduledRuns.length >= 1, 90_000, () => 'Expected a scheduled dispatch during the November cutover.');
   assert.deepEqual(await seedNovemberFixtures(sql, novemberPreview), firstSeed);
@@ -618,7 +622,14 @@ try {
   await getTaskData(memberTasks, regularCookie, 503);
   assert.equal((await getTaskData('/api/members', regularCookie)).members
     .find(member => member.id === regularId).open_punishment_count, null);
-  sql("UPDATE public.punishment_rollout SET screens_visible = true");
+  const westThreshold = firstSeed.find(item => item.member_id === novemberMembers['rollover-west']);
+  sql(`UPDATE public.punishments SET assignable_at = assignable_at + interval '1 hour' WHERE id = '${westThreshold.id}'`);
+  assert.equal(sql('SELECT issue FROM public.punishment_ledger_issues()'), 'unassigned_task_dates_differ');
+  const [, openedAt] = await concurrentSql(`SELECT public.seed_november_punishments('${westThreshold.member_id}')`,
+    'SELECT to_jsonb(public.show_verified_november_punishments())');
+  assert.equal(DateTime.fromISO(openedAt).toMillis(), DateTime.fromISO(activation).toMillis());
+  assert.equal(sql('SELECT count(*) FROM public.punishment_ledger_issues()'), '0');
+  console.log('Verified that the visibility check waits for a concurrent seed and reads its committed repair.');
 
   const dbModCookie = moderatorSessions.get('database-mod');
   const discordModCookie = moderatorSessions.get('discord-mod');
@@ -712,7 +723,9 @@ try {
   const whileHidden = JSON.parse(sql(automatic(raceMember('Hidden Writer'), 17)));
   assert.equal(whileHidden.cycleStrikesUsed, 1);
   assert.equal(sql(`SELECT status FROM public.punishments WHERE id = '${taskId}'`), 'completed');
-  console.log('Verified visibility rollback preserves completed history and keeps the new writer active.');
+  sql('SELECT public.show_verified_november_punishments()');
+  assert.equal((await getTaskData(memberTasks, taskMemberCookie)).history[0].id, taskId);
+  console.log('Verified visibility rollback and reopening preserve completed history and keep the new writer active.');
 
 } finally {
   app?.kill();

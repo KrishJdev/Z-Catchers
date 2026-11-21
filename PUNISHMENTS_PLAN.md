@@ -71,7 +71,7 @@ Complete each phase’s exit checks before starting the next phase. Keep backend
 
 ### Feature branches and pull requests
 
-The owner approved one feature branch and one PR per phase for this rollout. Start Phase 0 from the latest `origin/dev`. For each later phase, wait for the previous phase PR to merge, update `origin/dev`, and create a new branch from that merged state. Open every phase PR against `dev`. Include only that phase’s changes and report its exit-check results in the PR.
+The owner approved one PR per phase for this rollout. Start from the latest `origin/dev` and wait for the previous phase PR to merge before starting the next one. Use the branch listed below for each phase. Open every phase PR against `dev`. Include only that phase’s changes and report its exit-check results in the PR.
 
 | Phase | Feature branch |
 | --- | --- |
@@ -81,7 +81,7 @@ The owner approved one feature branch and one PR per phase for this rollout. Sta
 | 3 · Member and moderator APIs | `codex/punishments-3-task-apis` |
 | 4 · Mobile and desktop screens | `codex/punishments-4-screens` |
 | 5 · Dev rehearsal | `codex/punishments-5-dev-rehearsal` |
-| 6 · Production cutover | `codex/punishments-6-release` |
+| 6 · Production cutover | `krish` |
 
 Use the Phase 5 PR for rehearsal changes and verify the merged `dev` build before starting Phase 6. Use the Phase 6 PR for the release checklist and any cutover tooling. Once it merges to `dev`, open the separate `dev` → `main` release PR and follow the activation steps below.
 
@@ -147,7 +147,7 @@ Use the [November cutover checklist](PUNISHMENTS_RELEASE_CHECKLIST.md) for the r
 ### Phase 6 · Release, verify, and recover
 
 1. Confirm the production database and deployment target, required prior migrations, and a restorable backup. Apply the new migration through the supported Supabase path. Deploy the tested `dev` changes through `main` with the punishment workflow inactive and its screens hidden. Confirm the existing sign-in and cron paths still work and run the read-only November preview against production.
-2. Record one activation timestamp and enable the new strike writer. Run the seed using verified November entries and the same per-member locks as dispatch. Verify the result against the preview and account for writes after the preview. Open the member and moderator screens once the seed and count checks pass.
+2. Record one activation timestamp and enable the new strike writer. Run the seed using verified November entries and the same per-member locks as dispatch. Verify the result against the preview and account for writes after the preview. Open the screens with the operator-only visibility function from `20261125_verify_punishment_cutover.sql`. The function checks task thresholds, dates, and earned actions against the verified ledger before committing visibility. Follow the [November cutover checklist](PUNISHMENTS_RELEASE_CHECKLIST.md) for the migration, seed, and verification commands.
 3. Check several consecutive authenticated dispatch responses, compare strike and punishment counts with the ledger, and verify the member and moderator screens on a controlled account. Monitor dispatch failures, duplicate attempts, and assignments during the first live cycles. Record the release commit, migration, activation time, seed summary, and verification in `HANDOFF.md`.
 
 **Exit check.** Production seed and live threshold counts agree with the ledger. Discord login, member and moderator screens, and several consecutive dispatch runs pass.
