@@ -11,6 +11,7 @@ function DiscordIcon({ className = 'w-4 h-4' }: { className?: string }) {
 
 import { ModeratorPunishmentQueue } from '@/components/ModeratorPunishmentQueue';
 import { ResponsiveDialog } from '@/components/ResponsiveDialog';
+import { RosterRoleAction, type ModeratorRoleChange } from '@/components/RosterRoleAction';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FoxMascot } from './FoxMascot';
 import { Member } from '@/lib/db';
@@ -101,6 +102,8 @@ export function ModDrawer({
   const [modMembers, setModMembers] = useState<Member[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [roleChangeMemberId, setRoleChangeMemberId] = useState<string | null>(null);
+  const [savingRoleChange, setSavingRoleChange] = useState(false);
 
   // Editing member state
   const [editingMember, setEditingMember] = useState<Member | null>(null);
@@ -141,15 +144,15 @@ export function ModDrawer({
     try {
       const res = await fetch('/api/mod', { cache: 'no-store' });
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
-      if (!res.ok) setErrorMessage('Could not load the moderation roster.');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.members) {
-          setModMembers(data.members);
-        }
-      }
+      if (!res.ok) throw new Error('Could not load the moderation roster.');
+      const data = await res.json();
+      setRoleChangeMemberId(null);
+      setModMembers(data.members);
     } catch (err) {
       console.error('Failed to load moderator roster:', err);
+      setErrorMessage('Could not load the moderation roster.');
+      setRoleChangeMemberId(null);
+      setModMembers([]);
     } finally {
       setLoadingMembers(false);
     }
@@ -180,6 +183,44 @@ export function ModDrawer({
       setEditingMember(null);
     }
   }, [isOpen, isModUser, fetchModRoster]);
+
+  useEffect(() => {
+    if (!isOpen || !isOwner || activeTab !== 'roster') setRoleChangeMemberId(null);
+    if (!isOwner && activeTab === 'webhook') setActiveTab('pending');
+    setEditingMember(member => member && canManage(member) ? member : null);
+  }, [isOpen, isOwner, activeTab, canManage]);
+
+  const handleModeratorRoleChange = async (change: ModeratorRoleChange, member: Member) => {
+    setSavingRoleChange(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const res = await fetch('/api/mod', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_moderator', ...change }),
+      });
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      const data = await res.json();
+      if (!res.ok) {
+        if ([401, 403, 404, 409].includes(res.status)) await fetchModRoster();
+        setErrorMessage(data.error || 'Could not change moderator access.');
+        return;
+      }
+
+      setSuccessMessage(change.new_role === 'moderator'
+        ? `${member.discord_username} is now a moderator.`
+        : `Removed moderator access for ${member.discord_username}.`);
+      await fetchModRoster();
+      await onRosterChanged();
+    } catch {
+      setErrorMessage('Could not confirm the role change. Refresh the roster before trying again.');
+      setRoleChangeMemberId(null);
+      await fetchModRoster();
+    } finally {
+      setSavingRoleChange(false);
+    }
+  };
 
   // Webhook action handlers
   const handleSendTestWebhook = async () => {
@@ -687,15 +728,12 @@ export function ModDrawer({
             <div>
               <div className="flex items-center gap-2">
                 <h2 id="mod-panel-title" className="text-base font-bold text-cream-primary sm:text-lg">
-                  Moderator Den Controls
+                  Mod Panel
                 </h2>
                 <span className="rounded-md bg-status-coral/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-status-coral">
                   {isOwner ? 'Owner' : 'Moderator'}
                 </span>
               </div>
-              <p className="text-xs text-cream-muted">
-                Manage the roster, pending schedules, and Discord notifications
-              </p>
             </div>
           </div>
 
@@ -714,14 +752,14 @@ export function ModDrawer({
 
         {/* Status Alerts */}
         {errorMessage && (
-          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral">
+          <div role="alert" className="mt-4 flex items-start gap-2.5 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <p className="flex-1">{errorMessage}</p>
           </div>
         )}
 
         {successMessage && (
-          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-status-sage/40 bg-status-sage/10 p-3 text-xs text-status-sage">
+          <div role="status" className="mt-4 flex items-start gap-2.5 rounded-xl border border-status-sage/40 bg-status-sage/10 p-3 text-xs text-status-sage">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             <p className="flex-1">{successMessage}</p>
           </div>
@@ -1339,13 +1377,14 @@ export function ModDrawer({
 
                 {/* Search Bar */}
                 <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-cream-muted" />
+                  <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-cream-muted" aria-hidden="true" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    aria-label="Search roster"
                     placeholder="Search by username, handle, or timezone..."
-                    className="w-full rounded-xl border border-night-border bg-night-bg pl-9 pr-4 py-2 text-xs text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
+                    className="min-h-[44px] w-full rounded-xl border border-night-border bg-night-bg pl-9 pr-4 py-2 text-xs text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
                   />
                 </div>
 
@@ -1370,9 +1409,9 @@ export function ModDrawer({
                             <span className="font-semibold text-cream-primary text-sm">
                               {member.discord_username}
                             </span>
-                            {member.role === 'moderator' && (
+                            {member.role !== 'member' && (
                               <span className="rounded bg-status-amber/20 px-1.5 py-0.5 text-[9px] font-bold text-status-amber">
-                                MOD
+                                {member.role === 'owner' ? 'Owner' : 'Moderator'}
                               </span>
                             )}
                             <span
@@ -1400,6 +1439,15 @@ export function ModDrawer({
                               {(member.discord_id ? 'Linked Discord' : 'Discord not linked')}
                             </span>
                           </div>
+
+                          <RosterRoleAction
+                            member={member}
+                            isOwner={isOwner && canManage(member)}
+                            confirming={roleChangeMemberId === member.id}
+                            busy={savingRoleChange}
+                            onToggle={() => setRoleChangeMemberId(selected => selected === member.id ? null : member.id)}
+                            onConfirm={change => void handleModeratorRoleChange(change, member)}
+                          />
 
                           {/* Mod Accountability Row: Adjust Strikes & Metastrikes */}
                           <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl border border-night-border/70 bg-night-bg/50 px-2.5 py-1.5 text-[11px]">
