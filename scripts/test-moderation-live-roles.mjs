@@ -37,6 +37,7 @@ process.env.MOD_SECRET_PASSCODE = 'retired-passcode';
 process.env.MOD_DISCORD_IDS = member.discord_id;
 
 const { supabaseAdmin } = await import('../src/lib/db.ts');
+const { getScheduleCooldownEffectiveAt, Settings } = await import('../src/lib/sleepEngine.ts');
 const { createSessionToken } = await import('../src/lib/auth.ts');
 const { pendingScheduleSnapshot } = await import('../src/lib/pendingSchedule.ts');
 const { GET: authMe } = await import('../src/app/api/auth/me/route.ts');
@@ -54,7 +55,8 @@ const parameters = {
   moderate_roster_member: ['p_actor_id', 'p_actor_discord_id', 'p_target_id', 'p_action',
     'p_updates', 'p_expected_updated_at', 'p_expected_pending'],
   moderate_sleep: ['p_actor_id', 'p_actor_discord_id', 'p_target_id', 'p_action', 'p_cycle',
-    'p_now', 'p_expected_updated_at', 'p_entry', 'p_guarded', 'p_expected_in_bed_at'],
+    'p_now', 'p_expected_updated_at', 'p_entry', 'p_guarded', 'p_expected_in_bed_at', 'p_expected_sleep_updated_at'],
+  cancel_own_sleep_check_in: ['p_member_id', 'p_discord_id', 'p_cycle', 'p_clear_pending', 'p_expected_updated_at'],
   moderate_strike_counts: ['p_actor_id', 'p_actor_discord_id', 'p_member_id', 'p_strikes', 'p_passes', 'p_relative'],
   moderate_nightly_strike: ['p_actor_id', 'p_actor_discord_id', 'p_member_id', 'p_cycle', 'p_month',
     'p_previous_type', 'p_type', 'p_reason', 'p_now', 'p_month_start', 'p_strike_cutoff', 'p_replacement_until',
@@ -141,6 +143,7 @@ async function expect(handler, status, token, body, headers) {
   return data;
 }
 
+const realNow = Settings.now;
 try {
   const edit = { action: 'edit_member', member_id: member.id, discord_username: 'Edited' };
   const retired = process.env.MOD_SECRET_PASSCODE;
@@ -148,6 +151,8 @@ try {
   await expect(modRoute, 401, session(mod, member.discord_id), edit);
   await expect(modRoute, 403, memberSession, edit);
   await expect(modRoute, 403, modSession, edit, { Origin: 'https://other.example' });
+  await expect(modRoute, 403, modSession, edit, { Host: '[abc]' });
+  await expect(webhookPost, 403, ownerSession, { action: 'test' }, { Host: '[abc]' });
   await expect(modRoute, 400, modSession, { action: 'verify' });
   await expect(modRoute, 400, ownerSession, { ...edit, role: 'owner' });
   await expect(modRoute, 400, ownerSession, { ...edit, is_moderator: true });
@@ -166,6 +171,11 @@ try {
   await expect(modRoute, 503, modSession, edit);
   await expect(authMe, 503, modSession);
   readFailure = false;
+
+  const beforeDst = DateTime.fromISO('2026-03-07T12:00', { zone: 'America/New_York' });
+  const afterCooldown = getScheduleCooldownEffectiveAt(beforeDst);
+  assert.equal(afterCooldown.diff(beforeDst, 'hours').hours, 48);
+  assert.equal(afterCooldown.hour, 13);
 
   const editSelf = (row, bedtime) => ({ member_id: row.id, bedtime_local: bedtime, mod_passcode: retired });
   for (const row of [member, mod, owner]) {
@@ -195,7 +205,28 @@ try {
   assert.equal(applied.pending_effective_at, null);
   await db.query("UPDATE public.members SET role = 'member' WHERE id = $1", [member.id]);
 
-  await expect(modRoute, 200, modSession, { ...edit, action: 'edit_schedule', bedtime_local: '22:10' });
+  const legacyWeekly = { ...applied.weekly_schedule,
+    tue: { bedtime: '21:45', wake_time: '08:00' },
+    fri: { bedtime: '00:15', wake_time: '08:30' },
+  };
+  await db.query(`UPDATE public.members SET weekly_schedule = $2, weekend_bedtime_local = '00:15',
+    pending_bedtime_local = '22:05', pending_weekly_schedule = NULL, pending_effective_at = '2027-01-01T12:00Z'
+    WHERE id = $1`, [member.id, legacyWeekly]);
+  const legacy = await getMember(member.id);
+  const approvedLegacy = await expect(modRoute, 200, modSession, {
+    ...approval, expected_pending: pendingScheduleSnapshot(JSON.parse(JSON.stringify(legacy))),
+  });
+  assert.equal(approvedLegacy.member.weekly_schedule.tue.bedtime, '22:05');
+  assert.equal(approvedLegacy.member.weekly_schedule.tue.wake_time, '08:00');
+  assert.deepEqual(approvedLegacy.member.weekly_schedule.fri, legacyWeekly.fri);
+  assert.equal(approvedLegacy.member.weekend_bedtime_local, '00:15');
+
+  const scheduleEdit = { ...edit, action: 'edit_schedule', bedtime_local: '22:10' };
+  const expected_updated_at = approvedLegacy.member.updated_at;
+  await expect(modRoute, 400, modSession, scheduleEdit);
+  await expect(modRoute, 400, modSession, { ...scheduleEdit, expected_updated_at, bedtime_local: '07:00' });
+  await expect(modRoute, 200, modSession, { ...scheduleEdit, expected_updated_at });
+  await expect(modRoute, 409, modSession, { ...scheduleEdit, expected_updated_at, bedtime_local: '21:20' });
   assert.equal((await getMember(member.id)).bedtime_local, '22:10');
   await expect(modRoute, 200, ownerSession, { action: 'toggle_active', member_id: peer.id, is_active: false });
   await expect(modRoute, 401, session(peer), edit);
@@ -211,13 +242,53 @@ try {
     await expect(handler, 403, modSession, body);
   }
   await expect(cancelPending, 200, ownerSession, { member_id: peer.id, action: 'schedule' });
+  const sleepTestNow = DateTime.fromISO('2026-11-24T23:40Z').toMillis();
+  Settings.now = () => sleepTestNow;
   const checkIn = await expect(inBed, 200, modSession, { memberId: member.id, action: 'check_in' });
   assert.equal(checkIn.is_in_bed, true);
   const { rows: [sleep] } = await db.query('SELECT * FROM public.sleep_logs WHERE member_id = $1', [member.id]);
   const wake = await expect(wakeUp, 200, modSession, { memberId: member.id, expectedInBedAt: sleep.in_bed_at.toISOString() });
   assert.equal(wake.isDurable, true);
-  await expect(inBed, 200, modSession, { memberId: member.id, action: 'cancel' });
+  const staffCancelled = await expect(inBed, 200, modSession, { memberId: member.id, action: 'cancel' });
+  assert.equal(staffCancelled.local_date, wake.sleep_log.cycle_date, JSON.stringify({
+    checkIn: checkIn.local_date, wake: wake.sleep_log.cycle_date, cancelled: staffCancelled.local_date,
+  }));
   assert.equal((await db.query('SELECT count(*)::int AS count FROM public.sleep_logs WHERE member_id = $1', [member.id])).rows[0].count, 0);
+  // A receipt and history change without a members.updated_at change must still reject the stale entry.
+  await expect(inBed, 200, modSession, { memberId: member.id, action: 'check_in' });
+  beforeRpc = async () => {
+    await db.query('DELETE FROM public.notification_logs WHERE member_id = $1', [member.id]);
+    await db.query('DELETE FROM public.sleep_logs WHERE member_id = $1', [member.id]);
+  };
+  await expect(wakeUp, 409, modSession, { memberId: member.id });
+  assert.equal((await db.query('SELECT count(*)::int AS count FROM public.sleep_logs WHERE member_id = $1', [member.id])).rows[0].count, 0);
+
+  const unguarded = await expect(wakeUp, 200, modSession, { memberId: member.id });
+  assert.equal(unguarded.sleep_log.in_bed_at, null);
+  await expect(inBed, 200, memberSession, { memberId: member.id, action: 'cancel' });
+
+  const queued = await expect(updateSchedule, 200, memberSession, editSelf(member, '22:35'));
+  await expect(inBed, 200, modSession, { memberId: member.id, action: 'check_in' });
+  // A failure in the final member update rolls back both receipt and history deletes.
+  await db.exec(`ALTER TABLE public.members ADD CONSTRAINT test_cancel_rollback
+    CHECK (id <> '${member.id}' OR last_notified_stage IS NOT NULL) NOT VALID`);
+  await expect(inBed, 500, memberSession, { memberId: member.id, action: 'cancel' });
+  assert.equal((await getMember(member.id)).last_notified_stage, 'IN_BED_EARLY');
+  const countCycleRows = async table => (await db.query(
+    `SELECT count(*)::int AS count FROM public.${table} WHERE member_id = $1`, [member.id])).rows[0].count;
+  assert.equal(await countCycleRows('sleep_logs'), 1);
+  assert.equal(await countCycleRows('notification_logs'), 1);
+  await db.exec('ALTER TABLE public.members DROP CONSTRAINT test_cancel_rollback');
+
+  await expect(inBed, 200, memberSession, { memberId: member.id, action: 'cancel' });
+  assert.equal((await getMember(member.id)).pending_bedtime_local, queued.member.pending_bedtime_local);
+  await expect(inBed, 200, modSession, { memberId: member.id, action: 'check_in' });
+  const cancelledSleep = await expect(cancelPending, 200, memberSession, { member_id: member.id, action: 'in_bed' });
+  assert.equal(cancelledSleep.member.pending_effective_at, null);
+  assert.equal(cancelledSleep.is_in_bed, false);
+  assert.equal(await countCycleRows('sleep_logs'), 0);
+  assert.equal(await countCycleRows('notification_logs'), 0);
+
   const pass = await expect(metastrike, 200, modSession, { member_id: member.id, reason: 'Verified absence' });
   assert.equal(pass.log.record_type, 'metastrike');
   const clear = { action: 'clear_strike_log', member_id: member.id, sleep_cycle_date: pass.sleep_cycle_date };
@@ -239,15 +310,21 @@ try {
   const { rows: audit } = await db.query('SELECT actor_id, target_id, action FROM public.moderation_actions ORDER BY id');
   assert.deepEqual(audit.filter(row => row.target_id === member.id), [
     { actor_id: owner.id, target_id: member.id, action: 'approve_cooldown' },
+    { actor_id: mod.id, target_id: member.id, action: 'approve_cooldown' },
     { actor_id: mod.id, target_id: member.id, action: 'edit_schedule' },
     { actor_id: mod.id, target_id: member.id, action: 'check_in' },
     { actor_id: mod.id, target_id: member.id, action: 'log_wake' },
     { actor_id: mod.id, target_id: member.id, action: 'cancel_checkin' },
+    { actor_id: mod.id, target_id: member.id, action: 'check_in' },
+    { actor_id: mod.id, target_id: member.id, action: 'log_wake' },
+    { actor_id: mod.id, target_id: member.id, action: 'check_in' },
+    { actor_id: mod.id, target_id: member.id, action: 'check_in' },
   ]);
   await db.exec('SET ROLE anon');
   await assert.rejects(db.query("SELECT public.moderate_roster_member($1,$2,$3,'cancel_cooldown')",
     [owner.id, owner.discord_id, member.id]), { code: '42501' });
 } finally {
+  Settings.now = realNow;
   await db.close();
 }
 console.log('Live staff roles, cooldown approval races, transactional corrections and staff audit passed.');

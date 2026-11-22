@@ -357,7 +357,9 @@ export async function POST(request: Request) {
       const { data, error } = await supabaseAdmin.rpc('moderate_sleep', {
         ...staffIdentity(staff), p_target_id: member.id, p_action: 'log_wake', p_cycle: targetCycleDate,
         p_now: nowUtc.toISO(), p_expected_updated_at: member.updated_at, p_entry: sleepEntry,
-        p_guarded: guardedWake, p_expected_in_bed_at: expectedCheckIn?.toISO() ?? null,
+        p_guarded: guardedWake,
+        p_expected_in_bed_at: guardedWake ? expectedCheckIn?.toISO() ?? null : existingInBedAt,
+        p_expected_sleep_updated_at: existingLog?.updated_at ?? null,
       });
       if (error || !data?.member || !data?.sleep_log) return staffWriteError(error);
       updatedSleepLog = data.sleep_log;

@@ -774,16 +774,52 @@ try {
   assert.equal(promotedTarget, 'moderator');
   assert.equal(protectedEdit.forbidden, true);
 
-  const replacePending = `UPDATE public.members SET pending_bedtime_local = '22:00',
-    pending_effective_at = '2026-11-25T09:00Z' WHERE id = '${regularId}' RETURNING to_jsonb(pending_bedtime_local)`;
+  sql(`UPDATE public.members SET pending_bedtime_local = '21:30', pending_wake_time_local = '07:30',
+    pending_timezone = 'UTC', pending_effective_at = '2026-11-25T09:00Z' WHERE id = '${regularId}'`);
+  const reviewedPending = sql(`SELECT jsonb_build_object(
+    'pending_effective_at', pending_effective_at, 'pending_bedtime_local', pending_bedtime_local,
+    'pending_wake_time_local', pending_wake_time_local, 'pending_timezone', pending_timezone,
+    'pending_weekend_bedtime_local', pending_weekend_bedtime_local, 'pending_weekend_wake_time_local', pending_weekend_wake_time_local,
+    'pending_weekly_schedule', pending_weekly_schedule)
+    FROM public.members WHERE id = '${regularId}'`);
+  const replacePending = `UPDATE public.members SET pending_bedtime_local = '22:00'
+    WHERE id = '${regularId}' RETURNING to_jsonb(pending_bedtime_local)`;
   const tryStaleApproval = `CREATE FUNCTION pg_temp.try_stale_approval() RETURNS jsonb LANGUAGE plpgsql AS $$
     BEGIN RETURN public.moderate_roster_member('${modId}', '${discordAccounts['database-mod']}', '${regularId}',
-      'approve_cooldown', p_expected_pending => '{"pending_effective_at":"2026-11-25T09:00Z","pending_bedtime_local":"21:30"}');
+      'approve_cooldown', p_expected_pending => '${reviewedPending}');
     EXCEPTION WHEN SQLSTATE 'PT409' THEN RETURN jsonb_build_object('conflict', true); END; $$;
     SELECT pg_temp.try_stale_approval()`;
   const [replacement, staleApproval] = await concurrentSql(replacePending, tryStaleApproval);
   assert.equal(replacement, '22:00');
   assert.equal(staleApproval.conflict, true);
+  assert.equal(sql(`SELECT pending_bedtime_local FROM public.members WHERE id = '${regularId}'`), '22:00');
+
+  const sleepCancellationRace = raceMember('Concurrent Sleep Cancellation');
+  const sleeperDiscordId = '100000000000000998';
+  const sleepVersion = '2026-11-21T00:00:00Z';
+  const sleepCycleDate = '2026-11-20';
+  const checkInTime = '2026-11-20T23:00:00Z';
+  sql(`UPDATE public.members SET discord_id = '${sleeperDiscordId}', updated_at = '${sleepVersion}',
+      last_notified_stage = 'IN_BED_EARLY', last_notified_cycle_date = '${sleepCycleDate}' WHERE id = '${sleepCancellationRace}';
+    INSERT INTO public.notification_logs (member_id, local_date, notification_type, dispatched_at)
+      VALUES ('${sleepCancellationRace}', '${sleepCycleDate}', 'IN_BED_EARLY', '${checkInTime}');
+    INSERT INTO public.sleep_logs (member_id, cycle_date, in_bed_at, updated_at)
+      VALUES ('${sleepCancellationRace}', '${sleepCycleDate}', '${checkInTime}', '${sleepVersion}');`);
+  const cancelSleep = `SELECT public.cancel_own_sleep_check_in(
+    '${sleepCancellationRace}', '${sleeperDiscordId}', '${sleepCycleDate}', false, '${sleepVersion}')`;
+  const tryStaleStaffWake = `CREATE FUNCTION pg_temp.try_stale_staff_wake() RETURNS jsonb LANGUAGE plpgsql AS $$
+    BEGIN RETURN public.moderate_sleep('${modId}', '${discordAccounts['database-mod']}', '${sleepCancellationRace}',
+      'log_wake', '${sleepCycleDate}', '2026-11-21T07:00Z', '${sleepVersion}',
+      p_entry => jsonb_build_object('in_bed_at', '${checkInTime}', 'woke_up_at', '2026-11-21T07:00Z'),
+      p_expected_in_bed_at => '${checkInTime}', p_expected_sleep_updated_at => '${sleepVersion}');
+    EXCEPTION WHEN SQLSTATE 'PT409' THEN RETURN jsonb_build_object('conflict', true); END; $$;
+    SELECT pg_temp.try_stale_staff_wake()`;
+  const [selfCancelled, staffWakeConflict] = await concurrentSql(cancelSleep, tryStaleStaffWake);
+  assert.equal(selfCancelled.last_notified_stage, null);
+  assert.equal(staffWakeConflict.conflict, true);
+  assert.equal(sql(`SELECT count(*) FROM public.sleep_logs WHERE member_id = '${sleepCancellationRace}'`), '0');
+  assert.equal(sql(`SELECT count(*) FROM public.notification_logs WHERE member_id = '${sleepCancellationRace}'`), '0');
+  console.log('Verified self-service sleep cancellation and a concurrent staff wake serialize without restoring deleted evidence.');
   console.log('Verified owner-only bootstrap and role changes, live revocation, and transaction races for target promotion and schedule replacement.');
 
 } finally {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
 import { ownsDiscordProfile, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
 import { isValidTimezone, formatGmtOffset, DAY_KEYS, type DayKey, type WeeklySchedule, type DailySchedule } from '@/lib/timezone';
+import { getScheduleCooldownEffectiveAt } from '@/lib/sleepEngine';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
@@ -285,7 +286,7 @@ export async function POST(request: Request) {
     let pendingEffectiveAt: string | null = null;
 
     if (scheduleHasChanged) {
-      const effectiveAt = DateTime.utc().plus({ hours: 48 });
+      const effectiveAt = getScheduleCooldownEffectiveAt();
       updates.pending_bedtime_local = syncBedtime;
       updates.pending_wake_time_local = syncWakeTime;
       updates.pending_timezone = targetTimezone;

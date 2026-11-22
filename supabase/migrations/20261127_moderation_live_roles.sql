@@ -84,9 +84,19 @@ BEGIN
       m.bedtime_local := COALESCE(m.pending_bedtime_local, m.bedtime_local);
       m.wake_time_local := COALESCE(m.pending_wake_time_local, m.wake_time_local);
       m.timezone := COALESCE(m.pending_timezone, m.timezone);
-      m.weekend_bedtime_local := m.pending_weekend_bedtime_local;
-      m.weekend_wake_time_local := m.pending_weekend_wake_time_local;
-      m.weekly_schedule := COALESCE(m.pending_weekly_schedule, m.weekly_schedule);
+      IF m.pending_weekly_schedule IS NULL AND m.weekly_schedule IS NOT NULL THEN
+        -- Legacy flat requests only replace the fields they supplied.
+        SELECT jsonb_object_agg(day, entry || jsonb_strip_nulls(jsonb_build_object(
+          'bedtime', CASE WHEN day IN ('fri', 'sat') THEN m.pending_weekend_bedtime_local ELSE m.pending_bedtime_local END,
+          'wake_time', CASE WHEN day IN ('fri', 'sat') THEN m.pending_weekend_wake_time_local ELSE m.pending_wake_time_local END
+        ))) INTO m.weekly_schedule FROM jsonb_each(m.weekly_schedule) AS schedule(day, entry);
+        m.weekend_bedtime_local := COALESCE(m.pending_weekend_bedtime_local, m.weekend_bedtime_local);
+        m.weekend_wake_time_local := COALESCE(m.pending_weekend_wake_time_local, m.weekend_wake_time_local);
+      ELSE
+        m.weekend_bedtime_local := m.pending_weekend_bedtime_local;
+        m.weekend_wake_time_local := m.pending_weekend_wake_time_local;
+        m.weekly_schedule := m.pending_weekly_schedule;
+      END IF;
     END IF;
     UPDATE public.members SET bedtime_local = m.bedtime_local, wake_time_local = m.wake_time_local,
       timezone = m.timezone, weekend_bedtime_local = m.weekend_bedtime_local,
@@ -236,15 +246,65 @@ BEGIN
 END;
 $$;
 
+-- Both entry points lock and authorize the member before removing sleep evidence.
+CREATE OR REPLACE FUNCTION public.cancel_sleep_check_in(p_member_id uuid, p_cycle date, p_clear_pending boolean)
+RETURNS public.members LANGUAGE plpgsql SET search_path = '' AS $$
+DECLARE
+  m public.members;
+BEGIN
+  DELETE FROM public.notification_logs WHERE member_id = p_member_id AND local_date = p_cycle
+    AND notification_type IN ('IN_BED_EARLY', 'WOKE_UP');
+  DELETE FROM public.sleep_logs WHERE member_id = p_member_id AND cycle_date = p_cycle::text;
+  UPDATE public.members SET
+    last_notified_stage = CASE WHEN last_notified_stage = 'IN_BED_EARLY' OR last_notified_cycle_date = p_cycle::text
+      THEN NULL ELSE last_notified_stage END,
+    last_notified_cycle_date = CASE WHEN last_notified_stage = 'IN_BED_EARLY' OR last_notified_cycle_date = p_cycle::text
+      THEN NULL ELSE last_notified_cycle_date END,
+    last_woke_up_at = CASE WHEN last_wake_cycle_date = p_cycle::text THEN NULL ELSE last_woke_up_at END,
+    last_wake_cycle_date = CASE WHEN last_wake_cycle_date = p_cycle::text THEN NULL ELSE last_wake_cycle_date END,
+    pending_bedtime_local = CASE WHEN p_clear_pending THEN NULL ELSE pending_bedtime_local END,
+    pending_wake_time_local = CASE WHEN p_clear_pending THEN NULL ELSE pending_wake_time_local END,
+    pending_timezone = CASE WHEN p_clear_pending THEN NULL ELSE pending_timezone END,
+    pending_weekend_bedtime_local = CASE WHEN p_clear_pending THEN NULL ELSE pending_weekend_bedtime_local END,
+    pending_weekend_wake_time_local = CASE WHEN p_clear_pending THEN NULL ELSE pending_weekend_wake_time_local END,
+    pending_weekly_schedule = CASE WHEN p_clear_pending THEN NULL ELSE pending_weekly_schedule END,
+    pending_effective_at = CASE WHEN p_clear_pending THEN NULL ELSE pending_effective_at END,
+    updated_at = statement_timestamp()
+    WHERE id = p_member_id RETURNING * INTO m;
+  RETURN m;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.cancel_own_sleep_check_in(
+  p_member_id uuid, p_discord_id text, p_cycle date, p_clear_pending boolean, p_expected_updated_at timestamptz
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  m public.members;
+BEGIN
+  SELECT * INTO m FROM public.members
+    WHERE id = p_member_id AND discord_id = p_discord_id AND is_active FOR NO KEY UPDATE;
+  IF NOT FOUND THEN
+    RAISE SQLSTATE 'PT403' USING MESSAGE = 'This profile is no longer available.';
+  END IF;
+  IF m.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RAISE SQLSTATE 'PT409' USING MESSAGE = 'This profile changed. Refresh and try again.';
+  END IF;
+  RETURN to_jsonb(public.cancel_sleep_check_in(m.id, p_cycle, p_clear_pending));
+END;
+$$;
+
+DROP FUNCTION IF EXISTS public.moderate_sleep(uuid,text,uuid,text,date,timestamptz,timestamptz,jsonb,boolean,timestamptz);
+
 CREATE OR REPLACE FUNCTION public.moderate_sleep(
   p_actor_id uuid, p_actor_discord_id text, p_target_id uuid, p_action text, p_cycle date, p_now timestamptz,
   p_expected_updated_at timestamptz, p_entry jsonb DEFAULT NULL, p_guarded boolean DEFAULT false,
-  p_expected_in_bed_at timestamptz DEFAULT NULL
+  p_expected_in_bed_at timestamptz DEFAULT NULL, p_expected_sleep_updated_at timestamptz DEFAULT NULL
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
   m public.members;
   saved public.sleep_logs;
   entry public.sleep_logs;
+  checked_in_at timestamptz;
   receipt text;
   result jsonb;
 BEGIN
@@ -260,28 +320,21 @@ BEGIN
     result := public.complete_active_check_in(m.discord_id, p_expected_in_bed_at,
       p_entry || jsonb_build_object('member_id', m.id, 'cycle_date', p_cycle::text));
   ELSIF p_action IN ('cancel_checkin', 'cancel_pending_and_checkin') THEN
-    DELETE FROM public.notification_logs WHERE member_id = m.id AND local_date = p_cycle
-      AND notification_type IN ('IN_BED_EARLY', 'WOKE_UP');
-    DELETE FROM public.sleep_logs WHERE member_id = m.id AND cycle_date = p_cycle::text;
-    UPDATE public.members SET
-      last_notified_stage = CASE WHEN last_notified_stage = 'IN_BED_EARLY' OR last_notified_cycle_date = p_cycle::text
-        THEN NULL ELSE last_notified_stage END,
-      last_notified_cycle_date = CASE WHEN last_notified_stage = 'IN_BED_EARLY' OR last_notified_cycle_date = p_cycle::text
-        THEN NULL ELSE last_notified_cycle_date END,
-      last_woke_up_at = CASE WHEN last_wake_cycle_date = p_cycle::text THEN NULL ELSE last_woke_up_at END,
-      last_wake_cycle_date = CASE WHEN last_wake_cycle_date = p_cycle::text THEN NULL ELSE last_wake_cycle_date END,
-      pending_bedtime_local = CASE WHEN p_action = 'cancel_pending_and_checkin' THEN NULL ELSE pending_bedtime_local END,
-      pending_wake_time_local = CASE WHEN p_action = 'cancel_pending_and_checkin' THEN NULL ELSE pending_wake_time_local END,
-      pending_timezone = CASE WHEN p_action = 'cancel_pending_and_checkin' THEN NULL ELSE pending_timezone END,
-      pending_weekend_bedtime_local = CASE WHEN p_action = 'cancel_pending_and_checkin' THEN NULL ELSE pending_weekend_bedtime_local END,
-      pending_weekend_wake_time_local = CASE WHEN p_action = 'cancel_pending_and_checkin' THEN NULL ELSE pending_weekend_wake_time_local END,
-      pending_weekly_schedule = CASE WHEN p_action = 'cancel_pending_and_checkin' THEN NULL ELSE pending_weekly_schedule END,
-      pending_effective_at = CASE WHEN p_action = 'cancel_pending_and_checkin' THEN NULL ELSE pending_effective_at END,
-      updated_at = statement_timestamp()
-      WHERE id = m.id RETURNING * INTO m;
+    m := public.cancel_sleep_check_in(m.id, p_cycle, p_action = 'cancel_pending_and_checkin');
     result := jsonb_build_object('member', to_jsonb(m));
   ELSIF p_action IN ('check_in', 'wake_up', 'log_wake') THEN
     SELECT * INTO saved FROM public.sleep_logs WHERE member_id = m.id AND cycle_date = p_cycle::text;
+    IF p_action = 'log_wake' THEN
+      -- The route uses sleep history first and falls back to the check-in receipt.
+      SELECT COALESCE(saved.in_bed_at, (
+        SELECT dispatched_at FROM public.notification_logs
+          WHERE member_id = m.id AND local_date = p_cycle AND notification_type = 'IN_BED_EARLY'
+      )) INTO checked_in_at;
+      IF saved.updated_at IS DISTINCT FROM p_expected_sleep_updated_at OR
+        checked_in_at IS DISTINCT FROM p_expected_in_bed_at THEN
+        RAISE SQLSTATE 'PT409' USING MESSAGE = 'The sleep evidence changed. Refresh and try again.';
+      END IF;
+    END IF;
     entry := jsonb_populate_record(saved, p_entry);
     INSERT INTO public.sleep_logs (
       member_id, cycle_date, timezone, target_bedtime, target_wake_time, in_bed_at, in_bed_local_time,
@@ -339,7 +392,8 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.lock_moderation_actor(uuid,text,boolean),
-  public.lock_moderation_target(uuid,text,uuid,boolean) FROM PUBLIC, anon, authenticated, service_role;
+  public.lock_moderation_target(uuid,text,uuid,boolean), public.cancel_sleep_check_in(uuid,date,boolean)
+FROM PUBLIC, anon, authenticated, service_role;
 
 REVOKE ALL ON FUNCTION public.moderate_roster_member(uuid,text,uuid,text,jsonb,timestamptz,jsonb),
   public.purge_moderation_demo_members(uuid,text,jsonb),
@@ -347,7 +401,8 @@ REVOKE ALL ON FUNCTION public.moderate_roster_member(uuid,text,uuid,text,jsonb,t
   public.moderate_punishment(uuid,text,uuid,text,text,text,date,uuid,text,uuid),
   public.moderate_nightly_strike(uuid,text,uuid,text,text,text,text,text,timestamptz,timestamptz,timestamptz,timestamptz,integer),
   public.moderate_strike_counts(uuid,text,uuid,integer,integer,boolean),
-  public.moderate_sleep(uuid,text,uuid,text,date,timestamptz,timestamptz,jsonb,boolean,timestamptz),
+  public.cancel_own_sleep_check_in(uuid,text,date,boolean,timestamptz),
+  public.moderate_sleep(uuid,text,uuid,text,date,timestamptz,timestamptz,jsonb,boolean,timestamptz,timestamptz),
   public.record_moderation_webhook_action(uuid,text,text)
 FROM PUBLIC, anon, authenticated;
 
@@ -357,7 +412,8 @@ GRANT EXECUTE ON FUNCTION public.moderate_roster_member(uuid,text,uuid,text,json
   public.moderate_punishment(uuid,text,uuid,text,text,text,date,uuid,text,uuid),
   public.moderate_nightly_strike(uuid,text,uuid,text,text,text,text,text,timestamptz,timestamptz,timestamptz,timestamptz,integer),
   public.moderate_strike_counts(uuid,text,uuid,integer,integer,boolean),
-  public.moderate_sleep(uuid,text,uuid,text,date,timestamptz,timestamptz,jsonb,boolean,timestamptz),
+  public.cancel_own_sleep_check_in(uuid,text,date,boolean,timestamptz),
+  public.moderate_sleep(uuid,text,uuid,text,date,timestamptz,timestamptz,jsonb,boolean,timestamptz,timestamptz),
   public.record_moderation_webhook_action(uuid,text,text)
 TO service_role;
 

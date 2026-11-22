@@ -201,6 +201,7 @@ export async function POST(request: Request) {
       }
       const {
         member_id,
+        expected_updated_at,
         discord_username,
         discord_handle,
         journal_url,
@@ -381,6 +382,13 @@ export async function POST(request: Request) {
         weekend_bedtime_local !== undefined ||
         weekend_wake_time_local !== undefined;
 
+      if (hasScheduleUpdate && DAY_KEYS.some(day => {
+        const { bedtime, wake_time } = targetWeeklySchedule[day];
+        return bedtime.trim() === wake_time.trim();
+      })) {
+        return NextResponse.json({ error: 'Bedtime and wake time cannot be identical.' }, { status: 400 });
+      }
+
       const syncBedtime = targetWeeklySchedule.mon.bedtime;
       const syncWakeTime = targetWeeklySchedule.mon.wake_time;
       const syncWeekendBedtime = targetWeeklySchedule.sat.bedtime;
@@ -396,6 +404,11 @@ export async function POST(request: Request) {
       }));
       if (action === 'edit_member' && (hasScheduleUpdate || timezone !== undefined)) {
         return NextResponse.json({ error: 'Use edit_schedule to change the active schedule.' }, { status: 400 });
+      }
+
+      if ((action === 'edit_schedule' || expected_updated_at !== undefined) &&
+          (typeof expected_updated_at !== 'string' || !DateTime.fromISO(expected_updated_at).isValid)) {
+        return NextResponse.json({ error: 'Provide the profile version you edited.' }, { status: 400 });
       }
 
       const updates: Partial<Member> = {
@@ -430,7 +443,7 @@ export async function POST(request: Request) {
         p_target_id: member_id,
         p_action: action,
         p_updates: updates,
-        p_expected_updated_at: existing.updated_at,
+        p_expected_updated_at: expected_updated_at ?? existing.updated_at,
       });
       if (error || !updated) return staffWriteError(error);
 

@@ -782,6 +782,10 @@ export function isSameOriginMutation(request: Request): boolean {
   if (host === null) return origin === url.origin;
   // Next can replace the URL's hostname with the listening address.
   const destination = sanitizeHostHeader(host);
-  return Boolean(destination && !host.includes(',') &&
-    origin === new URL(`${url.protocol}//${destination}`).origin);
+  if (!destination || host.includes(',')) return false;
+  try {
+    return origin === new URL(`${url.protocol}//${destination}`).origin;
+  } catch {
+    return false;
+  }
 }

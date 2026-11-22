@@ -485,8 +485,8 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'edit_schedule',
-
           member_id: editingMember.id,
+          expected_updated_at: editingMember.updated_at,
           bedtime_local: finalWeeklySchedule.mon.bedtime,
           wake_time_local: finalWeeklySchedule.mon.wake_time,
           timezone: editTimezone.trim(),
@@ -500,7 +500,12 @@ export function ModDrawer({
 
       const data = await res.json();
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
-      if (res.status === 409) await fetchModRoster();
+      if (res.status === 409) {
+        setEditingMember(null);
+        await fetchModRoster();
+        setErrorMessage('The profile changed. Review the refreshed schedule before editing again.');
+        return;
+      }
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to update member.');
         return;
