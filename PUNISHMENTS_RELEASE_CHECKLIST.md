@@ -1,10 +1,10 @@
 # November punishments cutover checklist
 
-Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable rehearsal. After the Phase 6 PR merges to `dev` and its checks pass, open the `dev` → `main` release PR. Apply the pending migrations before merging that release PR. Keep a restricted record of member-level evidence and put the release commit, verification links, UTC activation time, and aggregate results in [HANDOFF.md](HANDOFF.md).
+Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse recovery on disposable Supabase. The role-only application shipped in [PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110). Verify the production deployment against the [moderation rollout](MODERATION_ROLLOUT_CHECKLIST.md) before continuing the existing November cutover. Any application fix ships through a separate `dev` → `main` release PR after validation. Keep member-level evidence and backup metadata in a restricted operator record. Record the release commit, verification links, UTC activation time, and aggregate results in [HANDOFF.md](HANDOFF.md).
 
 ## Apply and preview
 
-1. Match the Vercel production deployment and its Supabase project ref to the project open in Supabase. Record the deployment URL, project ref, migration status, and the backup or point-in-time recovery reference. Confirm that the restore point is available for that project. Apply only pending migrations in order through the project's Supabase migration process.
+1. Match the Vercel production deployment and its Supabase project ref to the project open in Supabase. Record the deployment URL, project ref, migration status, and an available restore point for that project. Pause live changes if no restorable backup is available. When migration history is empty, verify the installed schema and routines against the release before deciding which migrations are pending. Apply only pending migrations through the project's Supabase migration process.
 
    | Order | Migration |
    | --- | --- |
@@ -13,8 +13,10 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable r
    | 2 | `20261123_punishment_task_apis.sql` |
    | 3 | `20261124_guard_active_wake.sql` |
    | 4 | `20261125_verify_punishment_cutover.sql` |
+   | 5 | `20261126_moderation_owner_and_roles.sql` |
+   | 6 | `20261127_moderation_live_roles.sql` |
 
-2. On the first cutover, expect `activated_at = NULL`, `screens_visible = false`, and zero task and action rows. Merge the release PR and confirm that Vercel is serving its commit. With the flags still in place, verify a returning Discord sign-in and confirm the authenticated punishment API returns HTTP 503. Check that `zcatchers-dispatch` is active and targeting this deployment. To install the job for a disposable target, use [schedule_dispatch.sql](supabase/schedule_dispatch.sql) with the matching Vault values.
+2. On the first cutover, expect `activated_at = NULL`, `screens_visible = false`, and zero task and action rows. Confirm Vercel is serving a role-only release and verify the active, Discord-linked Owner and intended Moderators. With the flags still in place, verify a returning Discord sign-in and confirm HTTP 503 for the member's punishment list and both staff roles' queue requests. Check that `zcatchers-dispatch` is active and targeting this deployment. To install the job for a disposable target, use [schedule_dispatch.sql](supabase/schedule_dispatch.sql) with the matching Vault values.
 
    ```sql
    SELECT activated_at, screens_visible FROM public.punishment_rollout WHERE singleton;
@@ -23,10 +25,11 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable r
    SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname = 'zcatchers-dispatch';
    ```
 
-3. Save the read-only preview in the operator's restricted release notes. Check the dated evidence behind each discrepancy. A legacy counter alone provides no basis for a correction.
+3. Time the read-only preview and audit as a database operator and save the results in the restricted release notes. Before activation, expect the audit to report any eligible tasks that still need seeding. Check the dated evidence behind each discrepancy. A legacy counter alone provides no basis for a correction.
 
    ```sql
    SELECT * FROM public.november_punishment_preview() ORDER BY member_id;
+   SELECT issue, count(*) FROM public.punishment_ledger_issues() GROUP BY issue ORDER BY issue;
    ```
 
    - To add a missing strike backed by dated evidence, call `public.record_verified_november_correction(member_id, cycle_date, evidence_key, actor, reason)` once per verified reference.
@@ -38,7 +41,7 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable r
    | --- | ---: | ---: | --- |
    | Counter only | 0 | 3 | 0. There is no dated evidence. |
    | Nightly record and documented correction | 2 | 2 | 0, with two strikes toward the next task. |
-   | Los Angeles | 3 | 3 | 1 awaiting assignment. |
+   | Los Angeles | 3 | 2 | 1 awaiting assignment based on the three dated strikes. |
    | Tokyo | 6 | 3 | 2, one awaiting assignment and one pending behind a replacement window. Preserve both used Metastrikes. |
 
 4. Send `GET /api/cron/dispatch-notifications?dry_run=true` on the target deployment with `Authorization: Bearer <CRON_SECRET>`. Expect HTTP 200, `success: true`, and no database changes or notifications. The dry run lists candidates before the writer's activation check. In the rehearsal it reports two candidates. After activation only the candidate with a normal strike cutoff at or after activation is charged.
@@ -102,7 +105,7 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable r
    FROM net._http_response ORDER BY id DESC LIMIT 20;
    ```
 
-2. Use a controlled account to confirm Discord sign-in, My Sleep, and the private roster badge. Compare the member's open count with pending, awaiting-assignment, and assigned records across all months. Verify the Punishments queue with a database-role moderator and a configured Discord-ID moderator. Use an approved qualifying task for any live assignment or completion test. Record the result and verify its audit action and updated count.
+2. Use a controlled account to confirm Discord sign-in, My Sleep, task history, and the private roster badge. Compare the member's open count with pending, awaiting-assignment, and assigned records across all months. Verify all three Punishments queue sections with the database Owner and a database Moderator. The Owner can manage eligible Moderator and Member tasks, and Moderators can manage eligible Member tasks. Verify that staff cannot act on themselves or the Owner and that a Member cannot open the queue or another member's tasks. Use an approved qualifying task for any live assignment or completion test. Record its audit action and updated count.
 3. Recheck the ledger during the first live cycles and after the first assignments. At rollover, verify that the new month starts at zero where there are no new strikes and that open November tasks carry over. Confirm the +10-minute cutoff, open check-in protection, eight-hour Sleep Shield, and 15-minute pre-bedtime quiet period. Record which checks used controlled live accounts, a subscribed physical device, or disposable fixtures and an encrypted push relay. Track any deferred checks separately.
 4. In the handoff, record the release commit, migration status, backup reference, activation timestamp, seed and audit totals, verification links, and unresolved checks.
 
