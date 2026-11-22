@@ -1,7 +1,7 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-22T19:50:11+05:30
-> **Active working branch:** `codex/post-release-cleanup`, based on `dev` at `27f2323`.
+> **Last Updated:** 2026-11-23T03:07:00+05:30
+> **Active working branch:** `codex/accountability-0-recovery`, based on `origin/dev` at `dbed9ed`. Phase 0 implementation commit `0d93b6b`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
@@ -10,9 +10,25 @@
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit` and all 53 `npm run test:unit` suites passed in the cleanup checkout. The [production release checks](https://github.com/KrishJdev/Z-Catchers/pull/110/checks) passed before the merge to `main`.
+> **Build Status:** `npx tsc --noEmit`, all 53 `npm run test:unit` suites, and `npm run build` passed for Phase 0. See the [recovery PR checks](https://github.com/KrishJdev/Z-Catchers/pulls?q=is%3Apr+head%3Acodex%2Faccountability-0-recovery) for hosted verification.
 
 ---
+
+## Punishments recovery Phase 0
+
+- Verified Vercel production points to the inspected Supabase project and serves the role-only release at `3c0d55a`. The live database has one linked Owner and two linked Moderators. The guarded wake, ledger, November operator and live-role routines are present. Supabase returned an empty migration history, so the migration check used the installed database objects.
+- The rollout is inactive and hidden, with zero tasks, actions or November pass archives. Read-only operator SQL completed the canonical preview in about 12 seconds and the audit in about 6 seconds. The preview counted 30 verified strikes across 15 profiles, eight used passes and seven expected Member tasks (four awaiting assignment and three pending at the snapshot). The audit returned seven `missing_task` rows.
+- Two profiles differ from the legacy projection. Both show three legacy strikes, with two dated strikes for one profile and four for the other. Cross-checked stored nightly rows, pass replacements, sleep records and notification history for the discrepant or eligible profiles. Eleven late or missed sleep rows lacked a nightly strike. They need dated evidence of an eligible cutoff before an operator can use them for a correction. The exact snapshot is in the local shared Git directory as `punishments-recovery-operator.json`.
+- The one-minute Cron job was active and Vault pointed to the production origin. Four consecutive recorded runs succeeded and each minute had a dispatcher-shaped HTTP 200 response with no reported errors. Some minutes had multiple matching responses. Correlate the response with the corresponding Vercel request during the live cutover.
+- Supabase listed zero backups and no point-in-time recovery window. The activation, evidence import, seed and visibility switch await a restorable backup and live cutover approval.
+- Added `PUNISHMENTS_IMPLEMENTATION_PLAN.md` and `PUNISHMENTS_FIX_PLAN.md` to the integration branch. Updated `AGENTS.md`, `AGENT_RULES.md`, `PUNISHMENTS_RELEASE_CHECKLIST.md` and this handoff. Expanded `scripts/fixtures/november-cutover-smoke.mjs` and `scripts/test-dispatcher-ci.mjs` for legacy-count mismatches, correction retries and role-only access before and after visibility.
+
+| Phase 0 milestone | Status | Evidence |
+| --- | --- | --- |
+| Production preflight and read-only operator preview | DONE | Release, project, flags, scheduler, seven expected tasks and backup inventory checked. |
+| Role-only disposable rehearsal | IN PROGRESS | Local checks passed. Use the recovery PR's Dispatcher integration run to verify the full Supabase rehearsal. |
+| Dated evidence review and live cutover | IN PROGRESS | A restricted snapshot exists. Confirm any additional dated evidence and a restorable backup before writing to production. |
+| Phase 1 diagnostics | TODO | Start after the recovered ledger is visible and verified in production. |
 
 ## 1. Executive Summary & Project Purpose
 
@@ -3137,7 +3153,7 @@ d:\Projects\Z Catchers\
 
 **Production moderation verification.** Confirm the new public deployment is accessible and legacy URLs remain gated. Record live moderator grant and revocation, installed PWA, retired Vercel variables and the next scheduled dispatcher HTTP result in the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md#switch-to-the-role-only-release).
 
-**Punishments rollout.** Record live production verification against the [November cutover checklist](PUNISHMENTS_RELEASE_CHECKLIST.md).
+**Punishments recovery Phase 0.** Obtain a restorable backup for the matched production project, refresh the restricted preview, and resolve dated evidence with the release owner. After live cutover approval, follow the [November checklist](PUNISHMENTS_RELEASE_CHECKLIST.md) to activate once, seed every previewed profile twice with screens hidden, verify archived balances and a genuine new strike, and require zero audit rows before opening visibility. Record live Owner, Moderator and Member results before starting [Phase 1](PUNISHMENTS_IMPLEMENTATION_PLAN.md#phase-1--distinguish-errors-and-audit-the-ledger).
 
 1. **Review PR #95 and prepare the production rollout separately.**
    - PR #95 uses the isolated `Supabase Cron and push smoke test` check for the `dev` integration. Review the PR and merge to `dev` when approved.
