@@ -252,7 +252,7 @@ When a user edits their existing bedtime or timezone, display a clear callout bo
 * **Style:** `bg-status-amber/10 border border-status-amber/30 rounded-xl p-3 text-xs text-cream-secondary leading-relaxed`
 * **Copy:** `"🛡️ Accountability Cooldown: Changing your bedtime or timezone takes 48 hours to take effect so nobody can dodge their bedtime at the last minute. Updating your Discord Journal link is instant."`
 
-The same callout applies to every role after the [moderation cutover](MODERATION_PLAN.md). Show immediate edits and early approval as explicit actions in **Mod Panel** for eligible targets.
+The same callout applies to every role. Show immediate edits and early approval as explicit actions in **Mod Panel** for eligible targets.
 
 ### Mod Panel after the moderation cutover
 

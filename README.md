@@ -37,6 +37,8 @@ Detailed blueprints are available in this repository:
 - [Master Specification & Execution Plan](./PROJECT_SPEC.md)
 - [Backend, Timezone & PWA Technical Reference](./BACKEND_TZ_PWA_SPEC.md)
 - [Design System & UI Specification](./DESIGN_SYSTEM.md)
+- [Moderation Cutover and Owner Recovery](./MODERATION_ROLLOUT_CHECKLIST.md)
+- [Punishments Cutover and Recovery](./PUNISHMENTS_RELEASE_CHECKLIST.md)
 
 ---
 
