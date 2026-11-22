@@ -211,10 +211,12 @@ sql(readFileSync('supabase/migrations/20261124_guard_active_wake.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261125_verify_punishment_cutover.sql', 'utf8'));
 // Start with a linked Owner candidate and a pending request on the legacy schema.
 // Keep these accounts away from bedtime during the dispatcher checks below.
+const cutoverBedtime = DateTime.utc().plus({ hours: 6 });
+const cutoverSchedule = `'${cutoverBedtime.toFormat('HH:mm')}', '${cutoverBedtime.plus({ hours: 8 }).toFormat('HH:mm')}'`;
 const cutoverOwnerId = sql(`
   INSERT INTO public.members (discord_username, discord_id, journal_url, timezone, bedtime_local, wake_time_local)
   VALUES ('Owner fixture', '${discordAccounts.owner}', 'https://discord.com/channels/123/456', 'UTC',
-    (now() AT TIME ZONE 'UTC' + interval '6 hours')::time, (now() AT TIME ZONE 'UTC' + interval '14 hours')::time)
+    ${cutoverSchedule})
   RETURNING id
 `);
 const cutoverMemberId = sql(`
@@ -223,7 +225,7 @@ const cutoverMemberId = sql(`
     pending_bedtime_local, pending_wake_time_local, pending_timezone, pending_effective_at
   )
   VALUES ('Pending schedule fixture', 'https://discord.com/channels/123/456', 'UTC',
-    (now() AT TIME ZONE 'UTC' + interval '6 hours')::time, (now() AT TIME ZONE 'UTC' + interval '14 hours')::time,
+    ${cutoverSchedule},
     '22:30', '06:30', 'Asia/Kolkata', now() + interval '47 hours')
   RETURNING id
 `);
@@ -232,7 +234,7 @@ const cutoverQueue = () => sql(`
   WHERE members.id = '${cutoverMemberId}' AND left(field, 8) = 'pending_'
 `);
 const queuedBeforeCutover = cutoverQueue();
-assert.equal(JSON.parse(queuedBeforeCutover).pending_bedtime_local, '22:30:00');
+assert.equal(JSON.parse(queuedBeforeCutover).pending_bedtime_local, '22:30');
 sql(readFileSync('supabase/migrations/20261126_moderation_owner_and_roles.sql', 'utf8'));
 const ownerBootstrap = readFileSync('supabase/bootstrap_moderation_owner.sql', 'utf8')
   .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${cutoverOwnerId}';`)
@@ -795,7 +797,7 @@ try {
   assert.equal(moderatorReviewed.pending_effective_at, ownerReviewed.pending_effective_at);
   await post('/api/mod', newcomerCookie, { ...approveCutoverRequest, expected_pending: moderatorReviewed }, 200, origin);
   assert.equal(sql(`SELECT bedtime_local, timezone, pending_effective_at IS NULL FROM public.members
-    WHERE id = '${cutoverMemberId}'`), '22:30:00|Asia/Kolkata|t');
+    WHERE id = '${cutoverMemberId}'`), '22:30|Asia/Kolkata|t');
   assert.equal(sql(`SELECT actor_id FROM public.moderation_actions
     WHERE target_id = '${cutoverMemberId}' AND action = 'approve_cooldown'`), newcomer.id);
   assert.equal((await post('/api/mod', ownerCookie, revoke, 200, origin)).role, 'member');
