@@ -20,9 +20,10 @@ const { rows: members } = await db.query(`INSERT INTO public.members
   VALUES ('Member', '111', 'https://discord.com/channels/123/456', '23:00', 'UTC', 'member'),
     ('Other Member', '222', 'https://discord.com/channels/123/456', '23:00', 'UTC', 'member'),
     ('Database Mod', '333', 'https://discord.com/channels/123/456', '23:00', 'UTC', 'moderator'),
-    ('Discord Mod', '444', 'https://discord.com/channels/123/456', '23:00', 'UTC', 'member')
+    ('Other Mod', '444', 'https://discord.com/channels/123/456', '23:00', 'UTC', 'moderator'),
+    ('Owner', '555', 'https://discord.com/channels/123/456', '23:00', 'UTC', 'owner')
   RETURNING id, discord_id, role, is_active`);
-const [member, other, dbMod, discordMod] = members;
+const [member, other, dbMod, secondMod, owner] = members;
 
 // At this instant Los Angeles is in November and Tokyo is in December.
 const boundary = '2026-11-30T23:30Z';
@@ -51,8 +52,8 @@ await db.query(`INSERT INTO public.nightly_strike_logs
 // Exercise real route handlers and signed sessions with PGlite behind a small Data API fixture.
 const rpc = {
   get_member_punishments: ['p_member_id', 'p_discord_id', 'p_details'],
-  get_moderator_punishments: ['p_id', 'p_status', 'p_offset'],
-  update_punishment: ['p_id', 'p_action', 'p_actor', 'p_title', 'p_instructions',
+  read_moderation_punishments: ['p_actor_id', 'p_actor_discord_id', 'p_id', 'p_status', 'p_offset'],
+  moderate_punishment: ['p_actor_id', 'p_actor_discord_id', 'p_id', 'p_action', 'p_title', 'p_instructions',
     'p_cycle', 'p_source', 'p_reason', 'p_request_id'],
 };
 const server = createServer(async (req, res) => {
@@ -60,7 +61,8 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/rest/v1/members') {
     const memberId = url.searchParams.get('id')?.slice(3);
-    return res.end(JSON.stringify(members.find(row => row.id === memberId) ?? null));
+    const { rows } = await db.query('SELECT id, discord_id, role, is_active FROM public.members WHERE id = $1', [memberId]);
+    return res.end(JSON.stringify(rows[0] ?? null));
   }
   const name = url.pathname.split('/').at(-1);
   if (!rpc[name]) return res.writeHead(404).end('{}');
@@ -84,7 +86,7 @@ try {
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'fake-anon-key';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'fake-service-key';
   process.env.SESSION_SECRET = 'test-session-secret-for-punishment-task-apis';
-  process.env.MOD_DISCORD_IDS = discordMod.discord_id;
+  process.env.MOD_DISCORD_IDS = member.discord_id;
 
   const { createSessionToken } = await import('../src/lib/auth.ts');
   const { GET: getMember } = await import('../src/app/api/members/punishments/route.ts');
@@ -94,7 +96,7 @@ try {
     createSessionToken({ memberId: row.id, discordId, isModerator });
   const memberCookie = cookie(member);
   const dbModCookie = cookie(dbMod);
-  const discordModCookie = cookie(discordMod);
+  const secondModCookie = cookie(secondMod);
   const get = (handler, session, query = '') => handler(new Request('http://localhost/punishments' + query,
     { headers: session ? { Cookie: session } : {} }));
   const post = (session, body) => postMod(new Request('http://localhost/punishments', {
@@ -113,7 +115,7 @@ try {
   await expect(get(getMember), 401);
   await expect(get(getMember, memberCookie, '?memberId=' + other.id), 403);
   await expect(get(getMember, cookie(member, other.discord_id)), 403);
-  await expect(get(getMod, cookie(member, member.discord_id, true)), 401);
+  await expect(get(getMod, cookie(member, member.discord_id, true)), 403);
   await expect(get(getMod, dbModCookie), 503);
   await expect(get(getMember, memberCookie), 503);
   assert.equal(await getOpenPunishmentCount(member.id, member.discord_id), null);
@@ -140,12 +142,18 @@ try {
   const queue = await expect(get(getMod, dbModCookie));
   assert.deepEqual(queue.items.map(item => item.id), [ready.id]);
   assert.equal(queue.items[0].member_name, 'Member');
-  assert.deepEqual((await expect(get(getMod, discordModCookie, '?status=pending'))).items.map(item => item.id), [pending.id]);
-  const detail = await expect(get(getMod, discordModCookie, '?punishment_id=' + ready.id));
+  assert.deepEqual((await expect(get(getMod, secondModCookie, '?status=pending'))).items.map(item => item.id), [pending.id]);
+  const detail = await expect(get(getMod, secondModCookie, '?punishment_id=' + ready.id));
   assert.equal(detail.verified_strikes.length, 6);
   const assignment = { action: 'assign', punishment_id: ready.id, title: '  Wind-down plan  ' };
+  await db.query("UPDATE public.members SET role = 'moderator' WHERE id = $1", [member.id]);
+  await expect(post(dbModCookie, assignment), 403);
+  await expect(get(getMod, dbModCookie, '?punishment_id=' + ready.id), 403);
+  assert.deepEqual((await expect(get(getMod, dbModCookie))).items, []);
+  assert.equal((await expect(get(getMod, cookie(owner), '?punishment_id=' + ready.id))).item.id, ready.id);
+  await db.query("UPDATE public.members SET role = 'member' WHERE id = $1", [member.id]);
   await expect(post(null, assignment), 401);
-  await expect(post(memberCookie, assignment), 401);
+  await expect(post(memberCookie, assignment), 403);
   await expect(post(dbModCookie, { ...assignment, member_id: other.id }), 400);
   await expect(post(dbModCookie, { ...assignment, punishment_id: pending.id }), 409);
   await expect(post(dbModCookie, { ...assignment, title: ' '.repeat(10) }), 400);
@@ -153,8 +161,8 @@ try {
   assert.equal((await expect(post(dbModCookie, assignment))).open_count, 2);
 
   const edit = { action: 'edit', punishment_id: ready.id, title: 'Journal', instructions: 'Two lines' };
-  assert.equal((await expect(post(discordModCookie, edit))).item.instructions, 'Two lines');
-  await expect(post(discordModCookie, edit));
+  assert.equal((await expect(post(secondModCookie, edit))).item.instructions, 'Two lines');
+  await expect(post(secondModCookie, edit));
   const completion = { action: 'complete', punishment_id: ready.id };
   for (let i = 0; i < 2; i += 1) {
     const result = await expect(post(dbModCookie, completion));
@@ -165,13 +173,13 @@ try {
   const source = detail.verified_strikes.at(-1);
   const correction = { action: 'remove_strike', punishment_id: pending.id,
     cycle_date: source.cycle_date, source_id: source.source_id, reason: 'Corrected check-in', request_id: other.id };
-  await expect(post(memberCookie, correction), 401);
-  await expect(post(discordModCookie, { ...correction, cycle_date: '2026-12-06' }), 400);
-  const removed = await expect(post(discordModCookie, correction));
+  await expect(post(memberCookie, correction), 403);
+  await expect(post(secondModCookie, { ...correction, cycle_date: '2026-12-06' }), 400);
+  const removed = await expect(post(secondModCookie, correction));
   assert.equal(removed.item.status, 'canceled');
   assert.equal(removed.open_count, 0);
-  assert.equal((await expect(post(discordModCookie, correction))).correction_id, removed.correction_id);
-  await expect(post(discordModCookie, { ...correction, reason: 'Conflicting retry' }), 409);
+  assert.equal((await expect(post(secondModCookie, correction))).correction_id, removed.correction_id);
+  await expect(post(secondModCookie, { ...correction, reason: 'Conflicting retry' }), 409);
 
   const afterCorrection = await expect(get(getMember, memberCookie));
   assert.equal(afterCorrection.open_count, 0);
@@ -179,7 +187,7 @@ try {
   assert.equal(afterCorrection.history[0].title, 'Journal');
   if (summary.month === '2026-11') assert.equal(afterCorrection.strikes_toward_next, 2);
 
-  const restored = await expect(post(discordModCookie, {
+  const restored = await expect(post(secondModCookie, {
     action: 'add_strike', punishment_id: pending.id, cycle_date: '2026-11-06', request_id: dbMod.id, reason: 'Verified missed check-in',
   }));
   assert.equal(restored.item.id, pending.id);
@@ -188,7 +196,7 @@ try {
   const { rows: audit } = await db.query(`SELECT action, actor, occurred_at FROM public.punishment_actions
     WHERE punishment_id = $1 AND action IN ('assigned', 'edited', 'completed') ORDER BY id`, [ready.id]);
   assert.deepEqual(audit.map(({ action, actor }) => [action, actor]),
-    [['assigned', dbMod.id], ['edited', discordMod.id], ['completed', dbMod.id]]);
+    [['assigned', dbMod.id], ['edited', secondMod.id], ['completed', dbMod.id]]);
   assert.ok(audit.every(row => row.occurred_at));
 
   await db.exec('SET ROLE authenticated');

@@ -11,7 +11,8 @@ import {
   isTestMemberFixture,
 } from '@/lib/db';
 import { DateTime } from 'luxon';
-import { ownsDiscordProfile, getRequestSessionMemberId, verifyModeratorAuthorization, sanitizeMember } from '@/lib/auth';
+import { getRequestSessionMemberId, sanitizeMember } from '@/lib/auth';
+import { authorizeProfileAction, staffIdentity, staffWriteError } from '@/lib/moderation';
 import { getNightScheduleDateTime, getSleepCycleDate, resolveActiveSleepCycleWindow } from '@/lib/sleepEngine';
 import { toValidLuxonZone } from '@/lib/timezone';
 
@@ -56,13 +57,8 @@ export async function POST(request: Request) {
 
     const member = rawMember;
 
-    if (!member.is_active || (!ownsDiscordProfile(request, member) &&
-        !(await verifyModeratorAuthorization(request)).authorized)) {
-      return NextResponse.json(
-        { error: 'Sign in with the Discord account linked to this profile.', code: sessionMemberId ? 'FORBIDDEN' : 'UNAUTHORIZED' },
-        { status: sessionMemberId ? 403 : 401 }
-      );
-    }
+    const staff = await authorizeProfileAction(request, member);
+    if (staff instanceof Response) return staff;
 
     const guardedWake = expectedInBedAt !== undefined;
     const expectedCheckIn = typeof expectedInBedAt === 'string'
@@ -357,7 +353,20 @@ export async function POST(request: Request) {
     let updatedSleepLog;
     let updatedMember: Member | null;
     let isDurable;
-    if (guardedWake && isSupabaseConfigured && !isTestMemberFixture(member.id)) {
+    if (staff) {
+      const { data, error } = await supabaseAdmin.rpc('moderate_sleep', {
+        ...staffIdentity(staff), p_target_id: member.id, p_action: 'log_wake', p_cycle: targetCycleDate,
+        p_now: nowUtc.toISO(), p_expected_updated_at: member.updated_at, p_entry: sleepEntry,
+        p_guarded: guardedWake,
+        p_expected_in_bed_at: guardedWake ? expectedCheckIn?.toISO() ?? null : existingInBedAt,
+        p_expected_sleep_updated_at: existingLog?.updated_at ?? null,
+      });
+      if (error || !data?.member || !data?.sleep_log) return staffWriteError(error);
+      updatedSleepLog = data.sleep_log;
+      updatedMember = data.member;
+      isDurable = true;
+      setInMemorySleepLog(updatedSleepLog);
+    } else if (guardedWake && isSupabaseConfigured && !isTestMemberFixture(member.id)) {
       const { data, error } = await supabaseAdmin.rpc('complete_active_check_in', {
         p_discord_id: member.discord_id ?? null,
         p_expected_in_bed_at: expectedCheckIn?.toISO() ?? null,

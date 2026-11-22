@@ -23,11 +23,11 @@ const dispatcherPath = '/api/cron/dispatch-notifications';
 const fixtureSecret = () => randomBytes(32).toString('hex');
 const cronSecret = fixtureSecret();
 const bypassSecret = fixtureSecret();
-const moderatorPasscode = fixtureSecret();
+const retiredPasscode = fixtureSecret();
 const discordAccounts = {
   overdue: '100000000000000001',
   'database-mod': '100000000000000002',
-  'discord-mod': '100000000000000003',
+  'second-mod': '100000000000000003',
   newcomer: '100000000000000004',
   'task-member': '100000000000000005',
   owner: '100000000000000100',
@@ -209,6 +209,7 @@ sql(readFileSync('supabase/migrations/20261123_punishment_task_apis.sql', 'utf8'
 sql(readFileSync('supabase/migrations/20261124_guard_active_wake.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261125_verify_punishment_cutover.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261126_moderation_owner_and_roles.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261127_moderation_live_roles.sql', 'utf8'));
 const novemberPreview = await verifyNovemberPreview(sql, novemberMembers);
 sql(`
   CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -265,8 +266,8 @@ const env = {
   SESSION_SECRET: fixtureSecret(),
   PIN_SALT: fixtureSecret(),
   CRON_SECRET: cronSecret,
-  MOD_SECRET_PASSCODE: moderatorPasscode,
-  MOD_DISCORD_IDS: discordAccounts['discord-mod'],
+  MOD_SECRET_PASSCODE: retiredPasscode,
+  MOD_DISCORD_IDS: discordAccounts.overdue,
   DISCORD_CLIENT_ID: '100000000000000010',
   DISCORD_CLIENT_SECRET: fixtureSecret(),
   DISCORD_COMMUNITY_WEBHOOK_URL: '',
@@ -454,9 +455,10 @@ try {
   const newcomerCookie = await signIn('newcomer', newcomer.id, false, 'member');
   const claimCookie = cookieFrom(callback, 'zcatchers_claim_token');
   await post('/api/auth/claim-profile', claimCookie, { option: 'claim', target_member_id: regularId }, 400);
-  for (const action of ['add_member', 'reset_pin']) {
-    await post('/api/mod', '', { action, mod_passcode: moderatorPasscode, member_id: regularId }, 400);
-  }
+  await post('/api/mod', '', { action: 'verify', mod_passcode: retiredPasscode }, 401);
+  assert.equal((await fetch(appOrigin + '/api/mod', {
+    headers: { 'x-mod-passcode': retiredPasscode },
+  })).status, 401);
   for (const [path, body] of [
     ['/api/members/update-schedule', { member_id: regularId, bedtime_local: profile.bedtime_local }],
     ['/api/members/cancel-pending', { member_id: regularId }],
@@ -472,37 +474,25 @@ try {
   assert.equal(proactive.log.record_type, 'metastrike');
   assert.equal(proactive.metastrikes_used, 1);
 
-  await post('/api/mod', regularCookie, { action: 'verify' }, 401);
+  await post('/api/mod', regularCookie, { action: 'verify' }, 403);
   const moderatorSessions = new Map();
-  for (const [account, role] of [['database-mod', 'moderator'], ['discord-mod', 'member']]) {
+  for (const account of ['database-mod', 'second-mod']) {
     const { data: moderator } = await db.from('members').insert({
-      ...profile, role, discord_username: account, discord_id: discordAccounts[account],
+      ...profile, role: 'moderator', discord_username: account, discord_id: discordAccounts[account],
     }).select('id').single().throwOnError();
-    const cookie = await signIn(account, moderator.id, true, role);
+    const cookie = await signIn(account, moderator.id, true, 'moderator');
     moderatorSessions.set(account, cookie);
     assert.equal((await fetch(appOrigin + '/api/mod', { headers: { Cookie: cookie } })).status, 200);
-    const verified = await post('/api/mod', cookie, { action: 'verify' });
-    assert.equal(verified.moderatorId, moderator.id);
-    await post('/api/mod', cookie, { action: 'approve_cooldown', member_id: regularId }, 403);
-    await post('/api/mod', cookie, {
-      action: 'edit_member', member_id: regularId, timezone: profile.timezone === 'Asia/Kolkata' ? 'UTC' : 'Asia/Kolkata',
-    }, 403);
-    if (account === 'database-mod') {
-      const failedAttemptIp = '203.0.113.42';
-      const responses = await Promise.all(Array.from({ length: 8 }, () => fetch(appOrigin + '/api/mod', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookie, 'x-forwarded-for': failedAttemptIp },
-        body: JSON.stringify({ action: 'approve_cooldown', member_id: regularId, mod_passcode: 'incorrect' }),
-      })));
-      assert.deepEqual(responses.map(result => result.status).sort(), [401, 401, 401, 401, 401, 429, 429, 429]);
-      assert.ok(responses.find(result => result.status === 429).headers.get('Retry-After'));
-      await post('/api/mod', cookie, { action: 'verify' });
-      await post('/api/members/strikes/metastrike', cookie, { member_id: regularId, mod_passcode: '' },
-        429, { 'x-mod-passcode': moderatorPasscode, 'x-forwarded-for': '203.0.113.43' });
-      await post('/api/mod', regularCookie, { action: 'verify', mod_passcode: moderatorPasscode },
-        429, { 'x-forwarded-for': failedAttemptIp });
+    for (const action of ['verify', 'add_member', 'reset_pin']) {
+      await post('/api/mod', cookie, { action, member_id: regularId }, 400);
     }
+    await post('/api/mod', cookie, { action: 'approve_cooldown', member_id: regularId }, 400);
+    await post('/api/mod', cookie, { action: 'edit_member', member_id: regularId, timezone: 'Asia/Kolkata' }, 400);
+    await post('/api/mod', cookie, { action: 'toggle_active', member_id: regularId, is_active: false }, 403);
+    await post('/api/mod/webhook', cookie, { action: 'test' }, 403);
   }
+  const dbModCookie = moderatorSessions.get('database-mod');
+  const secondModCookie = moderatorSessions.get('second-mod');
 
   const previousBedtime = local.minus({ minutes: 16 }).toFormat('HH:mm');
   const scheduleStart = DateTime.utc();
@@ -550,9 +540,14 @@ try {
     member_id: regularId, bedtime_local: profile.bedtime_local,
   });
   assert.equal(override.cooldown_applied, true);
-  await post('/api/mod', '', {
-    action: 'approve_cooldown', member_id: regularId, mod_passcode: moderatorPasscode,
-  });
+  const approval = { action: 'approve_cooldown', member_id: regularId, expected_pending: override.member };
+  const staleTimezone = override.member.pending_timezone === 'Asia/Kolkata' ? 'UTC' : 'Asia/Kolkata';
+  await post('/api/mod', dbModCookie, {
+    ...approval, expected_pending: { ...override.member, pending_timezone: staleTimezone },
+  }, 409);
+  await post('/api/mod', dbModCookie, approval);
+  assert.equal(sql(`SELECT actor_id FROM public.moderation_actions WHERE target_id = '${regularId}' AND action = 'approve_cooldown'`),
+    sql(`SELECT id FROM public.members WHERE discord_id = '${discordAccounts['database-mod']}'`));
 
   const { data: approved } = await db.from('members').select('bedtime_local,pending_effective_at')
     .eq('id', regularId).single().throwOnError();
@@ -635,12 +630,10 @@ try {
   assert.equal(sql('SELECT count(*) FROM public.punishment_ledger_issues()'), '0');
   console.log('Verified that the visibility check waits for a concurrent seed and reads its committed repair.');
 
-  const dbModCookie = moderatorSessions.get('database-mod');
-  const discordModCookie = moderatorSessions.get('discord-mod');
-  assert.ok(dbModCookie && discordModCookie);
+  assert.ok(dbModCookie && secondModCookie);
   await getTaskData(memberTasks, '', 401);
   await getTaskData(memberTasks + '?memberId=' + regularId, newcomerCookie, 403);
-  await getTaskData(modTasks, regularCookie, 401);
+  await getTaskData(modTasks, regularCookie, 403);
   for (const [account, strikes, openCount] of [['rollover-west', 3, 1], ['rollover-east', 6, 2]]) {
     const id = novemberMembers[account];
     const { data: { timezone } } = await db.from('members').update({ is_active: true }).eq('id', id)
@@ -652,7 +645,7 @@ try {
     assert.equal(task.earned_month, '2026-11-01');
     assert.equal(task.status, 'awaiting_assignment');
     await post(modTasks, dbModCookie, { action: 'assign', punishment_id: task.id, title: 'Wind-down plan' });
-    const completed = await post(modTasks, discordModCookie, { action: 'complete', punishment_id: task.id });
+    const completed = await post(modTasks, secondModCookie, { action: 'complete', punishment_id: task.id });
     assert.equal(completed.open_count, openCount - 1);
     const after = await getRolloverProgress(cookie, timezone, strikes);
     assert.equal(after.history[0].id, task.id);
@@ -662,9 +655,9 @@ try {
   const queue = await getTaskData(modTasks, dbModCookie);
   const { id: taskId } = queue.items.find(item => item.member_id === seedRace);
   const assignment = { action: 'assign', punishment_id: taskId, title: 'Wind-down plan' };
-  await post(modTasks, regularCookie, assignment, 401);
+  await post(modTasks, regularCookie, assignment, 403);
   await post(modTasks, dbModCookie, assignment);
-  const edited = await post(modTasks, discordModCookie, { ...assignment, action: 'edit', title: 'Journal' });
+  const edited = await post(modTasks, secondModCookie, { ...assignment, action: 'edit', title: 'Journal' });
   assert.equal(edited.item.title, 'Journal');
   assert.equal(edited.open_count, 1);
 
@@ -733,7 +726,7 @@ try {
 
   const { data: owner } = await db.from('members').insert({
     ...profile, discord_username: 'Owner fixture', discord_id: discordAccounts.owner,
-  }).select('id').single().throwOnError();
+  }).select('id,bedtime_local').single().throwOnError();
   const ownerBootstrap = readFileSync('supabase/bootstrap_moderation_owner.sql', 'utf8')
     .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${owner.id}';`)
     .replace('owner_discord_id constant text := NULL;', `owner_discord_id constant text := '${discordAccounts.owner}';`);
@@ -744,16 +737,20 @@ try {
   const promote = { action: 'set_moderator', member_id: newcomer.id, expected_role: 'member', new_role: 'moderator' };
   const revoke = { ...promote, expected_role: 'moderator', new_role: 'member' };
   await post('/api/mod', dbModCookie, promote, 403, origin);
-  await post('/api/mod', discordModCookie, promote, 403, origin);
-  await post('/api/mod', '', { ...promote, mod_passcode: moderatorPasscode }, 401, origin);
+  await post('/api/mod', secondModCookie, promote, 403, origin);
+  await post('/api/mod', '', { ...promote, mod_passcode: retiredPasscode }, 401, origin);
   await post('/api/mod', ownerCookie, promote, 403, { Origin: 'https://cross-origin.example' });
   await post('/api/mod', ownerCookie, { action: 'toggle_active', member_id: owner.id, is_active: false }, 403, origin);
   await post('/api/mod', ownerCookie, { action: 'delete_member', member_id: owner.id }, 403, origin);
-  await post('/api/members/update-schedule', ownerCookie, {
-    member_id: owner.id, bedtime_local: '21:30', mod_passcode: moderatorPasscode,
-  }, 403);
+  const ownerSchedule = await post('/api/members/update-schedule', ownerCookie, {
+    member_id: owner.id, bedtime_local: owner.bedtime_local === '21:30' ? '21:40' : '21:30',
+  });
+  assert.equal(ownerSchedule.cooldown_applied, true);
   assert.equal((await post('/api/mod', ownerCookie, promote, 200, origin)).role, 'moderator');
+  const edit = { action: 'edit_member', member_id: regularId, discord_username: 'Regular fixture' };
+  await post('/api/mod', newcomerCookie, edit);
   assert.equal((await post('/api/mod', ownerCookie, revoke, 200, origin)).role, 'member');
+  await post('/api/mod', newcomerCookie, edit, 403);
 
   const grant = `public.set_moderator('${owner.id}', '${discordAccounts.owner}', '${newcomer.id}', 'member', 'moderator')`;
   const tryGrant = `CREATE FUNCTION pg_temp.try_grant() RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -765,7 +762,65 @@ try {
   assert.equal(roleConflict.conflict, true);
   assert.equal(sql(`SELECT count(*) FROM public.moderator_role_changes
     WHERE actor_member_id = '${owner.id}' AND target_member_id = '${newcomer.id}'`), '3');
-  console.log('Verified owner bootstrap, signed owner-only role changes, owner protection, and a concurrent role conflict.');
+  const targetRace = raceMember('Concurrent Target Promotion');
+  const modId = sql(`SELECT id FROM public.members WHERE discord_id = '${discordAccounts['database-mod']}'`);
+  const promoteTarget = `UPDATE public.members SET role = 'moderator' WHERE id = '${targetRace}' RETURNING to_jsonb(role)`;
+  const tryProtectedEdit = `CREATE FUNCTION pg_temp.try_protected_edit() RETURNS jsonb LANGUAGE plpgsql AS $$
+    BEGIN RETURN public.moderate_roster_member('${modId}', '${discordAccounts['database-mod']}',
+      '${targetRace}', 'cancel_cooldown');
+    EXCEPTION WHEN SQLSTATE 'PT403' THEN RETURN jsonb_build_object('forbidden', true); END; $$;
+    SELECT pg_temp.try_protected_edit()`;
+  const [promotedTarget, protectedEdit] = await concurrentSql(promoteTarget, tryProtectedEdit);
+  assert.equal(promotedTarget, 'moderator');
+  assert.equal(protectedEdit.forbidden, true);
+
+  sql(`UPDATE public.members SET pending_bedtime_local = '21:30', pending_wake_time_local = '07:30',
+    pending_timezone = 'UTC', pending_effective_at = '2026-11-25T09:00Z' WHERE id = '${regularId}'`);
+  const reviewedPending = sql(`SELECT jsonb_build_object(
+    'pending_effective_at', pending_effective_at, 'pending_bedtime_local', pending_bedtime_local,
+    'pending_wake_time_local', pending_wake_time_local, 'pending_timezone', pending_timezone,
+    'pending_weekend_bedtime_local', pending_weekend_bedtime_local, 'pending_weekend_wake_time_local', pending_weekend_wake_time_local,
+    'pending_weekly_schedule', pending_weekly_schedule)
+    FROM public.members WHERE id = '${regularId}'`);
+  const replacePending = `UPDATE public.members SET pending_bedtime_local = '22:00'
+    WHERE id = '${regularId}' RETURNING to_jsonb(pending_bedtime_local)`;
+  const tryStaleApproval = `CREATE FUNCTION pg_temp.try_stale_approval() RETURNS jsonb LANGUAGE plpgsql AS $$
+    BEGIN RETURN public.moderate_roster_member('${modId}', '${discordAccounts['database-mod']}', '${regularId}',
+      'approve_cooldown', p_expected_pending => '${reviewedPending}');
+    EXCEPTION WHEN SQLSTATE 'PT409' THEN RETURN jsonb_build_object('conflict', true); END; $$;
+    SELECT pg_temp.try_stale_approval()`;
+  const [replacement, staleApproval] = await concurrentSql(replacePending, tryStaleApproval);
+  assert.equal(replacement, '22:00');
+  assert.equal(staleApproval.conflict, true);
+  assert.equal(sql(`SELECT pending_bedtime_local FROM public.members WHERE id = '${regularId}'`), '22:00');
+
+  const sleepCancellationRace = raceMember('Concurrent Sleep Cancellation');
+  const sleeperDiscordId = '100000000000000998';
+  const sleepVersion = '2026-11-21T00:00:00Z';
+  const sleepCycleDate = '2026-11-20';
+  const checkInTime = '2026-11-20T23:00:00Z';
+  sql(`UPDATE public.members SET discord_id = '${sleeperDiscordId}', updated_at = '${sleepVersion}',
+      last_notified_stage = 'IN_BED_EARLY', last_notified_cycle_date = '${sleepCycleDate}' WHERE id = '${sleepCancellationRace}';
+    INSERT INTO public.notification_logs (member_id, local_date, notification_type, dispatched_at)
+      VALUES ('${sleepCancellationRace}', '${sleepCycleDate}', 'IN_BED_EARLY', '${checkInTime}');
+    INSERT INTO public.sleep_logs (member_id, cycle_date, in_bed_at, updated_at)
+      VALUES ('${sleepCancellationRace}', '${sleepCycleDate}', '${checkInTime}', '${sleepVersion}');`);
+  const cancelSleep = `SELECT public.cancel_own_sleep_check_in(
+    '${sleepCancellationRace}', '${sleeperDiscordId}', '${sleepCycleDate}', false, '${sleepVersion}')`;
+  const tryStaleStaffWake = `CREATE FUNCTION pg_temp.try_stale_staff_wake() RETURNS jsonb LANGUAGE plpgsql AS $$
+    BEGIN RETURN public.moderate_sleep('${modId}', '${discordAccounts['database-mod']}', '${sleepCancellationRace}',
+      'log_wake', '${sleepCycleDate}', '2026-11-21T07:00Z', '${sleepVersion}',
+      p_entry => jsonb_build_object('in_bed_at', '${checkInTime}', 'woke_up_at', '2026-11-21T07:00Z'),
+      p_expected_in_bed_at => '${checkInTime}', p_expected_sleep_updated_at => '${sleepVersion}');
+    EXCEPTION WHEN SQLSTATE 'PT409' THEN RETURN jsonb_build_object('conflict', true); END; $$;
+    SELECT pg_temp.try_stale_staff_wake()`;
+  const [selfCancelled, staffWakeConflict] = await concurrentSql(cancelSleep, tryStaleStaffWake);
+  assert.equal(selfCancelled.last_notified_stage, null);
+  assert.equal(staffWakeConflict.conflict, true);
+  assert.equal(sql(`SELECT count(*) FROM public.sleep_logs WHERE member_id = '${sleepCancellationRace}'`), '0');
+  assert.equal(sql(`SELECT count(*) FROM public.notification_logs WHERE member_id = '${sleepCancellationRace}'`), '0');
+  console.log('Verified self-service sleep cancellation and a concurrent staff wake serialize without restoring deleted evidence.');
+  console.log('Verified owner-only bootstrap and role changes, live revocation, and transaction races for target promotion and schedule replacement.');
 
 } finally {
   app?.kill();

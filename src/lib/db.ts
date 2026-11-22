@@ -941,12 +941,15 @@ export async function getMemberSleepLogs(
  * Deletes a sleep log entry for a member and cycle date (used when cancelling/undoing an in-bed check-in).
  * Synchronously purges from in-memory cache and Supabase.
  */
+export function removeInMemorySleepLog(memberId: string, cycleDate: string) {
+  memorySleepLogs.delete(getSleepLogMemoryKey(memberId, cycleDate));
+}
+
 export async function deleteSleepLog(
   memberId: string,
   cycleDate: string
 ): Promise<{ success: boolean; error: any }> {
-  const memKey = getSleepLogMemoryKey(memberId, cycleDate);
-  memorySleepLogs.delete(memKey);
+  removeInMemorySleepLog(memberId, cycleDate);
 
   if (isSupabaseConfigured && !isTestMemberFixture(memberId)) {
     try {

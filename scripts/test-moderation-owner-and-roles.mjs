@@ -4,7 +4,8 @@ import { createServer } from 'node:http';
 import { PGlite } from '@electric-sql/pglite';
 
 const sqlFile = path => readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
-const schema = sqlFile('supabase/schema.sql').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
+const schema = sqlFile('supabase/schema.sql').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '')
+  .split('-- Bind staff writes')[0].trimEnd() + '\n';
 const migration = sqlFile('supabase/migrations/20261126_moderation_owner_and_roles.sql');
 const bootstrapTemplate = sqlFile('supabase/bootstrap_moderation_owner.sql');
 assert.ok(schema.endsWith(migration), 'The fresh-install schema mirrors the role migration');

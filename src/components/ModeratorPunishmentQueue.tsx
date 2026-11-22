@@ -17,15 +17,16 @@ type TaskAction = 'assign' | 'edit' | 'complete';
 const endpoint = '/api/mod/punishments';
 const buttonStyle = 'min-h-[44px] rounded-lg border border-night-border bg-night-surface px-3 py-2 text-sm font-semibold text-cream-primary hover:border-status-amber/50 disabled:opacity-50';
 
-async function readQueue(status: QueueStatus, offset: number, headers: HeadersInit, signal?: AbortSignal): Promise<QueuePage> {
-  const response = await fetch(`${endpoint}?status=${status}&offset=${offset}`, { headers, signal, cache: 'no-store' });
+async function readQueue(status: QueueStatus, offset: number, signal: AbortSignal, onAccessChanged?: () => void): Promise<QueuePage> {
+  const response = await fetch(`${endpoint}?status=${status}&offset=${offset}`, { signal, cache: 'no-store' });
+  if (response.status === 401 || response.status === 403) onAccessChanged?.();
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Could not load punishments.');
   return data;
 }
 
-export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
-  passcode: string;
+export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
+  onAccessChanged?: () => void;
   onTaskChanged: () => Promise<void>;
 }) {
   const [pages, setPages] = useState<Partial<Record<QueueStatus, QueuePage>>>({});
@@ -43,11 +44,10 @@ export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
 
   useEffect(() => {
     const controller = new AbortController();
-    const headers = passcode ? { 'x-mod-passcode': passcode } : undefined;
     setLoading(true);
     setQueueError('');
     Promise.all(sections.map(async ({ status }) => [
-      status, await readQueue(status, 0, headers ?? {}, controller.signal),
+      status, await readQueue(status, 0, controller.signal, onAccessChanged),
     ] as const)).then(entries => {
       if (!controller.signal.aborted) setPages(Object.fromEntries(entries));
     }).catch(error => {
@@ -56,7 +56,7 @@ export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [attempt, passcode]);
+  }, [attempt, onAccessChanged]);
 
   useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => { if (result) resultRef.current?.focus(); }, [result]);
@@ -73,7 +73,7 @@ export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
     setBusy(true);
     setQueueError('');
     try {
-      const page = await readQueue(status, offset, passcode ? { 'x-mod-passcode': passcode } : {}, controller.signal);
+      const page = await readQueue(status, offset, controller.signal, onAccessChanged);
       setPages(previous => {
         const existing = previous[status]?.items ?? [];
         const ids = new Set(existing.map(item => item.id));
@@ -96,7 +96,7 @@ export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
       const { item, action } = editor;
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(passcode && { 'x-mod-passcode': passcode }) },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
           punishment_id: item.id,
@@ -104,6 +104,7 @@ export function ModeratorPunishmentQueue({ passcode, onTaskChanged }: {
         }),
       });
       const data = await response.json();
+      if (response.status === 401 || response.status === 403) onAccessChanged?.();
       if (!response.ok) throw new Error(data.error || 'Could not save the task.');
       setResult(data);
       setEditor(null);

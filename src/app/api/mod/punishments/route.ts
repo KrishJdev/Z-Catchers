@@ -1,32 +1,12 @@
-import { getModeratorPasscode, getRequestSessionMemberId, verifyModeratorSession } from '@/lib/auth';
+import { isSameOriginMutation, verifyModeratorSession } from '@/lib/auth';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/db';
 import { punishmentResponse, punishmentRpcResponse, PUNISHMENTS_UNAVAILABLE, UUID_PATTERN } from '@/lib/punishments';
-import { getClientIp, verifyRateLimitedModeratorPasscode } from '@/lib/rateLimit';
+import { staffIdentity } from '@/lib/moderation';
 import { DateTime } from 'luxon';
 
-async function authorizeModerator(request: Request, suppliedPasscode?: unknown) {
-  const passcode = getModeratorPasscode(request, suppliedPasscode);
-  if (passcode) {
-    const attempt = await verifyRateLimitedModeratorPasscode(
-      passcode, getClientIp(request), getRequestSessionMemberId(request)
-    );
-    if (attempt.unavailable) {
-      return punishmentResponse({ error: 'Could not verify moderator passcode. Try again.' }, 503);
-    }
-    if (attempt.retryAfterSeconds) {
-      return punishmentResponse({ error: 'Too many failed moderator passcode attempts.' }, 429, {
-        'Retry-After': String(attempt.retryAfterSeconds),
-      });
-    }
-    return attempt.valid ? 'master_mod' : punishmentResponse({ error: 'Invalid moderator passcode.' }, 401);
-  }
-  const moderator = await verifyModeratorSession(request);
-  return moderator.moderatorId ?? punishmentResponse({ error: moderator.error }, 401);
-}
-
 export async function GET(request: Request) {
-  const actor = await authorizeModerator(request);
-  if (typeof actor !== 'string') return actor;
+  const auth = await verifyModeratorSession(request);
+  if (!auth.authorized) return punishmentResponse({ error: auth.error }, auth.status);
   if (!isSupabaseConfigured) return punishmentResponse({ error: PUNISHMENTS_UNAVAILABLE }, 503);
 
   const params = new URL(request.url).searchParams;
@@ -39,7 +19,8 @@ export async function GET(request: Request) {
     return punishmentResponse({ error: 'Invalid punishment queue filter.' }, 400);
   }
 
-  const { data, error } = await supabaseAdmin.rpc('get_moderator_punishments', {
+  const { data, error } = await supabaseAdmin.rpc('read_moderation_punishments', {
+    ...staffIdentity(auth.actor),
     p_id: id,
     p_status: status,
     p_offset: Number(offset),
@@ -49,8 +30,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  const actor = await authorizeModerator(request, body?.mod_passcode);
-  if (typeof actor !== 'string') return actor;
+  if (!isSameOriginMutation(request)) return punishmentResponse({ error: 'Use a same-origin request.' }, 403);
+  const auth = await verifyModeratorSession(request);
+  if (!auth.authorized) return punishmentResponse({ error: auth.error }, auth.status);
   if (!isSupabaseConfigured) return punishmentResponse({ error: PUNISHMENTS_UNAVAILABLE }, 503);
 
   if (typeof body?.punishment_id !== 'string' || !UUID_PATTERN.test(body.punishment_id) || 'member_id' in body) {
@@ -58,7 +40,7 @@ export async function POST(request: Request) {
   }
 
   const { action, punishment_id, title, instructions, cycle_date, source_id, reason, request_id } = body;
-  const args: Record<string, string | null> = { p_id: punishment_id, p_action: action, p_actor: actor };
+  const args: Record<string, string | null> = { ...staffIdentity(auth.actor), p_id: punishment_id, p_action: action };
   if (action === 'assign' || action === 'edit') {
     if (typeof title !== 'string' || !title.trim() || title.trim().length > 120 ||
       (instructions != null && (typeof instructions !== 'string' || instructions.trim().length > 2000))) {
@@ -82,6 +64,6 @@ export async function POST(request: Request) {
     return punishmentResponse({ error: 'Unknown punishment action.' }, 400);
   }
 
-  const { data, error } = await supabaseAdmin.rpc('update_punishment', args);
+  const { data, error } = await supabaseAdmin.rpc('moderate_punishment', args);
   return punishmentRpcResponse(data, error);
 }

@@ -904,6 +904,10 @@ export function isOverdueBucket(bucket: string | null | undefined): boolean {
   );
 }
 
+export function getScheduleCooldownEffectiveAt(now = DateTime.utc()): DateTime {
+  return now.plus({ hours: 48 });
+}
+
 /**
  * Checks and promotes pending schedule if 48-hour cooldown has elapsed.
  */

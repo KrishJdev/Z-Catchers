@@ -217,93 +217,37 @@ async function testInBedRouteCancel() {
   });
 
   const origFrom = supabaseAdmin.from;
-  supabaseAdmin.from = (table) => {
+  const origRpc = supabaseAdmin.rpc;
+  supabaseAdmin.from = table => {
     if (table === 'members') {
       return {
-        select: (fields = '*') => ({
-          eq: (col, val) => ({
-            single: async () => ({ data: mockMember, error: null }),
-            maybeSingle: async () => ({ data: mockMember, error: null }),
-          }),
-          limit: (n) => Promise.resolve({ data: [mockMember], error: null }),
-          single: async () => ({ data: mockMember, error: null }),
-          maybeSingle: async () => ({ data: mockMember, error: null }),
-        }),
-        update: (updates) => {
-          mockMember = { ...mockMember, ...updates };
-          syncInMemoryMemberCache(mockMember);
-          const updateBuilder = {
-            eq: () => updateBuilder,
-            is: () => updateBuilder,
-            select: () => updateBuilder,
-            single: async () => ({ data: mockMember, error: null }),
-            maybeSingle: async () => ({ data: mockMember, error: null }),
-            then: (resolve) => Promise.resolve({ data: mockMember, error: null }).then(resolve),
-          };
-          return updateBuilder;
-        },
+        select() { return this; },
+        eq() { return this; },
+        async single() { return { data: mockMember, error: null }; },
+        async maybeSingle() { return { data: mockMember, error: null }; },
       };
     }
-    if (table === 'notification_logs') {
-      const selectBuilder = {
-        eq: () => selectBuilder,
-        in: () => selectBuilder,
-        gte: () => selectBuilder,
-        order: () => selectBuilder,
-        limit: () => selectBuilder,
-        then: (resolve) => Promise.resolve({ data: notificationLogs, error: null }).then(resolve),
-      };
-
-      return {
-        select: () => selectBuilder,
-        delete: () => {
-          const deleteFilters = {};
-          const deleteBuilder = {
-            eq: (col, val) => {
-              deleteFilters[col] = val;
-              return deleteBuilder;
-            },
-            in: (col, vals) => {
-              deleteFilters[col] = vals;
-              return deleteBuilder;
-            },
-            then: (resolve) => {
-              notificationLogs = notificationLogs.filter((l) => {
-                if (deleteFilters.member_id && l.member_id !== deleteFilters.member_id) return true;
-                if (deleteFilters.local_date && l.local_date !== deleteFilters.local_date) return true;
-                if (deleteFilters.notification_type) {
-                  if (Array.isArray(deleteFilters.notification_type)) {
-                    return !deleteFilters.notification_type.includes(l.notification_type);
-                  }
-                  return l.notification_type !== deleteFilters.notification_type;
-                }
-                return false;
-              });
-              return Promise.resolve({ data: null, error: null }).then(resolve);
-            },
-          };
-          return deleteBuilder;
-        },
-        insert: () => Promise.resolve({ error: null }),
-      };
+    assert.equal(table, 'notification_logs');
+    return {
+      select() { return this; },
+      eq() { return this; },
+      order() { return this; },
+      async limit() { return { data: notificationLogs, error: null }; },
+    };
+  };
+  supabaseAdmin.rpc = async (name, args) => {
+    assert.equal(name, 'cancel_own_sleep_check_in');
+    assert.equal(args.p_member_id, memberId);
+    assert.equal(args.p_discord_id, discordId);
+    assert.equal(args.p_cycle, '2026-05-15');
+    assert.equal(args.p_clear_pending, false);
+    notificationLogs = notificationLogs.filter(log => log.local_date !== args.p_cycle);
+    mockMember = { ...mockMember, last_notified_stage: null };
+    if (args.p_clear_pending) {
+      mockMember.pending_bedtime_local = null;
+      mockMember.pending_effective_at = null;
     }
-    if (table === 'sleep_logs') {
-      const sleepDeleteBuilder = {
-        eq: (col, val) => sleepDeleteBuilder,
-        then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
-      };
-      return {
-        delete: () => sleepDeleteBuilder,
-        select: () => ({
-          eq: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: null, error: null }),
-            }),
-          }),
-        }),
-      };
-    }
-    return origFrom.call(supabaseAdmin, table);
+    return { data: mockMember, error: null };
   };
 
   try {
@@ -326,9 +270,8 @@ async function testInBedRouteCancel() {
     testAssert(res.status === 200, '/api/members/in-bed action=cancel returns HTTP 200');
 
     testAssert(data.success === true && data.action === 'cancel', 'Response confirms success and action: cancel');
-    testAssert(mockMember.is_in_bed === false, 'mockMember.is_in_bed reset to false');
-    testAssert(mockMember.in_bed_at === null, 'mockMember.in_bed_at reset to null');
-    testAssert(mockMember.is_woke_up === false, 'mockMember.is_woke_up reset to false');
+    testAssert(data.is_in_bed === false, 'mockMember.is_in_bed reset to false');
+    testAssert(data.is_woke_up === false, 'mockMember.is_woke_up reset to false');
     testAssert(mockMember.last_notified_stage === null, 'mockMember.last_notified_stage reset to null');
 
     // Check notification logs cleanup
@@ -375,6 +318,7 @@ async function testInBedRouteCancel() {
     }
   } finally {
     supabaseAdmin.from = origFrom;
+    supabaseAdmin.rpc = origRpc;
   }
 }
 
@@ -430,93 +374,37 @@ async function testCancelPendingRoute() {
   });
 
   const origFrom = supabaseAdmin.from;
-  supabaseAdmin.from = (table) => {
+  const origRpc = supabaseAdmin.rpc;
+  supabaseAdmin.from = table => {
     if (table === 'members') {
       return {
-        select: (fields = '*') => ({
-          eq: (col, val) => ({
-            single: async () => ({ data: mockMember, error: null }),
-            maybeSingle: async () => ({ data: mockMember, error: null }),
-          }),
-          limit: (n) => Promise.resolve({ data: [mockMember], error: null }),
-          single: async () => ({ data: mockMember, error: null }),
-          maybeSingle: async () => ({ data: mockMember, error: null }),
-        }),
-        update: (updates) => {
-          mockMember = { ...mockMember, ...updates };
-          syncInMemoryMemberCache(mockMember);
-          const updateBuilder = {
-            eq: () => updateBuilder,
-            is: () => updateBuilder,
-            select: () => updateBuilder,
-            single: async () => ({ data: mockMember, error: null }),
-            maybeSingle: async () => ({ data: mockMember, error: null }),
-            then: (resolve) => Promise.resolve({ data: mockMember, error: null }).then(resolve),
-          };
-          return updateBuilder;
-        },
+        select() { return this; },
+        eq() { return this; },
+        async single() { return { data: mockMember, error: null }; },
+        async maybeSingle() { return { data: mockMember, error: null }; },
       };
     }
-    if (table === 'notification_logs') {
-      const selectBuilder = {
-        eq: () => selectBuilder,
-        in: () => selectBuilder,
-        gte: () => selectBuilder,
-        order: () => selectBuilder,
-        limit: () => selectBuilder,
-        then: (resolve) => Promise.resolve({ data: notificationLogs, error: null }).then(resolve),
-      };
-
-      return {
-        select: () => selectBuilder,
-        delete: () => {
-          const deleteFilters = {};
-          const deleteBuilder = {
-            eq: (col, val) => {
-              deleteFilters[col] = val;
-              return deleteBuilder;
-            },
-            in: (col, vals) => {
-              deleteFilters[col] = vals;
-              return deleteBuilder;
-            },
-            then: (resolve) => {
-              notificationLogs = notificationLogs.filter((l) => {
-                if (deleteFilters.member_id && l.member_id !== deleteFilters.member_id) return true;
-                if (deleteFilters.local_date && l.local_date !== deleteFilters.local_date) return true;
-                if (deleteFilters.notification_type) {
-                  if (Array.isArray(deleteFilters.notification_type)) {
-                    return !deleteFilters.notification_type.includes(l.notification_type);
-                  }
-                  return l.notification_type !== deleteFilters.notification_type;
-                }
-                return false;
-              });
-              return Promise.resolve({ data: null, error: null }).then(resolve);
-            },
-          };
-          return deleteBuilder;
-        },
-        insert: () => Promise.resolve({ error: null }),
-      };
+    assert.equal(table, 'notification_logs');
+    return {
+      select() { return this; },
+      eq() { return this; },
+      order() { return this; },
+      async limit() { return { data: notificationLogs, error: null }; },
+    };
+  };
+  supabaseAdmin.rpc = async (name, args) => {
+    assert.equal(name, 'cancel_own_sleep_check_in');
+    assert.equal(args.p_member_id, memberId);
+    assert.equal(args.p_discord_id, discordId);
+    assert.equal(args.p_cycle, '2026-05-15');
+    assert.equal(args.p_clear_pending, true);
+    notificationLogs = notificationLogs.filter(log => log.local_date !== args.p_cycle);
+    mockMember = { ...mockMember, last_notified_stage: null };
+    if (args.p_clear_pending) {
+      mockMember.pending_bedtime_local = null;
+      mockMember.pending_effective_at = null;
     }
-    if (table === 'sleep_logs') {
-      const sleepDeleteBuilder = {
-        eq: (col, val) => sleepDeleteBuilder,
-        then: (resolve) => Promise.resolve({ data: null, error: null }).then(resolve),
-      };
-      return {
-        delete: () => sleepDeleteBuilder,
-        select: () => ({
-          eq: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: null, error: null }),
-            }),
-          }),
-        }),
-      };
-    }
-    return origFrom.call(supabaseAdmin, table);
+    return { data: mockMember, error: null };
   };
 
   try {
@@ -540,9 +428,9 @@ async function testCancelPendingRoute() {
 
     testAssert(mockMember.pending_bedtime_local === null, 'pending_bedtime_local cleared');
     testAssert(mockMember.pending_effective_at === null, 'pending_effective_at cleared');
-    testAssert(mockMember.is_in_bed === false, 'is_in_bed reset to false');
-    testAssert(mockMember.in_bed_at === null, 'in_bed_at reset to null');
-    testAssert(mockMember.is_woke_up === false, 'is_woke_up reset to false');
+    testAssert(data.is_in_bed === false, 'is_in_bed reset to false');
+    testAssert(data.member.in_bed_at === null, 'in_bed_at reset to null');
+    testAssert(data.is_woke_up === false, 'is_woke_up reset to false');
     testAssert(mockMember.last_notified_stage === null, 'last_notified_stage cleared');
 
     // Check notification logs cleanup
@@ -558,6 +446,7 @@ async function testCancelPendingRoute() {
     testAssert(remainingSleepLogs.length === 0, "Today's sleep_logs entry deleted on cancel-pending");
   } finally {
     supabaseAdmin.from = origFrom;
+    supabaseAdmin.rpc = origRpc;
   }
 }
 
@@ -726,51 +615,21 @@ async function testCleanupFailureReturns500() {
   syncInMemoryMemberCache(mockMember);
 
   const origFrom = supabaseAdmin.from;
-  supabaseAdmin.from = (table) => {
+  const origRpc = supabaseAdmin.rpc;
+  supabaseAdmin.from = table => {
     if (table === 'members') {
       return {
-        select: () => ({
-          eq: () => ({
-            single: async () => ({ data: mockMember, error: null }),
-            maybeSingle: async () => ({ data: mockMember, error: null }),
-          }),
-          limit: () => Promise.resolve({ data: [mockMember], error: null }),
-        }),
-        update: (fields) => {
-          Object.assign(mockMember, fields);
-          const updateBuilder = {
-            eq: () => updateBuilder,
-            is: () => updateBuilder,
-            select: () => updateBuilder,
-            single: async () => ({ data: mockMember, error: null }),
-            maybeSingle: async () => ({ data: mockMember, error: null }),
-            then: (resolve) => Promise.resolve({ data: mockMember, error: null }).then(resolve),
-          };
-          return updateBuilder;
-        },
+        select() { return this; },
+        eq() { return this; },
+        async single() { return { data: mockMember, error: null }; },
+        async maybeSingle() { return { data: mockMember, error: null }; },
       };
     }
-    if (table === 'notification_logs') {
-      return {
-        delete: () => {
-          const deleteBuilder = {
-            eq: () => deleteBuilder,
-            then: (resolve) => Promise.resolve({ data: null, error: { message: 'DB notification delete failure' } }).then(resolve),
-          };
-          return deleteBuilder;
-        },
-      };
-    }
-    if (table === 'sleep_logs') {
-      return {
-        delete: () => ({
-          eq: () => ({
-            eq: () => Promise.resolve({ data: null, error: null }),
-          }),
-        }),
-      };
-    }
-    return origFrom.call(supabaseAdmin, table);
+    throw new Error('Expected a single cancellation RPC');
+  };
+  supabaseAdmin.rpc = async name => {
+    assert.equal(name, 'cancel_own_sleep_check_in');
+    return { data: null, error: { message: 'DB notification delete failure' } };
   };
 
   try {
@@ -797,6 +656,7 @@ async function testCleanupFailureReturns500() {
     testAssert(mockMember.is_in_bed === true, 'Member is_in_bed preserved on cancel-pending cleanup failure (retry path preserved)');
   } finally {
     supabaseAdmin.from = origFrom;
+    supabaseAdmin.rpc = origRpc;
   }
 }
 

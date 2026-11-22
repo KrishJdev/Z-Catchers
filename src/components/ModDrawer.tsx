@@ -14,12 +14,11 @@ import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FoxMascot } from './FoxMascot';
 import { Member } from '@/lib/db';
+import { pendingScheduleSnapshot } from '@/lib/pendingSchedule';
 import { isDemoSeedMember } from '@/lib/demoSeed';
 import { DateTime } from 'luxon';
 import {
   X,
-  Lock,
-  Unlock,
   Shield,
   Clock,
   ExternalLink,
@@ -31,7 +30,6 @@ import {
   UserCheck,
   RefreshCw,
   Search,
-  KeyRound,
   Trash2,
   Power,
   Edit2,
@@ -65,6 +63,7 @@ interface ModDrawerProps {
   viewerTimezone: string;
   onRosterChanged: () => Promise<void>;
   currentUser?: Member | null;
+  onAccessChanged?: () => void;
 }
 
 /**
@@ -81,12 +80,8 @@ export function ModDrawer({
   viewerTimezone,
   onRosterChanged,
   currentUser,
+  onAccessChanged,
 }: ModDrawerProps) {
-  // Passcode & auth state
-  const [passcode, setPasscode] = useState('');
-  const [schedulePasscode, setSchedulePasscode] = useState('');
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [verifying, setVerifying] = useState(false);
 
   // Main tabs and advanced tools
   const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'punishments' | 'webhook'>('pending');
@@ -127,30 +122,26 @@ export function ModDrawer({
 
   const isModUser = Boolean(currentUser?.is_moderator);
 
-  useEffect(() => {
-    if (isOpen && isModUser) {
-      setIsUnlocked(true);
-    }
-  }, [isOpen, isModUser]);
+  const isOwner = isModUser && currentUser?.role === 'owner';
+  const actorId = currentUser?.id;
+  const canManage = useCallback((member: Member) => isModUser && member.id !== actorId &&
+    (member.role === 'member' || (isOwner && member.role === 'moderator')), [isModUser, actorId, isOwner]);
 
-  // Check sessionStorage for cached unlock state on mount
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const cached = sessionStorage.getItem('z_catchers_mod_passcode');
-      if (cached) {
-        setPasscode(cached);
-        setIsUnlocked(true);
-      }
+    try {
+      sessionStorage.removeItem('z_catchers_mod_passcode');
+    } catch {
+      // Storage can be unavailable in private browsing.
     }
   }, []);
 
   // Fetch full moderator roster
-  const fetchModRoster = useCallback(async (code?: string) => {
+  const fetchModRoster = useCallback(async () => {
     setLoadingMembers(true);
     try {
-      const res = await fetch('/api/mod', {
-        headers: code ? { 'x-mod-passcode': code } : {},
-      });
+      const res = await fetch('/api/mod', { cache: 'no-store' });
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (!res.ok) setErrorMessage('Could not load the moderation roster.');
       if (res.ok) {
         const data = await res.json();
         if (data.members) {
@@ -162,13 +153,12 @@ export function ModDrawer({
     } finally {
       setLoadingMembers(false);
     }
-  }, []);
+  }, [onAccessChanged]);
 
-  const fetchWebhookStatus = useCallback(async (code?: string) => {
+  const fetchWebhookStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/mod/webhook', {
-        headers: code ? { 'x-mod-passcode': code } : {},
-      });
+      const res = await fetch('/api/mod/webhook', { cache: 'no-store' });
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
       if (res.ok) {
         const data = await res.json();
         setWebhookConfigured(data.configured);
@@ -177,56 +167,19 @@ export function ModDrawer({
     } catch (err) {
       console.error('Failed to load webhook status:', err);
     }
-  }, []);
+  }, [onAccessChanged]);
 
-  // Load roster when the drawer unlocks
   useEffect(() => {
-    if (isOpen && isUnlocked) {
-      fetchModRoster(passcode);
+    if (isOpen && isModUser) {
       setErrorMessage(null);
       setSuccessMessage(null);
+      void fetchModRoster();
     }
-  }, [isOpen, isUnlocked, passcode, fetchModRoster]);
-
-  // Handle Passcode Unlock
-  const handleUnlock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!passcode.trim()) {
-      setErrorMessage('Please enter the moderator secret passcode.');
-      return;
+    if (!isModUser) {
+      setModMembers([]);
+      setEditingMember(null);
     }
-
-    setVerifying(true);
-    setErrorMessage(null);
-
-    try {
-      const res = await fetch('/api/mod', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'verify',
-          mod_passcode: passcode.trim(),
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setErrorMessage(data.error || 'Invalid passcode. Access denied.');
-        return;
-      }
-
-      setIsUnlocked(true);
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('z_catchers_mod_passcode', passcode.trim());
-      }
-      setSuccessMessage('Moderator panel unlocked!');
-      await fetchModRoster(passcode.trim());
-    } catch {
-      setErrorMessage('Network error while verifying passcode.');
-    } finally {
-      setVerifying(false);
-    }
-  };
+  }, [isOpen, isModUser, fetchModRoster]);
 
   // Webhook action handlers
   const handleSendTestWebhook = async () => {
@@ -248,12 +201,14 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'test',
-          passcode,
+
           webhook_url: targetUrl || undefined,
         }),
       });
 
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (res.status === 409) await fetchModRoster();
       if (!res.ok) {
         setWebhookStatusMessage({
           type: 'error',
@@ -294,12 +249,14 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'digest',
-          passcode,
+
           webhook_url: targetUrl || undefined,
         }),
       });
 
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (res.status === 409) await fetchModRoster();
       if (!res.ok) {
         setWebhookStatusMessage({
           type: 'error',
@@ -321,23 +278,10 @@ export function ModDrawer({
     }
   };
 
-  // Lock / Sign out
-  const handleLock = () => {
-    setIsUnlocked(false);
-    setPasscode('');
-    setSchedulePasscode('');
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('z_catchers_mod_passcode');
-    }
-    setEditingMember(null);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-  };
-
   // Filter members with pending cooldowns
   const pendingMembers = useMemo(() => {
-    return modMembers.filter((m) => !!m.pending_effective_at);
-  }, [modMembers]);
+    return modMembers.filter((m) => !!m.pending_effective_at && canManage(m));
+  }, [modMembers, canManage]);
 
   // Filter roster for search query
   const filteredRoster = useMemo(() => {
@@ -352,7 +296,8 @@ export function ModDrawer({
   }, [modMembers, searchQuery]);
 
   // Action: Approve Cooldown Immediately
-  const handleApproveCooldown = async (memberId: string) => {
+  const handleApproveCooldown = async (member: Member) => {
+    const memberId = member.id;
     setActionLoadingId(`approve-${memberId}`);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -363,19 +308,22 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'approve_cooldown',
-          mod_passcode: schedulePasscode.trim() || passcode,
+          expected_pending: pendingScheduleSnapshot(member),
+
           member_id: memberId,
         }),
       });
 
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (res.status === 409) await fetchModRoster();
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to approve schedule change.');
         return;
       }
 
       setSuccessMessage(data.message || 'Schedule approved immediately!');
-      await fetchModRoster(passcode);
+      await fetchModRoster();
       await onRosterChanged();
     } catch {
       setErrorMessage('Network error approving change.');
@@ -385,7 +333,8 @@ export function ModDrawer({
   };
 
   // Action: Cancel Cooldown
-  const handleCancelCooldown = async (memberId: string) => {
+  const handleCancelCooldown = async (member: Member) => {
+    const memberId = member.id;
     setActionLoadingId(`cancel-${memberId}`);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -396,19 +345,22 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'cancel_cooldown',
-          mod_passcode: passcode,
+          expected_pending: pendingScheduleSnapshot(member),
+
           member_id: memberId,
         }),
       });
 
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (res.status === 409) await fetchModRoster();
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to cancel schedule change.');
         return;
       }
 
       setSuccessMessage('Pending change was rejected and cancelled.');
-      await fetchModRoster(passcode);
+      await fetchModRoster();
       await onRosterChanged();
     } catch {
       setErrorMessage('Network error cancelling change.');
@@ -532,9 +484,9 @@ export function ModDrawer({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'edit_member',
-          mod_passcode: schedulePasscode.trim() || passcode,
+          action: 'edit_schedule',
           member_id: editingMember.id,
+          expected_updated_at: editingMember.updated_at,
           bedtime_local: finalWeeklySchedule.mon.bedtime,
           wake_time_local: finalWeeklySchedule.mon.wake_time,
           timezone: editTimezone.trim(),
@@ -547,6 +499,13 @@ export function ModDrawer({
       });
 
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (res.status === 409) {
+        setEditingMember(null);
+        await fetchModRoster();
+        setErrorMessage('The profile changed. Review the refreshed schedule before editing again.');
+        return;
+      }
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to update member.');
         return;
@@ -554,7 +513,7 @@ export function ModDrawer({
 
       setSuccessMessage(data.message || 'Member schedule updated immediately with zero cooldown!');
       setEditingMember(null);
-      await fetchModRoster(passcode);
+      await fetchModRoster();
       await onRosterChanged();
     } catch {
       setErrorMessage('Network error saving edit.');
@@ -574,7 +533,7 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'adjust_strikes',
-          mod_passcode: passcode,
+
           member_id: member.id,
           strike_delta: deltaStrikes,
           metastrike_delta: deltaMetas,
@@ -582,13 +541,15 @@ export function ModDrawer({
       });
 
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (res.status === 409) await fetchModRoster();
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to adjust strikes.');
         return;
       }
 
       setSuccessMessage(`Updated strikes for ${member.discord_username}: ⚡ ${data.strikes_used} • 🛡️ ${data.metastrikes_used}/3`);
-      await fetchModRoster(passcode);
+      await fetchModRoster();
       await onRosterChanged();
       setTimeout(() => setSuccessMessage(null), 3500);
     } catch {
@@ -609,19 +570,21 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'clear_strike_log',
-          mod_passcode: passcode,
+
           member_id: member.id,
         }),
       });
 
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (res.status === 409) await fetchModRoster();
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to clear strike log.');
         return;
       }
 
       setSuccessMessage(`Cleared tonight's strike log for ${member.discord_username}.`);
-      await fetchModRoster(passcode);
+      await fetchModRoster();
       await onRosterChanged();
       setTimeout(() => setSuccessMessage(null), 3500);
     } catch {
@@ -643,20 +606,22 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'toggle_active',
-          mod_passcode: passcode,
+
           member_id: member.id,
           is_active: nextStatus,
         }),
       });
 
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (res.status === 409) await fetchModRoster();
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to change member status.');
         return;
       }
 
       setSuccessMessage(data.message);
-      await fetchModRoster(passcode);
+      await fetchModRoster();
       await onRosterChanged();
     } catch {
       setErrorMessage('Network error updating member status.');
@@ -687,15 +652,17 @@ export function ModDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'purge_seed_members',
-          mod_passcode: passcode.trim(),
+
         }),
       });
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (res.status === 409) await fetchModRoster();
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to purge demo profiles.');
       } else {
         setSuccessMessage(data.message || 'Purged demo profiles successfully.');
-        await fetchModRoster(passcode.trim());
+        await fetchModRoster();
         await onRosterChanged();
       }
     } catch {
@@ -705,7 +672,7 @@ export function ModDrawer({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !isModUser) return null;
 
   return (
     <ResponsiveDialog labelledBy="mod-panel-title" onClose={onClose}
@@ -723,7 +690,7 @@ export function ModDrawer({
                   Moderator Den Controls
                 </h2>
                 <span className="rounded-md bg-status-coral/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-status-coral">
-                  Admin
+                  {isOwner ? 'Owner' : 'Moderator'}
                 </span>
               </div>
               <p className="text-xs text-cream-muted">
@@ -733,18 +700,6 @@ export function ModDrawer({
           </div>
 
           <div className="flex items-center gap-2">
-            {isUnlocked && (
-              <button
-                type="button"
-                onClick={handleLock}
-                title="Lock moderator session"
-                aria-label="Lock moderator session"
-                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-lg border border-night-border bg-night-elevated px-2.5 py-1 text-xs text-cream-secondary transition-colors hover:text-status-coral hover:border-status-coral/40"
-              >
-                <Lock className="h-3.5 w-3.5 text-cream-muted" />
-                <span className="hidden sm:inline">Lock</span>
-              </button>
-            )}
             <button
               type="button"
               onClick={onClose}
@@ -772,65 +727,6 @@ export function ModDrawer({
           </div>
         )}
 
-        {/* Passcode Lock View */}
-        {!isUnlocked ? (
-          <div className="mt-6 flex flex-col items-center py-6 text-center">
-            <div className="mb-4 rounded-2xl border border-status-amber/30 bg-night-elevated p-4 shadow-inner">
-              <KeyRound className="h-10 w-10 text-status-amber" />
-            </div>
-            <h3 className="text-base font-bold text-cream-primary">
-              Passcode Authorization Required
-            </h3>
-            <p className="mt-1.5 max-w-sm text-xs text-cream-secondary">
-              Enter the moderator secret passcode configured for your server den to unlock instant schedule approvals and roster administration.
-            </p>
-
-            <form onSubmit={handleUnlock} className="mt-6 w-full max-w-sm space-y-4">
-              <div>
-                <input
-                  type="password"
-                  placeholder="Enter Moderator Passcode"
-                  value={passcode}
-                  onChange={(e) => setPasscode(e.target.value)}
-                  className="w-full rounded-xl border border-night-border bg-night-bg px-4 py-2.5 text-center text-sm font-semibold tracking-wider text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
-                  autoFocus
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={verifying || !passcode}
-                className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl bg-status-amber px-4 py-2.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50"
-              >
-                {verifying ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Verifying...</span>
-                  </>
-                ) : (
-                  <>
-                    <Unlock className="h-4 w-4" />
-                    <span>Unlock Moderator Panel</span>
-                  </>
-                )}
-              </button>
-            </form>
-
-            {isModUser && (
-              <div className="mt-4 w-full max-w-sm pt-4 border-t border-night-border/60">
-                <button
-                  type="button"
-                  onClick={() => setIsUnlocked(true)}
-                  className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-4 py-2.5 text-xs font-bold text-status-amber transition-colors hover:bg-status-amber/20"
-                >
-                  <Shield className="h-4 w-4" />
-                  <span>Unlock with Moderator Session (@{currentUser?.discord_username})</span>
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Unlocked Moderator Panel View */
           <div className="mt-4 flex flex-col">
             {/* Tab Navigation Pill Bar */}
             <div className="grid grid-cols-3 gap-1 rounded-xl border border-night-border bg-night-elevated p-1 text-xs">
@@ -894,28 +790,16 @@ export function ModDrawer({
                 Punishments
               </button>
             </div>
-            <button type="button" aria-pressed={activeTab === 'webhook'} onClick={() => {
+            {isOwner && <button type="button" aria-pressed={activeTab === 'webhook'} onClick={() => {
               setActiveTab('webhook');
               setEditingMember(null);
-              void fetchWebhookStatus(isModUser ? undefined : passcode);
+              void fetchWebhookStatus();
             }} className="flex min-h-[44px] items-center gap-2 self-start rounded-lg px-2 text-xs font-semibold text-status-amber">
               <Radio className="h-3.5 w-3.5" aria-hidden="true" /> Advanced
-            </button>
+            </button>}
 
             {activeTab === 'punishments' && (
-              <ModeratorPunishmentQueue passcode={isModUser ? '' : passcode} onTaskChanged={onRosterChanged} />
-            )}
-
-            {isModUser && (activeTab === 'pending' || editingMember) && (
-              <label className="mt-3 block space-y-1 text-xs text-cream-secondary">
-                <span>Moderator secret passcode for immediate schedule changes</span>
-                <input
-                  type="password"
-                  value={schedulePasscode}
-                  onChange={(event) => setSchedulePasscode(event.target.value)}
-                  className="block min-h-[44px] w-full rounded-xl border border-night-border bg-night-elevated px-3 text-cream-primary"
-                />
-              </label>
+              <ModeratorPunishmentQueue onTaskChanged={onRosterChanged} onAccessChanged={onAccessChanged} />
             )}
 
             {/* Sub-View: Inline Member Editor */}
@@ -1273,7 +1157,7 @@ export function ModDrawer({
                   </span>
                   <button
                     type="button"
-                    onClick={() => fetchModRoster(passcode)}
+                    onClick={() => fetchModRoster()}
                     disabled={loadingMembers}
                     className="flex items-center gap-1 text-xs text-status-amber hover:underline"
                   >
@@ -1396,7 +1280,7 @@ export function ModDrawer({
                           <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 pt-1 sm:pt-0">
                             <button
                               type="button"
-                              onClick={() => handleCancelCooldown(member.id)}
+                              onClick={() => handleCancelCooldown(member)}
                               disabled={actionLoadingId === `cancel-${member.id}`}
                               className="min-h-[40px] rounded-xl border border-night-border bg-night-bg px-3.5 py-2 text-xs font-semibold text-cream-secondary transition-colors hover:border-status-coral/40 hover:text-status-coral disabled:opacity-50 whitespace-nowrap shrink-0"
                             >
@@ -1405,7 +1289,7 @@ export function ModDrawer({
 
                             <button
                               type="button"
-                              onClick={() => handleApproveCooldown(member.id)}
+                              onClick={() => handleApproveCooldown(member)}
                               disabled={actionLoadingId === `approve-${member.id}`}
                               className="min-h-[40px] flex items-center justify-center gap-1.5 rounded-xl bg-status-sage px-4 py-2 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50 whitespace-nowrap shrink-0 shadow-sm"
                             >
@@ -1434,7 +1318,7 @@ export function ModDrawer({
             {activeTab === 'roster' && !editingMember && (
               <div className="mt-4 space-y-3">
                 {/* Pre-seeded demo profiles banner */}
-                {hasDemoMembers && (
+                {isOwner && hasDemoMembers && (
                   <div className="flex items-center justify-between rounded-xl border border-status-amber/40 bg-status-amber/10 p-3 text-xs text-status-amber">
                     <div>
                       <span className="font-bold">Pre-seeded demo profiles detected</span>
@@ -1446,7 +1330,7 @@ export function ModDrawer({
                       type="button"
                       onClick={handlePurgeDemoMembers}
                       disabled={actionLoadingId === 'purge_demo'}
-                      className="shrink-0 rounded-lg bg-status-amber px-3 py-1.5 text-xs font-bold text-night-bg hover:bg-status-amber/90 transition-all disabled:opacity-50"
+                      className="min-h-[44px] shrink-0 rounded-lg bg-status-amber px-3 py-1.5 text-xs font-bold text-night-bg hover:bg-status-amber/90 transition-all disabled:opacity-50"
                     >
                       {actionLoadingId === 'purge_demo' ? 'Purging...' : 'Purge Demo Profiles'}
                     </button>
@@ -1531,7 +1415,7 @@ export function ModDrawer({
                                     <strong className="tabular-nums font-bold">{Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0)}</strong>
                                   </span>
                                   <div className="flex items-center gap-0.5 ml-1">
-                                    <button
+                                    {isOwner && canManage(member) && (<button
                                       type="button"
                                       onClick={() => handleAdjustStrikes(member, -1, 0)}
                                       disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) <= 0}
@@ -1539,8 +1423,8 @@ export function ModDrawer({
                                       title="Decrement strikes"
                                     >
                                       -
-                                    </button>
-                                    <button
+                                    </button>)}
+                                    {isOwner && canManage(member) && (<button
                                       type="button"
                                       onClick={() => handleAdjustStrikes(member, 1, 0)}
                                       disabled={actionLoadingId === `strikes_${member.id}`}
@@ -1548,7 +1432,7 @@ export function ModDrawer({
                                       title="Increment strikes"
                                     >
                                       +
-                                    </button>
+                                    </button>)}
                                   </div>
                                 </div>
 
@@ -1562,7 +1446,7 @@ export function ModDrawer({
                                     <strong className="tabular-nums font-bold">{Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0)}/3</strong>
                                   </span>
                                   <div className="flex items-center gap-0.5 ml-1">
-                                    <button
+                                    {isOwner && canManage(member) && (<button
                                       type="button"
                                       onClick={() => handleAdjustStrikes(member, 0, -1)}
                                       disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) <= 0}
@@ -1570,8 +1454,8 @@ export function ModDrawer({
                                       title="Decrement metastrikes"
                                     >
                                       -
-                                    </button>
-                                    <button
+                                    </button>)}
+                                    {isOwner && canManage(member) && (<button
                                       type="button"
                                       onClick={() => handleAdjustStrikes(member, 0, 1)}
                                       disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) >= 3}
@@ -1579,7 +1463,7 @@ export function ModDrawer({
                                       title="Increment metastrikes"
                                     >
                                       +
-                                    </button>
+                                    </button>)}
                                   </div>
                                 </div>
 
@@ -1588,17 +1472,18 @@ export function ModDrawer({
                             )}
 
                             {/* Clear Tonight's Strike Log */}
-                            <button
+                            {isOwner && canManage(member) && (<button
                               type="button"
                               onClick={() => handleClearNightlyLog(member)}
                               disabled={actionLoadingId === `clear_${member.id}`}
-                              className="text-[10px] text-cream-muted hover:text-fox-rust underline transition-colors"
+                              className="min-h-[44px] text-[10px] text-cream-muted hover:text-fox-rust underline transition-colors"
                               title="Clear tonight's strike log"
                             >
                               Clear Tonight&apos;s Log
-                            </button>
+                            </button>)}
 
-                            {member.is_in_bed && (
+                            {canManage(member) && member.is_active && (member.is_in_bed || (member.last_notified_stage === 'IN_BED_EARLY' &&
+                              member.last_notified_cycle_date !== member.last_wake_cycle_date)) && (
                               <>
                                 <span className="text-cream-muted">•</span>
                                 <button
@@ -1610,15 +1495,15 @@ export function ModDrawer({
                                         method: 'POST',
                                         headers: {
                                           'Content-Type': 'application/json',
-                                          'x-mod-passcode': passcode,
                                         },
                                         body: JSON.stringify({ memberId: member.id, action: 'cancel' }),
                                       });
                                       if (res.ok) {
                                         setSuccessMessage(`Reset sleep status for ${member.discord_username} to Awake.`);
-                                        await fetchModRoster(passcode);
+                                        await fetchModRoster();
                                         await onRosterChanged();
                                       } else {
+                                        if (res.status === 401 || res.status === 403) onAccessChanged?.();
                                         const d = await res.json().catch(() => ({}));
                                         setErrorMessage(d.error || 'Failed to reset sleep status.');
                                       }
@@ -1629,7 +1514,7 @@ export function ModDrawer({
                                     }
                                   }}
                                   disabled={actionLoadingId === `wake_${member.id}`}
-                                  className="text-[10px] text-status-amber hover:underline transition-colors flex items-center gap-1"
+                                  className="min-h-[44px] text-[10px] text-status-amber hover:underline transition-colors flex items-center gap-1"
                                   title="Wake up member and cancel in-bed check-in"
                                 >
                                   <Sun className="h-3 w-3 text-status-amber" />
@@ -1655,7 +1540,7 @@ export function ModDrawer({
                         </a>
 
 
-                        <button
+                        {canManage(member) && (<button
                           type="button"
                           onClick={() => startEditMember(member)}
                           title="Edit member schedule immediately"
@@ -1663,9 +1548,9 @@ export function ModDrawer({
                           className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 text-cream-muted transition-colors hover:bg-night-border hover:text-cream-primary"
                         >
                           <Edit2 className="h-4 w-4" />
-                        </button>
+                        </button>)}
 
-                        <button
+                        {isOwner && canManage(member) && (<button
                           type="button"
                           onClick={() => handleToggleActive(member)}
                           disabled={actionLoadingId === `toggle-${member.id}`}
@@ -1678,7 +1563,7 @@ export function ModDrawer({
                           }`}
                         >
                           <Power className="h-4 w-4" />
-                        </button>
+                        </button>)}
                       </div>
                     </div>
                   ))}
@@ -1693,7 +1578,7 @@ export function ModDrawer({
             )}
 
             {/* TAB 3: ADD NEW MEMBER */}
-            {activeTab === 'webhook' && !editingMember && (
+            {isOwner && activeTab === 'webhook' && !editingMember && (
               <div className="mt-4 space-y-4">
                 <div className="rounded-2xl border border-night-border bg-night-elevated p-4">
                   <div className="flex items-start gap-3">
@@ -1832,7 +1717,6 @@ export function ModDrawer({
               </div>
             )}
           </div>
-        )}
     </ResponsiveDialog>
   );
 }

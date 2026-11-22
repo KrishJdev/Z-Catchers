@@ -18,7 +18,9 @@ The private operator copy in the shared Git directory (`git rev-parse --path-for
 
 The database trigger blocks changes to the Owner's role, active state, member ID and Discord link, and blocks deletion. Any recovery must be coordinated with paused staff writes and a verified replacement identity. Rehearse that operator procedure in Phase 4 before the production cutover.
 
-### Shared-passcode callers
+### Shared-passcode callers before Phase 2
+
+This table records the legacy paths that must be retired during cutover.
 
 | Route | Legacy credential | Caller and use |
 |---|---|---|
@@ -34,10 +36,10 @@ The database trigger blocks changes to the Owner's role, active state, member ID
 | `POST /api/members/update-schedule` | `mod_passcode` or `x-mod-passcode` | Direct-write compatibility accepted by the route. The self-service UI uses Discord sessions and ModDrawer edits through `/api/mod`. |
 | `POST /api/members/strikes/metastrike` | `mod_passcode` or `x-mod-passcode` | Staff compatibility accepted by the route. The member UI uses the linked profile’s session. |
 
-- [Auth](src/lib/auth.ts) reads the passcode, the configured Discord allowlist and the live database role. [/api/auth/me](src/app/api/auth/me/route.ts) refreshes the compatibility `is_moderator` flag. [rateLimit](src/lib/rateLimit.ts) contains shared-passcode attempt tracking. Keep separate account and scheduler credentials through cutover.
-- [ModDrawer](src/components/ModDrawer.tsx) has two passcode inputs and stores the unlock value in `z_catchers_mod_passcode` in session storage. Include installed PWAs and old browser tabs when testing the drawer upgrade.
-- Executable passcode fixtures live in [dispatcher CI](scripts/test-dispatcher-ci.mjs), [dispatch recovery](scripts/test-dispatch-recovery.mjs), [cancel pending](scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs), [schedule override](scripts/test-update-schedule-mod-rate-limit.mjs) and [strike routes](scripts/test-strikes-api-and-routes.mjs). [Login/auth](scripts/test-login-and-auth.mjs) and [punishment APIs](scripts/test-punishment-task-apis.mjs) exercise the Discord allowlist. The hosted dispatcher smoke workflow starts disposable Supabase for these integration tests.
-- [Environment template](.env.example) documents the legacy settings. The production scheduler script and GitHub fallback use the separate `CRON_SECRET`. Historical issue-seed scripts document past behavior. Review Vercel request logs by route and confirm any external callers with the operator before cutover. Keep credential values out of the request log review.
+- The legacy auth path read the passcode, the Discord allowlist and the live database role. Phase 2 derives the compatibility `is_moderator` flag in [/api/auth/me](src/app/api/auth/me/route.ts) from the active linked database role. Keep the separate account and scheduler credentials through cutover.
+- The legacy drawer had two passcode inputs and cached the unlock value as `z_catchers_mod_passcode`. The Phase 2 drawer deletes that entry. Include installed PWAs and old browser tabs when testing the upgrade.
+- Before Phase 2, executable passcode fixtures lived in [dispatcher CI](scripts/test-dispatcher-ci.mjs), [dispatch recovery](scripts/test-dispatch-recovery.mjs), [cancel pending](scripts/test-cancel-pending-and-subscribe-rate-limiting.mjs), the former schedule override suite and [strike routes](scripts/test-strikes-api-and-routes.mjs). [The live-role suite](scripts/test-moderation-live-roles.mjs) now uses signed Discord sessions and verifies that the former credentials cannot authorize writes. The hosted dispatcher smoke workflow starts disposable Supabase for these integration tests.
+- [The environment template](.env.example) lists the credentials needed by the role-only app. The production scheduler script and GitHub fallback use the separate `CRON_SECRET`. Historical issue-seed scripts document past behavior. Review Vercel request logs by route and confirm any external callers with the operator before cutover. Keep credential values out of the request log review.
 
 ### Deployments with database access
 
@@ -51,7 +53,7 @@ The database trigger blocks changes to the Owner's role, active state, member ID
 ### Application and database cutover order
 
 1. In Phase 1, rehearse the additive role migration and operator bootstrap against isolated copies of fresh and existing data. Complete the private owner and moderator checklist before using production. Record the recovery point and capture the pending schedule queue so it can be checked after cutover.
-2. Apply the additive role schema to production. Before bootstrapping, pause legacy staff access to production across the current app and retained production-connected previews and deployments. Keep the pending queue intact. Run the guarded owner bootstrap and approved moderator backfill in one transaction.
-3. Switch the API and drawer together to the role-only release. Route staff to the new deployment and verify that old deployment URLs can no longer write to production. Test the upgrade from an installed PWA and a signed-in tab that was open before cutover.
+2. Apply the additive role schema to production. Before bootstrapping, pause legacy staff access to production across the current app and retained production-connected previews and deployments. Record the pause control and the old URLs it covers. Keep the pending queue intact. Run the guarded owner bootstrap and approved moderator backfill in one transaction.
+3. With legacy staff access paused, apply [the live-role migration](supabase/migrations/20261127_moderation_live_roles.sql). It installs the role-checked staff transactions and removes the old passcode rate-limit function. Switch the API and drawer together to the role-only release. Route staff to the new deployment. Before resuming staff access, verify that the recorded pause control prevents writes from the old deployment URLs. Reload an already-open signed-in tab and relaunch the installed PWA while online. In both clients, confirm the drawer opens with the Discord session and completes a permitted staff action.
 4. Smoke-test an Owner, Moderator and Member. Verify the pending queue, self-service 48-hour cooldown, explicit staff approval, immediate revocation in an existing session and rejection of the former passcode. Remove `MOD_SECRET_PASSCODE` and `MOD_DISCORD_IDS` from deployment configuration and verify the scheduler still runs.
 5. If cutover fails, pause staff actions, inspect the stored owner and approved moderators, and recover through the rehearsed operator procedure and a corrected role-only release.
