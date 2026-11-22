@@ -67,7 +67,8 @@ z-catchers/
 ### 3.3 The 48-Hour Cooldown Governance Rule
 * **FORBIDDEN:** Regular members (`role = 'member'`) must **never** be able to overwrite `bedtime_local` or `timezone` directly via the self-service API once their profile is created.
 * **REQUIRED:** Self-service schedule changes must write to `pending_bedtime_local`, `pending_timezone`, and `pending_effective_at = NOW() + 48 hours`.
-* **REQUIRED:** Only requests authenticated with the `MOD_SECRET_PASSCODE` can bypass the 48-hour queue or force-approve a pending change immediately.
+* **Current release:** `MOD_SECRET_PASSCODE` authorizes the legacy schedule override until the moderation cutover.
+* **Role-only moderation:** Self-service uses the queue for every role. Only explicit staff actions in `/api/mod` can approve a pending change early or edit an active schedule immediately. Check the actor’s active linked Discord identity and live database role, the target’s role and, for approval, the pending schedule the staff member reviewed. Moderators can act on members, the Owner can act on members and moderators, and staff use self-service for their own schedules.
 * **REQUIRED:** Updating `journal_url` or `discord_username` does **not** trigger the 48-hour cooldown and applies immediately.
 
 ### 3.4 Discord Deep-Link Sanitization
@@ -104,7 +105,7 @@ z-catchers/
 ## 5. Anti-Bloat & Scope Creep Rules
 
 * **Stay in Phase 1 (MVP):** Do not build Phase 2 or Phase 3 features (such as Discord bots, streak counters, or buddy watchlists) unless the user explicitly commands you to start Phase 2.
-* **No Heavy Auth Dependencies:** Use the existing Discord OAuth session for member actions and live role checks for moderator access. Require `MOD_SECRET_PASSCODE` for immediate schedule overrides.
+* **No Heavy Auth Dependencies:** Use the existing Discord OAuth session for member actions and live role checks for moderator access. See the cooldown governance rule for the schedule override path during the rollout.
 * **Minimal Dependencies:** Only install packages that are directly required (`luxon`, `web-push`, `lucide-react`, and your DB client). Do not install heavy UI component libraries (like Material UI or Ant Design).
 
 ---
@@ -121,7 +122,7 @@ Whenever you complete a milestone from `PROJECT_SPEC.md`:
 
 ## 7. Git & Branching Protocol
 
-* **Active Working Branch:** All development work, file edits, testing, and commits must be conducted directly on the `krish` branch.
+* **Active Working Branch:** Use `krish` for regular work. Follow the [moderation rollout workflow](MODERATION_PLAN.md#feature-branch-workflow) for the phase branches.
 * **Target Integration Branch:** `dev` is the repository's default branch on GitHub. Pull Requests opened from `krish` target `dev`.
 * **Production Branch:** `main` is reserved for tagged releases and production-ready deployments merged from `dev`.
 
@@ -131,7 +132,7 @@ Whenever you complete a milestone from `PROJECT_SPEC.md`:
 
 * **Rule:** At the conclusion of **every single task, milestone, or user session**, the agent MUST update `HANDOFF.md` in the root directory before concluding their turn.
 * **Required Handoff Content:**
-  1. **Metadata & Status:** Update the timestamp, current active branch (`krish`), latest commit hash, and build verification status (`npx tsc --noEmit`).
+  1. **Metadata & Status:** Update the timestamp, current working branch, latest commit hash, and results from `npx tsc --noEmit` and `npm run test:unit`.
   2. **Work Completed in Current Task:** Detailed, bulleted changelog of what was built, files modified/created, and issues resolved.
   3. **Task & Jira Status:** Update the Jira task/epic table showing which items are DONE, IN PROGRESS, or TODO.
   4. **Immediate Next Steps:** State clearly and specifically what the next agent or session should implement next (e.g., the exact file paths and logic required).

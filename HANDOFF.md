@@ -1,16 +1,16 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-21T20:59:15+05:30
-> **Active working branch:** `krish`, fast-forwarded to the Phase 5 merge at `f759dbb` before implementing Phase 6.
+> **Last Updated:** 2026-11-22T18:45:53+05:30
+> **Active working branch:** `codex/moderation-4-release-rehearsal` at verified implementation commit `ebe3889`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
 > **Phase 6 review fix:** `2682c1c` on `krish`.
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active integration:** Phase 6 [PR #103](https://github.com/KrishJdev/Z-Catchers/pull/103) targets `dev` from `krish`. Phase 5 [PR #102](https://github.com/KrishJdev/Z-Catchers/pull/102) merged into `dev` at `f759dbb`.
+> **Active integration:** Moderation Phase 4 [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109) targets `dev` from the Phase 3 merge at `bc16816`. Phase 3 [PR #108](https://github.com/KrishJdev/Z-Catchers/pull/108), Phase 2 [PR #107](https://github.com/KrishJdev/Z-Catchers/pull/107) and Phase 1 [PR #106](https://github.com/KrishJdev/Z-Catchers/pull/106) are merged into `dev`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
-> **Active Production Release Pull Request:** The punishments release is pending Phase 6 integration. The current `origin/main` commit is `69ff880` from [PR #96](https://github.com/KrishJdev/Z-Catchers/pull/96).
-> **Build Status:** `npx tsc --noEmit` and all 51 unit suites passed with the Phase 6 review fix. The original Phase 6 head passed the production build and hosted Supabase rehearsal. Updated hosted checks run on PR #103.
+> **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
+> **Build Status:** `npx tsc --noEmit`, all 53 `npm run test:unit` suites, and `npm run build` passed for Phase 4. [Hosted CI](https://github.com/KrishJdev/Z-Catchers/actions/runs/45025945480) and [disposable Supabase smoke](https://github.com/KrishJdev/Z-Catchers/actions/runs/45025945514) passed on `ebe3889`.
 
 ---
 
@@ -60,8 +60,7 @@ In an international Discord server with members spanning US, Europe, India, and 
 ## 3. Git Branching Model & Workflow
 
 Per repository protocol established in `AGENT_RULES.md` and commit history:
-* **Active Working Branch:** `krish`
-  * All active feature development, edits, testing, and commits occur directly on this branch.
+* **Active Working Branch:** Follow [the repository branch protocol](AGENT_RULES.md#7-git--branching-protocol) and the per-phase [moderation workflow](MODERATION_PLAN.md#feature-branch-workflow).
 * **Target Integration Branch:** `dev`
   * Pull Requests opened from `krish` target `dev`.
 * **Production Branch:** `main`
@@ -70,6 +69,62 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Moderation Phase 4 · Release rehearsal and Owner recovery
+
+- Added `supabase/recover_moderation_owner.sql`. The database owner can re-link the existing Owner to a verified, unclaimed Discord identity, with the Owner protection restored inside the transaction. Unit tests on the fresh schema cover rejected recovery, successful recovery and retry, and the old session losing access.
+- Updated `scripts/test-dispatcher-ci.mjs` to create the Owner candidate and pending schedule before the two moderation migrations. The fixture uses canonical `HH:mm` strings. PGlite and disposable Supabase preserved the pending values and verified one active fixture Owner. The hosted run denied the former credential, allowed a promoted session to approve with the correct audit actor, denied its next request after revocation, and confirmed that recovery rejects the old Owner session and accepts the replacement identity. Updated the dispatcher smoke workflow path filters so drawer changes run these integration checks.
+- Updated `public/sw.js` to replace the cached legacy shell. A local Edge rehearsal served the legacy and role-only production builds on the same loopback origin with fixture responses. It pruned the old cache and removed the passcode from an already-open tab on reload. At 390 px, the Owner promoted and revoked from the roster, and the fixture Moderator approved a schedule and received HTTP `403` after revocation.
+- Installed the legacy PWA in an isolated Edge profile on Windows. Closed it, switched the same origin to the candidate, and relaunched the installed app. It used the new shell cache, showed the Owner badge and pending request, and completed an early approval without passcode controls. Removed the temporary installation. Live Discord sign-ins and the installed-device check on the production origin remain release checks.
+- Updated `scripts/test-moderation-owner-and-roles.mjs`, `scripts/test-phase1-pwa-push.mjs`, `AGENT_RULES.md`, `MODERATION_PLAN.md`, `MODERATION_ROLLOUT_CHECKLIST.md` and this handoff. The rollout checklist covers legacy deployment isolation, queue comparison, credential retirement, scheduler verification and recovery. This rehearsal used fixture data and the production cutover remains pending.
+
+### Moderation Phase 3 · Drawer and moderator assignment
+
+- The Owner can confirm promotion or revocation in **Mod Panel → Roster**. Promotion requires an active Discord-linked member. The Owner can also remove a role from an inactive moderator. The drawer posts the reviewed role to `set_moderator` and refreshes the roster on success or conflict.
+- The Warm Dark dialog and mobile sheet retain the Sleepy Fox, role badge and 44 px controls. The existing upgrade cleanup removes the old browser passcode entry. The dashboard refreshes the signed-in role through `/api/auth/me` and closes the panel when access is revoked.
+- Desktop and mobile-width Chromium checks used fixture responses to exercise account confirmation, stale-role refresh, promotion, schedule approval and revocation while the moderator's drawer was open. The PGlite route tests used one signed Discord session across both role changes and verified the approval and audit actor. The installed PWA and live Discord rollout checks are part of Phase 4.
+- Added `src/components/RosterRoleAction.tsx` and `scripts/test-moderation-drawer.mjs`. Updated `src/app/page.tsx`, `src/components/ModDrawer.tsx`, `scripts/run-tests.mjs`, `scripts/test-moderation-live-roles.mjs` and this handoff.
+
+### Moderation Phase 2 · Live Discord roles and passcode retirement
+
+- The active Discord-linked database profile supplies the role for staff routes and `/api/auth/me`. The shared passcode, its rate-limit path and the runtime Discord allowlist have been retired. The drawer uses the signed-in role and refreshes access after authorization errors.
+- The staff transactions lock and recheck the actor and target. `edit_schedule` applies the immediate edit and `approve_cooldown` compares the reviewed queue with the current request. Self-service retains the 48-hour queue for every role. Punishment writes resolve the member from the task ID. Staff corrections and legacy owner-only actions record the signed-in actor. Historical audit entries remain available.
+- Replaced passcode fixtures with signed Discord sessions and coverage for role mismatch, same-session revocation, stale approvals, concurrent promotions, and the audit actor. The hosted dispatcher smoke includes real PostgreSQL lock overlap scenarios. The first run used a stale-approval timezone that could match the runtime fixture. The follow-up uses a different timezone from the queued value.
+- Added `supabase/migrations/20261127_moderation_live_roles.sql`, `src/lib/moderation.ts`, `src/lib/pendingSchedule.ts` and `scripts/test-moderation-live-roles.mjs`.
+- Updated `supabase/schema.sql`, `.env.example`, `BACKEND_TZ_PWA_SPEC.md`, `MODERATION_ROLLOUT_CHECKLIST.md` and this handoff.
+- Updated `src/lib/{auth,db,rateLimit,strikes}.ts`, `src/app/api/auth/{claim-profile,discord/callback,me}/route.ts`, `src/app/api/members/{cancel-pending,in-bed,strikes/metastrike,update-schedule,wake-up}/route.ts`, `src/app/api/mod/route.ts`, `src/app/api/mod/{punishments,webhook}/route.ts`, `src/app/page.tsx` and `src/components/{ModDrawer,ModeratorPunishmentQueue}.tsx`.
+- Updated `scripts/run-tests.mjs` and `scripts/test-{cancel-pending-and-subscribe-rate-limiting,dispatch-recovery,dispatcher-ci,login-and-auth,moderation-owner-and-roles,punishment-task-apis,strikes-api-and-routes,strikes-system}.mjs`. Removed `scripts/test-update-schedule-mod-rate-limit.mjs`.
+
+#### Moderation Phase 2 CodeRabbit follow-up
+
+- Verified the [full review on PR #107](https://github.com/KrishJdev/Z-Catchers/pull/107#pullrequestreview-6012132521) against the Phase 2 branch. Immediate schedule edits compare the roster version the moderator opened and reject invalid flat schedules. Legacy flat approvals synchronize the affected weekly entries. Malformed authorities fail the same-origin check.
+- Self-service and staff cancellation lock the member before changing receipts and history. Staff wake corrections compare the evidence used to build the entry with the evidence under lock. Tests cover a successful wake without a prior check-in, a stale wake conflict and rollback of both deletes when a cancellation fails.
+- Moved the elapsed 48-hour deadline into the sleep engine. The hosted smoke seeds the complete reviewed pending schedule before replacing it under lock and checks a self-service cancellation racing a staff wake.
+- Updated the cutover checklist to verify that the recorded pause prevents writes from older deployments before staff access resumes. Added recovery steps for open tabs and installed PWAs. Replaced the old allowlist instruction in the active hosting setup with the Owner bootstrap.
+- Updated `src/lib/{auth,moderation,sleepEngine}.ts`, `src/app/api/mod/route.ts`, `src/app/api/members/{cancel-pending,in-bed,update-schedule,wake-up}/route.ts`, `src/components/ModDrawer.tsx`, `supabase/migrations/20261127_moderation_live_roles.sql` and `supabase/schema.sql`.
+- Updated `scripts/test-{dispatcher-ci,moderation-live-roles,state-sync-audit}.mjs`, `BACKEND_TZ_PWA_SPEC.md`, `MODERATION_ROLLOUT_CHECKLIST.md` and `HANDOFF.md`.
+
+### Moderation Phase 1 · Owner bootstrap and role assignment
+
+- Added `supabase/migrations/20261126_moderation_owner_and_roles.sql`, mirrored it in `supabase/schema.sql`, and added the guarded operator transaction in `supabase/bootstrap_moderation_owner.sql`. The database enforces one active, Discord-linked Owner at most and protects that account's role, active status, IDs and deletion. The operator copy uses the verified Phase 0 identity and zero carryovers. It is stored privately in the shared Git directory. Production remains on the existing rollout state.
+- Updated `src/lib/db.ts`, `src/lib/auth.ts`, `src/app/api/auth/me/route.ts`, `src/app/api/auth/claim-profile/route.ts` and `src/app/api/auth/discord/callback/route.ts` so the stored Owner retains legacy moderator capabilities during the rollout.
+- Updated `src/app/api/mod/route.ts` with the same-origin, signed Owner action `set_moderator`. The database verifies both actor IDs and the target's expected role under row locks and writes the audit record in the same transaction. Generic edits reject role fields, and `src/components/ModDrawer.tsx` omits the old role selector. The Owner's schedule uses self-service, with a guard against legacy overrides in `src/app/api/members/update-schedule/route.ts`.
+- Added `scripts/test-moderation-owner-and-roles.mjs`, registered it in `scripts/run-tests.mjs`, and extended `scripts/test-dispatcher-ci.mjs` with disposable Supabase coverage. Local tests exercised a fresh schema and an upgrade with pending schedule data, owner protection, bootstrap retries, authorization, concurrent requests and audit rollback.
+- The first hosted smoke run exposed a duplicate Discord ID in the new fixture. Assigned the Owner fixture its own ID and added a uniqueness check for all smoke accounts.
+- The hosted smoke run showed that Next.js can rewrite the request URL hostname. Origin verification now uses the incoming Host and the request protocol, with regression tests for rewritten hosts and cross-origin requests.
+- Updated `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `MODERATION_ROLLOUT_CHECKLIST.md` and this handoff with the roles, endpoint contract, operator steps and Phase 2 entry point.
+
+### Moderation Phase 0 · [PR #105](https://github.com/KrishJdev/Z-Catchers/pull/105) review fix
+
+- Applied [CodeRabbit’s review](https://github.com/KrishJdev/Z-Catchers/pull/105#discussion_r4654737671) to `PROJECT_SPEC.md`. The endpoint description now records the linked-profile cooldown path, the current shared-passcode override and its retirement at the role-only cutover.
+- Updated `HANDOFF.md` with the review and verification. TypeScript and all 51 unit suites passed.
+
+### Moderation Phase 0 · Access inventory
+
+- Matched Krish’s signed-in production Discord identity with the active database row. Supabase contains zero database moderators. Krish confirmed he is the sole production allowlist entry and that there are no moderators to carry over. The member UUID and Discord ID are in the private local Git-directory file `moderation-phase-0-private.md`.
+- Added [the moderation plan](MODERATION_PLAN.md) and [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md). The checklist maps the shared-passcode paths and fixtures, covers production and production-connected previews, and records the order for the owner bootstrap, role-only cutover, old deployment retirement and smoke tests.
+- Updated `AGENTS.md`, `AGENT_RULES.md`, `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `DESIGN_SYSTEM.md` and `HANDOFF.md` for the rollout branch workflow and explicit staff schedule actions. Phase 0 changes documentation only.
+- Local type check, all 51 unit suites and production build passed. The Phase 0 PR targets `dev` from `krish`.
 
 ### Punishments Phase 6 · Cutover verification and recovery
 
@@ -3000,6 +3055,9 @@ d:\Projects\Z Catchers\
 
 | Review milestone | Status | Verification |
 |---|---|---|
+| Moderation Phase 4 code and local rehearsal | DONE | Fresh-schema recovery, 53 unit suites, TypeScript, build, and browser upgrade with fixture data |
+| Moderation Phase 4 hosted smoke and installed PWA rehearsal | DONE | [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109) includes the passing smoke run and standalone Edge upgrade results |
+| Moderation production cutover | TODO | Verify installed devices and live Discord sessions on the release origin, then record the checklist results |
 | Strike and reminder fixes on `krish` | DONE | Dispatcher retry tests, transactional PostgreSQL tests and project checks |
 | Test deployment and device delivery | TODO | Apply the migration, install the scheduler and verify an actual subscribed device |
 | Production rollout | TODO | Requires testing through `dev` before release via `main` |
@@ -3035,8 +3093,18 @@ d:\Projects\Z Catchers\
 | **ZC-25** | **Medium (P2)** | Backend: Remove `wake_time_local` default destructuring to prevent schedule overwrites | `src/app/api/members/update-schedule/route.ts` | [#39](https://github.com/KrishJdev/Z-Catchers/issues/39) | **TODO** |
 | **ZC-26** | **Medium (P3)** | State Machine: Reconcile Sleep Shield active vs `canVoteStrike` in 60-480m overdue window | `src/lib/sleepEngine.ts`, `src/components/MemberCard.tsx` | [#40](https://github.com/KrishJdev/Z-Catchers/issues/40) | **DONE** (Commits `7c0ae88`, `a809952`, `25e1d3e`, PR #78 merged into `dev`, included in PR #79 to `main`) |
 | **ZC-27** | **Low (P3)** | State Machine: Enforce mutual exclusion between `is_in_bed` and `is_woke_up` flags | `src/app/api/auth/me/route.ts`, `src/app/api/members/route.ts` | [#41](https://github.com/KrishJdev/Z-Catchers/issues/41) | **DONE** (Resolved in Phase 111, commit `ee3c809` on `fix/early-wakeup-snapback`) |
-| **ZC-14** | **Low (P3)** | Security / ModDrawer: Avoid storing plaintext moderator passcode in `sessionStorage` | `src/components/ModDrawer.tsx` | [#42](https://github.com/KrishJdev/Z-Catchers/issues/42) | **TODO** |
+| **ZC-14** | **Low (P3)** | Security / ModDrawer: Avoid storing plaintext moderator passcode in `sessionStorage` | `src/components/ModDrawer.tsx` | [#42](https://github.com/KrishJdev/Z-Catchers/issues/42) | **DONE** in the role-only code. Verified removal of the old browser entry. |
 | **ZC-15** | **Low (P3)** | PWA / Cache: Implement versioned cache invalidation for `_next/static` assets in Service Worker | `public/sw.js` | [#43](https://github.com/KrishJdev/Z-Catchers/issues/43) | **TODO** |
+
+### Passcode-free moderation
+
+| Milestone | Status | Next action |
+|---|---|---|
+| Phase 0 · Access inventory | DONE | Owner and zero moderator carryovers verified. Addressed the review on [PR #105](https://github.com/KrishJdev/Z-Catchers/pull/105). See the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md). |
+| Phase 1 · Owner and role assignment | DONE | Role migration, operator bootstrap and owner-only assignment API implemented at `2349670`. TypeScript, 52 unit suites and production build passed. |
+| Phase 2 · Live role authorization | DONE | Live authorization, explicit schedule actions, passcode retirement and CodeRabbit fixes are in [PR #107](https://github.com/KrishJdev/Z-Catchers/pull/107). |
+| Phase 3 · Drawer and moderator assignment | DONE | Owner roster workflows, desktop and mobile-width browser checks, and signed-session approval and revocation tests passed. Review and integrate the PR to `dev`. |
+| Phase 4 · Release rehearsal | TODO | Rehearse the owner bootstrap and application/database cutover in isolated Supabase and an installed PWA. |
 
 ### Historical Implementation Milestones (Completed & Verified)
 
@@ -3060,7 +3128,9 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-**Punishments rollout.** Review the Phase 6 PR from `krish` to `dev` and verify the merged build. Open the separate `dev` → `main` release PR. Confirm the production target and restorable backup, apply pending migrations in the [November cutover checklist](PUNISHMENTS_RELEASE_CHECKLIST.md), and deploy the compatible app with the rollout inactive and hidden. Capture the production preview before activation. Seed and compare the November ledger, verify the scheduled HTTP responses, then enable the screens with `show_verified_november_punishments()`. Record the release commit, activation timestamp, seed totals, and controlled live verification.
+**Moderation Phase 4.** Review [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109) for integration to `dev`. After integration, use a separate `dev` → `main` release and follow the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md#application-and-database-cutover-order) to apply `20261126_moderation_owner_and_roles.sql`, bootstrap the verified Owner, apply `20261127_moderation_live_roles.sql` and switch to the role-only deployment. Record the production role and queue smoke, installed-device and live sign-in checks, old deployment isolation and the scheduled dispatcher HTTP result.
+
+**Punishments rollout.** Record live production verification against the [November cutover checklist](PUNISHMENTS_RELEASE_CHECKLIST.md).
 
 1. **Review PR #95 and prepare the production rollout separately.**
    - PR #95 uses the isolated `Supabase Cron and push smoke test` check for the `dev` integration. Review the PR and merge to `dev` when approved.
@@ -3243,7 +3313,7 @@ d:\Projects\Z Catchers\
    </details>
 
 6. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
-   * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
+   * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `NEXT_PUBLIC_APP_URL` in Vercel project environment settings. Follow the [Owner bootstrap and role setup](MODERATION_ROLLOUT_CHECKLIST.md#phase-1-owner-bootstrap) for staff access.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
 7. **Verify Production Deployment Following Release Merges (`main`):**

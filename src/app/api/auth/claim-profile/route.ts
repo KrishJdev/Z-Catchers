@@ -5,7 +5,7 @@ import {
   createSessionToken,
   setSessionCookie,
   sanitizeMember,
-  isModDiscordId,
+  hasDatabaseModeratorRole,
 } from '@/lib/auth';
 import { isValidTimezone, DAY_KEYS, type WeeklySchedule } from '@/lib/timezone';
 import { DateTime } from 'luxon';
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
         username: payload.discordUsername,
         handle: payload.discordHandle || `@${payload.discordUsername.toLowerCase().replace(/\s+/g, '')}`,
         avatarUrl: payload.avatarUrl,
-        isModerator: isModDiscordId(payload.discordId),
+        isModerator: false,
       },
     });
   } catch (err: unknown) {
@@ -120,13 +120,13 @@ export async function POST(request: Request) {
 
     if (existingLinked) {
       // If already linked, directly issue rolling session cookie
-      const isLiveMod = isModDiscordId(payload.discordId);
-      const isDbMod = existingLinked.role === 'moderator';
+
+      const isDbMod = hasDatabaseModeratorRole(existingLinked.role);
       const sessionToken = createSessionToken(
         {
           memberId: existingLinked.id,
           discordId: payload.discordId,
-          isModerator: isDbMod || isLiveMod,
+          isModerator: isDbMod,
         },
         90
       );
@@ -141,7 +141,6 @@ export async function POST(request: Request) {
       return res;
     }
 
-    const isModerator = isModDiscordId(payload.discordId);
 
     const cleanUsername = (discord_username || payload.discordUsername || '').trim();
     if (!cleanUsername || cleanUsername.length < 2) {
@@ -281,7 +280,7 @@ export async function POST(request: Request) {
       {
         memberId: createdMember.id,
         discordId: payload.discordId,
-        isModerator,
+        isModerator: false,
       },
       90
     );

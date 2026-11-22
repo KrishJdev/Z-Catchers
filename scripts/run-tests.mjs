@@ -46,7 +46,8 @@ const UNIT_TESTS = [
   'test-wind-down-awake-fix.mjs',
   'test-ui-normalization-and-button-wrapping.mjs',
   'test-strike-persistence-and-alias-reconciliation.mjs',
-  'test-update-schedule-mod-rate-limit.mjs',
+  'test-moderation-live-roles.mjs',
+  'test-moderation-drawer.mjs',
   'test-decluttering-issue-sync.mjs',
   'test-pinned-self-action-bar.mjs',
   'test-smart-status-bucket-folding.mjs',
@@ -62,6 +63,7 @@ const UNIT_TESTS = [
   'test-november-cutover.mjs',
   'test-punishment-screens.mjs',
   'test-guarded-active-wake.mjs',
+  'test-moderation-owner-and-roles.mjs',
   'test-state-sync-audit.mjs',
 ];
 

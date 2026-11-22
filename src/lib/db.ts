@@ -69,7 +69,7 @@ export interface Member {
   pending_weekend_wake_time_local?: string | null;
   pending_weekly_schedule?: WeeklySchedule | null;
   pending_effective_at: string | null; // ISO timestamp
-  role: 'member' | 'moderator';
+  role: 'member' | 'moderator' | 'owner';
   is_moderator?: boolean;
   onboarding_completed?: boolean;
   passcode_hash?: string | null;
@@ -941,12 +941,15 @@ export async function getMemberSleepLogs(
  * Deletes a sleep log entry for a member and cycle date (used when cancelling/undoing an in-bed check-in).
  * Synchronously purges from in-memory cache and Supabase.
  */
+export function removeInMemorySleepLog(memberId: string, cycleDate: string) {
+  memorySleepLogs.delete(getSleepLogMemoryKey(memberId, cycleDate));
+}
+
 export async function deleteSleepLog(
   memberId: string,
   cycleDate: string
 ): Promise<{ success: boolean; error: any }> {
-  const memKey = getSleepLogMemoryKey(memberId, cycleDate);
-  memorySleepLogs.delete(memKey);
+  removeInMemorySleepLog(memberId, cycleDate);
 
   if (isSupabaseConfigured && !isTestMemberFixture(memberId)) {
     try {

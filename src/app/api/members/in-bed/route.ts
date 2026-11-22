@@ -3,14 +3,15 @@ import {
   supabaseAdmin,
   Member,
   updateMemberSafe,
+  removeInMemorySleepLog,
+  setInMemorySleepLog,
   upsertSleepLog,
-  deleteSleepLog,
   getMemberByIdSafe,
   isSupabaseConfigured,
   isTestMemberFixture,
 } from '@/lib/db';
 import { DateTime } from 'luxon';
-import { ownsDiscordProfile, getRequestSessionMemberId, verifyModeratorAuthorization } from '@/lib/auth';
+import { authorizeProfileAction, cancelOwnSleepCheckIn, staffIdentity, staffWriteError } from '@/lib/moderation';
 import {
   calculateSleepStreak,
   getSleepCycleDate,
@@ -114,14 +115,8 @@ export async function POST(request: Request) {
 
     const member = rawMember;
 
-    const sessionMemberId = getRequestSessionMemberId(request);
-    if (!member.is_active || (!ownsDiscordProfile(request, member) &&
-        !(await verifyModeratorAuthorization(request)).authorized)) {
-      return NextResponse.json(
-        { error: 'Sign in with the Discord account linked to this profile.', code: sessionMemberId ? 'FORBIDDEN' : 'UNAUTHORIZED' },
-        { status: sessionMemberId ? 403 : 401 }
-      );
-    }
+    const staff = await authorizeProfileAction(request, member);
+    if (staff instanceof Response) return staff;
 
     const nowUtc = DateTime.utc();
     const sleeperNow = nowUtc.setZone(toValidLuxonZone(member.timezone));
@@ -139,86 +134,78 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to compute local date' }, { status: 500 });
     }
 
+    if (staff) {
+      if (!['cancel', 'wake_up', 'check_in'].includes(action)) {
+        return NextResponse.json({ error: 'Unknown check-in action.' }, { status: 400 });
+      }
+      const isInBed = action === 'check_in';
+      const isWokeUp = action === 'wake_up';
+      const entry = isInBed ? {
+        target_bedtime: activeCheckinWindow.activeBedtimeLocal,
+        target_wake_time: activeCheckinWindow.activeWakeTimeLocal,
+        in_bed_at: nowUtc.toISO(),
+        in_bed_local_time: sleeperNow.toFormat('HH:mm'),
+        woke_up_at: null,
+        woke_up_local_time: null,
+        wake_source: null,
+        duration_minutes: null,
+        status: activeCheckinWindow.diffMinutes > 5 ? 'late' : 'on_time',
+      } : isWokeUp ? {
+        woke_up_at: nowUtc.toISO(),
+        woke_up_local_time: sleeperNow.toFormat('HH:mm'),
+        wake_source: 'button',
+      } : null;
+      const { data, error } = await supabaseAdmin.rpc('moderate_sleep', {
+        ...staffIdentity(staff), p_target_id: member.id,
+        p_action: action === 'cancel' ? 'cancel_checkin' : action,
+        p_cycle: localDate, p_now: nowUtc.toISO(), p_expected_updated_at: member.updated_at, p_entry: entry,
+      });
+      if (error || !data) return staffWriteError(error);
+      if (data.sleep_log) setInMemorySleepLog(data.sleep_log);
+      if (action === 'cancel') removeInMemorySleepLog(member.id, localDate);
+
+      const { data: logs } = await supabaseAdmin.from('notification_logs')
+        .select('local_date').eq('member_id', member.id).eq('notification_type', 'IN_BED_EARLY')
+        .order('local_date', { ascending: false }).limit(60);
+      return NextResponse.json({
+        success: true, action, local_date: localDate, is_in_bed: isInBed, is_woke_up: isWokeUp,
+        streak_days: calculateSleepStreak((logs ?? []).map(log => log.local_date), sleeperNow),
+        message: 'Sleep status updated.',
+      });
+    }
+
     if (action === 'cancel') {
-      let cleanupError: any = null;
-
-      // 1. Remove check-in and woke-up logs for member's current local date
       if (isSupabaseConfigured && !isTestMemberFixture(member.id)) {
-        try {
-          const { error: earlyErr } = await supabaseAdmin
-            .from('notification_logs')
-            .delete()
-            .eq('member_id', member.id)
-            .eq('notification_type', 'IN_BED_EARLY')
-            .eq('local_date', localDate);
+        const result = await cancelOwnSleepCheckIn(member, localDate, false);
+        if (result instanceof Response) return result;
+      } else {
+        const updatePayload: Record<string, unknown> = {
+          is_in_bed: false,
+          in_bed_at: null,
+          is_woke_up: false,
+          updated_at: nowUtc.toISO(),
+        };
 
-          if (earlyErr) {
-            console.warn('[in-bed] Error deleting IN_BED_EARLY notification logs:', earlyErr);
-            cleanupError = earlyErr;
-          }
-        } catch (err) {
-          cleanupError = err;
+        if (member.last_notified_stage === 'IN_BED_EARLY' || member.last_notified_cycle_date === localDate) {
+          updatePayload.last_notified_stage = null;
+          updatePayload.last_notified_cycle_date = null;
+        }
+        if (member.last_wake_cycle_date === localDate) {
+          updatePayload.last_wake_cycle_date = null;
+          updatePayload.last_woke_up_at = null;
         }
 
-        try {
-          const { error: wokeErr } = await supabaseAdmin
-            .from('notification_logs')
-            .delete()
-            .eq('member_id', member.id)
-            .eq('notification_type', 'WOKE_UP')
-            .eq('local_date', localDate);
+        const updateRes = await updateMemberSafe(member.id, updatePayload, {
+          conditions: { is_active: true, discord_id: member.discord_id },
+        });
 
-          if (wokeErr && !cleanupError) {
-            console.warn('[in-bed] Error deleting WOKE_UP notification logs:', wokeErr);
-            cleanupError = wokeErr;
-          }
-        } catch (err) {
-          if (!cleanupError) cleanupError = err;
+        if (updateRes.error || !updateRes.data) {
+          return NextResponse.json(
+            { error: updateRes.error?.message || 'Failed to update member state.' },
+            { status: 500 }
+          );
         }
-      }
-
-      // 2. Remove today's sleep log entry from sleep_logs
-      try {
-        const sleepLogRes = await deleteSleepLog(member.id, localDate);
-        if ((sleepLogRes.error || !sleepLogRes.success) && !cleanupError) {
-          console.warn('[in-bed] Error deleting sleep log:', sleepLogRes.error);
-          cleanupError = sleepLogRes.error || new Error('Failed to delete sleep log');
-        }
-      } catch (err) {
-        if (!cleanupError) cleanupError = err;
-      }
-
-      // 3. Reset member record state without falsely marking cycle as completed
-      const updatePayload: Record<string, unknown> = {
-        is_in_bed: false,
-        in_bed_at: null,
-        is_woke_up: false,
-        updated_at: nowUtc.toISO(),
-      };
-
-      if (member.last_notified_stage === 'IN_BED_EARLY' || member.last_notified_cycle_date === localDate) {
-        updatePayload.last_notified_stage = null;
-        updatePayload.last_notified_cycle_date = null;
-      }
-      if (member.last_wake_cycle_date === localDate) {
-        updatePayload.last_wake_cycle_date = null;
-        updatePayload.last_woke_up_at = null;
-      }
-
-      if (cleanupError) {
-        return NextResponse.json(
-          { error: 'Failed to clean up sleep records during cancellation.' },
-          { status: 500 }
-        );
-      }
-
-      const updateRes = await updateMemberSafe(member.id, updatePayload);
-
-      if (updateRes.error || !updateRes.data) {
-        return NextResponse.json(
-          { error: updateRes.error?.message || 'Failed to update member state.' },
-          { status: 500 }
-        );
+        removeInMemorySleepLog(member.id, localDate);
       }
 
       // 4. Recompute streak after cancellation

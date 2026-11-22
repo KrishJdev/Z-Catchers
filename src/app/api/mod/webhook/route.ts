@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
-import { verifyModeratorAuthorization, getRequestSessionMemberId } from '@/lib/auth';
-import {
-  getClientIp,
-  checkPinRateLimitPersistent,
-  recordPinFailurePersistent,
-  resetPinFailurePersistent,
-} from '@/lib/rateLimit';
+import { verifyModeratorSession, isSameOriginMutation } from '@/lib/auth';
+import { staffIdentity, staffWriteError } from '@/lib/moderation';
 import { supabaseAdmin, Member } from '@/lib/db';
 import {
   validateDiscordWebhookUrl,
@@ -16,37 +11,16 @@ import {
 
 /**
  * GET: Retrieve Discord community webhook configuration status with masked token.
- * Requires moderator authorization.
+ * Requires the signed-in Owner.
  *
- * @param request - Incoming HTTP request with moderator credentials
+ * @param request - Incoming HTTP request with a linked Discord session
  * @returns JSON response with configuration status and masked webhook URL
  */
 export async function GET(request: Request) {
   try {
-    const clientIp = getClientIp(request);
-    const sessionMemberId = getRequestSessionMemberId(request);
-    const modTarget = sessionMemberId ? `mod_member:${sessionMemberId}` : `mod_ip:${clientIp}`;
-
-    const rateCheck = await checkPinRateLimitPersistent(clientIp, modTarget);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-        },
-        {
-          status: 429,
-          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-        }
-      );
-    }
-
-    const authResult = await verifyModeratorAuthorization(request);
-    if (!authResult.authorized) {
-      await recordPinFailurePersistent(clientIp, modTarget);
-      return NextResponse.json({ error: authResult.error || 'Unauthorized moderator access' }, { status: 401 });
-    }
-
-    await resetPinFailurePersistent(clientIp, modTarget);
+    const auth = await verifyModeratorSession(request);
+    if (!auth.authorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    if (auth.actor.role !== 'owner') return NextResponse.json({ error: 'Owner access is required.' }, { status: 403 });
 
     const envWebhook = process.env.DISCORD_COMMUNITY_WEBHOOK_URL;
     const isConfigured = Boolean(envWebhook && validateDiscordWebhookUrl(envWebhook));
@@ -71,40 +45,24 @@ export async function GET(request: Request) {
 
 /**
  * POST: Send a test Discord webhook message or trigger morning digest dispatch.
- * Requires moderator authorization.
+ * Requires the signed-in Owner.
  *
- * @param request - Incoming HTTP request with moderator passcode and action
+ * @param request - Incoming HTTP request with the webhook action
  * @returns JSON response confirming webhook action result
  */
 export async function POST(request: Request) {
   try {
-    const clientIp = getClientIp(request);
-    const sessionMemberId = getRequestSessionMemberId(request);
-    const modTarget = sessionMemberId ? `mod_member:${sessionMemberId}` : `mod_ip:${clientIp}`;
-
-    const rateCheck = await checkPinRateLimitPersistent(clientIp, modTarget);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: `Too many failed attempts. Please wait ${rateCheck.retryAfterSeconds} seconds before trying again.`,
-        },
-        {
-          status: 429,
-          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
-        }
-      );
+    if (!isSameOriginMutation(request)) {
+      return NextResponse.json({ error: 'Use a same-origin request.' }, { status: 403 });
     }
+    const auth = await verifyModeratorSession(request);
+    if (!auth.authorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    if (auth.actor.role !== 'owner') return NextResponse.json({ error: 'Owner access is required.' }, { status: 403 });
 
-    const body = await request.json().catch(() => ({}));
-    const { passcode, action, webhook_url } = body;
-
-    const authResult = await verifyModeratorAuthorization(request, passcode);
-    if (!authResult.authorized) {
-      await recordPinFailurePersistent(clientIp, modTarget);
-      return NextResponse.json({ error: authResult.error || 'Unauthorized moderator access' }, { status: 401 });
-    }
-
-    await resetPinFailurePersistent(clientIp, modTarget);
+    const { action, webhook_url } = await request.json().catch(() => ({}));
+    const audit = () => supabaseAdmin.rpc('record_moderation_webhook_action', {
+      ...staffIdentity(auth.actor), p_action: action,
+    });
 
     if (action === 'verify') {
       const valid = validateDiscordWebhookUrl(webhook_url);
@@ -127,6 +85,9 @@ export async function POST(request: Request) {
         );
       }
 
+      const { error: auditError } = await audit();
+      if (auditError) return staffWriteError(auditError);
+
       const res = await sendTestDiscordWebhook(targetUrl);
       if (!res.success) {
         return NextResponse.json({ error: res.error || 'Failed to dispatch test webhook' }, { status: 502 });
@@ -143,6 +104,9 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+
+      const { error: auditError } = await audit();
+      if (auditError) return staffWriteError(auditError);
 
       // Fetch active members to generate morning digest
       const { data: members } = await supabaseAdmin

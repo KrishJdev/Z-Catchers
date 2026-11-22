@@ -31,7 +31,7 @@ CREATE TABLE members (
   pending_effective_at TIMESTAMPTZ,         -- UTC timestamp when pending promotion unlocks (NOW() + 48h)
   
   -- Role & Security
-  role TEXT NOT NULL DEFAULT 'member',      -- 'member' | 'moderator'
+  role TEXT NOT NULL DEFAULT 'member',      -- 'member' | 'moderator' | 'owner'
   passcode_hash TEXT,                       -- 4-digit PIN for self-service updates
   is_active BOOLEAN NOT NULL DEFAULT true,
 
@@ -439,6 +439,16 @@ All user-submitted journal links must be validated against this strict regex bef
 ---
 
 ## 6. "I Woke Up" & Sleep History API Endpoints
+
+### Staff authorization and schedule writes after the moderation cutover
+
+The [moderation rollout](MODERATION_PLAN.md) adds the `owner` role alongside `member` and `moderator`. The database enforces at most one Owner, whose row must be active and Discord-linked. Staff endpoints match the Discord session’s member ID and Discord ID to the active row and authorize using its current role. Guard the target’s role in the staff write so a concurrent promotion cannot grant access to a protected target.
+
+Phase 1 adds the same-origin `POST /api/mod` action `set_moderator` with `member_id`, `expected_role`, and `new_role`. The service-role function checks the signed actor’s live Owner role and Discord link, locks the target, and returns HTTP 409 if the expected role is stale. Promotions require an active, linked member. A successful change records the actor, target, old and new roles, and timestamp in `moderator_role_changes`. Follow the [operator checklist](MODERATION_ROLLOUT_CHECKLIST.md#phase-1-owner-bootstrap) for the initial owner assignment.
+
+`POST /api/members/update-schedule` is the profile owner’s self-service route. Schedule changes in every role write to the 48-hour queue. Use `POST /api/mod` with `edit_schedule` for immediate schedule changes and `approve_cooldown` for early approval. Moderators can target members and the Owner can target members or moderators. Send the roster row’s `updated_at` as `expected_updated_at` for immediate edits. Send the reviewed queue fields as `expected_pending` for approval. The staff transaction returns HTTP 409 when the profile version or the reviewed queue differs from the stored values. Staff write transactions recheck the actor and target while holding their database locks. Audit new staff actions with the signed-in member ID and retain historical `master_mod` records.
+
+The API descriptions for legacy credentials apply until the application and database are switched in the [documented cutover order](MODERATION_ROLLOUT_CHECKLIST.md#application-and-database-cutover-order).
 
 ### 6.1 `POST /api/members/wake-up`
 Allows authenticated members to log when they woke up for their active or recent sleep cycle.

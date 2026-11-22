@@ -32,7 +32,8 @@ const {
   verifySessionToken,
   createClaimToken,
   verifyClaimToken,
-  isModDiscordId,
+  sanitizeMember,
+  verifyModeratorSession,
   SESSION_MAX_AGE_SECONDS,
   getSessionSecret,
   getPinSalt,
@@ -386,15 +387,15 @@ async function run() {
     assert(claimDecoded && claimDecoded.discordUsername === 'SleepyFoxDev', 'verifyClaimToken decodes username');
     assert(verifyClaimToken(claimToken.slice(0, -4) + 'xyz') === null, 'Rejects tampered claim token');
 
-    // 3. Moderator Role Enforcement via Discord Snowflake
-    console.log('\n--- 3. Moderator Role Enforcement via MOD_DISCORD_IDS ---');
-    process.env.MOD_DISCORD_IDS = '999888777,123456789012345678,555444333';
-    assert(isModDiscordId('123456789012345678'), 'isModDiscordId returns true for ID listed in MOD_DISCORD_IDS');
-    assert(isModDiscordId('999888777'), 'isModDiscordId returns true for first ID');
-    assert(isModDiscordId('555444333'), 'isModDiscordId returns true for last ID');
-    assert(!isModDiscordId('111222333'), 'isModDiscordId returns false for unlisted Discord ID');
-    assert(!isModDiscordId(null), 'isModDiscordId safely returns false for null');
-    assert(!isModDiscordId(''), 'isModDiscordId safely returns false for empty string');
+    // Compatibility flags are derived from the active Discord-linked database role.
+    const profile = { discord_id: '123456789012345678', is_active: true, is_moderator: true };
+    process.env.MOD_DISCORD_IDS = profile.discord_id;
+    assert(!sanitizeMember({ ...profile, role: 'member' }).is_moderator, 'Stored flag and allowlist cannot elevate a member');
+    for (const role of ['moderator', 'owner']) {
+      assert(sanitizeMember({ ...profile, role }).is_moderator, `Active linked ${role} has staff access`);
+      assert(!sanitizeMember({ ...profile, role, is_active: false }).is_moderator, 'Inactive profile has no staff access');
+      assert(!sanitizeMember({ ...profile, role, discord_id: null }).is_moderator, 'Unlinked profile has no staff access');
+    }
 
     // 4. Database Integration & Discord Profile Lifecycle
     console.log('\n--- 4. Database Integration & Discord Profile Lifecycle ---');
@@ -441,45 +442,16 @@ async function run() {
       }
     }
 
-    // 4B. Regression Test: Revocation After Token Issuance
-    console.log('\n--- 4B. Revocation After Token Issuance Regression Test ---');
-    const { verifyModeratorAuthorization } = await import('../src/lib/auth.ts');
-
-    const nonModDiscordId = 'revoked_mod_user_' + Date.now();
-    const staleModClaimToken = createClaimToken(
-      {
-        discordId: nonModDiscordId,
-        discordUsername: 'RevokedMod',
-        avatarUrl: null,
-        isModerator: true, // Stale token issued before user was removed from MOD_DISCORD_IDS
-        suggestedMemberId: null,
-      },
-      60
-    );
-
-    const decodedClaim = verifyClaimToken(staleModClaimToken);
-    assert(decodedClaim?.isModerator === true, 'Claim token carries cached isModerator: true');
-    assert(isModDiscordId(decodedClaim.discordId) === false, 'Live allowlist correctly marks revoked ID as non-moderator');
-
-    if (isSupabaseConfigured && newMember?.id) {
-      const initialAllowlist = process.env.MOD_DISCORD_IDS;
-      try {
-        process.env.MOD_DISCORD_IDS = newMember.discord_id;
-        const staleSessionToken = createSessionToken({
-          memberId: newMember.id,
-          discordId: newMember.discord_id,
-          isModerator: true,
-        }, 90);
-        const request = new Request('http://localhost:3000/api/mod', {
-          headers: { cookie: `zcatchers_session=${staleSessionToken}` },
-        });
-        assert((await verifyModeratorAuthorization(request)).authorized, 'The linked identity starts allowlisted');
-        process.env.MOD_DISCORD_IDS = '';
-        assert(!(await verifyModeratorAuthorization(request)).authorized, 'Revoking the allowlist denies the same linked Discord session');
-      } finally {
-        if (initialAllowlist === undefined) delete process.env.MOD_DISCORD_IDS;
-        else process.env.MOD_DISCORD_IDS = initialAllowlist;
-      }
+    if (isSupabaseLive && newMember?.id) {
+      const request = new Request('http://localhost:3000/api/mod', {
+        headers: { cookie: `zcatchers_session=${createSessionToken({
+          memberId: newMember.id, discordId: newMember.discord_id, isModerator: true,
+        })}` },
+      });
+      await supabaseAdmin.from('members').update({ role: 'moderator' }).eq('id', newMember.id).throwOnError();
+      assert((await verifyModeratorSession(request)).authorized, 'Live database role grants access to the existing session');
+      await supabaseAdmin.from('members').update({ role: 'member' }).eq('id', newMember.id).throwOnError();
+      assert(!(await verifyModeratorSession(request)).authorized, 'Revocation denies the same session');
     }
 
     // 5. Rolling Renewal Simulation on /api/auth/me

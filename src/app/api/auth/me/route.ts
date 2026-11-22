@@ -5,14 +5,14 @@ import {
   createSessionToken,
   setSessionCookie,
   sanitizeMember,
-  isModDiscordId,
+  hasDatabaseModeratorRole,
 } from '@/lib/auth';
 import { DateTime } from 'luxon';
 import { getSleepCycleDate, toValidLuxonZone } from '@/lib/sleepEngine';
 
 /**
  * GET: Retrieve the authenticated session member's profile and perform rolling session renewal.
- * Refreshes the 90-day session cookie and synchronizes moderator status against MOD_DISCORD_IDS.
+ * Refreshes the 90-day session cookie and synchronizes moderator status from the active database profile.
  *
  * @param request - Incoming HTTP request with session cookie or Authorization header
  * @returns JSON response with authentication status and member entity, plus renewed Set-Cookie
@@ -42,10 +42,7 @@ export async function GET(request: Request) {
 
     const currentMember = memberData as Member;
 
-    // Evaluate effective moderator status dynamically (MOD_DISCORD_IDS is live; do not persist into DB role)
-    const isDbMod = currentMember.role === 'moderator';
-    const isEnvMod = isModDiscordId(currentMember.discord_id);
-    const effectiveIsMod = isDbMod || isEnvMod;
+    const effectiveIsMod = hasDatabaseModeratorRole(currentMember.role);
 
     // Rolling 90-Day Session Renewal: Generate fresh token and extend expiration
     const renewedToken = createSessionToken(
@@ -58,7 +55,6 @@ export async function GET(request: Request) {
     );
 
     const sanitized = sanitizeMember(currentMember);
-    sanitized.is_moderator = effectiveIsMod;
 
     // Hydrate active sleep cycle in_bed and woke_up flags
     const sleeperZone = toValidLuxonZone(currentMember.timezone);

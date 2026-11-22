@@ -1,22 +1,17 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, Member, updateMemberSafe } from '@/lib/db';
-import { ownsDiscordProfile, verifyModPasscode, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
+import { ownsDiscordProfile, sanitizeMember, getRequestSessionMemberId } from '@/lib/auth';
 import { isValidTimezone, formatGmtOffset, DAY_KEYS, type DayKey, type WeeklySchedule, type DailySchedule } from '@/lib/timezone';
-import {
-  getClientIp,
-  checkPinRateLimitPersistent,
-  recordPinFailurePersistent,
-  resetPinFailurePersistent,
-} from '@/lib/rateLimit';
+import { getScheduleCooldownEffectiveAt } from '@/lib/sleepEngine';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
- * POST: Update a member's bedtime schedule with 48-hour cooldown protection or moderator override.
+ * POST: Update a member's bedtime schedule with 48-hour cooldown protection.
  *
- * @param request - Incoming HTTP request containing schedule updates and optional moderator passcode
+ * @param request - Incoming HTTP request containing schedule updates
  * @returns JSON response with updated or pending schedule status
  */
 export async function POST(request: Request) {
@@ -38,7 +33,6 @@ export async function POST(request: Request) {
       weekend_wake_time: legacyWeekendWakeTime,
       weekly_schedule,
     } = body;
-    const mod_passcode = body.mod_passcode ?? request.headers.get('x-mod-passcode');
 
     if (!member_id) {
       return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
@@ -56,51 +50,13 @@ export async function POST(request: Request) {
     }
 
     const currentMember = memberData as Member;
-    const clientIp = getClientIp(request);
-
-    // 2. Require the owner session or a valid master override
     const sessionMemberId = getRequestSessionMemberId(request);
-    const isSessionOwner = ownsDiscordProfile(request, currentMember);
-    let isModeratorOverride = false;
-    const hasModPasscode =
-      mod_passcode !== undefined &&
-      mod_passcode !== null &&
-      (typeof mod_passcode !== 'string' || mod_passcode.trim().length > 0);
-
-    if (hasModPasscode) {
-      const modGateTarget = sessionMemberId ? `mod_gate_member:${sessionMemberId}` : `mod_gate_ip:${clientIp}`;
-      const modRate = await checkPinRateLimitPersistent(clientIp, modGateTarget);
-      if (!modRate.allowed) {
-        return NextResponse.json(
-          {
-            error: `Too many failed moderator passcode attempts. Please wait ${modRate.retryAfterSeconds} seconds before trying again.`,
-          },
-          {
-            status: 429,
-            headers: { 'Retry-After': String(modRate.retryAfterSeconds) },
-          }
-        );
-      }
-
-      const trimmedPasscode = typeof mod_passcode === 'string' ? mod_passcode.trim() : String(mod_passcode);
-      isModeratorOverride = verifyModPasscode(trimmedPasscode);
-      if (!isModeratorOverride) {
-        await recordPinFailurePersistent(clientIp, modGateTarget);
-        return NextResponse.json(
-          { error: 'Invalid moderator passcode.' },
-          { status: 401 }
-        );
-      } else {
-        await resetPinFailurePersistent(clientIp, modGateTarget);
-      }
-    }
-    if (!isModeratorOverride && !isSessionOwner) {
+    if (!ownsDiscordProfile(request, currentMember)) {
       return NextResponse.json(
         { error: 'Sign in with the Discord account linked to this profile.' },
         { status: sessionMemberId ? 403 : 401 }
       );
     }
-
     // 3. Validate Journal URL
     if (journal_url) {
       if (!DISCORD_JOURNAL_REGEX.test(journal_url.trim())) {
@@ -330,39 +286,21 @@ export async function POST(request: Request) {
     let pendingEffectiveAt: string | null = null;
 
     if (scheduleHasChanged) {
-      if (isModeratorOverride) {
-        // Moderator bypass: updates schedule directly and wipes pending
-        updates.bedtime_local = syncBedtime;
-        updates.wake_time_local = syncWakeTime;
-        updates.timezone = targetTimezone;
-        updates.weekend_bedtime_local = syncWeekendBedtime;
-        updates.weekend_wake_time_local = syncWeekendWakeTime;
-        updates.weekly_schedule = targetWeeklySchedule;
-        updates.pending_bedtime_local = null;
-        updates.pending_wake_time_local = null;
-        updates.pending_timezone = null;
-        updates.pending_weekend_bedtime_local = null;
-        updates.pending_weekend_wake_time_local = null;
-        updates.pending_weekly_schedule = null;
-        updates.pending_effective_at = null;
-      } else {
-        // Enforce 48-Hour Cooldown Rule for regular member edits
-        const effectiveAt = DateTime.utc().plus({ hours: 48 });
-        updates.pending_bedtime_local = syncBedtime;
-        updates.pending_wake_time_local = syncWakeTime;
-        updates.pending_timezone = targetTimezone;
-        updates.pending_weekend_bedtime_local = syncWeekendBedtime;
-        updates.pending_weekend_wake_time_local = syncWeekendWakeTime;
-        updates.pending_weekly_schedule = targetWeeklySchedule;
-        updates.pending_effective_at = effectiveAt.toISO() as string;
-        cooldownApplied = true;
-        pendingEffectiveAt = effectiveAt.toISO() as string;
-      }
+      const effectiveAt = getScheduleCooldownEffectiveAt();
+      updates.pending_bedtime_local = syncBedtime;
+      updates.pending_wake_time_local = syncWakeTime;
+      updates.pending_timezone = targetTimezone;
+      updates.pending_weekend_bedtime_local = syncWeekendBedtime;
+      updates.pending_weekend_wake_time_local = syncWeekendWakeTime;
+      updates.pending_weekly_schedule = targetWeeklySchedule;
+      updates.pending_effective_at = effectiveAt.toISO() as string;
+      cooldownApplied = true;
+      pendingEffectiveAt = effectiveAt.toISO() as string;
     }
 
     // 7. Persist to Supabase
     const { data: updatedMember, error: updateError } = await updateMemberSafe(member_id, updates, {
-      conditions: isModeratorOverride ? undefined : { is_active: true, discord_id: currentMember.discord_id },
+      conditions: { is_active: true, discord_id: currentMember.discord_id },
     });
 
     if (updateError) {

@@ -21,6 +21,8 @@ on:
       - 'src/app/api/mod/route.ts'
       - 'src/app/api/mod/punishments/**'
       - 'src/app/api/push/**'
+      - 'src/components/ModDrawer.tsx'
+      - 'src/components/RosterRoleAction.tsx'
       - 'src/lib/**'
       - 'public/sw.js'
       - 'supabase/**'

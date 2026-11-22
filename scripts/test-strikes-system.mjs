@@ -418,7 +418,7 @@ async function run() {
 
   console.log('\n--- 6. Moderator Override Operations ---');
   // Mod Adjust Strikes
-  const modCountsRes = await modAdjustStrikes(dummyMember.id, 2, 1, false, 'test-mod');
+  const modCountsRes = await modAdjustStrikes(dummyMember.id, 2, 1, false, { id: 'test-mod', discordId: '1234', role: 'owner' });
   assert(modCountsRes.success === true, 'Mod adjusted strikes_used successfully');
   const modCounts = await resolveMemberStrikeCounts(dummyMember);
   assert(modCounts.strikes_used === 2, 'Mod adjusted strikes_used to 2');
@@ -434,9 +434,9 @@ async function run() {
     created_at: DateTime.utc().toISO(),
     updated_at: DateTime.utc().toISO(),
   });
-  await modAdjustStrikes(dummyMember.id, 3, 1, false, 'test-mod');
+  await modAdjustStrikes(dummyMember.id, 3, 1, false, { id: 'test-mod', discordId: '1234', role: 'owner' });
 
-  const clearSuccess = await modClearStrikeLog(dummyMember.id, '2026-11-13', 'test-mod');
+  const clearSuccess = await modClearStrikeLog(dummyMember.id, '2026-11-13', { id: 'test-mod', discordId: '1234', role: 'owner' });
   assert(clearSuccess.success === true, 'Mod successfully cleared strike log');
   const clearedLog = await getNightlyStrikeLog(dummyMember.id, '2026-11-13');
   assert(clearedLog === null, 'Log is cleanly removed from store');
