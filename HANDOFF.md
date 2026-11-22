@@ -1,7 +1,7 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-22T04:42:51+05:30
-> **Active working branch:** `codex/moderation-2-live-role-auth` with verified implementation commit `317215c`.
+> **Last Updated:** 2026-11-22T17:51:55+05:30
+> **Active working branch:** `codex/moderation-2-live-role-auth` at CodeRabbit fix commit `2e75d43`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
@@ -10,7 +10,7 @@
 > **Active integration:** Moderation Phase 2 [PR #107](https://github.com/KrishJdev/Z-Catchers/pull/107) targets `dev`. Phase 1 [PR #106](https://github.com/KrishJdev/Z-Catchers/pull/106) merged into `dev` at `fef3e1a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit`, all 52 `npm run test:unit` suites, and `npm run build` passed for Moderation Phase 2.
+> **Build Status:** `npx tsc --noEmit`, all 52 `npm run test:unit` suites, and `npm run build` passed at the CodeRabbit fix.
 
 ---
 
@@ -79,6 +79,15 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 - Updated `supabase/schema.sql`, `.env.example`, `BACKEND_TZ_PWA_SPEC.md`, `MODERATION_ROLLOUT_CHECKLIST.md` and this handoff.
 - Updated `src/lib/{auth,db,rateLimit,strikes}.ts`, `src/app/api/auth/{claim-profile,discord/callback,me}/route.ts`, `src/app/api/members/{cancel-pending,in-bed,strikes/metastrike,update-schedule,wake-up}/route.ts`, `src/app/api/mod/route.ts`, `src/app/api/mod/{punishments,webhook}/route.ts`, `src/app/page.tsx` and `src/components/{ModDrawer,ModeratorPunishmentQueue}.tsx`.
 - Updated `scripts/run-tests.mjs` and `scripts/test-{cancel-pending-and-subscribe-rate-limiting,dispatch-recovery,dispatcher-ci,login-and-auth,moderation-owner-and-roles,punishment-task-apis,strikes-api-and-routes,strikes-system}.mjs`. Removed `scripts/test-update-schedule-mod-rate-limit.mjs`.
+
+#### Moderation Phase 2 CodeRabbit follow-up
+
+- Verified the [full review on PR #107](https://github.com/KrishJdev/Z-Catchers/pull/107#pullrequestreview-6012132521) against the Phase 2 branch. Immediate schedule edits compare the roster version the moderator opened and reject invalid flat schedules. Legacy flat approvals synchronize the affected weekly entries. Malformed authorities fail the same-origin check.
+- Self-service and staff cancellation lock the member before changing receipts and history. Staff wake corrections compare the evidence used to build the entry with the evidence under lock. Tests cover a successful wake without a prior check-in, a stale wake conflict and rollback of both deletes when a cancellation fails.
+- Moved the elapsed 48-hour deadline into the sleep engine. The hosted smoke seeds the complete reviewed pending schedule before replacing it under lock and checks a self-service cancellation racing a staff wake.
+- Updated the cutover checklist to verify that the recorded pause prevents writes from older deployments before staff access resumes. Added recovery steps for open tabs and installed PWAs. Replaced the old allowlist instruction in the active hosting setup with the Owner bootstrap.
+- Updated `src/lib/{auth,moderation,sleepEngine}.ts`, `src/app/api/mod/route.ts`, `src/app/api/members/{cancel-pending,in-bed,update-schedule,wake-up}/route.ts`, `src/components/ModDrawer.tsx`, `supabase/migrations/20261127_moderation_live_roles.sql` and `supabase/schema.sql`.
+- Updated `scripts/test-{dispatcher-ci,moderation-live-roles,state-sync-audit}.mjs`, `BACKEND_TZ_PWA_SPEC.md`, `MODERATION_ROLLOUT_CHECKLIST.md` and `HANDOFF.md`.
 
 ### Moderation Phase 1 · Owner bootstrap and role assignment
 
@@ -3075,7 +3084,7 @@ d:\Projects\Z Catchers\
 |---|---|---|
 | Phase 0 · Access inventory | DONE | Owner and zero moderator carryovers verified. Addressed the review on [PR #105](https://github.com/KrishJdev/Z-Catchers/pull/105). See the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md). |
 | Phase 1 · Owner and role assignment | DONE | Role migration, operator bootstrap and owner-only assignment API implemented at `2349670`. TypeScript, 52 unit suites and production build passed. |
-| Phase 2 · Live role authorization | DONE | Live actor and target checks, explicit schedule actions, and passcode retirement implemented on the Phase 2 branch. |
+| Phase 2 · Live role authorization | DONE | Live authorization, explicit schedule actions, passcode retirement and CodeRabbit fixes are in [PR #107](https://github.com/KrishJdev/Z-Catchers/pull/107). |
 | Phase 3 · Drawer and moderator assignment | TODO | Add the Owner’s role-assignment actions in the roster and verify the flow on desktop and mobile. |
 | Phase 4 · Release rehearsal | TODO | Rehearse the owner bootstrap and application/database cutover in isolated Supabase and an installed PWA. |
 
@@ -3286,7 +3295,7 @@ d:\Projects\Z Catchers\
    </details>
 
 6. **Configure Discord Application & Environment Variables in Hosting Provider (Vercel):**
-   * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`, and `MOD_DISCORD_IDS` in Vercel project environment settings.
+   * Set `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `NEXT_PUBLIC_APP_URL` in Vercel project environment settings. Follow the [Owner bootstrap and role setup](MODERATION_ROLLOUT_CHECKLIST.md#phase-1-owner-bootstrap) for staff access.
    * Add `${NEXT_PUBLIC_APP_URL}/api/auth/discord/callback` to OAuth2 Redirects in Discord Developer Portal.
 
 7. **Verify Production Deployment Following Release Merges (`main`):**
