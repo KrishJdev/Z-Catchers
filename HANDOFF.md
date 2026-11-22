@@ -1,16 +1,16 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-22T18:07:18+05:30
-> **Active working branch:** `codex/moderation-3-drawer-and-roster` at verified implementation commit `2694257`.
+> **Last Updated:** 2026-11-22T18:45:53+05:30
+> **Active working branch:** `codex/moderation-4-release-rehearsal` at verified implementation commit `ebe3889`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
 > **Phase 6 review fix:** `2682c1c` on `krish`.
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
-> **Active integration:** Moderation Phase 3 targets `dev` from the Phase 2 merge at `91a85c6`. Phase 2 [PR #107](https://github.com/KrishJdev/Z-Catchers/pull/107) and Phase 1 [PR #106](https://github.com/KrishJdev/Z-Catchers/pull/106) are merged into `dev`.
+> **Active integration:** Moderation Phase 4 [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109) targets `dev` from the Phase 3 merge at `bc16816`. Phase 3 [PR #108](https://github.com/KrishJdev/Z-Catchers/pull/108), Phase 2 [PR #107](https://github.com/KrishJdev/Z-Catchers/pull/107) and Phase 1 [PR #106](https://github.com/KrishJdev/Z-Catchers/pull/106) are merged into `dev`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit`, all 53 `npm run test:unit` suites, and `npm run build` passed for Phase 3.
+> **Build Status:** `npx tsc --noEmit`, all 53 `npm run test:unit` suites, and `npm run build` passed for Phase 4. [Hosted CI](https://github.com/KrishJdev/Z-Catchers/actions/runs/45025945480) and [disposable Supabase smoke](https://github.com/KrishJdev/Z-Catchers/actions/runs/45025945514) passed on `ebe3889`.
 
 ---
 
@@ -69,6 +69,14 @@ Per repository protocol established in `AGENT_RULES.md` and commit history:
 ---
 
 ## 4. Comprehensive Task Changelog
+
+### Moderation Phase 4 · Release rehearsal and Owner recovery
+
+- Added `supabase/recover_moderation_owner.sql`. The database owner can re-link the existing Owner to a verified, unclaimed Discord identity, with the Owner protection restored inside the transaction. Unit tests on the fresh schema cover rejected recovery, successful recovery and retry, and the old session losing access.
+- Updated `scripts/test-dispatcher-ci.mjs` to create the Owner candidate and pending schedule before the two moderation migrations. The fixture uses canonical `HH:mm` strings. PGlite and disposable Supabase preserved the pending values and verified one active fixture Owner. The hosted run denied the former credential, allowed a promoted session to approve with the correct audit actor, denied its next request after revocation, and confirmed that recovery rejects the old Owner session and accepts the replacement identity. Updated the dispatcher smoke workflow path filters so drawer changes run these integration checks.
+- Updated `public/sw.js` to replace the cached legacy shell. A local Edge rehearsal served the legacy and role-only production builds on the same loopback origin with fixture responses. It pruned the old cache and removed the passcode from an already-open tab on reload. At 390 px, the Owner promoted and revoked from the roster, and the fixture Moderator approved a schedule and received HTTP `403` after revocation.
+- Installed the legacy PWA in an isolated Edge profile on Windows. Closed it, switched the same origin to the candidate, and relaunched the installed app. It used the new shell cache, showed the Owner badge and pending request, and completed an early approval without passcode controls. Removed the temporary installation. Live Discord sign-ins and the installed-device check on the production origin remain release checks.
+- Updated `scripts/test-moderation-owner-and-roles.mjs`, `scripts/test-phase1-pwa-push.mjs`, `AGENT_RULES.md`, `MODERATION_PLAN.md`, `MODERATION_ROLLOUT_CHECKLIST.md` and this handoff. The rollout checklist covers legacy deployment isolation, queue comparison, credential retirement, scheduler verification and recovery. This rehearsal used fixture data and the production cutover remains pending.
 
 ### Moderation Phase 3 · Drawer and moderator assignment
 
@@ -3047,6 +3055,9 @@ d:\Projects\Z Catchers\
 
 | Review milestone | Status | Verification |
 |---|---|---|
+| Moderation Phase 4 code and local rehearsal | DONE | Fresh-schema recovery, 53 unit suites, TypeScript, build, and browser upgrade with fixture data |
+| Moderation Phase 4 hosted smoke and installed PWA rehearsal | DONE | [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109) includes the passing smoke run and standalone Edge upgrade results |
+| Moderation production cutover | TODO | Verify installed devices and live Discord sessions on the release origin, then record the checklist results |
 | Strike and reminder fixes on `krish` | DONE | Dispatcher retry tests, transactional PostgreSQL tests and project checks |
 | Test deployment and device delivery | TODO | Apply the migration, install the scheduler and verify an actual subscribed device |
 | Production rollout | TODO | Requires testing through `dev` before release via `main` |
@@ -3117,7 +3128,7 @@ d:\Projects\Z Catchers\
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
 
-**Moderation Phase 4.** After Phase 3 merges, start `codex/moderation-4-release-rehearsal`. Apply `20261126_moderation_owner_and_roles.sql` and `20261127_moderation_live_roles.sql` to isolated Supabase and run the guarded owner bootstrap with fixture identities. Verify **Mod Panel → Roster**, `POST /api/mod` approval and next-request revocation using an installed PWA and an open session through the deployment update. Follow the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md#application-and-database-cutover-order) for the production rehearsal and recovery steps.
+**Moderation Phase 4.** Review [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109) for integration to `dev`. After integration, use a separate `dev` → `main` release and follow the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md#application-and-database-cutover-order) to apply `20261126_moderation_owner_and_roles.sql`, bootstrap the verified Owner, apply `20261127_moderation_live_roles.sql` and switch to the role-only deployment. Record the production role and queue smoke, installed-device and live sign-in checks, old deployment isolation and the scheduled dispatcher HTTP result.
 
 **Punishments rollout.** Record live production verification against the [November cutover checklist](PUNISHMENTS_RELEASE_CHECKLIST.md).
 

@@ -122,7 +122,7 @@ Whenever you complete a milestone from `PROJECT_SPEC.md`:
 
 ## 7. Git & Branching Protocol
 
-* **Active Working Branch:** Use `krish` for regular work and the moderation Phase 0 inventory. For Moderation Phases 1–4, use the plan’s per-phase branch from the latest `krish` and open a pull request back into `krish`.
+* **Active Working Branch:** Use `krish` for regular work. Follow the [moderation rollout workflow](MODERATION_PLAN.md#feature-branch-workflow) for the phase branches.
 * **Target Integration Branch:** `dev` is the repository's default branch on GitHub. Pull Requests opened from `krish` target `dev`.
 * **Production Branch:** `main` is reserved for tagged releases and production-ready deployments merged from `dev`.
 

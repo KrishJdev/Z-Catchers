@@ -82,7 +82,7 @@ async function run() {
     assert(fs.existsSync(swPath), 'public/sw.js exists');
 
     const swContent = fs.readFileSync(swPath, 'utf8');
-    assert(swContent.includes('z-catchers-shell-v1'), 'Versioned shell cache "z-catchers-shell-v1" defined');
+    assert(swContent.includes("const CACHE_NAME = 'z-catchers-shell-v2'"), 'Uses a new shell cache for the moderation cutover');
     assert(swContent.includes('self.skipWaiting()'), 'Calls self.skipWaiting() on install');
     assert(swContent.includes('self.clients.claim()'), 'Calls self.clients.claim() on activate');
     assert(swContent.includes("request.mode === 'navigate'"), 'Network-first for navigate requests');

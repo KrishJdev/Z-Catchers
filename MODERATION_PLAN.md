@@ -6,7 +6,7 @@ The current app has member and moderator roles. The drawer's **Admin** label is 
 
 ## Feature branch workflow
 
-Submit the Phase 0 inventory from `krish` to `dev`. For Phases 1–4, start each phase on its own new branch from the latest `krish`. Run the phase's checks, open a pull request into `krish`, and merge it before branching for the next phase. After those phases are integrated, promote the complete change through `krish` → `dev` → `main` so the API and drawer ship together.
+Submit the Phase 0 inventory from `krish` to `dev`. Phases 1–3 were integrated into `dev` through separate pull requests. Start Phase 4 on its own branch from the merged Phase 3 on `dev`. Open a pull request to `dev` and use its isolated Supabase checks as release evidence. After integration, use a separate `dev` → `main` release so the API and drawer ship together.
 
 ## Permissions
 
@@ -68,7 +68,7 @@ See the [Phase 0 inventory and rollout checklist](MODERATION_ROLLOUT_CHECKLIST.m
 
 **Branch** `codex/moderation-4-release-rehearsal`
 
-1. Prepare the rollout checklist and run `npx tsc --noEmit`, `npm run test:unit`, and `npm run build` on the phase branch. Exercise the migration on fresh and existing data and test an installed PWA after updating. Merge the phase branch into `krish`, verify the complete change on `dev` with isolated Supabase CI, then release through `main`.
+1. Prepare the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md) and run `npx tsc --noEmit`, `npm run test:unit`, and `npm run build` on the phase branch. Exercise the migration on fresh and existing data and test an installed PWA after updating. Verify the complete change with isolated Supabase CI on the pull request to `dev`, then release through `main`.
 2. Apply the additive schema migration, pause legacy staff writes, then bootstrap the verified owner and backfill intended moderators. Switch the API and drawer together. Route staff traffic to the role-only release and retire old deployments that can still reach production.
 3. Smoke-test the owner, a moderator and a member. Verify the approval queue still contains pending requests, the former passcode cannot authorize a request, and role revocation takes effect immediately. Remove `MOD_SECRET_PASSCODE` and `MOD_DISCORD_IDS` from deployment configuration.
 4. If cutover fails, pause staff writes, verify the owner and moderator assignments, and use the rehearsed operator recovery and a corrected role-only release.

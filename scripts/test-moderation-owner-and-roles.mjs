@@ -8,6 +8,7 @@ const schema = sqlFile('supabase/schema.sql').replace('CREATE EXTENSION IF NOT E
   .split('-- Bind staff writes')[0].trimEnd() + '\n';
 const migration = sqlFile('supabase/migrations/20261126_moderation_owner_and_roles.sql');
 const bootstrapTemplate = sqlFile('supabase/bootstrap_moderation_owner.sql');
+const recoveryTemplate = sqlFile('supabase/recover_moderation_owner.sql');
 assert.ok(schema.endsWith(migration), 'The fresh-install schema mirrors the role migration');
 
 const withDatabase = async (initialSchema, test) => {
@@ -90,7 +91,8 @@ await withDatabase(schema.slice(0, -migration.length), async db => {
   await db.query("UPDATE public.members SET discord_username = 'Updated display name' WHERE id = $1", [owner.id]);
 });
 
-await withDatabase(schema, async db => {
+const liveSchema = sqlFile('supabase/schema.sql').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
+await withDatabase(liveSchema, async db => {
   await assert.rejects(() => insertMember(db, null, 'owner'), { code: '23514' });
   await assert.rejects(() => insertMember(db, '1001', 'owner', false), { code: '23514' });
   const owner = await insertMember(db, '1001');
@@ -206,9 +208,43 @@ await withDatabase(schema, async db => {
       { actor_member_id: owner.id, target_member_id: member.id, old_role: 'member', new_role: 'moderator', recorded: true },
       { actor_member_id: owner.id, target_member_id: member.id, old_role: 'moderator', new_role: 'member', recorded: true },
     ]);
+
+    const newDiscordId = '1010';
+    const recovery = (oldId, replacementId, memberId = owner.id) => recoveryTemplate
+      .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${memberId}';`)
+      .replace('old_discord_id constant text := NULL;', `old_discord_id constant text := '${oldId}';`)
+      .replace('new_discord_id constant text := NULL;', `new_discord_id constant text := '${replacementId}';`);
+    const rejectRecovery = async (input, expected) => {
+      await assert.rejects(() => db.exec(input), expected);
+      await db.exec('ROLLBACK');
+      await assert.rejects(() => db.query('DELETE FROM public.members WHERE id = $1', [owner.id]), { code: 'PT403' });
+    };
+    await rejectRecovery(recoveryTemplate, /Supply the verified owner/);
+    await rejectRecovery(recovery(owner.discord_id, newDiscordId, member.id), /No active owner/);
+    await rejectRecovery(recovery('9999', newDiscordId), /current owner Discord ID changed/);
+    await rejectRecovery(recovery(owner.discord_id, member.discord_id), /already linked/);
+    await db.exec('SET ROLE service_role');
+    await assert.rejects(() => db.exec(recovery(owner.discord_id, newDiscordId)), { code: '42501' });
+    await db.exec('ROLLBACK; RESET ROLE');
+
+    const readOwners = () => db.query('SELECT id, discord_id, is_active, updated_at FROM public.members WHERE role = $1', ['owner']);
+    const transaction = recovery(owner.discord_id, newDiscordId);
+    await db.exec(transaction);
+    const recovered = await readOwners();
+    assert.equal(recovered.rows.length, 1);
+    assert.equal(recovered.rows[0].id, owner.id);
+    assert.equal(recovered.rows[0].discord_id, newDiscordId);
+    assert.equal(recovered.rows[0].is_active, true);
+    await db.exec(transaction);
+    assert.deepEqual(await readOwners(), recovered);
+    await assert.rejects(() => db.query('UPDATE public.members SET discord_id = $1 WHERE id = $2',
+      [owner.discord_id, owner.id]), { code: 'PT403' });
+    await expect(post(ownerCookie, promote), 403);
+    const recoveredCookie = session(owner, newDiscordId);
+    await expect(post(recoveredCookie, promote), 200);
   } finally {
     await new Promise(resolve => server.close(resolve));
   }
 });
 
-console.log('Moderation migration, bootstrap, live owner authorization and audited role changes passed.');
+console.log('Moderation migration, bootstrap, audited role changes and operator Owner recovery passed.');
