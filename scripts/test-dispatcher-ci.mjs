@@ -31,6 +31,7 @@ const discordAccounts = {
   newcomer: '100000000000000004',
   'task-member': '100000000000000005',
   owner: '100000000000000100',
+  'recovered-owner': '100000000000000101',
   ...novemberAccounts,
 };
 assert.equal(new Set(Object.values(discordAccounts)).size, Object.keys(discordAccounts).length,
@@ -208,8 +209,40 @@ assert.equal(sql('SELECT count(*) FROM public.punishments'), '0');
 sql(readFileSync('supabase/migrations/20261123_punishment_task_apis.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261124_guard_active_wake.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261125_verify_punishment_cutover.sql', 'utf8'));
+// Start with a linked Owner candidate and a pending request on the legacy schema.
+// Keep these accounts away from bedtime during the dispatcher checks below.
+const cutoverOwnerId = sql(`
+  INSERT INTO public.members (discord_username, discord_id, journal_url, timezone, bedtime_local, wake_time_local)
+  VALUES ('Owner fixture', '${discordAccounts.owner}', 'https://discord.com/channels/123/456', 'UTC',
+    (now() AT TIME ZONE 'UTC' + interval '6 hours')::time, (now() AT TIME ZONE 'UTC' + interval '14 hours')::time)
+  RETURNING id
+`);
+const cutoverMemberId = sql(`
+  INSERT INTO public.members (
+    discord_username, journal_url, timezone, bedtime_local, wake_time_local,
+    pending_bedtime_local, pending_wake_time_local, pending_timezone, pending_effective_at
+  )
+  VALUES ('Pending schedule fixture', 'https://discord.com/channels/123/456', 'UTC',
+    (now() AT TIME ZONE 'UTC' + interval '6 hours')::time, (now() AT TIME ZONE 'UTC' + interval '14 hours')::time,
+    '22:30', '06:30', 'Asia/Kolkata', now() + interval '47 hours')
+  RETURNING id
+`);
+const cutoverQueue = () => sql(`
+  SELECT jsonb_object_agg(field, value) FROM public.members, jsonb_each(to_jsonb(members)) AS fields(field, value)
+  WHERE members.id = '${cutoverMemberId}' AND left(field, 8) = 'pending_'
+`);
+const queuedBeforeCutover = cutoverQueue();
+assert.equal(JSON.parse(queuedBeforeCutover).pending_bedtime_local, '22:30:00');
 sql(readFileSync('supabase/migrations/20261126_moderation_owner_and_roles.sql', 'utf8'));
+const ownerBootstrap = readFileSync('supabase/bootstrap_moderation_owner.sql', 'utf8')
+  .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${cutoverOwnerId}';`)
+  .replace('owner_discord_id constant text := NULL;', `owner_discord_id constant text := '${discordAccounts.owner}';`);
+sql(ownerBootstrap);
+sql(ownerBootstrap);
 sql(readFileSync('supabase/migrations/20261127_moderation_live_roles.sql', 'utf8'));
+assert.equal(cutoverQueue(), queuedBeforeCutover);
+assert.equal(sql("SELECT id, discord_id, is_active FROM public.members WHERE role = 'owner'"),
+  `${cutoverOwnerId}|${discordAccounts.owner}|t`);
 const novemberPreview = await verifyNovemberPreview(sql, novemberMembers);
 sql(`
   CREATE EXTENSION IF NOT EXISTS pg_cron;
@@ -724,14 +757,8 @@ try {
   assert.equal((await getTaskData(memberTasks, taskMemberCookie)).history[0].id, taskId);
   console.log('Verified visibility rollback and reopening preserve completed history and keep the new writer active.');
 
-  const { data: owner } = await db.from('members').insert({
-    ...profile, discord_username: 'Owner fixture', discord_id: discordAccounts.owner,
-  }).select('id,bedtime_local').single().throwOnError();
-  const ownerBootstrap = readFileSync('supabase/bootstrap_moderation_owner.sql', 'utf8')
-    .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${owner.id}';`)
-    .replace('owner_discord_id constant text := NULL;', `owner_discord_id constant text := '${discordAccounts.owner}';`);
-  sql(ownerBootstrap);
-  sql(ownerBootstrap);
+  const { data: owner } = await db.from('members').select('id,bedtime_local')
+    .eq('id', cutoverOwnerId).single().throwOnError();
   const ownerCookie = await signIn('owner', owner.id, true, 'owner');
   const origin = { Origin: appOrigin };
   const promote = { action: 'set_moderator', member_id: newcomer.id, expected_role: 'member', new_role: 'moderator' };
@@ -743,14 +770,38 @@ try {
   await post('/api/mod', ownerCookie, { action: 'toggle_active', member_id: owner.id, is_active: false }, 403, origin);
   await post('/api/mod', ownerCookie, { action: 'delete_member', member_id: owner.id }, 403, origin);
   const ownerSchedule = await post('/api/members/update-schedule', ownerCookie, {
-    member_id: owner.id, bedtime_local: owner.bedtime_local === '21:30' ? '21:40' : '21:30',
+    member_id: owner.id, bedtime_local: owner.bedtime_local.slice(0, 5) === '21:30' ? '21:40' : '21:30',
   });
   assert.equal(ownerSchedule.cooldown_applied, true);
+
+  const readCutoverRequest = async cookie => {
+    const response = await fetch(appOrigin + '/api/mod', { headers: { Cookie: cookie } });
+    assert.equal(response.status, 200);
+    const { members } = await response.json();
+    return members.find(member => member.id === cutoverMemberId);
+  };
+  const ownerReviewed = await readCutoverRequest(ownerCookie);
+  assert.equal(DateTime.fromISO(ownerReviewed.pending_effective_at).toMillis(),
+    DateTime.fromISO(JSON.parse(queuedBeforeCutover).pending_effective_at).toMillis());
+  const approveCutoverRequest = {
+    action: 'approve_cooldown', member_id: cutoverMemberId, expected_pending: ownerReviewed,
+  };
+  await post('/api/mod', '', { ...approveCutoverRequest, mod_passcode: retiredPasscode }, 401,
+    { ...origin, 'x-mod-passcode': retiredPasscode });
+  await post('/api/mod', newcomerCookie, approveCutoverRequest, 403, origin);
+  assert.equal(cutoverQueue(), queuedBeforeCutover);
   assert.equal((await post('/api/mod', ownerCookie, promote, 200, origin)).role, 'moderator');
-  const edit = { action: 'edit_member', member_id: regularId, discord_username: 'Regular fixture' };
-  await post('/api/mod', newcomerCookie, edit);
+  const moderatorReviewed = await readCutoverRequest(newcomerCookie);
+  assert.equal(moderatorReviewed.pending_effective_at, ownerReviewed.pending_effective_at);
+  await post('/api/mod', newcomerCookie, { ...approveCutoverRequest, expected_pending: moderatorReviewed }, 200, origin);
+  assert.equal(sql(`SELECT bedtime_local, timezone, pending_effective_at IS NULL FROM public.members
+    WHERE id = '${cutoverMemberId}'`), '22:30:00|Asia/Kolkata|t');
+  assert.equal(sql(`SELECT actor_id FROM public.moderation_actions
+    WHERE target_id = '${cutoverMemberId}' AND action = 'approve_cooldown'`), newcomer.id);
   assert.equal((await post('/api/mod', ownerCookie, revoke, 200, origin)).role, 'member');
-  await post('/api/mod', newcomerCookie, edit, 403);
+  await post('/api/mod', newcomerCookie, approveCutoverRequest, 403, origin);
+  assert.equal((await fetch(appOrigin + '/api/mod', { headers: { Cookie: newcomerCookie } })).status, 403);
+  console.log('Verified the upgrade preserved the queued request, a promoted session approved it, and its next request after revocation was denied.');
 
   const grant = `public.set_moderator('${owner.id}', '${discordAccounts.owner}', '${newcomer.id}', 'member', 'moderator')`;
   const tryGrant = `CREATE FUNCTION pg_temp.try_grant() RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -820,7 +871,22 @@ try {
   assert.equal(sql(`SELECT count(*) FROM public.sleep_logs WHERE member_id = '${sleepCancellationRace}'`), '0');
   assert.equal(sql(`SELECT count(*) FROM public.notification_logs WHERE member_id = '${sleepCancellationRace}'`), '0');
   console.log('Verified self-service sleep cancellation and a concurrent staff wake serialize without restoring deleted evidence.');
-  console.log('Verified owner-only bootstrap and role changes, live revocation, and transaction races for target promotion and schedule replacement.');
+
+  const recovery = readFileSync('supabase/recover_moderation_owner.sql', 'utf8')
+    .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${owner.id}';`)
+    .replace('old_discord_id constant text := NULL;', `old_discord_id constant text := '${discordAccounts.owner}';`)
+    .replace('new_discord_id constant text := NULL;', `new_discord_id constant text := '${discordAccounts['recovered-owner']}';`);
+  sql(recovery);
+  const recoveredOwner = () => sql("SELECT id, discord_id, is_active, updated_at FROM public.members WHERE role = 'owner'");
+  const recoveryResult = recoveredOwner();
+  assert.ok(recoveryResult.startsWith(`${owner.id}|${discordAccounts['recovered-owner']}|t|`));
+  sql(recovery);
+  assert.equal(recoveredOwner(), recoveryResult);
+  const revokeAfterRecovery = { action: 'set_moderator', member_id: newcomer.id, expected_role: 'moderator', new_role: 'member' };
+  await post('/api/mod', ownerCookie, revokeAfterRecovery, 403, origin);
+  const recoveredCookie = await signIn('recovered-owner', owner.id, true, 'owner');
+  await post('/api/mod', recoveredCookie, revokeAfterRecovery, 200, origin);
+  console.log('Verified the operator recovery preserves the sole Owner profile, invalidates the old session and accepts the recovered identity.');
 
 } finally {
   app?.kill();
