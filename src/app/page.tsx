@@ -162,7 +162,7 @@ export default function HomePage() {
     let isMounted = true;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8000);
-    fetch('/api/auth/me', { signal: controller.signal })
+    fetch('/api/auth/me', { signal: controller.signal, cache: 'no-store' })
       .then((res) => {
         if (!res.ok) throw new Error('Session verification unavailable');
         return res.json();
@@ -192,6 +192,10 @@ export default function HomePage() {
       controller.abort();
     };
   }, [router, sessionCheckAttempt]);
+
+  useEffect(() => {
+    if (activeModal === 'mod' && !currentUser?.is_moderator) setActiveModal(null);
+  }, [activeModal, currentUser?.is_moderator]);
 
   useEffect(() => {
     if (!sessionCheckFailed) return;
@@ -239,7 +243,7 @@ export default function HomePage() {
           setCurrentUser((prev) => {
             if (!prev) return null;
             const updated = json.members.find((m: Member) => m.id === prev.id);
-            return updated ? { ...prev, ...updated, is_moderator: prev.is_moderator } : prev;
+            return updated ? { ...prev, ...updated, role: prev.role, is_moderator: prev.is_moderator } : prev;
           });
           try {
             localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(rosterWithoutPrivateCounts(json.members)));
@@ -555,7 +559,7 @@ export default function HomePage() {
 
       const [rosterRes, authRes] = await Promise.all([
         fetch('/api/members', { headers }),
-        fetch('/api/auth/me', { headers }),
+        fetch('/api/auth/me', { headers, cache: 'no-store' }),
       ]);
 
       if (rosterRes.ok) {
@@ -1131,7 +1135,6 @@ export default function HomePage() {
         onLogout={handleLogout}
       />
 
-      {/* Passcode-Protected Moderator Drawer */}
       <ModDrawer
         isOpen={activeModal === 'mod' && Boolean(currentUser?.is_moderator)}
         onAccessChanged={refreshModerationAccess}

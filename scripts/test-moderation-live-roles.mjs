@@ -13,12 +13,13 @@ const roleSetup = `
 `;
 await db.exec(roleSetup);
 await db.exec(schema.slice(0, -migration.length));
-const { rows: [owner, mod, member, peer] } = await db.query(`
+const { rows: [owner, mod, member, peer, candidate] } = await db.query(`
   INSERT INTO public.members (discord_username, discord_id, journal_url, bedtime_local, timezone, role)
   VALUES ('Owner', '1001', 'https://discord.com/channels/1/2', '23:00', 'UTC', 'owner'),
     ('Moderator', '1002', 'https://discord.com/channels/1/2', '23:00', 'UTC', 'moderator'),
     ('Member', '1003', 'https://discord.com/channels/1/2', '23:00', 'UTC', 'member'),
-    ('Peer', '1004', 'https://discord.com/channels/1/2', '23:00', 'UTC', 'moderator')
+    ('Peer', '1004', 'https://discord.com/channels/1/2', '23:00', 'UTC', 'moderator'),
+    ('Candidate', '1005', 'https://discord.com/channels/1/2', '23:00', 'UTC', 'member')
   RETURNING *
 `);
 await db.query(`INSERT INTO public.strike_moderator_corrections
@@ -52,6 +53,7 @@ const { POST: metastrike } = await import('../src/app/api/members/strikes/metast
 let readFailure = false;
 let beforeRpc;
 const parameters = {
+  set_moderator: ['p_actor_id', 'p_actor_discord_id', 'p_target_id', 'p_expected_role', 'p_new_role'],
   moderate_roster_member: ['p_actor_id', 'p_actor_discord_id', 'p_target_id', 'p_action',
     'p_updates', 'p_expected_updated_at', 'p_expected_pending'],
   moderate_sleep: ['p_actor_id', 'p_actor_discord_id', 'p_target_id', 'p_action', 'p_cycle',
@@ -307,6 +309,22 @@ try {
   await expect(modRoute, 403, modSession, edit);
   assert.equal((await expect(authMe, 200, modSession)).member.is_moderator, false);
 
+  const candidateSession = createSessionToken({
+    memberId: candidate.id, discordId: candidate.discord_id, isModerator: false,
+  });
+  const promote = { action: 'set_moderator', member_id: candidate.id, expected_role: 'member', new_role: 'moderator' };
+  const revoke = { ...promote, expected_role: 'moderator', new_role: 'member' };
+  const pending = (await expect(updateSchedule, 200, memberSession, editSelf(member, '22:15'))).member;
+  const approve = { ...approval, expected_pending: pendingScheduleSnapshot(pending) };
+  await expect(modRoute, 403, candidateSession, approve);
+  assert.equal((await expect(modRoute, 200, ownerSession, promote)).role, 'moderator');
+  await expect(modRoute, 409, ownerSession, promote);
+  assert.equal((await expect(authMe, 200, candidateSession)).member.role, 'moderator');
+  assert.equal((await expect(modRoute, 200, candidateSession, approve)).member.bedtime_local, '22:15');
+  assert.equal((await expect(modRoute, 200, ownerSession, revoke)).role, 'member');
+  await expect(modRoute, 403, candidateSession, approve);
+  assert.equal((await expect(authMe, 200, candidateSession)).member.is_moderator, false);
+
   const { rows: audit } = await db.query('SELECT actor_id, target_id, action FROM public.moderation_actions ORDER BY id');
   assert.deepEqual(audit.filter(row => row.target_id === member.id), [
     { actor_id: owner.id, target_id: member.id, action: 'approve_cooldown' },
@@ -319,6 +337,7 @@ try {
     { actor_id: mod.id, target_id: member.id, action: 'log_wake' },
     { actor_id: mod.id, target_id: member.id, action: 'check_in' },
     { actor_id: mod.id, target_id: member.id, action: 'check_in' },
+    { actor_id: candidate.id, target_id: member.id, action: 'approve_cooldown' },
   ]);
   await db.exec('SET ROLE anon');
   await assert.rejects(db.query("SELECT public.moderate_roster_member($1,$2,$3,'cancel_cooldown')",
