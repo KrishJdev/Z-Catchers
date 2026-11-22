@@ -32,7 +32,7 @@ CREATE TABLE members (
   
   -- Role & Security
   role TEXT NOT NULL DEFAULT 'member',      -- 'member' | 'moderator' | 'owner'
-  passcode_hash TEXT,                       -- 4-digit PIN for self-service updates
+  passcode_hash TEXT,                       -- Legacy PIN column retained for older data
   is_active BOOLEAN NOT NULL DEFAULT true,
 
   -- Monthly Strikes & Metastrikes Accountability System
@@ -299,7 +299,7 @@ An open task starts as `pending` while replacement could undo its threshold. At 
 | --- | --- |
 | `GET /api/members/punishments` | Active Discord profile owner. Returns `month`, `strikes_used`, `metastrikes_used`, `strikes_toward_next`, `strikes_per_punishment`, `open_count`, `open_items` oldest first, and completed `history` newest first. An optional `memberId` must match the authenticated member. |
 | `GET /api/members` | Only the viewer's own active Discord-linked row receives `open_punishment_count`. The value is an integer across all months or `null` when unavailable. Task details stay private. |
-| `GET /api/mod/punishments` | Verifies a live database-role or configured Discord-ID moderator, or the rate-limited master passcode. Defaults to the `awaiting_assignment` queue. Pass `status=assigned` or `status=pending` for other sections and `offset` for the next page of up to 50. A `punishment_id` query instead returns `item`, `open_count`, and `verified_strikes` for that earned month. |
+| `GET /api/mod/punishments` | Requires a signed Discord session with an active Owner or Moderator role. Defaults to the `awaiting_assignment` queue. Pass `status=assigned` or `status=pending` for other sections and `offset` for the next page of up to 50. A `punishment_id` query instead returns `item`, `open_count`, and `verified_strikes` for that earned month. |
 | `POST /api/mod/punishments` | Same moderator authorization. Accepts `punishment_id` and `action`. For `assign` and `edit`, supply `title` (1–120 characters) and optional `instructions` (up to 2,000). For `complete`, supply the task ID alone with the action. For `add_strike` or `remove_strike`, supply `cycle_date` in the earned month, `reason` (1–500 characters), and a UUID `request_id` reused on retry. Removal also requires a matching `source_id` from the detail read. Returns `success`, `item`, `open_count`, and `correction_id` for dated changes. |
 | `GET /api/members/strikes` | Active Discord profile owner. Returns the current cycle log and compatibility counts. |
 | `POST /api/members/strikes` | Compatibility endpoint returns 403 `PEER_VOTING_DISABLED` for vote requests. Legacy vote columns and rows remain in storage. |
@@ -440,20 +440,18 @@ All user-submitted journal links must be validated against this strict regex bef
 
 ## 6. "I Woke Up" & Sleep History API Endpoints
 
-### Staff authorization and schedule writes after the moderation cutover
+### Staff authorization and schedule writes
 
-The [moderation rollout](MODERATION_PLAN.md) adds the `owner` role alongside `member` and `moderator`. The database enforces at most one Owner, whose row must be active and Discord-linked. Staff endpoints match the Discord session’s member ID and Discord ID to the active row and authorize using its current role. Guard the target’s role in the staff write so a concurrent promotion cannot grant access to a protected target.
+The database supports `member`, `moderator`, and `owner`. It enforces at most one Owner, whose row must be active and Discord-linked. Staff endpoints match the Discord session’s member ID and Discord ID to the active row and authorize using its current role. Guard the target’s role in the staff write so a concurrent promotion cannot grant access to a protected target.
 
-Phase 1 adds the same-origin `POST /api/mod` action `set_moderator` with `member_id`, `expected_role`, and `new_role`. The service-role function checks the signed actor’s live Owner role and Discord link, locks the target, and returns HTTP 409 if the expected role is stale. Promotions require an active, linked member. A successful change records the actor, target, old and new roles, and timestamp in `moderator_role_changes`. Follow the [operator checklist](MODERATION_ROLLOUT_CHECKLIST.md#phase-1-owner-bootstrap) for the initial owner assignment.
+The same-origin `POST /api/mod` action `set_moderator` takes `member_id`, `expected_role`, and `new_role`. The service-role function checks the signed actor’s live Owner role and Discord link, locks the target, and returns HTTP 409 if the expected role is stale. Promotions require an active, linked member. A successful change records the actor, target, old and new roles, and timestamp in `moderator_role_changes`. Follow the [operator checklist](MODERATION_ROLLOUT_CHECKLIST.md#phase-1-owner-bootstrap) for the initial Owner assignment.
 
 `POST /api/members/update-schedule` is the profile owner’s self-service route. Schedule changes in every role write to the 48-hour queue. Use `POST /api/mod` with `edit_schedule` for immediate schedule changes and `approve_cooldown` for early approval. Moderators can target members and the Owner can target members or moderators. Send the roster row’s `updated_at` as `expected_updated_at` for immediate edits. Send the reviewed queue fields as `expected_pending` for approval. The staff transaction returns HTTP 409 when the profile version or the reviewed queue differs from the stored values. Staff write transactions recheck the actor and target while holding their database locks. Audit new staff actions with the signed-in member ID and retain historical `master_mod` records.
-
-The API descriptions for legacy credentials apply until the application and database are switched in the [documented cutover order](MODERATION_ROLLOUT_CHECKLIST.md#application-and-database-cutover-order).
 
 ### 6.1 `POST /api/members/wake-up`
 Allows authenticated members to log when they woke up for their active or recent sleep cycle.
 
-* **Authentication:** Member session cookie/bearer token, 4-digit PIN matching `passcode_hash`, or server moderator passcode.
+* **Authentication:** A signed Discord session for the active profile or an authorized staff session for an eligible target.
 * **Modes:**
   * **Instant Button:** `{ mode: 'button' }` (or empty body). Uses current UTC instant in member's timezone, sets `wake_source: 'button'`.
   * **Manual Time Entry:** `{ mode: 'manual', wokeUpTime: 'HH:mm', cycleDate?: 'YYYY-MM-DD' }`.

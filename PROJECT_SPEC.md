@@ -350,8 +350,7 @@ Manual push nags require an active member session. Each sender, target, sleep cy
 
 * First-time members use `/join` and Discord OAuth to create a profile. Returning members sign in to the profile already linked to their Discord ID. Member writes require the active profile's linked Discord session.
 * Members can update their display name or journal link immediately. A change to an existing sleep schedule or timezone queues for 48 hours and the member can cancel it before it takes effect.
-* In the current release, an active linked profile qualifies for moderator access through the database role or the `MOD_DISCORD_IDS` allowlist. Legacy immediate schedule edits and early approvals use `MOD_SECRET_PASSCODE`.
-* After the [role-only moderation cutover](MODERATION_PLAN.md), the sole Owner appoints Moderators from the active Discord-linked roster. Moderators can manage members. The Owner can also manage moderators and retains role changes, account activation, webhook tools, and destructive or bulk operations. The Owner uses the normal self-service cooldown, and operator recovery protects the Owner's link and role.
+* Staff access follows the active Discord-linked profile's database role. The sole Owner appoints Moderators from the roster. Moderators can manage members. The Owner can also manage moderators and retains role changes, account activation, webhook tools, and destructive or bulk operations. The Owner uses the normal self-service cooldown. See the [Owner recovery procedure](MODERATION_ROLLOUT_CHECKLIST.md#owner-recovery).
 * A signed-in member links each device to their profile. The device's service worker uses its own rotation credential to recover updates after the Discord session expires.
 
 ### 5.6 Monthly Strikes & Metastrikes Accountability Engine
@@ -482,9 +481,9 @@ Follow these exact milestones in order. Verify each milestone compiles and passe
 
    * `GET /api/members` — Fetches all active members, auto-promotes any expired 48h pending schedules in the DB, and returns the list.
 
-   * `POST /api/members/update-schedule` queues schedule changes from the active profile's linked Discord session in `pending_*` for 48 hours. The current release also has a rate-limited legacy override. A valid `MOD_SECRET_PASSCODE` in the `mod_passcode` body field or the `x-mod-passcode` header applies the schedule change immediately without a profile-owner session. The role-only cutover retires the passcode override and moves immediate schedule edits to explicit staff actions in `/api/mod`.
+   * `POST /api/members/update-schedule` queues schedule changes from the active profile's linked Discord session in `pending_*` for 48 hours. Authorized staff make immediate changes and approve reviewed pending requests through explicit actions in `/api/mod`.
 
-   * `POST /api/mod` — Staff roster management and pending schedule approvals. After the role-only cutover, the server verifies the actor’s current role and target eligibility for each action. New profiles are created through Discord onboarding.
+   * `POST /api/mod` — Staff roster management and pending schedule approvals. The server verifies the actor’s current role and target eligibility for each action. New profiles are created through Discord onboarding.
 
 ### Milestone 3: Warm Dark UI, Responsive Desktop Dashboard & Sleepy Fox Mascot
 
@@ -506,7 +505,7 @@ Follow these exact milestones in order. Verify each milestone compiles and passe
 
 1. Build the **"My Schedule"** modal/tab (centered dialog on desktop, bottom sheet on mobile) where a signed-in member updates their Discord Journal thread URL, or requests a bedtime change (with a clear warning that bedtime edits take **48 hours** to take effect).
 
-2. Provide **Mod Panel** for roster management and explicit staff schedule actions. Follow the [moderation rollout](MODERATION_PLAN.md) for role-based controls and the passcode cutover. Members create their own profiles through Discord onboarding.
+2. Provide **Mod Panel** for roster management and explicit staff schedule actions. Members create their own profiles through Discord onboarding.
 
 ### Milestone 5: PWA Configuration, Fox Mascot Assets & Web Push Notifications
 
