@@ -269,7 +269,7 @@ The accountability system ensures members adhere to their bedtimes with automate
 * **Scope Restriction:** Strikes apply strictly to missed bedtimes. Wake-up actions in `/api/members/wake-up` must never trigger strikes.
 * **Peer Strike Voting Removed:** Manual peer strike voting has been removed and disabled (`POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`). Regular members cannot vote to strike others.
 * **Strike thresholds:** Every third verified strike in a member’s local calendar month earns a distinct punishment. Automatic strikes continue beyond three.
-* **Metastrikes (Max 3 per calendar month):** Excused passes for unexpected or important events (e.g. Monthly Battle, Family Event, Birthday Celebration, Health Emergency).
+* **Metastrikes (Max 3 per calendar month):** Reviewed passes for unexpected or important events (e.g. Monthly Battle, Family Event, Birthday Celebration, Health Emergency).
 * **Monthly rollover:** Strike progress and Metastrike usage use the member’s local calendar month. The stored sleep-cycle date determines the strike month. Open tasks carry over. Progress reads use the pending timezone once its existing cooldown expires.
 
 #### 2. Timezone & 10-Minute Cutoff State Machine
@@ -277,33 +277,39 @@ The accountability system ensures members adhere to their bedtimes with automate
   * Status text: `"Grace Period: Xm left"`. Member drops into "Overdue / Past Bedtime" section immediately at minute 0.
 * **`OVERDUE_NAG_NOW` ($\text{diffMinutes} > 5$):**
   * Status text: `"Bedtime hit Xm ago — Nag them!"`.
-  * If $\text{diffMinutes} \ge 10$, the Automated Bedtime Strike Engine issues 1 normal strike unless the member has checked into bed or applied a Metastrike for this sleep cycle.
+  * If $\text{diffMinutes} \ge 10$, the Automated Bedtime Strike Engine issues 1 normal strike unless the member has checked into bed or received an approved Metastrike for this sleep cycle.
   * **Overdue Bucket Retention:** The member remains in the "Overdue / Past Bedtime" section after receiving the strike until they either explicitly log "I'm in Bed" (which transitions them to `SLEEPING`) or their scheduled wake-up time passes (which transitions them directly to `AWAKE` via the fallback rule).
   * **Idempotency:** Automatic strikes are tracked via `AUTO_BEDTIME_STRIKE` in `notification_logs` and `nightly_strike_logs`, ensuring at most 1 automatic strike per sleep cycle across repeated cron passes.
 
 The Supabase service role calls `apply_nightly_strike` to change a nightly record and its monthly counters in one transaction. The function locks the member, checks the expected record type and rechecks durable check-in evidence before issuing a strike. A failed write leaves the cycle available for retry.
 
-#### 3. Metastrike Prevention & Pre-Next-Bedtime Replacement Workflows
-* **Proactive Metastrike (Applied before +10m Cutoff):** Member taps `"Use Metastrike Tonight"` on their own card and selects or types a reason. Consumes 1 Metastrike (`metastrikes_used + 1`), sets `record_type = 'metastrike'` for tonight's `sleep_cycle_date`, and locks the cycle against automatic normal strikes with a `"Protected by Metastrike: [Reason]"` shield badge.
-* **Pre-Next-Bedtime Replacement Window:** If a member receives an automatic normal strike at +10 minutes, they can apply a Metastrike at any point—all the way until their next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`), including the next morning or afternoon. Doing so decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` from `'strike'` to `'metastrike'`. Once the next scheduled bedtime arrives, this replacement window expires.
+#### 3. Reviewed Metastrike requests
+
+The request picker uses the server's Luxon sleep-cycle anchor and eligibility for the current cycle and three dates on either side. A past cycle requires a nightly strike. The request stores the cycle date, timezone and trimmed reason. A pending request reserves one slot in the cycle's local month. Withdrawal, decline and closure without use release the slot. Pending requests leave dispatcher protection and strike totals unchanged until approval.
+
+The review transaction rechecks live roles, the strike source and the month's quota. Approval before cutoff protects the night. Approval after a recorded strike replaces it and recalculates the earned month's strikes and tasks. If the dispatcher is still settling the night, review can be retried. A confirmed no-strike cycle closes without a charge. The original strike and decision remain in private history. The shared roster and sleep calendar expose protection status only, and private reads use `Cache-Control: private, no-store`.
 
 #### 4. Punishment records and dated corrections
 
 Each full group of three verified strikes in the member's local calendar month earns one task. A strike is attributed to its stored sleep-cycle date even if posting crosses midnight or the member changes timezone. The ledger uses nightly strikes and dated, auditable moderator corrections. The monthly member counters serve existing callers as projections.
 
-An open task starts as `pending` while replacement could undo its threshold. At the deadline, reads show `awaiting_assignment`. Only that state accepts a new assignment. Assigned work supports edits or completion. A correction or Metastrike that disqualifies a threshold cancels its open task. Re-earning the threshold reopens the same record, and completed work remains in history. Open tasks carry over across months.
+The task view exposes `metastrike_hold` when the reviewed workflow is enabled and a replacement could undo the threshold. The relevant task is `pending` until assignment is permitted. An affected assigned task supports edits, with completion paused until the hold clears. A correction or Metastrike that disqualifies a threshold cancels its open task. Re-earning the threshold reopens the same record, and completed work remains in history. Open tasks carry over across months.
 
 #### 5. REST API endpoints
 
 | Endpoint | Authorization and response |
 | --- | --- |
 | `GET /api/members/punishments` | Active Discord profile owner. Returns `month`, `strikes_used`, `metastrikes_used`, `strikes_toward_next`, `strikes_per_punishment`, `open_count`, `open_items` oldest first, and completed `history` newest first. An optional `memberId` must match the authenticated member. |
-| `GET /api/members` | Only the viewer's own active Discord-linked row receives `open_punishment_count`. The value is an integer across all months or `null` when unavailable. Task details stay private. |
+| `GET /api/members` | Only the viewer's own active Discord-linked row receives `open_punishment_count`. The value is an integer across all months or `null` when unavailable. Task details and Metastrike reasons stay private. Nightly strike summaries omit reasons. |
 | `GET /api/mod/punishments` | Requires a signed Discord session with an active Owner or Moderator role. Defaults to the `awaiting_assignment` queue. Pass `status=assigned` or `status=pending` for other sections and `offset` for the next page of up to 50. A `punishment_id` query instead returns `item`, `open_count`, and `verified_strikes` for that earned month. |
 | `POST /api/mod/punishments` | Same moderator authorization. Accepts `punishment_id` and `action`. For `assign` and `edit`, supply `title` (1–120 characters) and optional `instructions` (up to 2,000). For `complete`, supply the task ID alone with the action. For `add_strike` or `remove_strike`, supply `cycle_date` in the earned month, `reason` (1–500 characters), and a UUID `request_id` reused on retry. Removal also requires a matching `source_id` from the detail read. Returns `success`, `item`, `open_count`, and `correction_id` for dated changes. |
 | `GET /api/members/strikes` | Active Discord profile owner. Without a query month, returns the current cycle log and compatibility counts. With `month=YYYY-MM`, returns the member's dated entries and display timezone with `Cache-Control: private, no-store`. Staff use the same owner scope for this route. |
 | `POST /api/members/strikes` | Compatibility endpoint returns 403 `PEER_VOTING_DISABLED` for vote requests. Legacy vote columns and rows remain in storage. |
-| `POST /api/members/strikes/metastrike` | Activates a proactive pass or replaces a strike before the next scheduled bedtime for the owner or an authorized moderator. |
+| `GET /api/members/strikes/metastrike/requests` | Active linked member. Optional `month=YYYY-MM` selects private request history. Returns the seven date choices, each month's quota, unavailable reasons and the submission gate. |
+| `POST /api/members/strikes/metastrike/requests` | Same member scope. Send `action=submit`, a stable UUID `request_id`, `cycle_date` and `reason`. Use `action=withdraw` with the existing request ID. |
+| `GET /api/mod/metastrikes` | Live staff and scoped targets. `status=pending` lists oldest first with the pending count. `status=decided` lists recent decisions. Use `offset` for pagination or `request_id` for detail. |
+| `POST /api/mod/metastrikes` | Same staff scope. Send `request_id` and `action=approve` with the reviewed `expected_source_id` (explicit null when absent), or `action=decline` with a 1–500-character explanation. HTTP 409 requires a fresh read before another decision. |
+| `POST /api/members/strikes/metastrike` | Legacy instant-write endpoint for eligible callers before the reviewed cutover. The database rejects instant writes after `reviewed_metastrikes_required` is enabled. |
 | `GET /api/mod?view=strike_month&member_id=…` | Live Owner or Moderator with permission for the target. Optional `month=YYYY-MM` defaults to the member's current local month. Returns the month, verified sources with their date and reason, the selected month's strike count, and the open task count across all months. Available for profiles with zero tasks. |
 | `POST /api/mod` with `add_strike` or `remove_strike` | Same target rules. Send `member_id`, `cycle_date`, `reason` (1–500 characters), and a stable UUID `request_id`. Removal also requires the source's `source_id` from the review. Returns the refreshed month and counts with `correction_id`. The roster is the staff entry point for dated changes. |
 | `POST /api/mod` with `adjust_passes` or `clear_metastrike_log` | Owner-only, subject to target role checks. The Metastrike balance is bounded at three. Older action names accept pass-only requests. |
@@ -359,6 +365,8 @@ When saving a 7-day variable schedule via `/api/members/update-schedule` or `/ap
 * **Every Day:** Single bedtime and wake time applied synchronously across all 7 days.
 * **Weekdays / Weekends:** Mon–Thu + Sun regular hours vs. Fri–Sat weekend hours.
 * **Custom Per Day:** Full 7-day editor with interactive day pills (min 44px touch targets), quick copy actions ("Copy to Weekdays", "Copy to Weekend", "Apply All 7 Days"), and a compact 7-day summary preview.
+
+Apply `20261201_reviewed_metastrikes.sql` before deploying the reviewed screens. Both switches default to false. Enable the database review requirement and request intake during the coordinated release after ledger recovery. Owner intake requires an authorized operator procedure. See the [release checklist](PUNISHMENTS_RELEASE_CHECKLIST.md).
 
 ---
 

@@ -37,9 +37,9 @@ Members of an international Discord community want to keep each other accountabl
 
 6. **Monthly Strikes & Metastrikes Accountability System:**
    * **Strikes and punishments:** The dispatcher issues one strike for a missed check-in starting ten minutes after bedtime. Each third verified strike in a local calendar month earns a separate task.
-   * **Metastrikes (Max 3 per month):** Excused passes used for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
+   * **Metastrikes (Max 3 per month):** Moderator-reviewed passes for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
    * **Monthly rollover:** Strike progress and used Metastrikes reset on the first day of the member’s local month. Unfinished tasks carry forward.
-   * **Nightly evidence:** An in-app check-in, completed sleep log or Metastrike protects that cycle. See section 5.6 for the automatic strike and replacement rules.
+   * **Nightly evidence:** An in-app check-in, completed sleep log or Metastrike protects that cycle. See section 5.6 for the automatic strike and reviewed request rules.
 
 ## 2. Recommended Tech Stack (For Antigravity Execution)
 
@@ -360,21 +360,23 @@ Manual push nags require an active member session. Each sender, target, sleep cy
    * **Scope Restriction:** Strikes apply strictly to missed bedtimes. Wake-up actions in `src/app/api/members/wake-up/route.ts` must never trigger strikes.
    * **Peer Strike Voting Removed:** Manual peer strike voting has been removed and disabled (`POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`). Regular members cannot vote to strike others.
    * **Monthly thresholds:** Every third verified strike earns a separate punishment (3, 6, 9, and so on). The stored local sleep-cycle date determines its month, including a November 30 strike dispatched on December 1.
-   * **Metastrikes (Max 3 per month):** Excused passes used for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
+   * **Metastrikes (Max 3 per month):** Moderator-reviewed passes for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
    * **Monthly rollover:** Progress toward the next punishment resets on the first day of the member’s local month. All open tasks carry over. The member has three Metastrikes per local month.
 
 2. **5-Minute Grace Period & 10-Minute Cutoff Logic:**
    * `diffMinutes >= 0 && diffMinutes <= 5`: Status is `BEDTIME_GRACE` (`"Grace Period: Xm left"`).
    * `diffMinutes > 5 && diffMinutes < 10`: Status is `OVERDUE_NAG_NOW`. Nags are active, but strike is not yet issued.
-   * `diffMinutes >= 10`: If the member has neither checked in via `"I'm in Bed"` nor applied a Metastrike for tonight's sleep cycle, the cron dispatcher automatically issues 1 normal strike via `issueAutomaticBedtimeStrike()`.
+   * `diffMinutes >= 10`: If the member has neither checked in via `"I'm in Bed"` nor received a Metastrike for tonight's sleep cycle, the cron dispatcher automatically issues 1 normal strike via `issueAutomaticBedtimeStrike()`.
    * **Idempotency:** Automatic strikes are strictly capped at 1 per member per sleep cycle date across repeated cron passes (`AUTO_BEDTIME_STRIKE` in `notification_logs` and `nightly_strike_logs`).
 
-3. **Metastrike Prevention & Pre-Next-Bedtime Replacement Workflows:**
-   * **Applied Before Bedtime (+10m Cutoff):** If a member activates a Metastrike before the 10-minute auto-strike cutoff, the cycle is marked with `record_type: 'metastrike'`, preventing any normal strike from being issued.
-   * **Pre-Next-Bedtime Replacement Window:** If an automatic normal strike was already issued at +10 minutes, the member can apply a Metastrike at any point—all the way until their next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`), including the next morning or afternoon. Doing so decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` from `'strike'` to `'metastrike'`. Once the next scheduled bedtime arrives, this replacement window expires.
+3. **Reviewed Metastrike requests**
+   * From their own card or My Sleep, linked members choose the current sleep cycle or a date up to three cycles away. A past cycle requires a recorded nightly strike. Enter a reason of 1–500 characters and review the used, reserved and remaining slots for the selected cycle's month.
+   * A pending request reserves one slot. The dispatcher evaluates the night normally until approval. The My Sleep calendar shows pending, approved, declined, withdrawn and closed requests by month. Members can withdraw a pending request. Decline, withdrawal and closure without use release the reservation.
+   * Staff see eligible requests oldest first in **Mod Panel → Metastrikes**. They can approve or decline with a member-facing explanation. Approval protects a cycle before cutoff or replaces its recorded nightly strike. A past cycle that is still settling stays pending. A confirmed no-strike cycle closes and releases the reservation. Only approval consumes a pass.
+   * The shared card shows **Protected by Metastrike** for an active pass. Request reasons and decision explanations are available in the linked member's private history and to authorized reviewers. Owner submission requires the operator review procedure.
 
 4. **Punishment status and moderation**
-   * An earned punishment counts as open immediately. It shows **Pending** while replacement can undo the threshold and **Awaiting assignment** afterward. Assigned tasks also count as open.
+   * An earned punishment counts as open immediately. The queue and member task list explain a Metastrike hold when a replacement window or pending request could undo the threshold. Assignment waits for the hold to clear. An affected assigned task retains its instructions while completion is on hold.
    * A moderator assigns a short title and optional instructions, can edit an assigned task, and completes each task individually. Completion lowers the open count by one and moves the task to history.
    * A dated correction or Metastrike replacement cancels any disqualified open threshold. Earning it again reuses its record. Completed tasks stay in history.
    * Staff can review dated strike sources from the Mod Panel roster for an eligible member, including members with zero tasks. Corrections require the cycle date and reason. Removal also requires the exact source. Owners can manage Moderators and Members, and Moderators can manage Members. Staff cannot act on themselves or the Owner.
@@ -453,7 +455,7 @@ Manual push nags require an active member session. Each sender, target, sleep cy
 
 * [x] **Sleep Consistency Streaks:** Track consecutive days a member checks in on time without using schedule changes.
 
-* [x] **Monthly Strikes & Metastrikes Accountability System:** A separate punishment at every third valid strike, three Metastrikes per local month, 5-minute grace period (`BEDTIME_GRACE`), automatic evaluation at +10 minutes, replacement before the next bedtime, and moderator controls.
+* [x] **Monthly Strikes & Metastrikes Accountability System:** A separate punishment at every third valid strike, three Metastrikes per local month, 5-minute grace period (`BEDTIME_GRACE`), automatic evaluation at +10 minutes, reviewed requests with private reasons, and moderator controls.
 
 * [x] **7-Day Variable Sleep Schedule Engine:** Full `mon` through `sun` custom routine support stored in `weekly_schedule JSONB`, with cross-midnight cycle resolution, fallback synchronization to flat columns, 48-hour cooldown enforcement, and 3-mode mobile-friendly schedule editor (Every Day, Weekdays/Weekends, Custom Per Day).
 

@@ -178,17 +178,35 @@ try {
             'SELECT public.get_member_strike_history($1, $2, $3) AS result', [p_member_id, p_discord_id, p_month])));
         }
         case '/rest/v1/members': {
-          const { rows: [profile] } = await db.query('SELECT * FROM public.members WHERE id = $1',
-            [url.searchParams.get('id').slice(3)]);
-          profile.strike_cycle_month = DateTime.utc().setZone(profile.timezone).toFormat('yyyy-MM');
-          return res.end(JSON.stringify(profile));
+          const id = url.searchParams.get('id')?.slice(3);
+          const { rows } = id ? await db.query('SELECT * FROM public.members WHERE id = $1', [id])
+            : await db.query('SELECT * FROM public.members WHERE is_active');
+          for (const profile of rows) {
+            profile.strike_cycle_month = DateTime.utc().setZone(profile.timezone).toFormat('yyyy-MM');
+          }
+          return res.end(JSON.stringify(id ? rows[0] : rows.map(profile => ({ ...profile, metastrike_reason: 'Legacy roster secret' }))));
+        }
+        case '/rest/v1/rpc/get_member_punishments': {
+          let raw = '';
+          for await (const chunk of req) raw += chunk;
+          const { p_member_id, p_discord_id, p_details } = JSON.parse(raw);
+          return res.end(JSON.stringify(await result('SELECT public.get_member_punishments($1,$2,$3) AS result',
+            [p_member_id, p_discord_id, p_details])));
         }
         case '/rest/v1/sleep_logs': {
+          if (!url.searchParams.has('member_id')) return res.end('[]');
           const { rows } = await db.query('SELECT * FROM public.sleep_logs WHERE member_id = $1',
             [url.searchParams.get('member_id').slice(3)]);
           return res.end(JSON.stringify(rows));
         }
         case '/rest/v1/nightly_strike_logs': {
+          if (url.searchParams.get('target_member_id')?.startsWith('in.')) {
+            const filters = url.searchParams.get('sleep_cycle_date');
+            if (!filters?.startsWith('in.')) return res.end('[]');
+            const dates = filters.slice(4,-1).split(',');
+            const { rows } = await db.query('SELECT * FROM public.nightly_strike_logs WHERE sleep_cycle_date = ANY($1::text[])', [dates]);
+            return res.end(JSON.stringify(rows));
+          }
           assert.equal(url.searchParams.get('select'), 'sleep_cycle_date,record_type');
           const { rows } = await db.query('SELECT sleep_cycle_date, record_type FROM public.nightly_strike_logs WHERE target_member_id = $1',
             [url.searchParams.get('target_member_id').slice(3)]);
@@ -213,6 +231,8 @@ try {
   const { createSessionToken } = await import('../src/lib/auth.ts');
   const { GET: getStrikes } = await import('../src/app/api/members/strikes/route.ts');
   const { GET: getSleep } = await import('../src/app/api/members/sleep-history/route.ts');
+  const { GET: getRoster } = await import('../src/app/api/members/route.ts');
+  const { getSleepCycleDate } = await import('../src/lib/sleepEngine.ts');
   const request = (who, extra = '', discordId = who?.discord_id) => new Request(
     'http://localhost/api/members/strikes?month=2026-11' + extra,
     who ? { headers: { Cookie: 'zcatchers_session=' + createSessionToken({ memberId: who.id, discordId }) } } : {});
@@ -251,7 +271,24 @@ try {
   const sharedBody = await shared.json();
   assert.equal(sharedBody.logs.find(log => log.cycle_date === '2026-11-06').status, 'late');
   assert.equal(privateRead.entries.some(e => e.cycle_date === '2026-11-06'), false);
-  assert.doesNotMatch(JSON.stringify(sharedBody), /source_id|issued_at|changed_at|replacement_until|private staff evidence/);
+  assert.doesNotMatch(JSON.stringify(sharedBody), /source_id|issued_at|changed_at|replacement_until|private staff evidence|private legacy reason/);
+
+  const { rows: [currentProfile] } = await db.query('SELECT * FROM public.members WHERE id = $1', [other.id]);
+  const cycle = getSleepCycleDate(currentProfile, DateTime.utc(), false);
+  await db.query(`INSERT INTO public.nightly_strike_logs (target_member_id, sleep_cycle_date, record_type, reason)
+    VALUES ($1, $2, 'metastrike', 'Private nightly roster secret') ON CONFLICT (target_member_id, sleep_cycle_date)
+    DO UPDATE SET record_type = EXCLUDED.record_type, reason = EXCLUDED.reason`, [other.id, cycle]);
+  for (const viewer of [null, other, member, mod]) {
+    const roster = await getRoster(new Request('http://localhost/api/members', request(viewer)));
+    assert.equal(roster.status, 200);
+    assert.equal(roster.headers.get('Cache-Control'), 'private, no-store');
+    const body = await roster.json();
+    const row = body.members.find(profile => profile.id === other.id);
+    assert.equal(row.is_metastrike_active, true);
+    assert.equal(row.tonight_strike_log.record_type, 'metastrike');
+    assert.equal('reason' in row.tonight_strike_log, false);
+    assert.doesNotMatch(JSON.stringify(body), /metastrike_reason|roster secret/i);
+  }
 
   await db.query('DELETE FROM public.members WHERE id = $1', [member.id]);
   assert.equal(await result('SELECT count(*)::int AS result FROM public.nightly_strike_history WHERE member_id = $1',

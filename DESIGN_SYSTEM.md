@@ -233,12 +233,9 @@ Next to the primary `"Nag in Discord Journal ↗"` button, contextual secondary 
 | Pill Variant | Condition | Visual Styling & Label |
 | :--- | :--- | :--- |
 | **Grace Period** | Bedtime hit, within 0–5 minutes | `⏳ Grace: Xm left` (subtle amber border, voting locked) |
-| **Vote Strike (0/2)** | > 5m overdue, 0 votes cast | `Vote Strike (0/2)` (warm coral border `#D96B52`, clickable by community) |
-| **Vote Strike (1/2)** | > 5m overdue, 1 vote cast | `Vote Strike (1/2)` (pulsing coral border `#D96B52`, 1 vote needed to confirm) |
-| **Strike Issued** | 2 votes confirmed tonight | `Strike Issued Tonight` (solid dark coral `#D96B52/20`, locked) |
-| **Metastrike Active** | Proactive pass activated for tonight | `🛡️ Metastrike: [Reason]` (warm golden amber `#F4A261`, voting locked) |
-| **Self-Service Pass** | Member's own card, tonight | `"Use Metastrike Tonight"` button (warm amber secondary action) |
-| **24-Hour Swap** | Member received strike within 24h | `"Convert to Metastrike (24h Pass)"` button (retroactive excuse conversion) |
+| **Strike Issued** | The dispatcher recorded a nightly strike | `Strike Issued` (dark coral `#D96B52/20`) |
+| **Metastrike Active** | The current cycle is protected | `Protected by Metastrike` (warm amber `#F4A261`) |
+| **Request Metastrike** | Member's own card or My Sleep | `Request Metastrike` (warm amber secondary action) |
 
 ---
 
@@ -268,16 +265,10 @@ In **Roster**, give the Owner **Make moderator** and **Remove moderator** on eli
   * `"🔔 Turn on Bedtime & Nag Notifications"` button (`bg-status-amber text-night-bg font-semibold rounded-xl min-h-[44px]`).
 * **Condition 3 (Subscribed & Ready):** Hide banner and display active badge in header/command bar (`"🔔 Alerts On"`).
 
-### 6.4 Metastrike Excuse Modal (`MetastrikeModal.tsx`)
-* **Purpose:** Allows members to activate an excused Metastrike pass (proactively or retroactively within 24 hours of an issued strike).
-* **Modal Architecture:** Responsive dialog (centered on desktop, slide-up sheet on mobile) with Warm Dark aesthetic and Sleepy Fox shield motif.
-* **Component Features:**
-  * **Passes Remaining Indicator:** Visual meter showing `X of 3 passes remaining this month`.
-  * **Quick Reason Pills:** One-tap preset selections:
-    * `"Monthly Battle"` (e.g. community game or guild event)
-    * `"Family Event"` (family gathering or dinner)
-    * `"Birthday Celebration"`
-    * `"Overtime / Work Deadline"`
-    * `"Health & Emergency"`
-  * **Custom Reason Input:** Clean text field for specific personal notes.
-  * **Action Button:** `"Activate Metastrike Shield"` (proactive) or `"Convert Strike to Metastrike"` (24h retroactive swap).
+### 6.4 Reviewed Metastrikes
+
+Use a centered Warm Dark dialog on desktop and a scrollable bottom sheet with safe-area padding on mobile. Keep the Sleepy Fox and 44 px controls. The date picker labels unavailable nights and shows the selected month's used, reserved and remaining slots. Put validation beside the reason field and confirm that the request was sent for review.
+
+In My Sleep, show the calendar month's requests with a text status, private reason and any decision explanation. Offer withdrawal on pending requests. Shared views use **Protected by Metastrike**.
+
+In the Mod Panel, show pending count, oldest requests first and recent decisions. Show the member, cycle, reason, submission time, applicable strike and monthly quota in each pending row. Confirm approval and require an explanation for decline. Show the hold in the member and staff task lists, where it pauses assignment or completion.

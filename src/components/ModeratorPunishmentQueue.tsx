@@ -134,6 +134,11 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
       });
       const data = await response.json();
       if (response.status === 401 || response.status === 403) onAccessChanged?.();
+      if (response.status === 409) {
+        setEditor(null);
+        setLoading(true);
+        setAttempt(value => value + 1);
+      }
       if (!response.ok) throw new Error(data.error || 'Could not save the task.');
       setResult(data);
       setEditor(null);
@@ -166,6 +171,7 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
           {result.item.member_name} · {result.item.title} · {punishmentStatus[result.item.status]} · {result.open_count} open
         </p>
       )}
+      {actionError && !editor && <p role="alert" className="text-sm text-status-coral">{actionError}</p>}
       {loading && <p role="status" className="text-sm text-cream-secondary">Loading punishments…</p>}
       {!loading && queueFailure && <PunishmentReadNotice failure={queueFailure} onRetry={refreshQueue} />}
       {!loading && !queueFailure && (
@@ -211,13 +217,13 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
                       </form>
                     ) : status !== 'pending' && (
                       <div className="flex flex-wrap gap-2 pt-1">
-                        <button type="button" className={buttonStyle} disabled={busy || !!editor}
+                        <button type="button" className={buttonStyle} disabled={busy || !!editor || (status !== 'assigned' && item.metastrike_hold)}
                           data-task-action={`${item.id}-${status === 'assigned' ? 'edit' : 'assign'}`}
                           onClick={() => startAction(item, status === 'assigned' ? 'edit' : 'assign')}>
                           {status === 'assigned' ? 'Edit task' : 'Assign task'}
                         </button>
                         {status === 'assigned' && (
-                          <button type="button" className={buttonStyle} disabled={busy || !!editor}
+                          <button type="button" className={buttonStyle} disabled={busy || !!editor || item.metastrike_hold}
                             data-task-action={`${item.id}-complete`} onClick={() => startAction(item, 'complete')}>Mark complete</button>
                         )}
                       </div>

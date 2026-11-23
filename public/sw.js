@@ -1,7 +1,7 @@
 // Z Catchers Service Worker
 // Versioned Shell, Offline Fallback, Multi-Device Push & Deep-Link Actions
 
-const CACHE_NAME = 'z-catchers-shell-v2';
+const CACHE_NAME = 'z-catchers-shell-v3';
 
 const PRECACHE_ASSETS = [
   '/manifest.json',
