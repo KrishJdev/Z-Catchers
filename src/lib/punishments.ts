@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/db';
+import { isSupabaseConfigured, safeDatabaseErrorCode, supabaseAdmin } from '@/lib/db';
+import { PUNISHMENT_ROLLOUT_CLOSED, PUNISHMENT_SERVICE_UNAVAILABLE } from '@/lib/punishmentAvailability';
 
 export const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
-export const PUNISHMENTS_UNAVAILABLE = 'Punishments are currently unavailable.';
+
+type PunishmentOperation = 'member read' | 'roster count' | 'moderator read' | 'moderator write';
+type DatabaseError = { code: string; message: string };
 
 export function punishmentResponse(body: unknown, status = 200, headers?: HeadersInit) {
   const responseHeaders = new Headers(headers);
@@ -10,13 +13,28 @@ export function punishmentResponse(body: unknown, status = 200, headers?: Header
   return NextResponse.json(body, { status, headers: responseHeaders });
 }
 
-export function punishmentRpcResponse(data: unknown, error: { code: string; message: string } | null) {
+function logPunishmentFailure(operation: PunishmentOperation, code?: string) {
+  console.error('[punishments] Dependency failure', { operation, databaseCode: safeDatabaseErrorCode(code) });
+}
+
+export function punishmentDependencyResponse(operation: PunishmentOperation, code?: string) {
+  logPunishmentFailure(operation, code);
+  return punishmentResponse({
+    code: PUNISHMENT_SERVICE_UNAVAILABLE,
+    error: 'Could not reach the punishment service. Try again.',
+  }, 503);
+}
+
+export function punishmentRpcResponse(operation: PunishmentOperation, data: unknown, error: DatabaseError | null) {
   if (!error && data != null) return punishmentResponse(data);
-  if (error && /^PT(400|403|404|409|503)$/.test(error.code)) {
+  // require_punishment_visibility is the only punishment RPC source of PT503.
+  if (error?.code === 'PT503') {
+    return punishmentResponse({ code: PUNISHMENT_ROLLOUT_CLOSED, error: 'Punishments are closed for now.' }, 503);
+  }
+  if (error && /^PT(400|403|404|409)$/.test(error.code)) {
     return punishmentResponse({ error: error.message }, Number(error.code.slice(2)));
   }
-  if (error) console.error('[punishments] Database request failed:', error.code, error.message);
-  return punishmentResponse({ error: PUNISHMENTS_UNAVAILABLE }, 503);
+  return punishmentDependencyResponse(operation, error?.code);
 }
 
 export async function getOpenPunishmentCount(memberId: string, discordId: string): Promise<number | null> {
@@ -26,5 +44,7 @@ export async function getOpenPunishmentCount(memberId: string, discordId: string
     p_discord_id: discordId,
     p_details: false,
   });
-  return !error && typeof data?.open_count === 'number' ? data.open_count : null;
+  if (!error && typeof data?.open_count === 'number') return data.open_count;
+  if (error?.code !== 'PT403' && error?.code !== 'PT503') logPunishmentFailure('roster count', error?.code);
+  return null;
 }

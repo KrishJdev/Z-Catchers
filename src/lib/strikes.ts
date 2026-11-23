@@ -847,6 +847,7 @@ async function applyNightlyStrike(
 ): Promise<{
   success: boolean; strikeIssued: boolean; log?: NightlyStrikeLog;
   strikesUsed?: number; metastrikesUsed?: number; cycleStrikesUsed?: number; reason?: string; error?: string; status?: number;
+  databaseCode?: string;
 }> {
   const localNow = nowUtc.setZone(toValidLuxonZone(member.timezone));
   const bedtime = type === 'strike'
@@ -868,6 +869,7 @@ async function applyNightlyStrike(
       success: false,
       strikeIssued: false,
       status: moderationErrorStatus(error),
+      databaseCode: error?.code,
       reason: error?.code === 'PT409' ? 'stale_strike_cycle_month' : undefined,
       error: error?.message || 'Missing strike transaction result.',
     };
@@ -909,6 +911,7 @@ export async function issueAutomaticBedtimeStrike(
   cycleStrikesUsed?: number;
   reason?: string;
   error?: string;
+  databaseCode?: string;
 }> {
   const cycleDate = sleepCycleDate || getSleepCycleDate(member, nowUtc);
 

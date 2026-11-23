@@ -733,7 +733,7 @@ export interface StaffActor {
 
 export type ModAuthResult =
   | { authorized: true; actor: StaffActor }
-  | { authorized: false; status: 401 | 403 | 503; error: string };
+  | { authorized: false; status: 401 | 403 | 503; error: string; databaseCode?: string };
 
 export async function verifyModeratorSession(request: Request): Promise<ModAuthResult> {
   const session = getRequestSession(request);
@@ -741,6 +741,7 @@ export async function verifyModeratorSession(request: Request): Promise<ModAuthR
     return { authorized: false, status: 401, error: 'Sign in with your linked Discord account.' };
   }
 
+  let databaseCode: string | undefined;
   try {
     const { isSupabaseConfigured, supabaseAdmin } = await import('@/lib/db');
     if (isSupabaseConfigured) {
@@ -759,11 +760,12 @@ export async function verifyModeratorSession(request: Request): Promise<ModAuthR
         }
         return { authorized: false, status: 403, error: 'Moderator access is required.' };
       }
+      databaseCode = error.code;
     }
   } catch {
     // Deny access when a live role cannot be verified.
   }
-  return { authorized: false, status: 503, error: 'Could not verify your moderator access. Try again.' };
+  return { authorized: false, status: 503, error: 'Could not verify your moderator access. Try again.', databaseCode };
 }
 
 export function canModerateTarget(actor: StaffActor, target: Pick<Member, 'id' | 'role'>): boolean {

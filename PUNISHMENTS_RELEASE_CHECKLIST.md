@@ -15,6 +15,7 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse reco
    | 4 | `20261125_verify_punishment_cutover.sql` |
    | 5 | `20261126_moderation_owner_and_roles.sql` |
    | 6 | `20261127_moderation_live_roles.sql` |
+   | 7 | `20261128_punishment_diagnostics.sql` before deploying the Phase 1 diagnostics release |
 
 2. On the first cutover, expect `activated_at = NULL`, `screens_visible = false`, and zero task and action rows. Confirm Vercel is serving a role-only release and verify the active, Discord-linked Owner and intended Moderators. With the flags still in place, verify a returning Discord sign-in and confirm HTTP 503 for the member's punishment list and both staff roles' queue requests. Check that `zcatchers-dispatch` is active and targeting this deployment. To install the job for a disposable target, use [schedule_dispatch.sql](supabase/schedule_dispatch.sql) with the matching Vault values.
 
@@ -109,6 +110,22 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse reco
 3. Recheck the ledger during the first live cycles and after the first assignments. At rollover, verify that the new month starts at zero where there are no new strikes and that open November tasks carry over. Confirm the +10-minute cutoff, open check-in protection, eight-hour Sleep Shield, and 15-minute pre-bedtime quiet period. Record which checks used controlled live accounts, a subscribed physical device, or disposable fixtures and an encrypted push relay. Track any deferred checks separately.
 4. In the handoff, record the release commit, migration status, backup reference, activation timestamp, seed and audit totals, verification links, and unresolved checks.
 
+## Ongoing ledger audit
+
+After activation, run the rolling audit in the restricted database operator session. Each profile uses its current and previous local-cycle months, including an effective pending timezone. The November visibility gate continues to use its fixed-month audit.
+
+```sql
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SELECT member_id, earned_month, threshold_number, punishment_id, issue
+FROM public.recent_punishment_ledger_issues()
+ORDER BY earned_month, member_id, threshold_number, issue;
+ROLLBACK;
+```
+
+Zero rows means the audited months reconcile. Keep findings in restricted operator records. Include the audit timestamp and compare the member, month, threshold and issue against the previous run to flag new discrepancies. A query error or timeout needs review before treating the audit as clean. Time the exact operator query on representative disposable data and confirm the production operator runtime before adding a schedule.
+
+Check the authenticated dispatcher response and restricted Vercel logs for automatic strike write failures. A nonzero `strikeWriteFailures` signals failed writes and makes that dispatcher request return HTTP 503. The corresponding `[dispatcher] Automatic strike write failed` log gives the database error code when available. Check the next scheduled results and review the affected cycle's dated evidence before using the repair procedure below.
+
 ## Recovery
 
 - Before activation, leave the writer inactive and screens hidden. Correct or revert the compatible app if necessary and retain the additive migrations.
@@ -135,4 +152,4 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse reco
    $$;
    ```
 
-- Recheck every affected month and the scheduled dispatcher. If action history is inconsistent, review the existing audit with the release owner before restoring visibility. Use `show_verified_november_punishments()` to reopen the screens and repeat the member and moderator checks.
+- Recheck every affected month and the scheduled dispatcher. If an earned action is missing or duplicated, review the action trail and dated evidence with the release owner. The reconciler repairs derived task eligibility and preserves existing action history. Resolve action-history discrepancies through a separately reviewed correction before restoring visibility. Use `show_verified_november_punishments()` to reopen the screens and repeat the member and moderator checks.

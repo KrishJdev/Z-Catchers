@@ -12,7 +12,9 @@ const legacySchema = schema.split(ledger.split('\n', 1)[0])[0]
   .replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
 const taskApi = readFileSync('supabase/migrations/20261123_punishment_task_apis.sql', 'utf8');
 const cutover = readFileSync('supabase/migrations/20261125_verify_punishment_cutover.sql', 'utf8');
+const diagnostics = readFileSync('supabase/migrations/20261128_punishment_diagnostics.sql', 'utf8');
 assert.ok(schema.includes(cutover), 'The fresh-install schema mirrors the cutover migration');
+assert.ok(schema.includes(diagnostics), 'The fresh-install schema mirrors the diagnostics migration');
 
 async function sql(input) {
   const results = await db.exec(input);
@@ -33,11 +35,13 @@ try {
   assert.equal(await sql('SELECT count(*) FROM public.punishments'), '0');
   await sql(taskApi);
   await sql(cutover);
+  await sql(diagnostics);
   assert.equal(await sql(`
     SELECT bool_and(NOT has_function_privilege(role_name, function_name, 'EXECUTE'))
     FROM (VALUES ('anon'), ('authenticated'), ('service_role')) AS roles(role_name)
     CROSS JOIN (VALUES ('public.punishment_ledger_issues(date)'),
-      ('public.show_verified_november_punishments()')) AS functions(function_name)
+      ('public.show_verified_november_punishments()'),
+      ('public.recent_punishment_ledger_issues(timestamptz)')) AS functions(function_name)
   `), 'true');
   const preview = await verifyNovemberPreview(sql, fixtures);
   await assert.rejects(sql(`SELECT public.seed_november_punishments('${fixtures['rollover-east']}')`), { code: 'PT409' });
@@ -45,6 +49,7 @@ try {
   const visibility = 'SELECT screens_visible FROM public.punishment_rollout WHERE singleton';
   const issues = async () => (await db.query('SELECT * FROM public.punishment_ledger_issues() ORDER BY issue')).rows;
   await assert.rejects(sql(show), { code: 'PT409' });
+  await assert.rejects(sql('SELECT * FROM public.recent_punishment_ledger_issues()'), { code: 'PT409' });
   const activation = await sql(`UPDATE public.punishment_rollout SET activated_at = clock_timestamp()
     WHERE singleton RETURNING activated_at`);
   await assert.rejects(sql(show), { code: 'PT409' });
@@ -100,7 +105,9 @@ try {
   // Simulate a broken writer in a later month. The audit should flag its stray open task.
   await db.query(`UPDATE public.punishments SET earned_month = '2026-12-01', status = 'assigned' WHERE id = $1`, [westTask]);
   assert.equal(await sql("SELECT issue FROM public.punishment_ledger_issues('2026-12-01')"), 'ineligible_open_task');
-  console.log('Verified that only operators can inspect discrepancies and that November visibility requires a reconciled ledger.');
+  console.log(await sql(readFileSync('scripts/fixtures/rolling-punishment-audit.sql', 'utf8')));
+  await sql("BEGIN READ ONLY; SELECT * FROM public.recent_punishment_ledger_issues(); ROLLBACK;");
+  console.log('Verified the restricted November cutover and read-only audit across local month boundaries.');
 } finally {
   await db.close();
 }
