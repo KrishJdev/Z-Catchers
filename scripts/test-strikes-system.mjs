@@ -34,8 +34,8 @@ import {
   convertStrikeToMetastrike,
   useProactiveMetastrike,
   issueAutomaticBedtimeStrike,
-  modAdjustStrikes,
-  modClearStrikeLog,
+  modAdjustPasses,
+  modClearMetastrikeLog,
   resolveMemberStrikeCounts,
   updateMemberStrikeCounts,
   getNightlyStrikeLog,
@@ -417,31 +417,36 @@ async function run() {
   );
 
   console.log('\n--- 6. Moderator Override Operations ---');
-  // Mod Adjust Strikes
-  const modCountsRes = await modAdjustStrikes(dummyMember.id, 2, 1, false, { id: 'test-mod', discordId: '1234', role: 'owner' });
-  assert(modCountsRes.success === true, 'Mod adjusted strikes_used successfully');
-  const modCounts = await resolveMemberStrikeCounts(dummyMember);
-  assert(modCounts.strikes_used === 2, 'Mod adjusted strikes_used to 2');
+  const passReviewMember = { ...dummyMember, id: 'test-pass-review' };
+  const owner = { id: 'test-mod', discordId: '1234', role: 'owner' };
+  await updateMemberStrikeCounts(passReviewMember.id, 2, 0, '2026-11');
+  const modCountsRes = await modAdjustPasses(passReviewMember.id, 1, false, owner);
+  assert(modCountsRes.success === true, 'Mod adjusted metastrikes_used successfully');
+  const modCounts = await resolveMemberStrikeCounts(passReviewMember);
+  assert(modCounts.strikes_used === 2, 'Pass adjustment preserves the existing strike total');
   assert(modCounts.metastrikes_used === 1, 'Mod adjusted metastrikes_used to 1');
 
-  // Mod Clear Nightly Log
-  await saveNightlyStrikeLog({
+  const log = {
     id: 'test-mod-clear',
-    target_member_id: dummyMember.id,
+    target_member_id: passReviewMember.id,
     sleep_cycle_date: '2026-11-13',
     record_type: 'strike',
     voter_ids: ['voter-1', 'voter-2'],
     created_at: DateTime.utc().toISO(),
     updated_at: DateTime.utc().toISO(),
-  });
-  await modAdjustStrikes(dummyMember.id, 3, 1, false, { id: 'test-mod', discordId: '1234', role: 'owner' });
-
-  const clearSuccess = await modClearStrikeLog(dummyMember.id, '2026-11-13', { id: 'test-mod', discordId: '1234', role: 'owner' });
-  assert(clearSuccess.success === true, 'Mod successfully cleared strike log');
-  const clearedLog = await getNightlyStrikeLog(dummyMember.id, '2026-11-13');
-  assert(clearedLog === null, 'Log is cleanly removed from store');
-  const postClearCounts = await resolveMemberStrikeCounts(dummyMember);
-  assert(postClearCounts.strikes_used === 2, 'Strikes decremented back to 2 upon clearing strike');
+  };
+  await saveNightlyStrikeLog(log);
+  const rejectStrike = await modClearMetastrikeLog(passReviewMember.id, log.sleep_cycle_date, owner);
+  assert(rejectStrike.status === 409, 'Pass reversal rejects a regular strike');
+  assert((await getNightlyStrikeLog(passReviewMember.id, log.sleep_cycle_date)).record_type === 'strike',
+    'Rejected regular strike remains in the store');
+  await saveNightlyStrikeLog({ ...log, record_type: 'metastrike', voter_ids: [] });
+  const clearResult = await modClearMetastrikeLog(passReviewMember.id, log.sleep_cycle_date, owner);
+  assert(clearResult.success && clearResult.cleared, 'Mod cleared the Metastrike');
+  assert(await getNightlyStrikeLog(passReviewMember.id, log.sleep_cycle_date) === null, 'Pass log removed from store');
+  const postClearCounts = await resolveMemberStrikeCounts(passReviewMember);
+  assert(postClearCounts.strikes_used === 2, 'Pass reversal preserves strikes');
+  assert(postClearCounts.metastrikes_used === 0, 'Pass reversal restores the balance');
 
   console.log('\n--- 7. Batched Queries, Voter Rate Limiting & Precedence ---');
   // 7A: Batched Nightly Strike Logs Retrieval

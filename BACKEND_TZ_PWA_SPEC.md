@@ -304,13 +304,17 @@ An open task starts as `pending` while replacement could undo its threshold. At 
 | `GET /api/members/strikes` | Active Discord profile owner. Returns the current cycle log and compatibility counts. |
 | `POST /api/members/strikes` | Compatibility endpoint returns 403 `PEER_VOTING_DISABLED` for vote requests. Legacy vote columns and rows remain in storage. |
 | `POST /api/members/strikes/metastrike` | Activates a proactive pass or replaces a strike before the next scheduled bedtime for the owner or an authorized moderator. |
-| `POST /api/mod` | Retains compatibility actions `adjust_strikes` and `clear_strike_log` for authorized moderators. The Metastrike balance is bounded at three. |
+| `GET /api/mod?view=strike_month&member_id=…` | Live Owner or Moderator with permission for the target. Optional `month=YYYY-MM` defaults to the member's current local month. Returns the month, verified sources with their date and reason, the selected month's strike count, and the open task count across all months. Available for profiles with zero tasks. |
+| `POST /api/mod` with `add_strike` or `remove_strike` | Same target rules. Send `member_id`, `cycle_date`, `reason` (1–500 characters), and a stable UUID `request_id`. Removal also requires the source's `source_id` from the review. Returns the refreshed month and counts with `correction_id`. The roster is the staff entry point for dated changes. |
+| `POST /api/mod` with `adjust_passes` or `clear_metastrike_log` | Owner-only, subject to target role checks. The Metastrike balance is bounded at three. Older action names accept pass-only requests. |
 
 Apply `20261123_punishment_task_apis.sql` after the strike ledger migration. Service-role RPCs enforce ownership for member reads. The API and badge become available after `punishment_rollout.screens_visible` is enabled following activation and seed. Punishment APIs return private, no-store responses. A closed rollout returns HTTP 503 with `PUNISHMENT_ROLLOUT_CLOSED`. A failed dependency returns HTTP 503 with `PUNISHMENT_SERVICE_UNAVAILABLE`. Successful reads can return an empty list. Invalid input returns 400, unknown tasks return 404, and invalid task transitions or conflicting correction retries return 409.
 
-Moderator writes lock the same member row as the ledger and return the updated task and all-month open count from that transaction. The audit records the action time and either the verified moderator's member ID or `master_mod`. Retrying completion preserves its timestamp and audit record. Exact dated correction retries reuse the original correction.
+Moderator writes lock the same member row as the ledger and return the updated task and all-month open count from that transaction. New staff actions record the live actor's member ID and action time. Historical audits can contain `master_mod`. Retrying completion preserves its timestamp and audit record. Exact dated correction retries reuse the original correction.
 
 Apply `20261128_punishment_diagnostics.sql` after the live-role migration for the restricted rolling audit. Use `recent_punishment_ledger_issues()` in the database operator session and the authenticated dispatcher's `strikeWriteFailures` count. See the [operator audit and recovery procedure](PUNISHMENTS_RELEASE_CHECKLIST.md#ongoing-ledger-audit).
+
+Apply `20261129_staff_strike_corrections.sql` before deploying the roster review. The review shares the punishment screen gate. The correction locks rollout, actor and target, reuses the dated correction reconciler and returns the revised month in the same transaction. The older generic strike RPC rejects counter edits, and clearing a nightly record through the pass controls requires a Metastrike record.
 
 ---
 

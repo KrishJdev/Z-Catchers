@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { createECDH, createHmac, randomBytes } from 'node:crypto';
+import { createECDH, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:https';
 import { join } from 'node:path';
@@ -243,6 +243,7 @@ sql(ownerBootstrap);
 sql(ownerBootstrap);
 sql(readFileSync('supabase/migrations/20261127_moderation_live_roles.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261128_punishment_diagnostics.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261129_staff_strike_corrections.sql', 'utf8'));
 assert.equal(cutoverQueue(), queuedBeforeCutover);
 assert.equal(sql("SELECT id, discord_id, is_active FROM public.members WHERE role = 'owner'"),
   `${cutoverOwnerId}|${discordAccounts.owner}|t`);
@@ -707,6 +708,49 @@ try {
     assert.equal(after.open_count, openCount - 1);
   }
   console.log('Verified Owner and Moderator punishment access, the November-to-December rollover, and assignment and completion.');
+  {
+    const correctionMember = raceMember('Dated Roster Correction');
+    const review = '/api/mod?view=strike_month&month=2026-11&member_id=' + correctionMember;
+    assert.equal((await getTaskData(review, dbModCookie)).open_count, 0);
+    assert.equal((await getTaskData(review, dbModCookie)).strikes_used, 0);
+    await getTaskData(review, regularCookie, 403);
+    await getTaskData('/api/mod?view=strike_month&member_id=' + owner.id, ownerCookie, 403);
+
+    const reviewOrigin = { Origin: appOrigin };
+    const correction = {
+      member_id: correctionMember, action: 'add_strike', cycle_date: '2026-11-10',
+      reason: 'Verified disposable fixture', request_id: randomUUID(),
+    };
+    await post('/api/mod', dbModCookie, correction, 200, reviewOrigin);
+    await post('/api/mod', dbModCookie, { ...correction, cycle_date: '2026-11-11', request_id: randomUUID() }, 200, reviewOrigin);
+    const moderatorId = sql(`SELECT id FROM public.members WHERE discord_id = '${discordAccounts['database-mod']}'`);
+    const requestId = randomUUID();
+    const third = `SELECT public.moderate_dated_strike('${moderatorId}', '${discordAccounts['database-mod']}',
+      '${correctionMember}', 'add_strike', '2026-11-12', NULL, 'Concurrent exact retry', '${requestId}')`;
+    const [thirdResult, replay] = await concurrentSql(third, third);
+    assert.deepEqual(thirdResult, replay);
+    assert.equal(thirdResult.open_count, 1);
+    assert.equal(thirdResult.strikes_used, 3);
+    const rosterCorrectionTask = (await getTaskData(modTasks, dbModCookie)).items.find(item => item.member_id === correctionMember);
+    assert.ok(rosterCorrectionTask);
+
+    const rosterRemoval = {
+      ...correction, action: 'remove_strike', cycle_date: '2026-11-12',
+      request_id: randomUUID(), source_id: thirdResult.correction_id,
+    };
+    const removed = await post('/api/mod', dbModCookie, rosterRemoval, 200, reviewOrigin);
+    assert.equal(removed.open_count, 0);
+    assert.equal(removed.strikes_used, 2);
+    assert.deepEqual(await post('/api/mod', dbModCookie, rosterRemoval, 200, reviewOrigin), removed);
+    assert.equal(sql(`SELECT status FROM public.punishments WHERE id = '${rosterCorrectionTask.id}'`), 'canceled');
+    const restored = await post('/api/mod', dbModCookie, {
+      ...correction, cycle_date: '2026-11-12', request_id: randomUUID(),
+    }, 200, reviewOrigin);
+    assert.equal(restored.open_count, 1);
+    assert.ok((await getTaskData(modTasks, dbModCookie)).items.some(item => item.id === rosterCorrectionTask.id));
+    console.log('Verified roster corrections with zero tasks, concurrent exact retry, cancellation and reopening.');
+  }
+
   const queue = await getTaskData(modTasks, dbModCookie);
   const { id: taskId } = queue.items.find(item => item.member_id === seedRace);
   const assignment = { action: 'assign', punishment_id: taskId, title: 'Wind-down plan' };

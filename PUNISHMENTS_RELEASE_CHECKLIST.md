@@ -16,6 +16,7 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse reco
    | 5 | `20261126_moderation_owner_and_roles.sql` |
    | 6 | `20261127_moderation_live_roles.sql` |
    | 7 | `20261128_punishment_diagnostics.sql` before deploying the Phase 1 diagnostics release |
+   | 8 | `20261129_staff_strike_corrections.sql` before deploying the Phase 2 roster review |
 
 2. On the first cutover, expect `activated_at = NULL`, `screens_visible = false`, and zero task and action rows. Confirm Vercel is serving a role-only release and verify the active, Discord-linked Owner and intended Moderators. With the flags still in place, verify a returning Discord sign-in and confirm HTTP 503 for the member's punishment list and both staff roles' queue requests. Check that `zcatchers-dispatch` is active and targeting this deployment. To install the job for a disposable target, use [schedule_dispatch.sql](supabase/schedule_dispatch.sql) with the matching Vault values.
 
@@ -109,6 +110,14 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse reco
 2. Use a controlled account to confirm Discord sign-in, My Sleep, task history, and the private roster badge. Compare the member's open count with pending, awaiting-assignment, and assigned records across all months. Verify all three Punishments queue sections with the database Owner and a database Moderator. The Owner can manage eligible Moderator and Member tasks, and Moderators can manage eligible Member tasks. Verify that staff cannot act on themselves or the Owner and that a Member cannot open the queue or another member's tasks. Use an approved qualifying task for any live assignment or completion test. Record its audit action and updated count.
 3. Recheck the ledger during the first live cycles and after the first assignments. At rollover, verify that the new month starts at zero where there are no new strikes and that open November tasks carry over. Confirm the +10-minute cutoff, open check-in protection, eight-hour Sleep Shield, and 15-minute pre-bedtime quiet period. Record which checks used controlled live accounts, a subscribed physical device, or disposable fixtures and an encrypted push relay. Track any deferred checks separately.
 4. In the handoff, record the release commit, migration status, backup reference, activation timestamp, seed and audit totals, verification links, and unresolved checks.
+
+## Verify dated staff corrections
+
+Use **Mod Panel → Roster → Review strikes** on the disposable environment first. Confirm a Moderator can review and correct an eligible Member with zero tasks. Add a verified third strike, remove its precise source, and add the evidence again. Verify the task is earned, canceled and reopened with the same ID. Repeat an exact request and compare the correction ID and audit count. Complete a separate test task and verify a later correction preserves the member's completed history. Confirm the Owner can review Moderators, and that staff cannot act on their own profiles or the Owner.
+
+## Owner task exception
+
+The Owner can see their own tasks in My Sleep. The app excludes the Owner from staff targets and blocks staff from acting on their own profiles. Before handling an Owner task, the release owner must approve an independent, authorized database operator and record that approval privately. Record the task ID, evidence, intended action, reviewer and operator reference. In the operator session, verify the task belongs to the current Owner and lock the rollout and member for the transaction. Use the existing task state machine with the identified operator as the audit actor. Verify the resulting action and member-visible task state, then record the outcome. Leave the task available in My Sleep until an independent operator can handle it. Use the existing operator recovery flow for evidence corrections.
 
 ## Ongoing ledger audit
 

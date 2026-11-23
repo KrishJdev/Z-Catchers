@@ -224,6 +224,7 @@ Every `MemberCard` includes a compact, warm dark accountability row positioned d
   * Color token: Warm gold / amber (`#F4A261` / `fox-amber` / `border-fox-amber/40 text-fox-amber`).
   * Visual Pips: 3 horizontal mini-shield dots ($6\text{px} \times 6\text{px}$). Filled dots render in golden amber (`bg-fox-amber shadow-[0_0_6px_rgba(244,162,97,0.4)]`), unfilled dots render in subtle border tone (`bg-night-border`).
   * Counter text: `🛡️ Meta: 2/3` (cream text with amber accent).
+* **Staff strike review:** The roster opens a member's review inside the Mod Panel. Use labeled month navigation and list verified sleep-cycle dates, source type and recorded reason. A dated correction takes a reason, and removal selects a specific source. Keep Metastrike balance controls in the roster. Maintain 44 px touch targets in the mobile sheet.
 * **Open punishments:** The signed-in member’s own card shows the open count as a link to the authenticated task list.
 
 ### 5.7 Action Bar Secondary Pill Variants
