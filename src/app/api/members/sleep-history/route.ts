@@ -66,7 +66,8 @@ export async function GET(request: Request) {
     const nowLocal = DateTime.utc().setZone(memberTz);
 
     let targetMonth = monthParam ? monthParam.trim() : nowLocal.toFormat('yyyy-MM');
-    if (!MONTH_REGEX.test(targetMonth)) {
+    const monthStart = DateTime.fromISO(`${targetMonth}-01`, { zone: 'utc' });
+    if (!MONTH_REGEX.test(targetMonth) || !monthStart.isValid || monthStart.year === 0) {
       return NextResponse.json(
         { error: 'Invalid month format. Expected YYYY-MM (e.g. 2026-11).' },
         { status: 400 }
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
     }
 
     const startCycleDate = `${targetMonth}-01`;
-    const endCycleDate = `${targetMonth}-31`;
+    const endCycleDate = monthStart.endOf('month').toFormat('yyyy-MM-dd');
 
     // Fetch sleep logs for target month
     let { data: sleepLogs } = await getMemberSleepLogs(member.id, startCycleDate, endCycleDate);
@@ -93,7 +94,7 @@ export async function GET(request: Request) {
     try {
       const { data: strikeRows } = await supabaseAdmin
         .from('nightly_strike_logs')
-        .select('*')
+        .select('sleep_cycle_date, record_type')
         .eq('target_member_id', member.id)
         .gte('sleep_cycle_date', startCycleDate)
         .lte('sleep_cycle_date', endCycleDate);

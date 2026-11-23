@@ -17,6 +17,7 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse reco
    | 6 | `20261127_moderation_live_roles.sql` |
    | 7 | `20261128_punishment_diagnostics.sql` before deploying the Phase 1 diagnostics release |
    | 8 | `20261129_staff_strike_corrections.sql` before deploying the Phase 2 roster review |
+   | 9 | `20261130_private_strike_history.sql` before deploying the Phase 3 My Sleep calendar |
 
 2. On the first cutover, expect `activated_at = NULL`, `screens_visible = false`, and zero task and action rows. Confirm Vercel is serving a role-only release and verify the active, Discord-linked Owner and intended Moderators. With the flags still in place, verify a returning Discord sign-in and confirm HTTP 503 for the member's punishment list and both staff roles' queue requests. Check that `zcatchers-dispatch` is active and targeting this deployment. To install the job for a disposable target, use [schedule_dispatch.sql](supabase/schedule_dispatch.sql) with the matching Vault values.
 

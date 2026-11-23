@@ -244,6 +244,7 @@ sql(ownerBootstrap);
 sql(readFileSync('supabase/migrations/20261127_moderation_live_roles.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261128_punishment_diagnostics.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261129_staff_strike_corrections.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261130_private_strike_history.sql', 'utf8'));
 assert.equal(cutoverQueue(), queuedBeforeCutover);
 assert.equal(sql("SELECT id, discord_id, is_active FROM public.members WHERE role = 'owner'"),
   `${cutoverOwnerId}|${discordAccounts.owner}|t`);
@@ -639,6 +640,7 @@ try {
   assert.equal(issued.cycleStrikesUsed, 1);
   assert.equal(repeated.reason, 'already_issued');
   assert.equal(repeated.log.id, issued.log.id);
+  assert.equal(sql(`SELECT count(*) FROM public.nightly_strike_history WHERE source_id = '${issued.log.id}'`), '1');
 
   const checkInRace = raceMember('Concurrent Check-In');
   const [, protectedCycle] = await concurrentSql(`INSERT INTO public.notification_logs(member_id, notification_type, local_date)
@@ -692,6 +694,12 @@ try {
     const { data: { timezone } } = await db.from('members').update({ is_active: true }).eq('id', id)
       .select('timezone').single().throwOnError();
     const cookie = await signIn(account, id, false, 'member');
+    const historyPath = '/api/members/strikes?month=2026-11';
+    await getTaskData(historyPath + '&memberId=' + id, regularCookie, 403);
+    const { entries } = await getTaskData(historyPath, cookie);
+    assert.equal(entries.filter(entry => entry.counts).length, strikes);
+    assert.ok(entries.some(entry => entry.counts && entry.issued_at === null));
+    assert.doesNotMatch(JSON.stringify(entries), /"reason"|"actor"|"details"/);
     const before = await getRolloverProgress(cookie, timezone, strikes);
     assert.equal(before.open_count, openCount);
     const [task] = before.open_items;
@@ -809,6 +817,7 @@ try {
   assert.equal(removed.item.status, 'canceled');
   assert.equal(removed.open_count, 0);
   assert.equal(assignConflict.conflict, true);
+  assert.equal(sql(`SELECT change_type FROM public.nightly_strike_history WHERE source_id = '${source}'`), 'removed');
   console.log('Verified authenticated punishment APIs, private roster counts, concurrent wake-up and task completion, and assignment racing a correction.');
 
   // Rehearse the supported rollback after activation: hide screens and keep the active writer and history.

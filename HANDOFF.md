@@ -1,7 +1,7 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-23T20:15:24+05:30
-> **Active working branch:** `codex/accountability-2-strike-corrections`, based on `origin/dev` at `b6e573b`. Phase 2 implementation commit `002e476`, My Sleep refresh commit `22e68c9`, and [PR #114](https://github.com/KrishJdev/Z-Catchers/pull/114) into `dev`.
+> **Last Updated:** 2026-11-24T00:15:47+05:30
+> **Active working branch:** `codex/accountability-3-strike-history`, based on `origin/dev` at `8551589`. Implementation commit `ec2b19f` and [PR #115](https://github.com/KrishJdev/Z-Catchers/pull/115) into `dev`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
@@ -10,9 +10,22 @@
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit`, all 53 `npm run test:unit` suites, and `npm run build` passed. See [PR #114 checks](https://github.com/KrishJdev/Z-Catchers/pull/114/checks) for hosted CI, the disposable Supabase smoke, and the preview.
+> **Build Status:** `npx tsc --noEmit`, all 54 `npm run test:unit` suites, and `npm run build` passed. Edge browser fixtures passed at 320 px and 1280 px. Hosted CI, the disposable Supabase smoke, and the preview are tracked in [PR #115 checks](https://github.com/KrishJdev/Z-Catchers/pull/115/checks).
 
 ---
+
+## Punishments Phase 3 private strike history
+
+- My Sleep shows a separate strike marker, a monthly list, and day details with known issuance times, source, counting status and later changes. The November 30 sleep-cycle date stays in November even when the strike is issued on December 1. Older rows can explicitly show that issuance time is unavailable.
+- The monthly read at `GET /api/members/strikes?month=YYYY-MM` rechecks the active Discord link in the database and sends private, no-store responses. The nightly trigger captures issuance and changes alongside both writer versions. The history uses live verified strike eligibility and dated corrections. The shared calendar keeps its sleep statuses. The production rollout awaits its separate release.
+- Edge exercised the month list and day inspector, a standalone history retry, a late night without a strike, timezone labels, a replacement after roster refresh, and the shared calendar. Automated coverage exercised the additive migration and retry, real writer transitions, owner scope, rollback, and removal. The hosted smoke also exercises the migration on disposable Supabase and checks history after an overlapping writer retry.
+- Added `src/components/StrikeHistory.tsx`, `supabase/migrations/20261130_private_strike_history.sql`, and `scripts/test-private-strike-history.mjs`. Updated `src/components/SleepCalendarModal.tsx`, `src/app/api/members/strikes/route.ts`, `src/app/api/members/sleep-history/route.ts`, `supabase/schema.sql`, `.github/workflows/dispatcher-smoke.yml`, `scripts/test-dispatcher-ci.mjs`, `scripts/run-tests.mjs`, `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `DESIGN_SYSTEM.md`, `PUNISHMENTS_RELEASE_CHECKLIST.md`, and this handoff.
+
+| Milestone | Status | Evidence |
+| --- | --- | --- |
+| Phase 3 private strike history | DONE | Implementation in `ec2b19f`, 54 local suites, TypeScript, build, and desktop and mobile browser fixtures. |
+| Phase 3 integration | IN PROGRESS | Review and hosted verification in [PR #115](https://github.com/KrishJdev/Z-Catchers/pull/115). |
+| Phase 4 reviewed Metastrike transactions | TODO | Start from `origin/dev` after Phase 3 merges and the active ledger is verified. |
 
 ## Punishments Phase 2 dated staff corrections
 
@@ -25,8 +38,7 @@
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | Phase 2 dated staff corrections | DONE | Implemented locally in `002e476` with verification in [PR #114](https://github.com/KrishJdev/Z-Catchers/pull/114). |
-| Phase 2 integration | IN PROGRESS | Review and hosted checks in [PR #114](https://github.com/KrishJdev/Z-Catchers/pull/114). |
-| Phase 3 private strike history | TODO | Start on its own feature branch after Phase 2 merges into `dev`. |
+| Phase 2 integration | DONE | [PR #114](https://github.com/KrishJdev/Z-Catchers/pull/114) merged into `dev` at `8551589`. |
 
 ## Punishments Phase 1 diagnostics
 
@@ -3185,9 +3197,9 @@ d:\Projects\Z Catchers\
 
 **Punishments recovery Phase 0.** Obtain a restorable backup for the matched production project, refresh the restricted preview, and resolve dated evidence with the release owner. After live cutover approval, follow the [November checklist](PUNISHMENTS_RELEASE_CHECKLIST.md) to activate once, seed every previewed profile twice with screens hidden, verify archived balances and a genuine new strike, and require zero audit rows before opening visibility. Record the live Owner, Moderator and Member results before releasing the diagnostics.
 
-**Punishments Phase 2 integration and release.** Review [PR #114](https://github.com/KrishJdev/Z-Catchers/pull/114) and its hosted checks. Apply the Phase 1 diagnostics migration and the Phase 2 staff corrections migration in order in the separate release. Follow the [November recovery checklist](PUNISHMENTS_RELEASE_CHECKLIST.md) before opening the gate. Time the [restricted operator audit](PUNISHMENTS_RELEASE_CHECKLIST.md#ongoing-ledger-audit) after recovery.
+**Punishments Phase 3 integration and release.** Review [PR #115](https://github.com/KrishJdev/Z-Catchers/pull/115) and its hosted checks. In the separate release, apply the diagnostics, dated corrections, and private strike history migrations in order. Follow the [November recovery checklist](PUNISHMENTS_RELEASE_CHECKLIST.md) before opening the punishment gate. Time the [restricted operator audit](PUNISHMENTS_RELEASE_CHECKLIST.md#ongoing-ledger-audit) after recovery.
 
-**Punishments Phase 3 private strike history.** After Phase 2 merges, fetch `origin/dev` and start `codex/accountability-3-strike-history`. Follow the [Phase 3 plan](PUNISHMENTS_IMPLEMENTATION_PLAN.md#phase-3--add-private-strike-history-to-my-sleep) for `src/components/SleepCalendarModal.tsx` and the authenticated member strike endpoint. Use nightly sources and dated correction snapshots to show original issuance, changes and current counting status on the stored sleep-cycle date. Verify prior-month navigation, month rollover and cross-profile privacy.
+**Punishments Phase 4 reviewed Metastrike transactions.** After Phase 3 merges and the active ledger is verified, fetch `origin/dev` and start `codex/accountability-4-metastrike-backend`. Follow the [Phase 4 plan](PUNISHMENTS_IMPLEMENTATION_PLAN.md#phase-4--implement-reviewed-metastrike-transactions) to add dated requests, quota reservation and atomic staff decisions. Begin with `src/app/api/members/strikes/metastrike/route.ts`, `src/lib/strikes.ts`, the ledger, and the existing moderation RPCs. Verify prior-month replacement and task reconciliation in disposable Supabase before building the request and review screens.
 
 1. **Review PR #95 and prepare the production rollout separately.**
    - PR #95 uses the isolated `Supabase Cron and push smoke test` check for the `dev` integration. Review the PR and merge to `dev` when approved.

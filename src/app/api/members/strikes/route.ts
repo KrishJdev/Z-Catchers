@@ -1,18 +1,44 @@
 import { NextResponse } from 'next/server';
-import { getMemberByIdSafe } from '@/lib/db';
+import { getMemberByIdSafe, isSupabaseConfigured, safeDatabaseErrorCode, supabaseAdmin } from '@/lib/db';
 import { resolveMemberStrikeCounts, getNightlyStrikeLog, activeStrikeLog } from '@/lib/strikes';
 import { getSleepCycleDate } from '@/lib/sleepEngine';
 import { DateTime } from 'luxon';
 import { getRequestSession, ownsDiscordProfile } from '@/lib/auth';
 import { punishmentResponse } from '@/lib/punishments';
 
-/** The signed-in member’s current cycle and compatibility strike counters. */
+const MONTH_PATTERN = /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/;
+
+/** Monthly private history when a month is supplied, otherwise the current cycle and counters. */
 export async function GET(request: Request) {
   try {
     const session = getRequestSession(request);
     if (!session?.discordId) return punishmentResponse({ error: 'Sign in with Discord.' }, 401);
-    const memberId = new URL(request.url).searchParams.get('memberId') ?? session.memberId;
+    const { searchParams } = new URL(request.url);
+    const memberId = searchParams.get('memberId') ?? session.memberId;
     if (memberId !== session.memberId) return punishmentResponse({ error: 'Only your own strikes are available here.' }, 403);
+
+    const month = searchParams.get('month');
+    if (month !== null) {
+      if (!MONTH_PATTERN.test(month)) {
+        return punishmentResponse({ error: 'Choose a month in YYYY-MM format.' }, 400);
+      }
+      if (!isSupabaseConfigured) {
+        return punishmentResponse({ error: 'Strike history is currently unavailable.' }, 503);
+      }
+      const { data, error } = await supabaseAdmin.rpc('get_member_strike_history', {
+        p_member_id: session.memberId,
+        p_discord_id: session.discordId,
+        p_month: `${month}-01`,
+      });
+      if (error?.code === 'PT403') {
+        return punishmentResponse({ error: 'Sign in with the Discord account linked to this profile.' }, 403);
+      }
+      if (error || !data) {
+        console.error('[strikes] Monthly history read failed', { databaseCode: safeDatabaseErrorCode(error?.code) });
+        return punishmentResponse({ error: 'Strike history is currently unavailable.' }, 503);
+      }
+      return punishmentResponse(data);
+    }
 
     const { data: member, error } = await getMemberByIdSafe(memberId, { requireFresh: true });
     if (error) return punishmentResponse({ error: 'Could not verify your session. Try again.' }, 503);
