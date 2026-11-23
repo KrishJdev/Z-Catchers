@@ -656,6 +656,11 @@ try {
   await getTaskData(memberTasks, regularCookie, 503);
   assert.equal((await getTaskData('/api/members', regularCookie)).members
     .find(member => member.id === regularId).open_punishment_count, null);
+  const { data: owner } = await db.from('members').select('id,bedtime_local')
+    .eq('id', cutoverOwnerId).single().throwOnError();
+  const ownerCookie = await signIn('owner', owner.id, true, 'owner');
+  await getTaskData(modTasks, ownerCookie, 503);
+  await getTaskData(modTasks, dbModCookie, 503);
   const westThreshold = firstSeed.find(item => item.member_id === novemberMembers['rollover-west']);
   sql(`UPDATE public.punishments SET assignable_at = assignable_at + interval '1 hour' WHERE id = '${westThreshold.id}'`);
   assert.equal(sql('SELECT issue FROM public.punishment_ledger_issues()'), 'unassigned_task_dates_differ');
@@ -669,6 +674,13 @@ try {
   await getTaskData(memberTasks, '', 401);
   await getTaskData(memberTasks + '?memberId=' + regularId, newcomerCookie, 403);
   await getTaskData(modTasks, regularCookie, 403);
+  const pendingTask = firstSeed.find(item => item.status === 'pending');
+  for (const cookie of [ownerCookie, dbModCookie]) {
+    for (const [status, task] of [['awaiting_assignment', westThreshold], ['pending', pendingTask]]) {
+      const { items } = await getTaskData(`${modTasks}?status=${status}`, cookie);
+      assert.ok(items.some(item => item.id === task.id), `Missing ${status} task after opening the gate`);
+    }
+  }
   for (const [account, strikes, openCount] of [['rollover-west', 3, 1], ['rollover-east', 6, 2]]) {
     const id = novemberMembers[account];
     const { data: { timezone } } = await db.from('members').update({ is_active: true }).eq('id', id)
@@ -679,14 +691,17 @@ try {
     const [task] = before.open_items;
     assert.equal(task.earned_month, '2026-11-01');
     assert.equal(task.status, 'awaiting_assignment');
-    await post(modTasks, dbModCookie, { action: 'assign', punishment_id: task.id, title: 'Wind-down plan' });
+    const assigningCookie = account === 'rollover-west' ? ownerCookie : dbModCookie;
+    await post(modTasks, assigningCookie, { action: 'assign', punishment_id: task.id, title: 'Wind-down plan' });
+    const { items } = await getTaskData(`${modTasks}?status=assigned`, assigningCookie);
+    assert.ok(items.some(item => item.id === task.id));
     const completed = await post(modTasks, secondModCookie, { action: 'complete', punishment_id: task.id });
     assert.equal(completed.open_count, openCount - 1);
     const after = await getRolloverProgress(cookie, timezone, strikes);
     assert.equal(after.history[0].id, task.id);
     assert.equal(after.open_count, openCount - 1);
   }
-  console.log('Verified November-to-December rollover in Tokyo and Los Angeles and assignment and completion of November work.');
+  console.log('Verified Owner and Moderator punishment access, the November-to-December rollover, and assignment and completion.');
   const queue = await getTaskData(modTasks, dbModCookie);
   const { id: taskId } = queue.items.find(item => item.member_id === seedRace);
   const assignment = { action: 'assign', punishment_id: taskId, title: 'Wind-down plan' };
@@ -759,9 +774,6 @@ try {
   assert.equal((await getTaskData(memberTasks, taskMemberCookie)).history[0].id, taskId);
   console.log('Verified visibility rollback and reopening preserve completed history and keep the new writer active.');
 
-  const { data: owner } = await db.from('members').select('id,bedtime_local')
-    .eq('id', cutoverOwnerId).single().throwOnError();
-  const ownerCookie = await signIn('owner', owner.id, true, 'owner');
   const origin = { Origin: appOrigin };
   const promote = { action: 'set_moderator', member_id: newcomer.id, expected_role: 'member', new_role: 'moderator' };
   const revoke = { ...promote, expected_role: 'moderator', new_role: 'member' };

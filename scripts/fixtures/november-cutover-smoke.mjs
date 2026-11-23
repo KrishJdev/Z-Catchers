@@ -14,7 +14,7 @@ export async function insertLegacyNovemberFixtures(sql) {
         ('counter-only', NULL, 'UTC', '23:00', 'https://discord.com/channels/123/456', '2026-11', 3, 3, 0, 0, false),
         ('two-strikes', NULL, 'UTC', '23:00', 'https://discord.com/channels/123/456', '2026-11', 2, 2, 0, 0, false),
         ('rollover-west', '${novemberAccounts['rollover-west']}', 'America/Los_Angeles', '23:00',
-          'https://discord.com/channels/123/456', '2026-11', 3, 3, 0, 0, false),
+          'https://discord.com/channels/123/456', '2026-11', 2, 2, 0, 0, false),
         ('rollover-east', '${novemberAccounts['rollover-east']}', 'Asia/Tokyo', '23:00',
           'https://discord.com/channels/123/456', '2026-11', 3, 3, 2, 2, false)
       RETURNING discord_username, id
@@ -36,15 +36,25 @@ export async function insertLegacyNovemberFixtures(sql) {
 }
 
 export async function verifyNovemberPreview(sql, members) {
-  await sql(`
-    SELECT public.record_verified_november_correction('${members['two-strikes']}', '2026-11-02',
-      'ci-reviewed-moderator-strike', 'fixture-moderator', 'Verified dated strike');
-    UPDATE public.nightly_strike_logs SET replacement_until = clock_timestamp() + interval '3 hours'
-      WHERE target_member_id = '${members['rollover-east']}' AND sleep_cycle_date = '2026-11-06';
-  `);
   const snapshot = async () => JSON.parse(await sql(`
     SELECT jsonb_agg(to_jsonb(p) ORDER BY member_name) FROM public.november_punishment_preview() AS p
       WHERE member_id IN (${Object.values(members).map(id => `'${id}'`).join(', ')})`));
+  const beforeCorrection = await snapshot();
+  assert.deepEqual(beforeCorrection.filter(row => ['rollover-west', 'two-strikes'].includes(row.member_name))
+    .map(row => [row.member_name, row.legacy_strikes_used, row.legacy_strikes_count,
+      row.verified_strikes, row.counter_discrepancy, row.thresholds.length]), [
+    ['rollover-west', 2, 2, 3, true, 1],
+    ['two-strikes', 2, 2, 1, true, 0],
+  ]);
+  const correction = `SELECT public.record_verified_november_correction('${members['two-strikes']}', '2026-11-02',
+    'ci-reviewed-moderator-strike', 'fixture-moderator', 'Verified dated strike');`;
+  const correctionId = await sql(correction);
+  assert.match(correctionId, /^[0-9a-f-]{36}$/);
+  assert.equal(await sql(correction), correctionId);
+  await sql(`
+    UPDATE public.nightly_strike_logs SET replacement_until = clock_timestamp() + interval '3 hours'
+      WHERE target_member_id = '${members['rollover-east']}' AND sleep_cycle_date = '2026-11-06';
+  `);
   const preview = await snapshot();
   assert.deepEqual(preview.map(row => [
     row.member_name, row.verified_strikes, row.counter_discrepancy, row.used_passes,
@@ -52,7 +62,7 @@ export async function verifyNovemberPreview(sql, members) {
   ]), [
     ['counter-only', 0, true, 0, []],
     ['rollover-east', 6, true, 2, ['awaiting_assignment', 'pending']],
-    ['rollover-west', 3, false, 0, ['awaiting_assignment']],
+    ['rollover-west', 3, true, 0, ['awaiting_assignment']],
     ['two-strikes', 2, false, 0, []],
   ]);
   assert.deepEqual(preview.find(row => row.member_name === 'two-strikes').verified_rows
@@ -61,7 +71,7 @@ export async function verifyNovemberPreview(sql, members) {
   assert.equal(await sql('SELECT count(*) FROM public.punishment_actions'), '0');
   assert.equal(await sql('SELECT (activated_at IS NULL AND NOT screens_visible)::text FROM public.punishment_rollout'), 'true');
   assert.deepEqual(await snapshot(), preview);
-  console.log('Verified inactive November preview: 0/2/3/6 strikes, 0/0/1/2 thresholds, two counter discrepancies and two preserved passes.');
+  console.log('Verified inactive November preview, both production counter mismatches, a retryable dated correction, and preserved passes.');
   return preview;
 }
 

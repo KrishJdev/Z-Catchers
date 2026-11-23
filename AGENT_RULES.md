@@ -122,6 +122,7 @@ Whenever you complete a milestone from `PROJECT_SPEC.md`:
 ## 7. Git & Branching Protocol
 
 * **Active Working Branch:** Use `krish` for regular work.
+* **Punishments Implementation Phases:** Start each phase on its specified feature branch from the latest `origin/dev` after the previous phase merges. Open one PR per phase into `dev`. Follow the [Punishments implementation plan](PUNISHMENTS_IMPLEMENTATION_PLAN.md#feature-branch-workflow) and release through `dev` → `main`.
 * **Target Integration Branch:** Open pull requests from the working branch to `dev`, the repository's default branch on GitHub.
 * **Production Branch:** `main` is reserved for tagged releases and production-ready deployments merged from `dev`.
 
