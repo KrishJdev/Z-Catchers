@@ -1,7 +1,7 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-24T00:15:47+05:30
-> **Active working branch:** `codex/accountability-3-strike-history`, based on `origin/dev` at `8551589`. Implementation commit `ec2b19f` and [PR #115](https://github.com/KrishJdev/Z-Catchers/pull/115) into `dev`.
+> **Last Updated:** 2026-11-24T00:54:33+05:30
+> **Active working branch:** `codex/accountability-4-metastrike-backend`, based on `origin/dev` at `4faa676`. Phase 4 implementation commit `2ad1f88` in [PR #116](https://github.com/KrishJdev/Z-Catchers/pull/116) into `dev`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
@@ -10,9 +10,26 @@
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit`, all 54 `npm run test:unit` suites, and `npm run build` passed. Edge browser fixtures passed at 320 px and 1280 px. Hosted CI, the disposable Supabase smoke, and the preview are tracked in [PR #115 checks](https://github.com/KrishJdev/Z-Catchers/pull/115/checks).
+> **Build Status:** `npx tsc --noEmit`, all 55 `npm run test:unit` suites and `npm run build` passed. See the [Phase 4 hosted checks](https://github.com/KrishJdev/Z-Catchers/pull/116/checks).
 
 ---
+
+## Punishments Phase 4 reviewed Metastrike transactions
+
+- Linked members can read their private monthly requests and seven-cycle submission window, submit a dated request with a reason, and withdraw a pending request. Staff can review the scoped pending queue and decision history. PostgreSQL rechecks the live role, pending state, strike source and reservation before applying a decision.
+- Submitting reserves a slot in the selected month. Approval charges that slot. Approval can protect a future cycle or replace the recorded nightly strike, even after the submission window closes. A confirmed no-strike cycle closes without charge. The existing history trigger preserves the original strike, the reconciler cancels ineligible open tasks, and completed history remains visible. Audited reversals credit the selected cycle's month.
+- The reviewed-mode assignment guard accounts for pending requests and remaining quota. Around day rollover it conservatively includes the possible previous-night anchor on the fourth local date. The existing task write rejects assignment or completion during an applicable hold, and a held assignment retains its saved instructions.
+- Read-only production verification on November 24 returned `activated_at = NULL` and `screens_visible = false`. Local verification used a disposable active ledger, and production still requires the recovery checklist. The migration defaults both reviewed-flow switches to false. Owner intake requires the authorized operator procedure in the release checklist.
+- Added `supabase/migrations/20261201_reviewed_metastrikes.sql`, `src/lib/metastrikes.ts`, `src/app/api/members/strikes/metastrike/requests/route.ts`, `src/app/api/mod/metastrikes/route.ts` and `scripts/test-reviewed-metastrikes.mjs`. Updated `supabase/schema.sql`, `PUNISHMENTS_RELEASE_CHECKLIST.md`, `.github/workflows/dispatcher-smoke.yml`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-private-strike-history.mjs`, `scripts/run-tests.mjs` and this handoff. The hosted fixture uses a Discord ID distinct from the November rollover fixtures.
+
+| Milestone | Status | Evidence |
+| --- | --- | --- |
+| Phase 3 private strike history integration | DONE | [PR #115](https://github.com/KrishJdev/Z-Catchers/pull/115) merged into `dev` at `4faa676`. |
+| Phase 4 reviewed Metastrike transactions | DONE | Implemented in `2ad1f88` and verified on a disposable ledger. |
+| Phase 4 integration | IN PROGRESS | Review and hosted Supabase dispatcher smoke run in [PR #116](https://github.com/KrishJdev/Z-Catchers/pull/116). |
+| Phase 5 request and review screens | TODO | Start on `codex/accountability-5-metastrike-screens` from the latest `origin/dev` after Phase 4 merges. |
+
+Phase 5 should connect `MetastrikeModal.tsx` and the member CTA to `/api/members/strikes/metastrike/requests`, and add the `/api/mod/metastrikes` queue to `ModDrawer.tsx`. Refresh the My Sleep strike history, member counters and punishment queue after decisions or withdrawal. Display quota, settlement and hold states, redact legacy reasons from shared roster responses, and verify the reviewed workflow on desktop and an installed phone PWA in preview. The API review body uses `expected_source_id` from the staff row's `strike_source_id`, including an explicit null when no strike exists. Follow the [Phase 5 plan](PUNISHMENTS_IMPLEMENTATION_PLAN.md#phase-5--build-the-request-and-review-screens).
 
 ## Punishments Phase 3 private strike history
 
@@ -24,8 +41,7 @@
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | Phase 3 private strike history | DONE | Implementation in `ec2b19f`, 54 local suites, TypeScript, build, and desktop and mobile browser fixtures. |
-| Phase 3 integration | IN PROGRESS | Review and hosted verification in [PR #115](https://github.com/KrishJdev/Z-Catchers/pull/115). |
-| Phase 4 reviewed Metastrike transactions | TODO | Start from `origin/dev` after Phase 3 merges and the active ledger is verified. |
+| Phase 3 integration | DONE | [PR #115](https://github.com/KrishJdev/Z-Catchers/pull/115) merged into `dev`. |
 
 ## Punishments Phase 2 dated staff corrections
 

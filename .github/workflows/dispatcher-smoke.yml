@@ -21,6 +21,7 @@ on:
       - 'src/app/api/members/punishments/**'
       - 'src/app/api/mod/route.ts'
       - 'src/app/api/mod/punishments/**'
+      - 'src/app/api/mod/metastrikes/**'
       - 'src/app/api/push/**'
       - 'src/components/ModDrawer.tsx'
       - 'src/components/RosterRoleAction.tsx'
