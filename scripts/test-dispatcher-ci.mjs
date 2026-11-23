@@ -30,6 +30,7 @@ const discordAccounts = {
   'second-mod': '100000000000000003',
   newcomer: '100000000000000004',
   'task-member': '100000000000000005',
+  'review-member': '100000000000000006',
   owner: '100000000000000100',
   'recovered-owner': '100000000000000101',
   ...novemberAccounts,
@@ -245,6 +246,7 @@ sql(readFileSync('supabase/migrations/20261127_moderation_live_roles.sql', 'utf8
 sql(readFileSync('supabase/migrations/20261128_punishment_diagnostics.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261129_staff_strike_corrections.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261130_private_strike_history.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261201_reviewed_metastrikes.sql', 'utf8'));
 assert.equal(cutoverQueue(), queuedBeforeCutover);
 assert.equal(sql("SELECT id, discord_id, is_active FROM public.members WHERE role = 'owner'"),
   `${cutoverOwnerId}|${discordAccounts.owner}|t`);
@@ -943,6 +945,76 @@ try {
   assert.equal(sql(`SELECT count(*) FROM public.sleep_logs WHERE member_id = '${sleepCancellationRace}'`), '0');
   assert.equal(sql(`SELECT count(*) FROM public.notification_logs WHERE member_id = '${sleepCancellationRace}'`), '0');
   console.log('Verified self-service sleep cancellation and a concurrent staff wake serialize without restoring deleted evidence.');
+
+  {
+    const reviewMember = raceMember('Reviewed Metastrike Member');
+    sql(`UPDATE public.members SET discord_id = '${discordAccounts['review-member']}',
+      created_at = clock_timestamp() - interval '30 days' WHERE id = '${reviewMember}';`);
+    const reviewCookie = await signIn('review-member', reviewMember, false, 'member');
+    const memberReviewPath = '/api/members/strikes/metastrike/requests';
+    const staffReviewPath = '/api/mod/metastrikes';
+    assert.equal((await getTaskData(memberReviewPath, reviewCookie)).submissions_open, false);
+    sql(`UPDATE public.punishment_rollout SET reviewed_metastrikes_required = true,
+      metastrike_requests_open = true WHERE singleton;`);
+    const reviewWindow = await getTaskData(memberReviewPath, reviewCookie);
+    assert.equal(reviewWindow.choices.length, 7);
+    const chosenCycle = reviewWindow.choices.at(-1);
+    assert.equal(chosenCycle.unavailable_reason, null);
+    const reviewRequest = { action: 'submit', request_id: randomUUID(), cycle_date: chosenCycle.cycle_date,
+      reason: 'Private disposable request reason' };
+    await post(memberReviewPath, reviewCookie, reviewRequest, 403, { Origin: 'https://other.example' });
+    const pending = await post(memberReviewPath, reviewCookie, reviewRequest, 200, origin);
+    assert.equal(pending.item.status, 'pending');
+    assert.equal(pending.quota.reserved, 1);
+    assert.deepEqual(await post(memberReviewPath, reviewCookie, reviewRequest, 200, origin), pending);
+    await getTaskData(staffReviewPath, reviewCookie, 403);
+    const staffReview = await getTaskData(staffReviewPath, dbModCookie);
+    assert.equal(staffReview.pending_count, 1);
+    assert.equal(staffReview.items[0].reason, reviewRequest.reason);
+    await post('/api/members/strikes/metastrike', reviewCookie, { member_id: reviewMember, action: 'proactive' }, 409, origin);
+    const approvedReview = await post(staffReviewPath, dbModCookie, {
+      action: 'approve', request_id: reviewRequest.request_id, expected_source_id: null,
+    }, 200, origin);
+    assert.equal(approvedReview.item.status, 'approved');
+    assert.equal(approvedReview.item.quota.used, 1);
+    assert.equal(approvedReview.item.quota.reserved, 0);
+    const privateHistory = await getTaskData(memberReviewPath + '?month=' + chosenCycle.cycle_date.slice(0, 7), reviewCookie);
+    assert.equal(privateHistory.items[0].status, 'approved');
+    assert.equal(privateHistory.items[0].reviewer_id, undefined);
+    assert.equal((await getTaskData(memberReviewPath + '?month=' + chosenCycle.cycle_date.slice(0, 7), regularCookie)).items.length, 0);
+    assert.equal(sql(`SELECT reason FROM public.nightly_strike_logs WHERE id = '${approvedReview.item.pass_source_id}'`), 'Approved Metastrike');
+
+    const makeAcceptedReview = (target, sourceId) => {
+      const id = randomUUID();
+      sql(`INSERT INTO public.metastrike_requests(id,member_id,cycle_date,timezone,cutoff_at,reason,submitted_at,submitted_source_id)
+        VALUES ('${id}','${target}','2026-11-12','UTC','2026-11-12T23:10Z','Accepted in November','2026-11-13T00:00Z','${sourceId}');`);
+      return id;
+    };
+    const decideReview = (id, source) =>
+      `public.decide_metastrike('${modId}','${discordAccounts['database-mod']}','${id}','approve','${source}')`;
+    const approvedRace = makeAcceptedReview(dispatchRace, issued.log.id);
+    const approvalSql = `SELECT ${decideReview(approvedRace, issued.log.id)}`;
+    const [winningReview, followingDispatcher] = await concurrentSql(approvalSql, automatic(dispatchRace, 12));
+    assert.equal(winningReview.item.status, 'approved');
+    assert.equal(followingDispatcher.reason, 'metastrike_active');
+    assert.equal(JSON.parse(sql(approvalSql)).item.pass_source_id, issued.log.id);
+    assert.equal(sql(`SELECT used FROM public.strike_pass_months WHERE member_id = '${dispatchRace}' AND month_start = '2026-11-01'`), '1');
+    assert.equal(sql(`SELECT count(*) FROM public.metastrike_requests WHERE id = '${approvedRace}' AND status = 'approved'`), '1');
+
+    const correctionRace = raceMember('Concurrent Metastrike Correction');
+    const correctionSource = JSON.parse(sql(automatic(correctionRace, 12))).log.id;
+    const correctedRequest = makeAcceptedReview(correctionRace, correctionSource);
+    const correctionFirst = `SELECT public.moderate_dated_strike('${modId}','${discordAccounts['database-mod']}',
+      '${correctionRace}', 'remove_strike', '2026-11-12', '${correctionSource}', 'Corrected evidence', '${randomUUID()}')`;
+    const staleReview = `CREATE FUNCTION pg_temp.try_metastrike_review() RETURNS jsonb LANGUAGE plpgsql AS $$
+      BEGIN RETURN ${decideReview(correctedRequest, correctionSource)};
+      EXCEPTION WHEN SQLSTATE 'PT409' THEN RETURN jsonb_build_object('conflict', true); END; $$;
+      SELECT pg_temp.try_metastrike_review()`;
+    const [, blockedReview] = await concurrentSql(correctionFirst, staleReview);
+    assert.equal(blockedReview.conflict, true);
+    assert.equal(sql(`SELECT status FROM public.metastrike_requests WHERE id = '${correctedRequest}'`), 'pending');
+    console.log('Verified reviewed Metastrike HTTP routes, the legacy write fence, and concurrent dispatch and correction in PostgreSQL.');
+  }
 
   const recovery = readFileSync('supabase/recover_moderation_owner.sql', 'utf8')
     .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${owner.id}';`)

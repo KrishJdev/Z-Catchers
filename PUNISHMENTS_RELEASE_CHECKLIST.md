@@ -120,6 +120,16 @@ Use **Mod Panel → Roster → Review strikes** on the disposable environment fi
 
 The Owner can see their own tasks in My Sleep. The app excludes the Owner from staff targets and blocks staff from acting on their own profiles. Before handling an Owner task, the release owner must approve an independent, authorized database operator and record that approval privately. Record the task ID, evidence, intended action, reviewer and operator reference. In the operator session, verify the task belongs to the current Owner and lock the rollout and member for the transaction. Use the existing task state machine with the identified operator as the audit actor. Verify the resulting action and member-visible task state, then record the outcome. Leave the task available in My Sleep until an independent operator can handle it. Use the existing operator recovery flow for evidence corrections.
 
+## Reviewed Metastrike release
+
+Apply `20261201_reviewed_metastrikes.sql` after the private strike history migration. It installs the member and staff RPCs, history, quota and review enforcement. Both switches default to false. Run the dispatcher smoke and verify the November ledger and visibility checks before enabling the reviewed workflow in the separate release.
+
+After the member and staff screens are deployed, an authorized database operator can set `reviewed_metastrikes_required = true` and `metastrike_requests_open = true` together on the singleton `public.punishment_rollout` row. The first switch makes review permanent and blocks legacy instant writes. The second switch controls new submissions. To pause intake during recovery, set only `metastrike_requests_open = false`. Existing requests can still be reviewed or withdrawn, and the legacy write fence stays in effect.
+
+Reviewers confirm the nightly source shown by the queue. A source conflict requires a refresh. If the original source was replaced with a different strike, decline with an explanation and let the member submit against the new source while the date is eligible. A pending settlement can be reviewed after dispatch records a strike or durable evidence confirms that the cycle has no strike. Staff can see an assigned task on hold and the saved instructions remain available during review.
+
+Owner requests are currently blocked. Before adding an Owner submission path, the release owner must approve an independent, authorized database operator and document the approved access privately. The operator procedure must verify the current linked Owner, capture the request and exact nightly source, and use the same locked decision, quota, history and reconciliation transaction with an auditable operator identity. Rehearse approval and decline with the disposable Owner before enabling intake. The existing staff endpoints exclude the Owner and self-review.
+
 ## Ongoing ledger audit
 
 After activation, run the rolling audit in the restricted database operator session. Each profile uses its current and previous local-cycle months, including an effective pending timezone. The November visibility gate continues to use its fixed-month audit.

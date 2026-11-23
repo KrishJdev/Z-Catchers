@@ -9,7 +9,7 @@ const schema = readFileSync('supabase/schema.sql', 'utf8').replace('CREATE EXTEN
 const migration = readFileSync('supabase/migrations/20261130_private_strike_history.sql', 'utf8');
 const migrationStart = schema.indexOf('-- Keep private nightly strike and pass history');
 assert.ok(migrationStart > 0);
-assert.equal(schema.slice(migrationStart).trim(), migration.trim());
+assert.equal(schema.slice(migrationStart, schema.indexOf('-- Install reviewed Metastrikes')).trim(), migration.trim());
 
 const result = async (sql, args) => (await db.query(sql, args)).rows[0]?.result;
 const history = (member, month = '2026-11') => result(
