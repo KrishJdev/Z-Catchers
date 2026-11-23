@@ -30,7 +30,7 @@ const discordAccounts = {
   'second-mod': '100000000000000003',
   newcomer: '100000000000000004',
   'task-member': '100000000000000005',
-  'review-member': '100000000000000006',
+  'review-member': '100000000000000008',
   owner: '100000000000000100',
   'recovered-owner': '100000000000000101',
   ...novemberAccounts,

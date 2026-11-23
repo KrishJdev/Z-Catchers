@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-24T00:51:43+05:30
+> **Last Updated:** 2026-11-24T00:54:33+05:30
 > **Active working branch:** `codex/accountability-4-metastrike-backend`, based on `origin/dev` at `4faa676`. Phase 4 implementation commit `2ad1f88` in [PR #116](https://github.com/KrishJdev/Z-Catchers/pull/116) into `dev`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -20,7 +20,7 @@
 - Submitting reserves a slot in the selected month. Approval charges that slot. Approval can protect a future cycle or replace the recorded nightly strike, even after the submission window closes. A confirmed no-strike cycle closes without charge. The existing history trigger preserves the original strike, the reconciler cancels ineligible open tasks, and completed history remains visible. Audited reversals credit the selected cycle's month.
 - The reviewed-mode assignment guard accounts for pending requests and remaining quota. Around day rollover it conservatively includes the possible previous-night anchor on the fourth local date. The existing task write rejects assignment or completion during an applicable hold, and a held assignment retains its saved instructions.
 - Read-only production verification on November 24 returned `activated_at = NULL` and `screens_visible = false`. Local verification used a disposable active ledger, and production still requires the recovery checklist. The migration defaults both reviewed-flow switches to false. Owner intake requires the authorized operator procedure in the release checklist.
-- Added `supabase/migrations/20261201_reviewed_metastrikes.sql`, `src/lib/metastrikes.ts`, `src/app/api/members/strikes/metastrike/requests/route.ts`, `src/app/api/mod/metastrikes/route.ts` and `scripts/test-reviewed-metastrikes.mjs`. Updated `supabase/schema.sql`, `PUNISHMENTS_RELEASE_CHECKLIST.md`, `.github/workflows/dispatcher-smoke.yml`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-private-strike-history.mjs`, `scripts/run-tests.mjs` and this handoff.
+- Added `supabase/migrations/20261201_reviewed_metastrikes.sql`, `src/lib/metastrikes.ts`, `src/app/api/members/strikes/metastrike/requests/route.ts`, `src/app/api/mod/metastrikes/route.ts` and `scripts/test-reviewed-metastrikes.mjs`. Updated `supabase/schema.sql`, `PUNISHMENTS_RELEASE_CHECKLIST.md`, `.github/workflows/dispatcher-smoke.yml`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-private-strike-history.mjs`, `scripts/run-tests.mjs` and this handoff. The hosted fixture uses a Discord ID distinct from the November rollover fixtures.
 
 | Milestone | Status | Evidence |
 | --- | --- | --- |
