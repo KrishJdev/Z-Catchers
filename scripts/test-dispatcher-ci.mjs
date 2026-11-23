@@ -31,6 +31,8 @@ const discordAccounts = {
   newcomer: '100000000000000004',
   'task-member': '100000000000000005',
   'review-member': '100000000000000008',
+  'legacy-metastrike': '100000000000000009',
+  'release-assignment': '100000000000000011',
   owner: '100000000000000100',
   'recovered-owner': '100000000000000101',
   ...novemberAccounts,
@@ -246,7 +248,6 @@ sql(readFileSync('supabase/migrations/20261127_moderation_live_roles.sql', 'utf8
 sql(readFileSync('supabase/migrations/20261128_punishment_diagnostics.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261129_staff_strike_corrections.sql', 'utf8'));
 sql(readFileSync('supabase/migrations/20261130_private_strike_history.sql', 'utf8'));
-sql(readFileSync('supabase/migrations/20261201_reviewed_metastrikes.sql', 'utf8'));
 assert.equal(cutoverQueue(), queuedBeforeCutover);
 assert.equal(sql("SELECT id, discord_id, is_active FROM public.members WHERE role = 'owner'"),
   `${cutoverOwnerId}|${discordAccounts.owner}|t`);
@@ -947,15 +948,60 @@ try {
   console.log('Verified self-service sleep cancellation and a concurrent staff wake serialize without restoring deleted evidence.');
 
   {
+    const legacyPassPath = '/api/members/strikes/metastrike';
+    const assignedMember = raceMember('Metastrike Release Assignment');
+    sql(`UPDATE public.members SET discord_id = '${discordAccounts['release-assignment']}' WHERE id = '${assignedMember}';`);
+    for (const day of ['10', '11', '12']) sql(automatic(assignedMember, day));
+    const assignedCookie = await signIn('release-assignment', assignedMember, false, 'member');
+    const [preUpgradeTask] = (await getTaskData(memberTasks, assignedCookie)).open_items;
+    assert.equal(preUpgradeTask.status, 'awaiting_assignment');
+    const assignedTaskId = preUpgradeTask.id;
+    await post(modTasks, dbModCookie, {
+      action: 'assign', punishment_id: assignedTaskId, title: 'Existing assignment', instructions: 'Keep the plan',
+    });
+    const legacySnapshot = () => sql(`
+      SELECT jsonb_build_object(
+        'passes', (SELECT jsonb_agg(to_jsonb(n) ORDER BY n.id)
+          FROM (SELECT id, target_member_id, sleep_cycle_date, reason, pass_used_on
+            FROM public.nightly_strike_logs WHERE record_type = 'metastrike') n),
+        'balances', (SELECT jsonb_agg(to_jsonb(b) ORDER BY member_id, month_start) FROM public.strike_pass_months b),
+        'assignment', (SELECT to_jsonb(p) FROM public.punishments p WHERE id = '${assignedTaskId}'),
+        'completed', (SELECT to_jsonb(p) FROM public.punishments p WHERE id = '${taskId}')
+      )
+    `);
+    const beforeUpgrade = legacySnapshot();
+    assert.ok(JSON.parse(beforeUpgrade).passes.length > 0);
+    sql(readFileSync('supabase/migrations/20261201_reviewed_metastrikes.sql', 'utf8'));
+    sql("NOTIFY pgrst, 'reload schema'");
+    assert.equal(legacySnapshot(), beforeUpgrade);
+    assert.equal(sql(`SELECT reviewed_metastrikes_required, metastrike_requests_open FROM public.punishment_rollout WHERE singleton`), 'f|f');
+    await waitFor(async () => {
+      const { error } = await db.rpc('read_moderation_metastrikes', {
+        p_actor_id: modId, p_actor_discord_id: discordAccounts['database-mod'],
+      });
+      if (error?.code === 'PGRST202') return false;
+      assert.equal(error, null);
+      return true;
+    }, 10_000, () => 'PostgREST did not load the reviewed Metastrike migration');
+
     const reviewMember = raceMember('Reviewed Metastrike Member');
+    const legacyMember = raceMember('Legacy Metastrike Client');
+    sql(`UPDATE public.members SET discord_id = '${discordAccounts['legacy-metastrike']}' WHERE id = '${legacyMember}';`);
+    const legacyCookie = await signIn('legacy-metastrike', legacyMember, false, 'member');
+    const oldClient = { member_id: legacyMember, action: 'proactive' };
+    assert.equal((await post(legacyPassPath, legacyCookie, oldClient, 200, origin)).metastrikes_used, 1);
+    console.log('Verified the additive Metastrike migration preserves legacy balances and task records before enabling review.');
+    const prior = DateTime.utc().startOf('month').minus({ months: 1 });
     sql(`UPDATE public.members SET discord_id = '${discordAccounts['review-member']}',
-      created_at = clock_timestamp() - interval '30 days' WHERE id = '${reviewMember}';`);
+      created_at = '${prior.toISO()}' WHERE id = '${reviewMember}';
+      SELECT public.seed_november_punishments('${reviewMember}');`);
     const reviewCookie = await signIn('review-member', reviewMember, false, 'member');
     const memberReviewPath = '/api/members/strikes/metastrike/requests';
     const staffReviewPath = '/api/mod/metastrikes';
     assert.equal((await getTaskData(memberReviewPath, reviewCookie)).submissions_open, false);
-    sql(`UPDATE public.punishment_rollout SET reviewed_metastrikes_required = true,
-      metastrike_requests_open = true WHERE singleton;`);
+    assert.equal(sql(`UPDATE public.punishment_rollout SET reviewed_metastrikes_required = true,
+      metastrike_requests_open = true WHERE singleton AND activated_at IS NOT NULL AND screens_visible
+      AND NOT reviewed_metastrikes_required AND NOT metastrike_requests_open RETURNING 1;`), '1');
     const reviewWindow = await getTaskData(memberReviewPath, reviewCookie);
     assert.equal(reviewWindow.choices.length, 7);
     const chosenCycle = reviewWindow.choices.at(-1);
@@ -971,7 +1017,8 @@ try {
     const staffReview = await getTaskData(staffReviewPath, dbModCookie);
     assert.equal(staffReview.pending_count, 1);
     assert.equal(staffReview.items[0].reason, reviewRequest.reason);
-    await post('/api/members/strikes/metastrike', reviewCookie, { member_id: reviewMember, action: 'proactive' }, 409, origin);
+    const blockedLegacyWrite = { member_id: reviewMember, action: 'proactive' };
+    assert.match((await post(legacyPassPath, reviewCookie, blockedLegacyWrite, 409, origin)).error, /reviewed request/i);
     const approvedReview = await post(staffReviewPath, dbModCookie, {
       action: 'approve', request_id: reviewRequest.request_id, expected_source_id: null,
     }, 200, origin);
@@ -984,12 +1031,93 @@ try {
     assert.equal((await getTaskData(memberReviewPath + '?month=' + chosenCycle.cycle_date.slice(0, 7), regularCookie)).items.length, 0);
     assert.equal(sql(`SELECT reason FROM public.nightly_strike_logs WHERE id = '${approvedReview.item.pass_source_id}'`), 'Approved Metastrike');
 
-    const makeAcceptedReview = (target, sourceId) => {
+    // A stored request can outlive its submission window and cross a local month boundary.
+    const makeAcceptedReview = (target, sourceId, cycleDate = '2026-11-12') => {
       const id = randomUUID();
+      const cutoff = DateTime.fromISO(cycleDate + 'T23:10Z', { setZone: true });
       sql(`INSERT INTO public.metastrike_requests(id,member_id,cycle_date,timezone,cutoff_at,reason,submitted_at,submitted_source_id)
-        VALUES ('${id}','${target}','2026-11-12','UTC','2026-11-12T23:10Z','Accepted in November','2026-11-13T00:00Z','${sourceId}');`);
+        VALUES ('${id}','${target}','${cycleDate}','UTC','${cutoff.toISO()}','Previously accepted request',
+          '${cutoff.plus({ hours: 1 }).toISO()}','${sourceId}');`);
       return id;
     };
+
+    const heldCycle = '2026-11-12';
+    const heldSource = sql(`SELECT id FROM public.nightly_strike_logs
+      WHERE target_member_id = '${assignedMember}' AND sleep_cycle_date = '${heldCycle}'`);
+    const heldRequest = makeAcceptedReview(assignedMember, heldSource, heldCycle);
+    const taskDetail = modTasks + '?punishment_id=' + assignedTaskId;
+    const heldTask = (await getTaskData(taskDetail, dbModCookie)).item;
+    assert.equal(heldTask.status, 'assigned');
+    assert.equal(heldTask.metastrike_hold, true);
+    assert.equal(heldTask.instructions, 'Keep the plan');
+    const completeHeld = { action: 'complete', punishment_id: assignedTaskId };
+    assert.match((await post(modTasks, dbModCookie, completeHeld, 409, origin)).error, /on hold/i);
+
+    const priorIssue = prior.plus({ days: 14, hours: 23, minutes: 10 });
+    const priorStrikeCycle = priorIssue.toISODate();
+    const priorSource = sql(`INSERT INTO public.nightly_strike_logs
+      (target_member_id, sleep_cycle_date, record_type, created_at, updated_at)
+      VALUES ('${reviewMember}', '${priorStrikeCycle}', 'strike', '${priorIssue.toISO()}', '${priorIssue.toISO()}')
+      RETURNING id`);
+    const priorRequest = makeAcceptedReview(reviewMember, priorSource, priorStrikeCycle);
+
+    const reviewSnapshot = () => sql(`SELECT jsonb_build_array(
+      (SELECT to_jsonb(r) FROM public.metastrike_requests r WHERE id = '${heldRequest}'),
+      (SELECT to_jsonb(r) FROM public.metastrike_requests r WHERE id = '${reviewRequest.request_id}'),
+      (SELECT to_jsonb(b) FROM public.strike_pass_months b WHERE member_id = '${reviewMember}'
+        AND month_start = '${chosenCycle.cycle_date.slice(0, 7)}-01'),
+      (SELECT to_jsonb(p) FROM public.punishments p WHERE id = '${assignedTaskId}')
+    )`);
+    const beforePause = reviewSnapshot();
+    sql(`UPDATE public.punishment_rollout SET metastrike_requests_open = false
+      WHERE singleton AND reviewed_metastrikes_required`);
+    assert.equal(reviewSnapshot(), beforePause);
+    assert.equal((await getTaskData(memberReviewPath, reviewCookie)).submissions_open, false);
+    assert.match((await post(memberReviewPath, reviewCookie, { ...reviewRequest, request_id: randomUUID() }, 409, origin)).error, /closed/i);
+    assert.equal((await post(memberReviewPath, reviewCookie, reviewRequest, 200, origin)).item.status, 'approved');
+    assert.equal((await getTaskData(taskDetail, dbModCookie)).item.metastrike_hold, true);
+    sql('UPDATE public.punishment_rollout SET screens_visible = false WHERE singleton');
+    assert.equal(reviewSnapshot(), beforePause);
+    const unusedLegacyWrite = { member_id: seedRace, action: 'proactive' };
+    assert.match((await post(legacyPassPath, taskMemberCookie, unusedLegacyWrite, 409, origin)).error, /reviewed request/i);
+    await getTaskData(modTasks, dbModCookie, 503);
+    assert.equal(sql(`SELECT activated_at = '${activation}'::timestamptz AND reviewed_metastrikes_required
+      FROM public.punishment_rollout WHERE singleton`), 't');
+    assert.equal(JSON.parse(sql(automatic(raceMember('Paused Metastrike Writer'), 18))).log.record_type, 'strike');
+    const pausedDispatch = await fetch(appOrigin + dispatcherPath, { headers: { Authorization: 'Bearer ' + cronSecret } });
+    const pausedDispatchResult = await pausedDispatch.json();
+    assert.equal(pausedDispatch.status, 200, JSON.stringify(pausedDispatchResult));
+    assert.deepEqual(pausedDispatchResult.details.errors, []);
+    assert.equal(pausedDispatchResult.strikeWriteFailures, 0);
+
+    const approveHeld = { action: 'approve', request_id: heldRequest, expected_source_id: heldSource };
+    const replaced = await post(staffReviewPath, dbModCookie, approveHeld, 200, origin);
+    assert.equal(replaced.item.status, 'approved');
+    assert.equal(replaced.item.quota.used, 1);
+    assert.equal(replaced.item.reviewer_id, modId);
+    assert.deepEqual((await post(staffReviewPath, dbModCookie, approveHeld, 200, origin)).item, replaced.item);
+    assert.equal(sql(`SELECT status, instructions FROM public.punishments WHERE id = '${assignedTaskId}'`),
+      'canceled|Keep the plan');
+    assert.equal(sql(`SELECT count(*) FROM public.punishment_actions WHERE punishment_id = '${assignedTaskId}' AND action = 'canceled'`), '1');
+    const calendar = await getTaskData('/api/members/strikes?month=2026-11', assignedCookie);
+    assert.deepEqual(calendar.entries.filter(entry => entry.cycle_date === heldCycle)
+      .map(entry => [entry.status, entry.counts]).sort(), [['protected', false], ['replaced', false]]);
+
+    const approvePrior = { action: 'approve', request_id: priorRequest, expected_source_id: priorSource };
+    const crossMonth = await post(staffReviewPath, dbModCookie, approvePrior, 200, origin);
+    assert.equal(crossMonth.item.quota.month, prior.toFormat('yyyy-MM'));
+    assert.equal(crossMonth.item.quota.used, 1);
+    assert.notEqual(crossMonth.projection.month, crossMonth.item.quota.month);
+    assert.deepEqual((await post(staffReviewPath, dbModCookie, approvePrior, 200, origin)).item, crossMonth.item);
+    assert.equal(sql(`SELECT pass_charged_month FROM public.nightly_strike_logs WHERE id = '${priorSource}'`), prior.toISODate());
+
+    assert.equal(sql('SELECT count(*) FROM public.recent_punishment_ledger_issues()'), '0');
+    sql('SELECT public.show_verified_november_punishments()');
+    sql('UPDATE public.punishment_rollout SET metastrike_requests_open = true WHERE singleton AND reviewed_metastrikes_required AND screens_visible');
+    assert.equal((await getTaskData(memberReviewPath, reviewCookie)).submissions_open, true);
+    assert.equal((await getTaskData(memberTasks, taskMemberCookie)).history[0].id, taskId);
+    console.log('Verified additive Metastrike upgrade, legacy balances, safe pause, continued strikes and decisions, and previous-month reconciliation.');
+
     const decideReview = (id, source) =>
       `public.decide_metastrike('${modId}','${discordAccounts['database-mod']}','${id}','approve','${source}')`;
     const approvedRace = makeAcceptedReview(dispatchRace, issued.log.id);

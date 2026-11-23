@@ -1,18 +1,31 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-24T01:33:42+05:30
-> **Active working branch:** `codex/accountability-5-metastrike-screens`, based on `origin/dev` at `cbeb275`. Phase 5 implementation commit `44b2204` in [PR #117](https://github.com/KrishJdev/Z-Catchers/pull/117) into `dev`.
+> **Last Updated:** 2026-11-24T03:50:58+05:30
+> **Active working branch:** `codex/accountability-6-metastrike-release`, based on `origin/dev` at `a64a9bf`. Latest verified implementation commit `3238532` in [PR #118](https://github.com/KrishJdev/Z-Catchers/pull/118).
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
-> **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
-> **Phase 6 review fix:** `2682c1c` on `krish`.
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit`, all 55 `npm run test:unit` suites, `npm run build` and `git diff --check` passed. See the [Phase 5 hosted checks](https://github.com/KrishJdev/Z-Catchers/pull/117/checks).
+> **Build Status:** `npx tsc --noEmit`, all 55 `npm run test:unit` suites, `npm run build`, dispatcher script syntax and `git diff --check` passed. See the [Phase 6 hosted checks](https://github.com/KrishJdev/Z-Catchers/pull/118/checks).
 
 ---
+
+## Punishments Phase 6 reviewed Metastrike release
+
+- Updated `scripts/test-dispatcher-ci.mjs` to apply `20261201_reviewed_metastrikes.sql` after the fixture dispatcher, instant pass and punishment flows. The rehearsal compares the upgrade's pass balances and assigned and completed task records, then exercises signed requests, the old-client fence, a completion hold, cross-month charges, retries, and the calendar history for a replaced strike.
+- The first hosted run and [CodeRabbit finding](https://github.com/KrishJdev/Z-Catchers/pull/118#discussion_r4672708007) identified the reused assignment, which the November recovery rehearsal had already completed. Commit `3238532` creates a separate unfinished legacy task and preserves completed history. The [hosted Supabase rehearsal](https://github.com/KrishJdev/Z-Catchers/actions/runs/45276927638) passed with that fix.
+- The recovery rehearsal pauses intake, hides the punishment screens, checks that the dispatcher and review still work, and restores visibility and intake after the ledger audit. The fixture includes requests already accepted on earlier cycle dates for deterministic past and cross-month reviews.
+- Updated `PUNISHMENTS_RELEASE_CHECKLIST.md` with migration order, the guarded switch, controlled live checks and recovery SQL. Updated `HANDOFF.md` with branch, verification and release state. Phase 6 adds no migration after the Phase 4 reviewed Metastrike migration.
+
+| Milestone | Status | Evidence |
+| --- | --- | --- |
+| Phase 6 rehearsal and operator checklist | DONE | Verified on `3238532` by the hosted build and tests and the disposable Supabase rehearsal. |
+| Phase 6 integration | IN PROGRESS | [PR #118](https://github.com/KrishJdev/Z-Catchers/pull/118) targets `dev`. |
+| Reviewed Metastrike production cutover | TODO | Separate `dev` → `main` release, usable restore point, verified active and visible ledger, approved cutover and live member, staff, PWA and dispatcher checks. |
+
+After the Phase 6 PR merges, follow the [reviewed release checklist](PUNISHMENTS_RELEASE_CHECKLIST.md#reviewed-metastrike-release) for migration and application order. Use the verified November recovery first if the live ledger is inactive or hidden. After the separately authorized cutover, record the deployment commit, UTC switch time, controlled approvals, scheduler results and zero-row ledger audits. This integration work left the production deployment and flags untouched.
 
 ## Punishments Phase 5 Metastrike request and review screens
 
@@ -28,10 +41,8 @@
 | --- | --- | --- |
 | Phase 4 integration | DONE | [PR #116](https://github.com/KrishJdev/Z-Catchers/pull/116) merged into `dev` at `cbeb275`. |
 | Phase 5 request and review screens | DONE | Implementation in `44b2204` with desktop and phone-width browser verification on a disposable ledger. |
-| Phase 5 integration and physical phone preview | IN PROGRESS | [PR #117](https://github.com/KrishJdev/Z-Catchers/pull/117) targets `dev`. Track hosted checks and verify the installed PWA on a phone. |
-| Phase 6 reviewed Metastrike release | TODO | Branch from the latest `origin/dev` after Phase 5 merges. |
-
-Phase 6 should start with the [reviewed Metastrike release plan](PUNISHMENTS_IMPLEMENTATION_PLAN.md#phase-6--release-reviewed-metastrikes) and [release checklist](PUNISHMENTS_RELEASE_CHECKLIST.md). Apply `20261201_reviewed_metastrikes.sql` before the candidate app in the rehearsal. Verify the upgrade on disposable Supabase, including a previous-month replacement, held assignment, retry and rollback. Use the separate production recovery and release gates before enabling intake.
+| Phase 5 integration | DONE | [PR #117](https://github.com/KrishJdev/Z-Catchers/pull/117) merged into `dev` at `a64a9bf` with hosted checks passing. |
+| Phase 5 physical phone preview | TODO | Verify the installed PWA on a phone. |
 
 ## Punishments Phase 4 reviewed Metastrike transactions
 
