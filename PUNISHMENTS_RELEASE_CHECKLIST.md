@@ -122,13 +122,59 @@ The Owner can see their own tasks in My Sleep. The app excludes the Owner from s
 
 ## Reviewed Metastrike release
 
-Apply `20261201_reviewed_metastrikes.sql` after the private strike history migration. It installs the member and staff RPCs, history, quota and review enforcement. Both switches default to false. Run the dispatcher smoke and verify the November ledger and visibility checks before enabling the reviewed workflow in the separate release.
+### Rehearse the upgrade
 
-After the member and staff screens are deployed, an authorized database operator can set `reviewed_metastrikes_required = true` and `metastrike_requests_open = true` together on the singleton `public.punishment_rollout` row. The first switch makes review permanent and blocks legacy instant writes. The second switch controls new submissions. To pause intake during recovery, set only `metastrike_requests_open = false`. Existing requests can still be reviewed or withdrawn, and the legacy write fence stays in effect.
+Use the **Dispatcher integration** check for the Phase 6 PR. The disposable job starts with legacy November data and runs the current dispatcher and instant-pass endpoints before the reviewed migration. It adds the migration with both switches off, compares outstanding and completed work and pass balances, and verifies the legacy path still works. It then exercises the review fence, signed member and staff requests, an assigned task on hold, previous-month charging, decision retries, and intake and visibility recovery. Record the run URL and results before promoting the app.
+
+### Apply migrations and verify the deployed app
+
+1. Open a separate `dev` → `main` release PR after Phase 6 merges. Confirm the target Supabase project and a usable restore point. Verify the existing moderated release and installed migrations through `20261127_moderation_live_roles.sql`. Apply any missing prerequisites in migration order, then `20261128_punishment_diagnostics.sql`, `20261129_staff_strike_corrections.sql`, `20261130_private_strike_history.sql`, and `20261201_reviewed_metastrikes.sql`, before the reviewed app goes live. The last migration installs both switches with a default of false. Keep reviewed intake closed during recovery.
+2. Complete the [November ledger recovery](#activate-seed-and-verify) and confirm the punishment screens are visible. Record the activation timestamp, fixed November check and [rolling ledger audit](#ongoing-ledger-audit). Both audits must return zero rows before enabling review. Stop the cutover if either audit fails or reports issues.
+3. Confirm the Vercel production deployment serves the release commit, points to the verified Supabase project, and exposes the new member and moderator screens to controlled Discord accounts. Before opening intake, check the closed request state, staff queue, existing assignments and month balances. Verify the Cron destination in the restricted operator session, correlate at least three consecutive scheduled HTTP 200 responses, and require `success: true`, empty `details.errors` and `strikeWriteFailures: 0`. See [Verify the live release](#verify-the-live-release).
+
+### Enable and verify review
+
+Once the prerequisites are verified and the cutover is authorized, an operator sets both switches together. The update should return one row on the first cutover. If it returns zero, inspect the rollout row and resume from the observed state. The review requirement is irreversible.
+
+```sql
+UPDATE public.punishment_rollout
+SET reviewed_metastrikes_required = true, metastrike_requests_open = true
+WHERE singleton AND activated_at IS NOT NULL AND screens_visible
+  AND NOT reviewed_metastrikes_required AND NOT metastrike_requests_open
+RETURNING activated_at, screens_visible, reviewed_metastrikes_required, metastrike_requests_open;
+```
+
+1. With the approved fixture member and staff accounts, verify an authenticated legacy instant request on an available cycle returns HTTP 409 with the reviewed-request error. Check that the pass balance and nightly record stay unchanged.
+2. Submit a valid proactive request for a controlled cycle. Confirm that it reserves a slot and shows as pending. Approve it before cutoff and verify the protected night, one charge in the selected month, the reviewer and decision timestamp, and the private history. Repeat the same submission and approval IDs to confirm the charge and decision are unchanged.
+3. With an approved, eligible past strike, verify the source in the queue and note the expected task outcome before approval. Check the original strike and replacement in the member's My Sleep calendar, the selected month's balance, the task count and status, and the decision audit. Confirm that shared member views use the generic protection label. Verify My Sleep and the request flow on the installed phone PWA.
+4. Recheck scheduled dispatch and the rolling ledger after enabling review and after the controlled approvals. Record the release PR and commit, migration evidence, UTC switch time, scheduler evidence, audit totals and live account and device check results in the handoff. Keep request reasons, account identifiers and backup details in the restricted operator record.
 
 Reviewers confirm the nightly source shown by the queue. A source conflict requires a refresh. If the original source was replaced with a different strike, decline with an explanation and let the member submit against the new source while the date is eligible. A pending settlement can be reviewed after dispatch records a strike or durable evidence confirms that the cycle has no strike. Staff can see an assigned task on hold and the saved instructions remain available during review.
 
 Owner requests are currently blocked. Before adding an Owner submission path, the release owner must approve an independent, authorized database operator and document the approved access privately. The operator procedure must verify the current linked Owner, capture the request and exact nightly source, and use the same locked decision, quota, history and reconciliation transaction with an auditable operator identity. Rehearse approval and decline with the disposable Owner before enabling intake. The existing staff endpoints exclude the Owner and self-review.
+
+### Pause intake and recover
+
+Keep review required, retain the additive migrations and preserve the active strike writer. Pause new submissions on the rollout row. Review, withdrawal and private history remain available on a compatible build. Accepted requests still hold affected tasks while pending.
+
+```sql
+UPDATE public.punishment_rollout
+SET metastrike_requests_open = false
+WHERE singleton AND reviewed_metastrikes_required
+RETURNING activated_at, screens_visible, reviewed_metastrikes_required, metastrike_requests_open;
+```
+
+- If the punishment views are faulty, also hide them using the [ledger recovery switch](#recovery). The request picker shows closed intake. For a fault in the review screens themselves, deploy a reviewed-compatible fix that can suppress the affected UI and keep the decision and history data available for recovery.
+- Compare pending requests, decision IDs, monthly charges and task history against the restricted incident snapshot. Check legacy instant writes still receive the review error, automatic strikes still persist, and scheduled dispatch remains healthy. Resolve genuine evidence or task discrepancies using the ledger recovery procedure.
+- Validate the compatible build with signed member and staff sessions. Verify zero findings from both ledger checks. If the punishment views were hidden, restore them with `public.show_verified_november_punishments()`. Then reopen intake and repeat the controlled member, staff and dispatcher checks. Use the same rollout row so existing requests and decisions remain available.
+
+  ```sql
+  UPDATE public.punishment_rollout
+  SET metastrike_requests_open = true
+  WHERE singleton AND activated_at IS NOT NULL AND screens_visible
+    AND reviewed_metastrikes_required AND NOT metastrike_requests_open
+  RETURNING activated_at, screens_visible, reviewed_metastrikes_required, metastrike_requests_open;
+  ```
 
 ## Ongoing ledger audit
 
