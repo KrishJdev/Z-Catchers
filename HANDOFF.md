@@ -1,7 +1,7 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-24T00:54:33+05:30
-> **Active working branch:** `codex/accountability-4-metastrike-backend`, based on `origin/dev` at `4faa676`. Phase 4 implementation commit `2ad1f88` in [PR #116](https://github.com/KrishJdev/Z-Catchers/pull/116) into `dev`.
+> **Last Updated:** 2026-11-24T01:33:42+05:30
+> **Active working branch:** `codex/accountability-5-metastrike-screens`, based on `origin/dev` at `cbeb275`. Phase 5 implementation commit `44b2204` in [PR #117](https://github.com/KrishJdev/Z-Catchers/pull/117) into `dev`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
@@ -10,9 +10,28 @@
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit`, all 55 `npm run test:unit` suites and `npm run build` passed. See the [Phase 4 hosted checks](https://github.com/KrishJdev/Z-Catchers/pull/116/checks).
+> **Build Status:** `npx tsc --noEmit`, all 55 `npm run test:unit` suites, `npm run build` and `git diff --check` passed. See the [Phase 5 hosted checks](https://github.com/KrishJdev/Z-Catchers/pull/117/checks).
 
 ---
+
+## Punishments Phase 5 Metastrike request and review screens
+
+- Members open **Request Metastrike** from their own card or My Sleep. The date picker labels unavailable cycles, shows the selected month's used, reserved and remaining slots, and validates the reason inline. My Sleep lists private monthly requests and decisions and allows withdrawal while pending.
+- **Mod Panel → Metastrikes** shows the scoped pending count, oldest-first requests and recent decisions. Approval uses the reviewed nightly source. Decline requires an explanation. The roster and monthly calendar refresh after decisions. Task lists display assignment and completion holds, and the staff queue keeps assigned instructions visible and editable during a hold.
+- Shared roster responses and stored roster snapshots omit Metastrike reasons. Shared cards use the generic protection label. The service worker cache revision refreshes the app shell.
+- Local desktop and 320 px Edge checks used signed sessions, the app's API routes and a disposable PostgreSQL ledger. They covered past approval, calendar replacement, canceled task eligibility, saved instructions during a hold, withdrawal, conflicting review, full quota, expired session and shared-view privacy. The mobile browser ran with the service worker active. The physical phone install check remains open.
+- Added `src/components/MemberMetastrikeHistory.tsx`, `src/components/ModeratorMetastrikeQueue.tsx`, `src/lib/metastrikeScreens.ts` and `src/lib/rosterPrivacy.ts`.
+- Updated `src/app/page.tsx`, `src/app/api/members/route.ts`, `src/components/MemberCard.tsx`, `src/components/MetastrikeModal.tsx`, `src/components/ModDrawer.tsx`, `src/components/ModeratorPunishmentQueue.tsx`, `src/components/PunishmentList.tsx`, `src/components/SleepCalendarModal.tsx`, `src/components/StrikeHistory.tsx`, `src/lib/auth.ts`, `src/lib/db.ts`, `src/lib/cronDispatcher.ts`, `src/lib/discordWebhook.ts` and `public/sw.js`.
+- Updated `scripts/test-metastrike-overflow-fix.mjs`, `scripts/test-phase1-pwa-push.mjs`, `scripts/test-private-strike-history.mjs`, `scripts/test-punishment-screens.mjs`, `scripts/test-ui-normalization-and-button-wrapping.mjs`, `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `DESIGN_SYSTEM.md` and this handoff.
+
+| Milestone | Status | Evidence |
+| --- | --- | --- |
+| Phase 4 integration | DONE | [PR #116](https://github.com/KrishJdev/Z-Catchers/pull/116) merged into `dev` at `cbeb275`. |
+| Phase 5 request and review screens | DONE | Implementation in `44b2204` with desktop and phone-width browser verification on a disposable ledger. |
+| Phase 5 integration and physical phone preview | IN PROGRESS | [PR #117](https://github.com/KrishJdev/Z-Catchers/pull/117) targets `dev`. Track hosted checks and verify the installed PWA on a phone. |
+| Phase 6 reviewed Metastrike release | TODO | Branch from the latest `origin/dev` after Phase 5 merges. |
+
+Phase 6 should start with the [reviewed Metastrike release plan](PUNISHMENTS_IMPLEMENTATION_PLAN.md#phase-6--release-reviewed-metastrikes) and [release checklist](PUNISHMENTS_RELEASE_CHECKLIST.md). Apply `20261201_reviewed_metastrikes.sql` before the candidate app in the rehearsal. Verify the upgrade on disposable Supabase, including a previous-month replacement, held assignment, retry and rollback. Use the separate production recovery and release gates before enabling intake.
 
 ## Punishments Phase 4 reviewed Metastrike transactions
 
@@ -26,10 +45,7 @@
 | --- | --- | --- |
 | Phase 3 private strike history integration | DONE | [PR #115](https://github.com/KrishJdev/Z-Catchers/pull/115) merged into `dev` at `4faa676`. |
 | Phase 4 reviewed Metastrike transactions | DONE | Implemented in `2ad1f88` and verified on a disposable ledger. |
-| Phase 4 integration | IN PROGRESS | Review and hosted Supabase dispatcher smoke run in [PR #116](https://github.com/KrishJdev/Z-Catchers/pull/116). |
-| Phase 5 request and review screens | TODO | Start on `codex/accountability-5-metastrike-screens` from the latest `origin/dev` after Phase 4 merges. |
-
-Phase 5 should connect `MetastrikeModal.tsx` and the member CTA to `/api/members/strikes/metastrike/requests`, and add the `/api/mod/metastrikes` queue to `ModDrawer.tsx`. Refresh the My Sleep strike history, member counters and punishment queue after decisions or withdrawal. Display quota, settlement and hold states, redact legacy reasons from shared roster responses, and verify the reviewed workflow on desktop and an installed phone PWA in preview. The API review body uses `expected_source_id` from the staff row's `strike_source_id`, including an explicit null when no strike exists. Follow the [Phase 5 plan](PUNISHMENTS_IMPLEMENTATION_PLAN.md#phase-5--build-the-request-and-review-screens).
+| Phase 4 integration | DONE | [PR #116](https://github.com/KrishJdev/Z-Catchers/pull/116) merged into `dev` at `cbeb275` after the hosted checks passed. |
 
 ## Punishments Phase 3 private strike history
 
