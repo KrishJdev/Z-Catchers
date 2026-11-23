@@ -11,12 +11,14 @@ import { pendingScheduleSnapshot } from '@/lib/pendingSchedule';
 import { DEMO_SEED_FINGERPRINTS, isDemoSeedMember } from '@/lib/demoSeed';
 import { checkCooldownPromotion, getSleepCycleDate } from '@/lib/sleepEngine';
 import { isValidTimezone, DAY_KEYS, type DayKey, type WeeklySchedule } from '@/lib/timezone';
-import { resolveMemberStrikeCounts, modAdjustStrikes, modClearStrikeLog } from '@/lib/strikes';
+import { resolveMemberStrikeCounts, modAdjustPasses, modClearMetastrikeLog } from '@/lib/strikes';
+import { punishmentDependencyResponse, punishmentResponse, punishmentRpcResponse, UUID_PATTERN } from '@/lib/punishments';
 import { DateTime } from 'luxon';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
-const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const STRIKE_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const CYCLE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 async function setModerator(request: Request, body: Record<string, unknown>) {
   const session = getRequestSession(request);
@@ -60,10 +62,29 @@ async function setModerator(request: Request, body: Record<string, unknown>) {
  * @returns JSON response containing list of all members
  */
 export async function GET(request: Request) {
+  const params = new URL(request.url).searchParams;
+  const review = params.get('view') === 'strike_month';
   try {
     const auth = await verifyModeratorSession(request);
     if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
+      if (review && auth.status === 503) return punishmentDependencyResponse('moderator read', auth.databaseCode);
+      return review ? punishmentResponse({ error: auth.error }, auth.status)
+        : NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    if (review) {
+      const memberId = params.get('member_id');
+      const month = params.get('month');
+      if (!memberId || !UUID_PATTERN.test(memberId) ||
+          (month !== null && (!STRIKE_MONTH_PATTERN.test(month) || month < '2026-11'))) {
+        return punishmentResponse({ error: 'Choose a member and an available strike month.' }, 400);
+      }
+      const { data, error } = await supabaseAdmin.rpc('read_moderation_strike_month', {
+        ...staffIdentity(auth.actor),
+        p_member_id: memberId,
+        p_month: month === null ? null : month + '-01',
+      });
+      return punishmentRpcResponse('moderator read', data, error);
     }
 
     // Fetch all members with service role (includes is_active = false)
@@ -123,6 +144,7 @@ export async function GET(request: Request) {
       members: processedMembers,
     });
   } catch (err: unknown) {
+    if (review) return punishmentDependencyResponse('moderator read');
     const message = err instanceof Error ? err.message : 'Unknown server error';
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -146,14 +168,20 @@ export async function GET(request: Request) {
  * @returns JSON response with action execution results
  */
 export async function POST(request: Request) {
+  let datedCorrection = false;
   try {
     const origin = request.headers.get('origin');
     if (!isSameOriginMutation(request)) {
-      return NextResponse.json({ error: 'Moderator actions require a same-origin request.' }, { status: 403 });
+      return punishmentResponse({ error: 'Moderator actions require a same-origin request.' }, 403);
     }
 
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return punishmentResponse({ error: 'Provide a valid action payload.' }, 400);
+    }
+
     const { action } = body;
+    datedCorrection = action === 'add_strike' || action === 'remove_strike';
     if (action === 'set_moderator') {
       if (!origin) {
         return NextResponse.json({ error: 'Moderator assignment requires a same-origin request.' }, { status: 403 });
@@ -163,13 +191,37 @@ export async function POST(request: Request) {
 
     const auth = await verifyModeratorSession(request);
     if (!auth.authorized) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
+      if (datedCorrection && auth.status === 503) return punishmentDependencyResponse('moderator write', auth.databaseCode);
+      return datedCorrection ? punishmentResponse({ error: auth.error }, auth.status)
+        : NextResponse.json({ error: auth.error }, { status: auth.status });
     }
     const { actor } = auth;
     const identity = staffIdentity(actor);
-    if (['toggle_active', 'delete_member', 'purge_seed_members', 'adjust_strikes', 'clear_strike_log'].includes(action) &&
+    if (['toggle_active', 'delete_member', 'purge_seed_members', 'adjust_passes', 'adjust_strikes', 'clear_metastrike_log', 'clear_strike_log'].includes(action) &&
         actor.role !== 'owner') {
       return NextResponse.json({ error: 'Owner access is required.' }, { status: 403 });
+    }
+
+    if (datedCorrection) {
+      const { member_id, cycle_date, source_id, reason, request_id } = body;
+      if (typeof member_id !== 'string' || !UUID_PATTERN.test(member_id) ||
+          typeof cycle_date !== 'string' || !CYCLE_DATE_PATTERN.test(cycle_date) ||
+          cycle_date < '2026-11-01' || !DateTime.fromISO(cycle_date, { zone: 'utc' }).isValid ||
+          typeof reason !== 'string' || !reason.trim() || reason.trim().length > 500 ||
+          typeof request_id !== 'string' || !UUID_PATTERN.test(request_id) ||
+          (action === 'remove_strike' ? typeof source_id !== 'string' || !UUID_PATTERN.test(source_id) : source_id != null)) {
+        return punishmentResponse({ error: 'Enter a cycle date, reason and request ID. Removal requires a strike source.' }, 400);
+      }
+      const { data, error } = await supabaseAdmin.rpc('moderate_dated_strike', {
+        ...identity,
+        p_member_id: member_id,
+        p_action: action,
+        p_cycle: cycle_date,
+        p_source: source_id ?? null,
+        p_reason: reason.trim(),
+        p_request_id: request_id,
+      });
+      return punishmentRpcResponse('moderator write', data, error);
     }
 
     if (action === 'approve_cooldown' || action === 'cancel_cooldown') {
@@ -531,33 +583,30 @@ export async function POST(request: Request) {
       });
     }
 
-    // 10. Adjust Member Strikes & Metastrikes
-    if (action === 'adjust_strikes') {
+    // Retain the old action for staff clients that send a pass-only edit.
+    if (action === 'adjust_passes' || action === 'adjust_strikes') {
       const { member_id, strikes_used, metastrikes_used, strike_delta, metastrike_delta } = body;
-      if (!member_id) {
-        return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
+      if (strikes_used != null || (strike_delta != null && strike_delta !== 0)) {
+        return NextResponse.json({ error: 'Use Review strikes to make a dated strike correction.' }, { status: 409 });
       }
 
-      const relative = strike_delta !== undefined || metastrike_delta !== undefined;
-      const strikes = relative ? (strike_delta ?? null) : (strikes_used ?? null);
-      const passes = relative ? (metastrike_delta ?? null) : (metastrikes_used ?? null);
-      const validCount = (value: unknown, min: number, max: number) =>
-        value === null || (typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max);
-      if ((strikes === null && passes === null)
-        || (relative && (strikes_used !== undefined || metastrikes_used !== undefined))
-        || !validCount(strikes, relative ? -1 : 0, relative ? 1 : 2_147_483_647)
-        || !validCount(passes, relative ? -1 : 0, relative ? 1 : 3)) {
-        return NextResponse.json({ error: 'Enter valid strike and Metastrike adjustments.' }, { status: 400 });
+      const relative = metastrike_delta !== undefined;
+      const passes = relative ? metastrike_delta : metastrikes_used;
+      if (typeof member_id !== 'string' || !UUID_PATTERN.test(member_id) ||
+          (relative && metastrikes_used !== undefined) ||
+          typeof passes !== 'number' || !Number.isInteger(passes) ||
+          passes < (relative ? -1 : 0) || passes > (relative ? 1 : 3)) {
+        return NextResponse.json({ error: 'Enter a valid Metastrike balance adjustment.' }, { status: 400 });
       }
 
-      const result = await modAdjustStrikes(member_id, strikes, passes, relative, actor);
+      const result = await modAdjustPasses(member_id, passes, relative, actor);
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
       }
 
       return NextResponse.json({
         success: true,
-        message: 'Member strikes and metastrikes updated successfully.',
+        message: 'Member Metastrike balance updated.',
         strikes_used: result.strikesUsed,
         strikes_count: result.strikesUsed,
         metastrikes_used: result.metastrikesUsed,
@@ -565,8 +614,8 @@ export async function POST(request: Request) {
       });
     }
 
-    // 11. Clear Nightly Strike Log (Clear accidental vote / strike)
-    if (action === 'clear_strike_log') {
+    // Older clients use the same action for pass reversals and strike removals.
+    if (action === 'clear_metastrike_log' || action === 'clear_strike_log') {
       const { member_id, sleep_cycle_date } = body;
       if (!member_id) {
         return NextResponse.json({ error: 'Missing member_id' }, { status: 400 });
@@ -581,18 +630,19 @@ export async function POST(request: Request) {
       }
       const cycleDate = sleep_cycle_date || getSleepCycleDate(member, DateTime.utc());
 
-      if (!cycleDate) {
-        return NextResponse.json({ error: 'Could not resolve sleep cycle date' }, { status: 400 });
+      if (typeof cycleDate !== 'string' || !CYCLE_DATE_PATTERN.test(cycleDate) ||
+          !DateTime.fromISO(cycleDate, { zone: 'utc' }).isValid) {
+        return NextResponse.json({ error: 'Enter a valid sleep cycle date.' }, { status: 400 });
       }
 
-      const result = await modClearStrikeLog(member_id, cycleDate, actor);
+      const result = await modClearMetastrikeLog(member_id, cycleDate, actor);
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
       }
 
       return NextResponse.json({
         success: true,
-        message: 'Nightly strike log and associated counts cleared successfully.',
+        message: result.cleared ? 'Nightly Metastrike cleared.' : 'No Metastrike was recorded for this cycle.',
         sleep_cycle_date: cycleDate,
       });
     }
@@ -602,6 +652,7 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   } catch (err: unknown) {
+    if (datedCorrection) return punishmentDependencyResponse('moderator write');
     const message = err instanceof Error ? err.message : 'Unknown server error';
     return NextResponse.json({ error: message }, { status: 500 });
   }

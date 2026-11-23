@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { DateTime } from 'luxon';
 
@@ -26,6 +27,10 @@ await db.query(`INSERT INTO public.strike_moderator_corrections
   (member_id, cycle_date, action, actor, reason, recorded_at)
   VALUES ($1, '2026-11-01', 'legacy_set_counts', 'master_mod', 'Historical correction', statement_timestamp())`, [member.id]);
 await db.exec(migration); // Apply to an existing roster and historical audit.
+const reviewMigration = readFileSync('supabase/migrations/20261129_staff_strike_corrections.sql', 'utf8');
+assert.ok(schema.includes(reviewMigration));
+await db.exec(readFileSync('supabase/migrations/20261128_punishment_diagnostics.sql', 'utf8'));
+await db.exec(reviewMigration);
 assert.equal((await db.query("SELECT actor FROM public.strike_moderator_corrections WHERE reason = 'Historical correction'")).rows[0].actor,
   'master_mod');
 assert.equal((await db.query("SELECT to_regprocedure('public.reserve_moderator_passcode_attempt(text,timestamptz)') AS fn")).rows[0].fn, null);
@@ -42,7 +47,8 @@ const { getScheduleCooldownEffectiveAt, Settings } = await import('../src/lib/sl
 const { createSessionToken } = await import('../src/lib/auth.ts');
 const { pendingScheduleSnapshot } = await import('../src/lib/pendingSchedule.ts');
 const { GET: authMe } = await import('../src/app/api/auth/me/route.ts');
-const { POST: modRoute } = await import('../src/app/api/mod/route.ts');
+const { GET: modRead, POST: modRoute } = await import('../src/app/api/mod/route.ts');
+const { GET: memberPunishments } = await import('../src/app/api/members/punishments/route.ts');
 const { GET: webhook, POST: webhookPost } = await import('../src/app/api/mod/webhook/route.ts');
 const { POST: updateSchedule } = await import('../src/app/api/members/update-schedule/route.ts');
 const { POST: cancelPending } = await import('../src/app/api/members/cancel-pending/route.ts');
@@ -53,6 +59,10 @@ const { POST: metastrike } = await import('../src/app/api/members/strikes/metast
 let readFailure = false;
 let beforeRpc;
 const parameters = {
+  read_moderation_strike_month: ['p_actor_id', 'p_actor_discord_id', 'p_member_id', 'p_month'],
+  moderate_dated_strike: ['p_actor_id', 'p_actor_discord_id', 'p_member_id', 'p_action', 'p_cycle', 'p_source',
+    'p_reason', 'p_request_id'],
+  get_member_punishments: ['p_member_id', 'p_discord_id', 'p_details'],
   set_moderator: ['p_actor_id', 'p_actor_discord_id', 'p_target_id', 'p_expected_role', 'p_new_role'],
   moderate_roster_member: ['p_actor_id', 'p_actor_discord_id', 'p_target_id', 'p_action',
     'p_updates', 'p_expected_updated_at', 'p_expected_pending'],
@@ -304,6 +314,103 @@ try {
   assert.ok(corrections.some(row => row.action === 'clear_nightly' && row.actor === owner.id));
   await expect(modRoute, 403, modSession, { action: 'adjust_strikes', member_id: member.id, strike_delta: 1 });
 
+  const review = async (token, memberId, status = 200, month = '2026-11') => {
+    const url = origin + '/api/mod?' + new URLSearchParams({ view: 'strike_month', member_id: memberId, month });
+    const response = await modRead(new Request(url, { headers: token ? { Cookie: 'zcatchers_session=' + token } : {} }));
+    const data = await response.json();
+    assert.equal(response.status, status, JSON.stringify(data));
+    assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+    return data;
+  };
+  const change = (cycleDate, overrides = {}) => ({
+    action: 'add_strike', member_id: member.id, cycle_date: cycleDate,
+    reason: ' Evidence reviewed ', request_id: randomUUID(), ...overrides,
+  });
+  const first = change('2026-11-05');
+  await review('', member.id, 401);
+  await review(memberSession, member.id, 403);
+  await review(modSession, mod.id, 403);
+  await review(modSession, peer.id, 403);
+  await review(ownerSession, owner.id, 403);
+  await review(ownerSession, randomUUID(), 404);
+  assert.equal((await review(modSession, member.id, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
+  assert.equal((await expect(modRoute, 503, modSession, first)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
+
+  await db.exec(`UPDATE public.punishment_rollout SET activated_at = clock_timestamp(), screens_visible = true;
+    INSERT INTO public.nightly_strike_logs (target_member_id, sleep_cycle_date, record_type, reason, replacement_until)
+      VALUES ('${member.id}', '2026-11-03', 'strike', 'Missed check-in', '2026-11-04T00:00:00Z'),
+             ('${member.id}', '2026-11-04', 'strike', 'Missed check-in', '2026-11-05T00:00:00Z');`);
+  const initial = await review(modSession, member.id);
+  assert.equal(initial.open_count, 0);
+  assert.equal(initial.strikes_used, 2);
+  assert.equal(initial.verified_strikes[0].source_type, 'nightly');
+  assert.equal(initial.verified_strikes[0].reason, 'Missed check-in');
+  assert.equal((await review(ownerSession, peer.id)).strikes_used, 0);
+  const peerAdded = await expect(modRoute, 200, ownerSession, change('2026-11-05', { member_id: peer.id }));
+  assert.equal(peerAdded.open_count, 0);
+  const peerRemoved = await expect(modRoute, 200, ownerSession, change('2026-11-05', {
+    member_id: peer.id, action: 'remove_strike', source_id: peerAdded.correction_id,
+  }));
+  assert.equal(peerRemoved.strikes_used, 0);
+  assert.equal(peerRemoved.open_count, 0);
+  await review(modSession, member.id, 400, '2026-13');
+  await expect(modRoute, 400, modSession, { ...first, cycle_date: '2026-11-31' });
+  await expect(modRoute, 400, modSession, { ...first, reason: ' '.repeat(3) });
+  await expect(modRoute, 400, modSession, { ...first, request_id: 'unstable' });
+  await expect(modRoute, 400, modSession, { ...first, action: 'remove_strike' });
+  await expect(modRoute, 403, modSession, first, { Origin: 'https://other.invalid' });
+  await expect(modRoute, 403, modSession, { ...first, member_id: peer.id });
+  await expect(modRoute, 403, ownerSession, { ...first, member_id: owner.id });
+
+  // The target can become a moderator after session verification and before the RPC locks it.
+  beforeRpc = () => db.query("UPDATE public.members SET role = 'moderator' WHERE id = $1", [member.id]);
+  await expect(modRoute, 403, modSession, first);
+  await db.query("UPDATE public.members SET role = 'member' WHERE id = $1", [member.id]);
+  const added = await expect(modRoute, 200, modSession, first);
+  assert.equal(added.open_count, 1);
+  assert.equal(added.strikes_used, 3);
+  assert.deepEqual(await expect(modRoute, 200, modSession, first), added);
+  await expect(modRoute, 409, modSession, { ...first, reason: 'Changed evidence' });
+  await expect(modRoute, 409, ownerSession, { ...first, member_id: candidate.id });
+  await expect(modRoute, 409, ownerSession, { action: 'adjust_strikes', member_id: member.id, strike_delta: -1 });
+  await expect(modRoute, 409, ownerSession, { ...clear, sleep_cycle_date: '2026-11-04' });
+  assert.equal((await expect(modRoute, 200, ownerSession, {
+    action: 'adjust_passes', member_id: member.id, metastrike_delta: 1,
+  })).metastrikes_used, 1);
+
+  const { rows: [task] } = await db.query('SELECT id, status FROM public.punishments WHERE member_id = $1', [member.id]);
+  const [nightly] = initial.verified_strikes;
+  const remove = change(nightly.cycle_date, { action: 'remove_strike', source_id: nightly.source_id });
+  await expect(modRoute, 400, modSession, { ...remove, cycle_date: '2026-11-07' });
+  const removed = await expect(modRoute, 200, modSession, remove);
+  assert.equal(removed.open_count, 0);
+  assert.equal(removed.strikes_used, 2);
+  assert.deepEqual(await expect(modRoute, 200, modSession, remove), removed);
+  assert.equal((await db.query('SELECT status FROM public.punishments WHERE id = $1', [task.id])).rows[0].status, 'canceled');
+  const { rows: [removalAudit] } = await db.query(
+    'SELECT action, source_id, actor, reason, details FROM public.strike_moderator_corrections WHERE id = $1', [removed.correction_id]);
+  assert.equal(removalAudit.action, 'clear_nightly');
+  assert.equal(removalAudit.details.id, nightly.source_id);
+  assert.equal(removalAudit.source_id, nightly.source_id);
+  assert.equal(removalAudit.actor, mod.id);
+  assert.equal(removalAudit.reason, 'Evidence reviewed');
+
+  assert.equal((await expect(modRoute, 200, modSession, change(nightly.cycle_date))).open_count, 1);
+  assert.deepEqual((await db.query('SELECT id FROM public.punishments WHERE member_id = $1', [member.id])).rows, [{ id: task.id }]);
+  await db.query("SELECT public.manage_punishment_task($1, 'assign', $2, 'Read for 15 minutes', NULL)", [task.id, mod.id]);
+  await db.query("SELECT public.manage_punishment_task($1, 'complete', $2, NULL, NULL)", [task.id, mod.id]);
+
+  const final = await expect(modRoute, 200, modSession, change(first.cycle_date, {
+    action: 'remove_strike', source_id: added.correction_id,
+  }));
+  assert.equal(final.strikes_used, 2);
+  assert.equal(final.open_count, 0);
+  const mySleep = await expect(memberPunishments, 200, memberSession);
+  assert.equal(mySleep.history[0].id, task.id);
+  assert.equal(mySleep.history[0].status, 'completed');
+  assert.equal(mySleep.metastrikes_used, 1);
+  assert.equal(mySleep.strikes_used, mySleep.month === '2026-11' ? 2 : 0);
+
   beforeRpc = () => db.query("UPDATE public.members SET role = 'member' WHERE id = $1", [mod.id]);
   await expect(modRoute, 403, modSession, edit);
   await expect(modRoute, 403, modSession, edit);
@@ -340,6 +447,8 @@ try {
     { actor_id: candidate.id, target_id: member.id, action: 'approve_cooldown' },
   ]);
   await db.exec('SET ROLE anon');
+  await assert.rejects(db.query("SELECT public.read_moderation_strike_month($1,$2,$3,'2026-11-01')",
+    [owner.id, owner.discord_id, member.id]), { code: '42501' });
   await assert.rejects(db.query("SELECT public.moderate_roster_member($1,$2,$3,'cancel_cooldown')",
     [owner.id, owner.discord_id, member.id]), { code: '42501' });
 } finally {

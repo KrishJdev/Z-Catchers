@@ -377,6 +377,7 @@ Manual push nags require an active member session. Each sender, target, sleep cy
    * An earned punishment counts as open immediately. It shows **Pending** while replacement can undo the threshold and **Awaiting assignment** afterward. Assigned tasks also count as open.
    * A moderator assigns a short title and optional instructions, can edit an assigned task, and completes each task individually. Completion lowers the open count by one and moves the task to history.
    * A dated correction or Metastrike replacement cancels any disqualified open threshold. Earning it again reuses its record. Completed tasks stay in history.
+   * Staff can review dated strike sources from the Mod Panel roster for an eligible member, including members with zero tasks. Corrections require the cycle date and reason. Removal also requires the exact source. Owners can manage Moderators and Members, and Moderators can manage Members. Staff cannot act on themselves or the Owner.
    * Members read their own progress, tasks, and completed history. The roster includes only the signed-in member’s own open count and includes no task instructions. Effective moderators can read the queue and manage tasks. See the [accountability API contract](BACKEND_TZ_PWA_SPEC.md#23-monthly-strikes--metastrikes-accountability-system-engine).
 
 ### 5.7 "I Woke Up" Mechanic & State Transition Engine
