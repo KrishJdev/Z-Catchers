@@ -159,6 +159,12 @@ export function SleepCalendarModal({
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(initialTab);
 
+  // The existing roster sync delivers current totals to an open My Sleep panel.
+  const punishmentSnapshot = [
+    memberId, initialMember?.strike_cycle_month, initialMember?.strikes_used,
+    initialMember?.metastrikes_used, initialMember?.open_punishment_count,
+  ].join(':');
+
   // Active month in "YYYY-MM" format
   const [currentMonth, setCurrentMonth] = useState<string>(() => {
     return DateTime.now().toFormat('yyyy-MM');
@@ -667,7 +673,7 @@ export function SleepCalendarModal({
         </div>
 
         {activeTab === 'punishments' && isMySleep && isViewer && memberId && (
-          <div className="mt-4"><MemberPunishmentList key={memberId} memberId={memberId} /></div>
+          <div className="mt-4"><MemberPunishmentList key={punishmentSnapshot} memberId={memberId} /></div>
         )}
 
         {/* Tab 1: Calendar Streak View */}
