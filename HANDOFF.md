@@ -1,7 +1,7 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-23T03:07:00+05:30
-> **Active working branch:** `codex/accountability-0-recovery`, based on `origin/dev` at `dbed9ed`. Phase 0 implementation commit `0d93b6b`.
+> **Last Updated:** 2026-11-23T15:00:26+05:30
+> **Active working branch:** `codex/accountability-0-recovery`, based on `origin/dev` at `dbed9ed`. Phase 0 implementation commit `0d93b6b`, verified PR head `2b336b7` before this handoff update.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
@@ -10,7 +10,7 @@
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit`, all 53 `npm run test:unit` suites, and `npm run build` passed for Phase 0. See the [recovery PR checks](https://github.com/KrishJdev/Z-Catchers/pulls?q=is%3Apr+head%3Acodex%2Faccountability-0-recovery) for hosted verification.
+> **Build Status:** `npx tsc --noEmit`, all 53 `npm run test:unit` suites, and `npm run build` passed for Phase 0. Hosted CI, disposable Supabase and the Vercel preview passed on the recovery changes. See [PR #112 checks](https://github.com/KrishJdev/Z-Catchers/pull/112/checks) for the current head.
 
 ---
 
@@ -26,7 +26,8 @@
 | Phase 0 milestone | Status | Evidence |
 | --- | --- | --- |
 | Production preflight and read-only operator preview | DONE | Release, project, flags, scheduler, seven expected tasks and backup inventory checked. |
-| Role-only disposable rehearsal | IN PROGRESS | Local checks passed. Use the recovery PR's Dispatcher integration run to verify the full Supabase rehearsal. |
+| Role-only disposable rehearsal | DONE | The [hosted Supabase run](https://github.com/KrishJdev/Z-Catchers/actions/runs/45073171639) verified the two seed passes, writer, visibility, and Owner and Moderator access. |
+| Integration PR and CodeRabbit | IN PROGRESS | Review [PR #112 into dev](https://github.com/KrishJdev/Z-Catchers/pull/112) and check the CodeRabbit result there. This review handoff updates only HANDOFF.md. |
 | Dated evidence review and live cutover | IN PROGRESS | A restricted snapshot exists. Confirm any additional dated evidence and a restorable backup before writing to production. |
 | Phase 1 diagnostics | TODO | Start after the recovered ledger is visible and verified in production. |
 
