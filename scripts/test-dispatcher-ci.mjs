@@ -32,6 +32,7 @@ const discordAccounts = {
   'task-member': '100000000000000005',
   'review-member': '100000000000000008',
   'legacy-metastrike': '100000000000000009',
+  'release-assignment': '100000000000000011',
   owner: '100000000000000100',
   'recovered-owner': '100000000000000101',
   ...novemberAccounts,
@@ -948,10 +949,15 @@ try {
 
   {
     const legacyPassPath = '/api/members/strikes/metastrike';
-    const westMember = novemberMembers['rollover-west'];
-    const westCookie = await signIn('rollover-west', westMember, false, 'member');
+    const assignedMember = raceMember('Metastrike Release Assignment');
+    sql(`UPDATE public.members SET discord_id = '${discordAccounts['release-assignment']}' WHERE id = '${assignedMember}';`);
+    for (const day of ['10', '11', '12']) sql(automatic(assignedMember, day));
+    const assignedCookie = await signIn('release-assignment', assignedMember, false, 'member');
+    const [preUpgradeTask] = (await getTaskData(memberTasks, assignedCookie)).open_items;
+    assert.equal(preUpgradeTask.status, 'awaiting_assignment');
+    const assignedTaskId = preUpgradeTask.id;
     await post(modTasks, dbModCookie, {
-      action: 'assign', punishment_id: westThreshold.id, title: 'Existing assignment', instructions: 'Keep the plan',
+      action: 'assign', punishment_id: assignedTaskId, title: 'Existing assignment', instructions: 'Keep the plan',
     });
     const legacySnapshot = () => sql(`
       SELECT jsonb_build_object(
@@ -959,7 +965,7 @@ try {
           FROM (SELECT id, target_member_id, sleep_cycle_date, reason, pass_used_on
             FROM public.nightly_strike_logs WHERE record_type = 'metastrike') n),
         'balances', (SELECT jsonb_agg(to_jsonb(b) ORDER BY member_id, month_start) FROM public.strike_pass_months b),
-        'assignment', (SELECT to_jsonb(p) FROM public.punishments p WHERE id = '${westThreshold.id}'),
+        'assignment', (SELECT to_jsonb(p) FROM public.punishments p WHERE id = '${assignedTaskId}'),
         'completed', (SELECT to_jsonb(p) FROM public.punishments p WHERE id = '${taskId}')
       )
     `);
@@ -984,6 +990,7 @@ try {
     const legacyCookie = await signIn('legacy-metastrike', legacyMember, false, 'member');
     const oldClient = { member_id: legacyMember, action: 'proactive' };
     assert.equal((await post(legacyPassPath, legacyCookie, oldClient, 200, origin)).metastrikes_used, 1);
+    console.log('Verified the additive Metastrike migration preserves legacy balances and task records before enabling review.');
     const prior = DateTime.utc().startOf('month').minus({ months: 1 });
     sql(`UPDATE public.members SET discord_id = '${discordAccounts['review-member']}',
       created_at = '${prior.toISO()}' WHERE id = '${reviewMember}';
@@ -1025,25 +1032,25 @@ try {
     assert.equal(sql(`SELECT reason FROM public.nightly_strike_logs WHERE id = '${approvedReview.item.pass_source_id}'`), 'Approved Metastrike');
 
     // A stored request can outlive its submission window and cross a local month boundary.
-    const makeAcceptedReview = (target, sourceId, cycleDate = '2026-11-12', timezone = 'UTC') => {
+    const makeAcceptedReview = (target, sourceId, cycleDate = '2026-11-12') => {
       const id = randomUUID();
-      const cutoff = DateTime.fromISO(cycleDate + 'T23:10', { zone: timezone });
+      const cutoff = DateTime.fromISO(cycleDate + 'T23:10Z', { setZone: true });
       sql(`INSERT INTO public.metastrike_requests(id,member_id,cycle_date,timezone,cutoff_at,reason,submitted_at,submitted_source_id)
-        VALUES ('${id}','${target}','${cycleDate}','${timezone}','${cutoff.toISO()}','Previously accepted request',
+        VALUES ('${id}','${target}','${cycleDate}','UTC','${cutoff.toISO()}','Previously accepted request',
           '${cutoff.plus({ hours: 1 }).toISO()}','${sourceId}');`);
       return id;
     };
 
-    const westCycle = '2026-11-03';
-    const westSource = sql(`SELECT id FROM public.nightly_strike_logs
-      WHERE target_member_id = '${westMember}' AND sleep_cycle_date = '${westCycle}'`);
-    const heldRequest = makeAcceptedReview(westMember, westSource, westCycle, 'America/Los_Angeles');
-    const taskDetail = modTasks + '?punishment_id=' + westThreshold.id;
+    const heldCycle = '2026-11-12';
+    const heldSource = sql(`SELECT id FROM public.nightly_strike_logs
+      WHERE target_member_id = '${assignedMember}' AND sleep_cycle_date = '${heldCycle}'`);
+    const heldRequest = makeAcceptedReview(assignedMember, heldSource, heldCycle);
+    const taskDetail = modTasks + '?punishment_id=' + assignedTaskId;
     const heldTask = (await getTaskData(taskDetail, dbModCookie)).item;
     assert.equal(heldTask.status, 'assigned');
     assert.equal(heldTask.metastrike_hold, true);
     assert.equal(heldTask.instructions, 'Keep the plan');
-    const completeHeld = { action: 'complete', punishment_id: westThreshold.id };
+    const completeHeld = { action: 'complete', punishment_id: assignedTaskId };
     assert.match((await post(modTasks, dbModCookie, completeHeld, 409, origin)).error, /on hold/i);
 
     const priorIssue = prior.plus({ days: 14, hours: 23, minutes: 10 });
@@ -1059,7 +1066,7 @@ try {
       (SELECT to_jsonb(r) FROM public.metastrike_requests r WHERE id = '${reviewRequest.request_id}'),
       (SELECT to_jsonb(b) FROM public.strike_pass_months b WHERE member_id = '${reviewMember}'
         AND month_start = '${chosenCycle.cycle_date.slice(0, 7)}-01'),
-      (SELECT to_jsonb(p) FROM public.punishments p WHERE id = '${westThreshold.id}')
+      (SELECT to_jsonb(p) FROM public.punishments p WHERE id = '${assignedTaskId}')
     )`);
     const beforePause = reviewSnapshot();
     sql(`UPDATE public.punishment_rollout SET metastrike_requests_open = false
@@ -1083,17 +1090,17 @@ try {
     assert.deepEqual(pausedDispatchResult.details.errors, []);
     assert.equal(pausedDispatchResult.strikeWriteFailures, 0);
 
-    const approveHeld = { action: 'approve', request_id: heldRequest, expected_source_id: westSource };
+    const approveHeld = { action: 'approve', request_id: heldRequest, expected_source_id: heldSource };
     const replaced = await post(staffReviewPath, dbModCookie, approveHeld, 200, origin);
     assert.equal(replaced.item.status, 'approved');
     assert.equal(replaced.item.quota.used, 1);
     assert.equal(replaced.item.reviewer_id, modId);
     assert.deepEqual((await post(staffReviewPath, dbModCookie, approveHeld, 200, origin)).item, replaced.item);
-    assert.equal(sql(`SELECT status, instructions FROM public.punishments WHERE id = '${westThreshold.id}'`),
+    assert.equal(sql(`SELECT status, instructions FROM public.punishments WHERE id = '${assignedTaskId}'`),
       'canceled|Keep the plan');
-    assert.equal(sql(`SELECT count(*) FROM public.punishment_actions WHERE punishment_id = '${westThreshold.id}' AND action = 'canceled'`), '1');
-    const calendar = await getTaskData('/api/members/strikes?month=2026-11', westCookie);
-    assert.deepEqual(calendar.entries.filter(entry => entry.cycle_date === westCycle)
+    assert.equal(sql(`SELECT count(*) FROM public.punishment_actions WHERE punishment_id = '${assignedTaskId}' AND action = 'canceled'`), '1');
+    const calendar = await getTaskData('/api/members/strikes?month=2026-11', assignedCookie);
+    assert.deepEqual(calendar.entries.filter(entry => entry.cycle_date === heldCycle)
       .map(entry => [entry.status, entry.counts]).sort(), [['protected', false], ['replaced', false]]);
 
     const approvePrior = { action: 'approve', request_id: priorRequest, expected_source_id: priorSource };

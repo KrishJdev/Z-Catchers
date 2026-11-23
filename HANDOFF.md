@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-24T03:31:45+05:30
+> **Last Updated:** 2026-11-24T03:38:48+05:30
 > **Active working branch:** `codex/accountability-6-metastrike-release`, based on `origin/dev` at `a64a9bf`. Phase 6 implementation commit `eba6f23` in [PR #118](https://github.com/KrishJdev/Z-Catchers/pull/118).
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -15,6 +15,7 @@
 ## Punishments Phase 6 reviewed Metastrike release
 
 - Updated `scripts/test-dispatcher-ci.mjs` to apply `20261201_reviewed_metastrikes.sql` after the fixture dispatcher, instant pass and punishment flows. The rehearsal compares the upgrade's pass balances and assigned and completed task records, then exercises signed requests, the old-client fence, a completion hold, cross-month charges, retries, and the calendar history for a replaced strike.
+- The first hosted run reached the upgrade fixture and found the reused assignment was already completed by the November recovery rehearsal. The release rehearsal now creates a separate legacy assignment.
 - The recovery rehearsal pauses intake, hides the punishment screens, checks that the dispatcher and review still work, and restores visibility and intake after the ledger audit. The fixture includes requests already accepted on earlier cycle dates for deterministic past and cross-month reviews.
 - Updated `PUNISHMENTS_RELEASE_CHECKLIST.md` with migration order, the guarded switch, controlled live checks and recovery SQL. Updated `HANDOFF.md` with branch, verification and release state. Phase 6 adds no migration after the Phase 4 reviewed Metastrike migration.
 
