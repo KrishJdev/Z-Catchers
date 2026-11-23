@@ -5,14 +5,14 @@ import { DateTime } from 'luxon';
 
 const migration = readFileSync('supabase/migrations/20261127_moderation_live_roles.sql', 'utf8');
 const schema = readFileSync('supabase/schema.sql', 'utf8').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
-assert.ok(schema.endsWith(migration));
+assert.ok(schema.includes(migration));
 const db = new PGlite();
 const roleSetup = `
   CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
   CREATE SCHEMA auth; CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS 'SELECT current_user::text';
 `;
 await db.exec(roleSetup);
-await db.exec(schema.slice(0, -migration.length));
+await db.exec(schema.slice(0, schema.indexOf(migration)));
 const { rows: [owner, mod, member, peer, candidate] } = await db.query(`
   INSERT INTO public.members (discord_username, discord_id, journal_url, bedtime_local, timezone, role)
   VALUES ('Owner', '1001', 'https://discord.com/channels/1/2', '23:00', 'UTC', 'owner'),

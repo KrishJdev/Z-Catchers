@@ -3,6 +3,7 @@
 import React, { useEffect, useState, type ReactNode } from 'react';
 import { DateTime } from 'luxon';
 import { FoxMascot } from '@/components/FoxMascot';
+import { readPunishmentFailure, type PunishmentReadFailure } from '@/lib/punishmentAvailability';
 
 export const punishmentStatus = {
   pending: 'Pending',
@@ -57,9 +58,39 @@ export function PunishmentDetails({ item, memberName, children }: {
   );
 }
 
+const readFailureMessages: Record<PunishmentReadFailure, string> = {
+  closed: 'Punishments are closed for now.',
+  unavailable: 'Could not load punishments. Try again.',
+  'sign-in': 'Sign in with your linked Discord account to view punishments.',
+  forbidden: 'Your account does not have access to these punishments.',
+};
+
+export function PunishmentReadNotice({ failure, onRetry }: {
+  failure: PunishmentReadFailure;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-night-border p-4" role={failure === 'unavailable' ? 'alert' : 'status'}>
+      <p className="text-sm text-cream-secondary">{readFailureMessages[failure]}</p>
+      {failure === 'unavailable' && (
+        <button type="button" className="min-h-[44px] font-semibold text-status-amber" onClick={onRetry}>Retry</button>
+      )}
+    </div>
+  );
+}
+
+export function EmptyPunishments({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-night-border p-3 text-sm text-cream-secondary">
+      <span aria-hidden="true" className="shrink-0"><FoxMascot state="sleeping" size={40} /></span>
+      <p>{children}</p>
+    </div>
+  );
+}
+
 export function MemberPunishmentList({ memberId }: { memberId: string }) {
   const [data, setData] = useState<MemberPunishments | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<PunishmentReadFailure | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -68,25 +99,27 @@ export function MemberPunishmentList({ memberId }: { memberId: string }) {
       cache: 'no-store',
       signal: controller.signal,
     }).then(async response => {
-      if (!response.ok) throw new Error('Punishments unavailable');
+      if (!response.ok) {
+        const reason = await readPunishmentFailure(response);
+        if (!controller.signal.aborted) setFailure(reason);
+        return;
+      }
       const result = await response.json() as MemberPunishments;
+      if (!Array.isArray(result?.open_items) || !Array.isArray(result.history)) {
+        throw new Error('Invalid punishments response');
+      }
       if (!controller.signal.aborted) setData(result);
     }).catch(() => {
-      if (!controller.signal.aborted) setFailed(true);
+      if (!controller.signal.aborted) setFailure('unavailable');
     });
     return () => controller.abort();
   }, [attempt, memberId]);
 
-  if (failed) {
-    return (
-      <div className="rounded-xl border border-night-border p-4" role="status">
-        <p className="text-sm text-cream-secondary">Punishments and strike progress are currently unavailable.</p>
-        <button type="button" className="min-h-[44px] font-semibold text-status-amber" onClick={() => {
-          setFailed(false);
-          setAttempt(value => value + 1);
-        }}>Retry</button>
-      </div>
-    );
+  if (failure) {
+    return <PunishmentReadNotice failure={failure} onRetry={() => {
+      setFailure(null);
+      setAttempt(value => value + 1);
+    }} />;
   }
   if (!data) return <p role="status" className="p-3 text-sm text-cream-secondary">Loading punishments…</p>;
 
@@ -109,10 +142,7 @@ export function MemberPunishmentList({ memberId }: { memberId: string }) {
         {data.open_items.length ? (
           <ul className="space-y-2">{data.open_items.map(item => <PunishmentDetails key={item.id} item={item} />)}</ul>
         ) : (
-          <div className="flex items-center gap-3 rounded-xl border border-night-border p-3 text-sm text-cream-secondary">
-            <FoxMascot state="sleeping" size={40} className="shrink-0" />
-            No open punishments.
-          </div>
+          <EmptyPunishments>No open punishments.</EmptyPunishments>
         )}
       </section>
       <section className="space-y-2">

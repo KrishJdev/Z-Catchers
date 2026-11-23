@@ -242,6 +242,7 @@ const ownerBootstrap = readFileSync('supabase/bootstrap_moderation_owner.sql', '
 sql(ownerBootstrap);
 sql(ownerBootstrap);
 sql(readFileSync('supabase/migrations/20261127_moderation_live_roles.sql', 'utf8'));
+sql(readFileSync('supabase/migrations/20261128_punishment_diagnostics.sql', 'utf8'));
 assert.equal(cutoverQueue(), queuedBeforeCutover);
 assert.equal(sql("SELECT id, discord_id, is_active FROM public.members WHERE role = 'owner'"),
   `${cutoverOwnerId}|${discordAccounts.owner}|t`);
@@ -376,7 +377,7 @@ try {
     },
   });
 
-  await getTaskData(memberTasks, regularCookie, 503);
+  assert.equal((await getTaskData(memberTasks, regularCookie, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
   assert.equal((await getTaskData('/api/members', regularCookie)).members
     .find(member => member.id === regularId).open_punishment_count, null);
   const dispatchState = () => sql(`SELECT (SELECT count(*) FROM public.nightly_strike_logs),
@@ -388,6 +389,7 @@ try {
   });
   const dryResult = await dryRun.json();
   assert.equal(dryRun.status, 200, JSON.stringify(dryResult));
+  assert.equal(dryRun.headers.get('Cache-Control'), 'private, no-store');
   assert.deepEqual(dryResult.details.autoStrikeRecipients.sort(), ['overdue', 'pre-launch-miss']);
   assert.equal(dispatchState(), beforeDryRun);
   assert.equal(pushes.length, 0);
@@ -395,7 +397,7 @@ try {
   // Put the activation between the cutoffs for the pre-launch and live misses.
   const activation = now.minus({ minutes: 30 }).toISO();
   sql(`UPDATE public.punishment_rollout SET activated_at = '${activation}' WHERE singleton AND activated_at IS NULL`);
-  await getTaskData(memberTasks, regularCookie, 503);
+  assert.equal((await getTaskData(memberTasks, regularCookie, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
   sql(`
     SELECT vault.create_secret('${relayOrigin}', 'zcatchers_app_url');
     SELECT vault.create_secret('${cronSecret}', 'zcatchers_cron_secret');
@@ -421,6 +423,8 @@ try {
   assert.equal(first.body.bedtimeHitDispatched, 1);
   assert.equal(first.body.communityNagsDispatched, 1);
   assert.equal(first.body.autoStrikesDispatched, 1);
+  assert.equal(first.body.strikeWriteFailures, 0);
+  assert.equal(second.body.strikeWriteFailures, 0);
   assert.deepEqual(first.body.details.autoStrikeRecipients, ['overdue']);
   for (const name of ['checked-in', 'quiet-before-bed', 'rested']) {
     assert.ok(first.body.details.suppressedDueToSleepShield.some(recipient => recipient.startsWith(name + ' (')), name);
@@ -445,6 +449,7 @@ try {
     cycle.startsWith('2026-11-') ? '1' : '0');
   console.log('Verified hidden rollout, authenticated dry run, active writer, skipped pre-launch miss, and two identical November seeds with active Cron.');
   await verifyNovemberRollover(sql, novemberMembers);
+  console.log(sql(readFileSync('scripts/fixtures/rolling-punishment-audit.sql', 'utf8')));
   const senderPayload = Buffer.from(JSON.stringify({ memberId: memberId('awake'), exp: Date.now() + 60_000 })).toString('base64url');
   const senderSignature = createHmac('sha256', env.SESSION_SECRET).update(senderPayload).digest('base64url');
   const nag = (token) => fetch(appOrigin + '/api/members/nag-notif', {
@@ -653,14 +658,14 @@ try {
     WHERE member_id = '${seedRace}' AND action = 'earned'`), '1');
   console.log('Verified concurrent dispatch with another worker, durable check-in, and two November seed sessions.');
 
-  await getTaskData(memberTasks, regularCookie, 503);
+  assert.equal((await getTaskData(memberTasks, regularCookie, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
   assert.equal((await getTaskData('/api/members', regularCookie)).members
     .find(member => member.id === regularId).open_punishment_count, null);
   const { data: owner } = await db.from('members').select('id,bedtime_local')
     .eq('id', cutoverOwnerId).single().throwOnError();
   const ownerCookie = await signIn('owner', owner.id, true, 'owner');
-  await getTaskData(modTasks, ownerCookie, 503);
-  await getTaskData(modTasks, dbModCookie, 503);
+  assert.equal((await getTaskData(modTasks, ownerCookie, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
+  assert.equal((await getTaskData(modTasks, dbModCookie, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
   const westThreshold = firstSeed.find(item => item.member_id === novemberMembers['rollover-west']);
   sql(`UPDATE public.punishments SET assignable_at = assignable_at + interval '1 hour' WHERE id = '${westThreshold.id}'`);
   assert.equal(sql('SELECT issue FROM public.punishment_ledger_issues()'), 'unassigned_task_dates_differ');
@@ -764,8 +769,8 @@ try {
 
   // Rehearse the supported rollback after activation: hide screens and keep the active writer and history.
   sql('UPDATE public.punishment_rollout SET screens_visible = false WHERE singleton');
-  await getTaskData(memberTasks, taskMemberCookie, 503);
-  await getTaskData(modTasks, dbModCookie, 503);
+  assert.equal((await getTaskData(memberTasks, taskMemberCookie, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
+  assert.equal((await getTaskData(modTasks, dbModCookie, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
   assert.equal(sql(`SELECT activated_at = '${activation}'::timestamptz FROM public.punishment_rollout`), 't');
   const whileHidden = JSON.parse(sql(automatic(raceMember('Hidden Writer'), 17)));
   assert.equal(whileHidden.cycleStrikesUsed, 1);

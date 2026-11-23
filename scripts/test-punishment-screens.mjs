@@ -4,7 +4,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { BottomNav } from '../src/components/BottomNav.tsx';
 import { Header } from '../src/components/Header.tsx';
 import { MemberCard } from '../src/components/MemberCard.tsx';
-import { PunishmentDetails } from '../src/components/PunishmentList.tsx';
+import { EmptyPunishments, PunishmentDetails, PunishmentReadNotice } from '../src/components/PunishmentList.tsx';
+import { PUNISHMENT_ROLLOUT_CLOSED, PUNISHMENT_SERVICE_UNAVAILABLE,
+  readPunishmentFailure } from '../src/lib/punishmentAvailability.ts';
 import { computeMemberState } from '../src/lib/sleepEngine.ts';
 
 const render = (component, props) => renderToStaticMarkup(createElement(component, props));
@@ -63,4 +65,21 @@ for (const [status, label] of [
   if (status === 'assigned') assert.match(row, /Wind down.*&lt;two lines&gt;/);
   if (status === 'completed') assert.match(row, /2026-12-01T10:00:00Z/);
 }
-console.log('Punishment screens passed navigation, badge ownership, lifecycle labels, and task text rendering coverage.');
+const unavailable = body => new Response(JSON.stringify(body), { status: 503 });
+const closed = await readPunishmentFailure(unavailable({ code: PUNISHMENT_ROLLOUT_CLOSED }));
+const temporary = await readPunishmentFailure(unavailable({ code: PUNISHMENT_SERVICE_UNAVAILABLE }));
+assert.equal(await readPunishmentFailure(new Response('<html>', { status: 503 })), temporary);
+assert.equal(await readPunishmentFailure(new Response(null, { status: 401 })), 'sign-in');
+assert.equal(await readPunishmentFailure(new Response(null, { status: 403 })), 'forbidden');
+
+const notice = failure => render(PunishmentReadNotice, { failure, onRetry: () => {} });
+assert.match(notice(closed), /Punishments are closed for now/);
+assert.doesNotMatch(notice(closed), /Retry|No punishments/);
+assert.match(notice(temporary), /role="alert".*Could not load punishments.*Retry/);
+assert.doesNotMatch(notice(temporary), /No punishments/);
+for (const children of ['No punishments in the queue.', 'No open punishments.']) {
+  const empty = render(EmptyPunishments, { children });
+  assert.ok(empty.includes(children));
+  assert.doesNotMatch(empty, /Retry|Could not load|closed for now/);
+}
+console.log('Punishment screens passed navigation, badge privacy, task rendering, and closed, retry, and empty states.');

@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { PunishmentDetails, punishmentStatus, type Punishment } from '@/components/PunishmentList';
+import {
+  EmptyPunishments, PunishmentDetails, PunishmentReadNotice, punishmentStatus, type Punishment,
+} from '@/components/PunishmentList';
+import { readPunishmentFailure, type PunishmentReadFailure } from '@/lib/punishmentAvailability';
 
 const sections = [
   { status: 'awaiting_assignment', title: 'Needs assignment' },
@@ -17,12 +20,18 @@ type TaskAction = 'assign' | 'edit' | 'complete';
 const endpoint = '/api/mod/punishments';
 const buttonStyle = 'min-h-[44px] rounded-lg border border-night-border bg-night-surface px-3 py-2 text-sm font-semibold text-cream-primary hover:border-status-amber/50 disabled:opacity-50';
 
-async function readQueue(status: QueueStatus, offset: number, signal: AbortSignal, onAccessChanged?: () => void): Promise<QueuePage> {
-  const response = await fetch(`${endpoint}?status=${status}&offset=${offset}`, { signal, cache: 'no-store' });
-  if (response.status === 401 || response.status === 403) onAccessChanged?.();
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Could not load punishments.');
-  return data;
+async function readQueue(status: QueueStatus, offset: number, signal: AbortSignal): Promise<
+  { page: QueuePage } | { failure: PunishmentReadFailure }
+> {
+  try {
+    const response = await fetch(`${endpoint}?status=${status}&offset=${offset}`, { signal, cache: 'no-store' });
+    if (!response.ok) return { failure: await readPunishmentFailure(response) };
+    const page = await response.json() as QueuePage;
+    if (Array.isArray(page?.items)) return { page };
+  } catch {
+    // A network error or invalid JSON should offer the same retry as a failed dependency.
+  }
+  return { failure: 'unavailable' };
 }
 
 export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
@@ -32,7 +41,8 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
   const [pages, setPages] = useState<Partial<Record<QueueStatus, QueuePage>>>({});
   const [attempt, setAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [queueError, setQueueError] = useState('');
+  const [queueFailure, setQueueFailure] = useState<PunishmentReadFailure | null>(null);
+  const [pageRetry, setPageRetry] = useState<{ status: QueueStatus; offset: number } | null>(null);
   const [actionError, setActionError] = useState('');
   const [editor, setEditor] = useState<{ item: Task; action: TaskAction } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,15 +55,23 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    setQueueError('');
-    Promise.all(sections.map(async ({ status }) => [
-      status, await readQueue(status, 0, controller.signal, onAccessChanged),
-    ] as const)).then(entries => {
-      if (!controller.signal.aborted) setPages(Object.fromEntries(entries));
-    }).catch(error => {
-      if (!controller.signal.aborted) setQueueError(error.message);
-    }).finally(() => {
-      if (!controller.signal.aborted) setLoading(false);
+    setQueueFailure(null);
+    setPageRetry(null);
+    Promise.all(sections.map(({ status }) => readQueue(status, 0, controller.signal))).then(responses => {
+      if (controller.signal.aborted) return;
+      const pages: Partial<Record<QueueStatus, QueuePage>> = {};
+      const failures = new Set<PunishmentReadFailure>();
+      responses.forEach((response, index) => {
+        if ('failure' in response) failures.add(response.failure);
+        else pages[sections[index].status] = response.page;
+      });
+
+      const failureOrder = ['sign-in', 'forbidden', 'unavailable', 'closed'] as const;
+      const failure = failureOrder.find(reason => failures.has(reason));
+      setQueueFailure(failure ?? null);
+      setPages(failure ? {} : pages);
+      setLoading(false);
+      if (failure === 'sign-in' || failure === 'forbidden') onAccessChanged?.();
     });
     return () => controller.abort();
   }, [attempt, onAccessChanged]);
@@ -68,19 +86,30 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
   }, [editor]);
 
   const loadMore = async (status: QueueStatus, offset: number) => {
+    if (busy || editor) return;
     const controller = new AbortController();
     requestRef.current = controller;
     setBusy(true);
-    setQueueError('');
+    setPageRetry(null);
     try {
-      const page = await readQueue(status, offset, controller.signal, onAccessChanged);
+      const response = await readQueue(status, offset, controller.signal);
+      if (controller.signal.aborted) return;
+      if ('failure' in response) {
+        if (response.failure === 'unavailable') {
+          setPageRetry({ status, offset });
+        } else {
+          setPages({});
+          setQueueFailure(response.failure);
+          if (response.failure !== 'closed') onAccessChanged?.();
+        }
+        return;
+      }
+      const { page } = response;
       setPages(previous => {
         const existing = previous[status]?.items ?? [];
         const ids = new Set(existing.map(item => item.id));
         return { ...previous, [status]: { ...page, items: [...existing, ...page.items.filter(item => !ids.has(item.id))] } };
       });
-    } catch (error) {
-      if (!controller.signal.aborted) setQueueError(error instanceof Error ? error.message : 'Could not load more punishments.');
     } finally {
       if (!controller.signal.aborted) setBusy(false);
     }
@@ -124,20 +153,26 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
     setResult(null);
   };
 
+  const refreshQueue = () => {
+    setLoading(true);
+    setAttempt(value => value + 1);
+  };
+  const emptyQueue = sections.every(({ status }) =>
+    pages[status]?.items.length === 0 && pages[status]?.next_offset === null);
   return (
     <div ref={queueRef} className="mt-4 space-y-5">
-      {result && (
+      {result && !queueFailure && (
         <p tabIndex={-1} ref={resultRef} role="status" className="rounded-xl border border-status-sage/40 bg-status-sage/10 p-3 text-sm [overflow-wrap:anywhere]">
           {result.item.member_name} · {result.item.title} · {punishmentStatus[result.item.status]} · {result.open_count} open
         </p>
       )}
-      {queueError && <p role="alert" className="text-sm text-status-coral">{queueError}</p>}
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => setAttempt(value => value + 1)} disabled={loading || busy || !!editor}
-          className={buttonStyle}>Refresh queue</button>
-        {loading && <span role="status" className="text-sm text-cream-secondary">Loading punishments…</span>}
-      </div>
-      {!loading && sections.map(({ status, title }) => {
+      {loading && <p role="status" className="text-sm text-cream-secondary">Loading punishments…</p>}
+      {!loading && queueFailure && <PunishmentReadNotice failure={queueFailure} onRetry={refreshQueue} />}
+      {!loading && !queueFailure && (
+        <button type="button" onClick={refreshQueue} disabled={busy || !!editor} className={buttonStyle}>Refresh queue</button>
+      )}
+      {!loading && !queueFailure && emptyQueue && <EmptyPunishments>No punishments in the queue.</EmptyPunishments>}
+      {!loading && !queueFailure && !emptyQueue && sections.map(({ status, title }) => {
         const page = pages[status];
         if (!page) return null;
         return (
@@ -191,7 +226,10 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
                 ))}
               </ul>
             )}
-            {page.next_offset !== null && (
+            {pageRetry?.status === status && !editor && (
+              <PunishmentReadNotice failure="unavailable" onRetry={() => void loadMore(status, pageRetry.offset)} />
+            )}
+            {page.next_offset !== null && pageRetry?.status !== status && (
               <button type="button" className={buttonStyle} disabled={busy || !!editor}
                 onClick={() => void loadMore(status, page.next_offset!)}>Load more {title.toLowerCase()}</button>
             )}

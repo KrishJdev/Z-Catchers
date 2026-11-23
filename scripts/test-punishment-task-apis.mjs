@@ -14,6 +14,7 @@ await db.exec(`
 `);
 await db.exec(schema);
 await db.exec(migration);
+await db.exec(readFileSync('supabase/migrations/20261128_punishment_diagnostics.sql', 'utf8'));
 
 const { rows: members } = await db.query(`INSERT INTO public.members
   (discord_username, discord_id, journal_url, bedtime_local, timezone, role)
@@ -56,9 +57,13 @@ const rpc = {
   moderate_punishment: ['p_actor_id', 'p_actor_discord_id', 'p_id', 'p_action', 'p_title', 'p_instructions',
     'p_cycle', 'p_source', 'p_reason', 'p_request_id'],
 };
+let failingDependency;
 const server = createServer(async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname === failingDependency) {
+    return res.writeHead(500).end(JSON.stringify({ code: '57014', message: 'private query details' }));
+  }
   if (url.pathname === '/rest/v1/members') {
     const memberId = url.searchParams.get('id')?.slice(3);
     const { rows } = await db.query('SELECT id, discord_id, role, is_active FROM public.members WHERE id = $1', [memberId]);
@@ -92,6 +97,7 @@ try {
   const { GET: getMember } = await import('../src/app/api/members/punishments/route.ts');
   const { GET: getMod, POST: postMod } = await import('../src/app/api/mod/punishments/route.ts');
   const { getOpenPunishmentCount } = await import('../src/lib/punishments.ts');
+  const { PUNISHMENT_ROLLOUT_CLOSED, PUNISHMENT_SERVICE_UNAVAILABLE } = await import('../src/lib/punishmentAvailability.ts');
   const cookie = (row, discordId = row.discord_id, isModerator = false) => 'zcatchers_session=' +
     createSessionToken({ memberId: row.id, discordId, isModerator });
   const memberCookie = cookie(member);
@@ -116,13 +122,48 @@ try {
   await expect(get(getMember, memberCookie, '?memberId=' + other.id), 403);
   await expect(get(getMember, cookie(member, other.discord_id)), 403);
   await expect(get(getMod, cookie(member, member.discord_id, true)), 403);
-  await expect(get(getMod, dbModCookie), 503);
-  await expect(get(getMember, memberCookie), 503);
+  assert.equal((await expect(get(getMod, dbModCookie), 503)).code, PUNISHMENT_ROLLOUT_CLOSED);
+  assert.equal((await expect(get(getMember, memberCookie), 503)).code, PUNISHMENT_ROLLOUT_CLOSED);
+  const write = { action: 'complete', punishment_id: member.id };
+  assert.equal((await expect(post(dbModCookie, write), 503)).code, PUNISHMENT_ROLLOUT_CLOSED);
+
+  const diagnostics = [];
+  const originalConsoleError = console.error;
+  try {
+    console.error = (...args) => diagnostics.push(args);
+    for (const [path, request, operation] of [
+      ['/rest/v1/rpc/get_member_punishments', () => get(getMember, memberCookie), 'member read'],
+      ['/rest/v1/rpc/read_moderation_punishments', () => get(getMod, dbModCookie), 'moderator read'],
+      ['/rest/v1/rpc/moderate_punishment', () => post(dbModCookie, write), 'moderator write'],
+      ['/rest/v1/members', () => get(getMod, dbModCookie), 'moderator read'],
+    ]) {
+      failingDependency = path;
+      const body = await expect(request(), 503);
+      assert.equal(body.code, PUNISHMENT_SERVICE_UNAVAILABLE);
+      assert.doesNotMatch(JSON.stringify(body), /private query details|57014/);
+      assert.deepEqual(diagnostics.pop(), ['[punishments] Dependency failure', { operation, databaseCode: '57014' }]);
+    }
+    failingDependency = '/rest/v1/rpc/get_member_punishments';
+    assert.equal(await getOpenPunishmentCount(member.id, member.discord_id), null);
+    assert.deepEqual(diagnostics.pop(), ['[punishments] Dependency failure', {
+      operation: 'roster count', databaseCode: '57014',
+    }]);
+  } finally {
+    failingDependency = undefined;
+    console.error = originalConsoleError;
+  }
   assert.equal(await getOpenPunishmentCount(member.id, member.discord_id), null);
+
+  await db.exec('BEGIN; TRUNCATE public.punishment_rollout');
+  try {
+    assert.equal((await expect(get(getMember, memberCookie), 503)).code, PUNISHMENT_SERVICE_UNAVAILABLE);
+  } finally {
+    await db.exec('ROLLBACK');
+  }
 
   await db.exec("UPDATE public.punishment_rollout SET activated_at = '2026-11-01T00:00Z'");
   await db.query('SELECT public.seed_november_punishments($1)', [member.id]);
-  await expect(get(getMember, memberCookie), 503);
+  assert.equal((await expect(get(getMember, memberCookie), 503)).code, PUNISHMENT_ROLLOUT_CLOSED);
   await db.exec('UPDATE public.punishment_rollout SET screens_visible = true');
   assert.equal(await getOpenPunishmentCount(member.id, other.discord_id), null);
   assert.equal(await getOpenPunishmentCount(other.id, other.discord_id), 0);
@@ -137,7 +178,9 @@ try {
   assert.deepEqual(summary.history, []);
   assert.equal(ready.status, 'awaiting_assignment');
   assert.equal(pending.status, 'pending');
-  assert.equal((await expect(get(getMember, cookie(other)))).open_count, 0);
+  const empty = await expect(get(getMember, cookie(other)));
+  assert.equal(empty.open_count, 0);
+  assert.deepEqual(empty.open_items, []);
 
   const queue = await expect(get(getMod, dbModCookie));
   assert.deepEqual(queue.items.map(item => item.id), [ready.id]);

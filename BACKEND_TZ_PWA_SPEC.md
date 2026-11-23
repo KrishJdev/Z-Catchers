@@ -306,9 +306,11 @@ An open task starts as `pending` while replacement could undo its threshold. At 
 | `POST /api/members/strikes/metastrike` | Activates a proactive pass or replaces a strike before the next scheduled bedtime for the owner or an authorized moderator. |
 | `POST /api/mod` | Retains compatibility actions `adjust_strikes` and `clear_strike_log` for authorized moderators. The Metastrike balance is bounded at three. |
 
-Apply `20261123_punishment_task_apis.sql` after the strike ledger migration. Service-role RPCs enforce ownership for member reads. The API and badge become available after `punishment_rollout.screens_visible` is enabled following activation and seed. Hidden or unavailable punishment APIs return HTTP 503. Invalid input returns 400, unknown tasks return 404, and invalid task transitions or conflicting correction retries return 409.
+Apply `20261123_punishment_task_apis.sql` after the strike ledger migration. Service-role RPCs enforce ownership for member reads. The API and badge become available after `punishment_rollout.screens_visible` is enabled following activation and seed. Punishment APIs return private, no-store responses. A closed rollout returns HTTP 503 with `PUNISHMENT_ROLLOUT_CLOSED`. A failed dependency returns HTTP 503 with `PUNISHMENT_SERVICE_UNAVAILABLE`. Successful reads can return an empty list. Invalid input returns 400, unknown tasks return 404, and invalid task transitions or conflicting correction retries return 409.
 
 Moderator writes lock the same member row as the ledger and return the updated task and all-month open count from that transaction. The audit records the action time and either the verified moderator's member ID or `master_mod`. Retrying completion preserves its timestamp and audit record. Exact dated correction retries reuse the original correction.
+
+Apply `20261128_punishment_diagnostics.sql` after the live-role migration for the restricted rolling audit. Use `recent_punishment_ledger_issues()` in the database operator session and the authenticated dispatcher's `strikeWriteFailures` count. See the [operator audit and recovery procedure](PUNISHMENTS_RELEASE_CHECKLIST.md#ongoing-ledger-audit).
 
 ---
 

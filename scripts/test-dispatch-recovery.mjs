@@ -188,15 +188,28 @@ let rpcCalls = 0;
 applyStrike = async params => {
   assert.equal(params.p_cycle, '2026-11-19');
   rpcCalls++;
-  return rpcCalls === 1 ? { error: { message: 'write interrupted' } }
+  return rpcCalls === 1 ? { error: { message: 'private write details', code: '57014' } }
     : { data: { log: { record_type: 'strike' }, strikesUsed: 1 } };
 };
-const missed = await run('2026-11-20T15:00Z');
-assert.match(missed.details.errors[0], /write interrupted/);
+const strikeFailureLogs = [];
+const originalConsoleError = console.error;
+let missed;
+try {
+  console.error = (...args) => strikeFailureLogs.push(args);
+  missed = await run('2026-11-20T15:00Z');
+} finally {
+  console.error = originalConsoleError;
+}
+assert.equal(missed.strikeWriteFailures, 1);
+assert.equal(missed.details.errors[0], 'Automatic strike write failed.');
+assert.deepEqual(strikeFailureLogs, [['[dispatcher] Automatic strike write failed', { databaseCode: '57014' }]]);
+assert.doesNotMatch(JSON.stringify(missed.details.errors), /private write details/);
 assert.ok(!tables.notification_logs.some(row => row.notification_type === 'AUTO_BEDTIME_STRIKE'));
 clearAllCronLocks();
 tables.cron_locks.at(-1).expires_at = '2026-01-01T00:00:00Z';
-assert.equal((await run('2026-11-20T15:05Z')).autoStrikesDispatched, 1);
+const retriedStrike = await run('2026-11-20T15:05Z');
+assert.equal(retriedStrike.autoStrikesDispatched, 1);
+assert.equal(retriedStrike.strikeWriteFailures, 0);
 assert.equal((await run('2026-11-20T15:10Z')).autoStrikesDispatched, 0);
 assert.equal(rpcCalls, 2);
 

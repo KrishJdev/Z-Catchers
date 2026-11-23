@@ -40,6 +40,10 @@ export const supabaseAdmin = supabaseServiceKey
     })
   : supabase;
 
+export function safeDatabaseErrorCode(code: unknown): string | undefined {
+  return typeof code === 'string' && /^(?:[A-Z0-9]{5}|PGRST[0-9]{3})$/.test(code) ? code : undefined;
+}
+
 export type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
 export interface DailySchedule {
