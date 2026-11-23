@@ -4,6 +4,7 @@ import React, { useEffect, useState, type ReactNode } from 'react';
 import { DateTime } from 'luxon';
 import { FoxMascot } from '@/components/FoxMascot';
 import { readPunishmentFailure, type PunishmentReadFailure } from '@/lib/punishmentAvailability';
+import type { Member } from '@/lib/db';
 
 export const punishmentStatus = {
   pending: 'Pending',
@@ -20,6 +21,7 @@ export interface Punishment {
   completed_at: string | null;
   title: string | null;
   instructions: string | null;
+  metastrike_hold?: boolean;
 }
 
 interface MemberPunishments {
@@ -46,6 +48,11 @@ export function PunishmentDetails({ item, memberName, children }: {
         <span className="font-semibold text-status-amber">{punishmentStatus[item.status]}</span>
         <span className="text-cream-secondary">Earned <time dateTime={item.earned_cycle_date}>{earned}</time></span>
       </div>
+      {item.metastrike_hold && (
+        <p className="text-sm text-status-amber">
+          {item.status === 'assigned' ? 'Completion on hold for Metastrike review.' : 'Assignment on hold for Metastrike review.'}
+        </p>
+      )}
       {item.title && <p className="text-sm font-semibold">{item.title}</p>}
       {item.instructions && <p className="whitespace-pre-wrap text-sm text-cream-secondary">{item.instructions}</p>}
       {item.completed_at && (
@@ -88,7 +95,11 @@ export function EmptyPunishments({ children }: { children: ReactNode }) {
   );
 }
 
-export function MemberPunishmentList({ memberId }: { memberId: string }) {
+export function MemberPunishmentList({ memberId, rosterMember, accountabilityRevision }: {
+  memberId: string;
+  rosterMember?: Member | null;
+  accountabilityRevision?: number;
+}) {
   const [data, setData] = useState<MemberPunishments | null>(null);
   const [failure, setFailure] = useState<PunishmentReadFailure | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -108,12 +119,15 @@ export function MemberPunishmentList({ memberId }: { memberId: string }) {
       if (!Array.isArray(result?.open_items) || !Array.isArray(result.history)) {
         throw new Error('Invalid punishments response');
       }
-      if (!controller.signal.aborted) setData(result);
+      if (!controller.signal.aborted) {
+        setData(result);
+        setFailure(null);
+      }
     }).catch(() => {
       if (!controller.signal.aborted) setFailure('unavailable');
     });
     return () => controller.abort();
-  }, [attempt, memberId]);
+  }, [attempt, memberId, rosterMember, accountabilityRevision]);
 
   if (failure) {
     return <PunishmentReadNotice failure={failure} onRetry={() => {

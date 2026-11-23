@@ -10,6 +10,7 @@ function DiscordIcon({ className = 'w-4 h-4' }: { className?: string }) {
 
 
 import { ModeratorPunishmentQueue } from '@/components/ModeratorPunishmentQueue';
+import { ModeratorMetastrikeQueue } from '@/components/ModeratorMetastrikeQueue';
 import { ModeratorStrikeReview } from '@/components/ModeratorStrikeReview';
 import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import { RosterRoleAction, type ModeratorRoleChange } from '@/components/RosterRoleAction';
@@ -64,6 +65,7 @@ interface ModDrawerProps {
   onClose: () => void;
   viewerTimezone: string;
   onRosterChanged: () => Promise<void>;
+  onMetastrikeReviewed: () => Promise<void>;
   currentUser?: Member | null;
   onAccessChanged?: () => void;
 }
@@ -81,12 +83,13 @@ export function ModDrawer({
   onClose,
   viewerTimezone,
   onRosterChanged,
+  onMetastrikeReviewed,
   currentUser,
   onAccessChanged,
 }: ModDrawerProps) {
 
   // Main tabs and advanced tools
-  const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'punishments' | 'webhook'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'punishments' | 'metastrikes' | 'webhook'>('pending');
 
   // Webhook Tab state
   const [webhookUrlInput, setWebhookUrlInput] = useState('');
@@ -766,7 +769,7 @@ export function ModDrawer({
 
           <div className="mt-4 flex flex-col">
             {/* Tab Navigation Pill Bar */}
-            <div className="grid grid-cols-3 gap-1 rounded-xl border border-night-border bg-night-elevated p-1 text-xs">
+            <div className="grid grid-cols-2 gap-1 rounded-xl border border-night-border bg-night-elevated p-1 text-xs sm:grid-cols-4">
               <button
                 type="button"
                 onClick={() => {
@@ -826,6 +829,12 @@ export function ModDrawer({
               }} className={`min-h-[44px] rounded-lg px-1 py-2 font-semibold ${activeTab === 'punishments' ? 'bg-status-amber text-night-bg shadow-sm' : 'text-cream-secondary hover:text-cream-primary'}`}>
                 Punishments
               </button>
+              <button type="button" aria-pressed={activeTab === 'metastrikes'} onClick={() => {
+                setActiveTab('metastrikes');
+                setEditingMember(null);
+              }} className={`min-h-[44px] rounded-lg px-1 py-2 font-semibold ${activeTab === 'metastrikes' ? 'bg-status-amber text-night-bg shadow-sm' : 'text-cream-secondary hover:text-cream-primary'}`}>
+                Metastrikes
+              </button>
             </div>
             {isOwner && <button type="button" aria-pressed={activeTab === 'webhook'} onClick={() => {
               setActiveTab('webhook');
@@ -837,6 +846,9 @@ export function ModDrawer({
 
             {activeTab === 'punishments' && (
               <ModeratorPunishmentQueue onTaskChanged={onRosterChanged} onAccessChanged={onAccessChanged} />
+            )}
+            {activeTab === 'metastrikes' && (
+              <ModeratorMetastrikeQueue key={actorId} onReviewed={() => void onMetastrikeReviewed()} onAccessChanged={onAccessChanged} />
             )}
 
             {/* Sub-View: Inline Member Editor */}

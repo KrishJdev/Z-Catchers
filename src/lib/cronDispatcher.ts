@@ -962,7 +962,7 @@ export async function executeNotificationDispatcher(options: {
           if (ttl < 1) break;
           const sent = await deliverPush(sub, {
             title: '⚠️ Z Catchers: Bedtime Strike Recorded',
-            body: 'You missed your scheduled bedtime check-in by 10 minutes. A normal strike has been recorded. You can replace it with a Metastrike anytime before your next bedtime.',
+            body: 'You missed your scheduled bedtime check-in by 10 minutes. A normal strike has been recorded. Open My Sleep to check your Metastrike options.',
             url: member.journal_url,
           }, ttl);
           if (sent) await recordCronLockDeliveredSub(lease, sub.id);

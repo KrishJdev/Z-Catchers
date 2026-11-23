@@ -99,9 +99,6 @@ export function StrikeDayDetails({ entries, timezone }: { entries: StrikeHistory
               </p>
               {entry.recorded_at && <p className="mt-1">Correction recorded {formatTimestamp(entry.recorded_at, timezone)}</p>}
               {entry.changed_at && <p className="mt-1">Changed {formatTimestamp(entry.changed_at, zone)}</p>}
-              {entry.replacement_until && DateTime.fromISO(entry.replacement_until) > DateTime.now() && (
-                <p className="mt-1">Replace by {formatTimestamp(entry.replacement_until, zone)}</p>
-              )}
             </li>
           );
         })}

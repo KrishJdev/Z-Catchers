@@ -2,6 +2,7 @@
 
 import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import { MemberPunishmentList } from '@/components/PunishmentList';
+import { MemberMetastrikeHistory } from '@/components/MemberMetastrikeHistory';
 import { StrikeDayDetails, StrikeHistoryList, type StrikeHistoryEntry, type StrikeHistoryMonth } from '@/components/StrikeHistory';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
@@ -93,6 +94,9 @@ export interface SleepCalendarModalProps {
   initialTab?: 'calendar' | 'timetable' | 'punishments';
   isMySleep?: boolean;
   onOpenScheduleModal?: () => void;
+  accountabilityRevision?: number;
+  onMetastrikeChanged?: () => Promise<void>;
+  onRequestMetastrike?: (cycle?: string) => void;
 }
 
 export const WEEKDAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -154,6 +158,9 @@ export function SleepCalendarModal({
   initialTab = 'calendar',
   isMySleep = false,
   onOpenScheduleModal,
+  accountabilityRevision = 0,
+  onMetastrikeChanged,
+  onRequestMetastrike,
 }: SleepCalendarModalProps) {
   const [data, setData] = useState<SleepHistoryData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -212,14 +219,17 @@ export function SleepCalendarModal({
 
   // Fetch sleep history from API
   const fetchHistory = useCallback(
-    async (mId: string, monthStr: string) => {
+    async (mId: string, monthStr: string, background = false) => {
       const requestId = ++requestSeqRef.current;
-      setLoading(true);
-      setError(null);
-      setData(null);
+      if (!background) {
+        setLoading(true);
+        setError(null);
+        setData(null);
+      }
       try {
         const res = await fetch(
-          `/api/members/sleep-history?memberId=${encodeURIComponent(mId)}&month=${encodeURIComponent(monthStr)}`
+          `/api/members/sleep-history?memberId=${encodeURIComponent(mId)}&month=${encodeURIComponent(monthStr)}`,
+          { cache: 'no-store' },
         );
         const json = await res.json();
         if (requestSeqRef.current !== requestId) {
@@ -229,8 +239,9 @@ export function SleepCalendarModal({
           throw new Error(json.error || 'Failed to load sleep history');
         }
         setData(json);
+        setError(null);
       } catch (err: unknown) {
-        if (requestSeqRef.current === requestId) {
+        if (!background && requestSeqRef.current === requestId) {
           const message = err instanceof Error ? err.message : 'Unknown error';
           setError(message);
         }
@@ -248,6 +259,9 @@ export function SleepCalendarModal({
     ? `${initialMember.id}_${initialMember.strikes_used}_${initialMember.strikes_count}_${initialMember.metastrikes_used}_${initialMember.metastrikes_count}_${initialMember.strike_cycle_month}`
     : null;
 
+  const privateRosterMember = isMySleep && currentUser?.id === activeTargetId && activeTab === 'calendar' ? initialMember : null;
+  const prevRosterMemberRef = useRef(privateRosterMember);
+  const prevAccountabilityRef = useRef(accountabilityRevision);
   const prevTargetIdRef = useRef<string | null>(null);
   const prevFingerprintRef = useRef<string | null>(null);
   const prevMonthRef = useRef<string>(currentMonth);
@@ -266,6 +280,10 @@ export function SleepCalendarModal({
     const fingerprintChanged = prevFingerprintRef.current !== initialFingerprint;
     const monthChanged = prevMonthRef.current !== currentMonth;
 
+    const accountabilityChanged = prevRosterMemberRef.current !== privateRosterMember ||
+      prevAccountabilityRef.current !== accountabilityRevision;
+    prevRosterMemberRef.current = privateRosterMember;
+    prevAccountabilityRef.current = accountabilityRevision;
     prevIsOpenRef.current = isOpen;
 
     if (justOpened || idChanged || fingerprintChanged || monthChanged) {
@@ -274,8 +292,11 @@ export function SleepCalendarModal({
       prevMonthRef.current = currentMonth;
       setData(null);
       fetchHistory(activeTargetId, currentMonth);
+    } else if (privateRosterMember && accountabilityChanged) {
+      // A past-cycle approval can change the calendar without changing current-month counters.
+      fetchHistory(activeTargetId, currentMonth, true);
     }
-  }, [isOpen, activeTargetId, initialFingerprint, currentMonth, fetchHistory]);
+  }, [isOpen, activeTargetId, initialFingerprint, currentMonth, fetchHistory, privateRosterMember, accountabilityRevision]);
 
   // Set default selected date when data changes or month loads
   useEffect(() => {
@@ -283,10 +304,13 @@ export function SleepCalendarModal({
       setSelectedDate(previous => previous?.startsWith(`${currentMonth}-`) ? previous
         : data?.logs.at(-1)?.cycle_date ?? `${currentMonth}-01`);
     }
+  }, [data, currentMonth, error]);
+
+  useEffect(() => {
     setIsEditingWakeTime(false);
     setEditError(null);
     setEditSuccess(null);
-  }, [data, currentMonth, error]);
+  }, [activeTargetId, currentMonth]);
 
   // Navigation handlers
   const handlePrevMonth = () => {
@@ -408,7 +432,7 @@ export function SleepCalendarModal({
     }
     void loadHistory();
     return () => controller.abort();
-  }, [privateCalendar, activeTargetId, currentMonth, initialMember, strikeHistoryRetry]);
+  }, [privateCalendar, activeTargetId, currentMonth, initialMember, strikeHistoryRetry, accountabilityRevision]);
 
   const historyForView = privateCalendar && strikeHistory?.memberId === activeTargetId &&
     strikeHistory?.month === currentMonth ? strikeHistory : null;
@@ -727,12 +751,19 @@ export function SleepCalendarModal({
         </div>
 
         {activeTab === 'punishments' && isMySleep && isViewer && memberId && (
-          <div className="mt-4"><MemberPunishmentList key={punishmentSnapshot} memberId={memberId} /></div>
+          <div className="mt-4"><MemberPunishmentList key={punishmentSnapshot} memberId={memberId}
+            rosterMember={initialMember} accountabilityRevision={accountabilityRevision} /></div>
         )}
 
         {/* Tab 1: Calendar Streak View */}
         {activeTab === 'calendar' && (
           <div className="mt-4 flex flex-col gap-4 animate-in fade-in duration-150">
+            {privateCalendar && onRequestMetastrike && (
+              <button type="button" onClick={() => onRequestMetastrike(selectedDate ?? undefined)}
+                className="inline-flex min-h-[44px] items-center gap-2 self-start rounded-lg border border-status-amber/40 bg-night-elevated px-3 text-sm font-semibold text-status-amber">
+                <Shield className="h-4 w-4" aria-hidden="true" /> Request Metastrike
+              </button>
+            )}
             {/* Month Switcher Bar */}
             <div className="flex items-center justify-between rounded-xl bg-night-elevated/70 border border-night-border/60 px-3 py-2">
               <button
@@ -914,6 +945,11 @@ export function SleepCalendarModal({
                   selectDay(date);
                   dayDetailsRef.current?.focus();
                 }} />
+            )}
+
+            {privateCalendar && (
+              <MemberMetastrikeHistory key={`${activeTargetId}:${currentMonth}`} month={currentMonth}
+                member={initialMember} refreshVersion={accountabilityRevision} onChanged={onMetastrikeChanged} />
             )}
 
             {/* Selected Day Inspector Card */}

@@ -99,11 +99,10 @@ export interface Member {
   in_bed_at?: string | null;
   streak_days?: number;
   nag_assists_count?: number;
-  tonight_strike_log?: ActiveNightlyStrikeLog | null;
-  convertible_strike_log?: ActiveNightlyStrikeLog | null;
+  tonight_strike_log?: Omit<ActiveNightlyStrikeLog, 'reason'> | null;
+  convertible_strike_log?: Omit<ActiveNightlyStrikeLog, 'reason'> | null;
   open_punishment_count?: number | null;
   is_metastrike_active?: boolean;
-  metastrike_reason?: string | null;
 }
 
 export type StrikeRecordType = 'pending_vote' | 'strike' | 'metastrike';

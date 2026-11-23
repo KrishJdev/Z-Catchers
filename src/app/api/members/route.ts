@@ -22,6 +22,7 @@ import {
 } from '@/lib/strikes';
 import { DateTime } from 'luxon';
 import { getOpenPunishmentCount } from '@/lib/punishments';
+import { rosterStrikeLog } from '@/lib/rosterPrivacy';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -268,10 +269,9 @@ export async function GET(request: Request) {
       }
       const strikeInfo = result.status === 'fulfilled' ? result.value : undefined;
       const logKey = getStrikeLogKey(item.hydratedMember.id, item.localDateStr);
-      const tonightLog = activeStrikeLog(strikeLogsMap.get(logKey));
+      const tonightLog = rosterStrikeLog(activeStrikeLog(strikeLogsMap.get(logKey)));
       const is_metastrike_active = tonightLog?.record_type === 'metastrike';
-      const metastrike_reason = tonightLog?.reason || null;
-      const convertibleLog = activeStrikeLog(recentStrikesMap.get(item.hydratedMember.id));
+      const convertibleLog = rosterStrikeLog(activeStrikeLog(recentStrikesMap.get(item.hydratedMember.id)));
 
       return {
         ...sanitizeMember(item.hydratedMember),
@@ -288,7 +288,6 @@ export async function GET(request: Request) {
         tonight_strike_log: tonightLog,
         convertible_strike_log: convertibleLog,
         is_metastrike_active,
-        metastrike_reason,
         ...(viewer && viewer.id === item.hydratedMember.id ? { open_punishment_count: viewerOpenCount } : {}),
       };
     });

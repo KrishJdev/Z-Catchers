@@ -58,10 +58,10 @@ assert(
   'Metastrike badge must enforce min-w-0 on flex item container'
 );
 assert(
-  memberCardContent.includes('<span className="truncate">\n                    Metastrike: {member.metastrike_reason || member.tonight_strike_log?.reason || \'Excused\'}\n                  </span>'),
+  memberCardContent.includes('<span className="truncate">Protected by Metastrike</span>'),
   'Metastrike text must have truncate to prevent overflow outside card bounds'
 );
-console.log('✅ PASSED: Metastrike badge enforces min-w-0 and truncate so long reasons never overflow card borders.');
+console.log('✅ PASSED: Metastrike badge enforces min-w-0 and truncate for the shared protection label.');
 
 // 6. Secondary action pills all enforce min-w-0 and truncate
 console.log('\n--- 5. Remaining Secondary Action Pills (Strike Issued, Grace, Peer Voting Removed) ---');
@@ -86,7 +86,7 @@ console.log('\n--- 6. Non-Nag Metastrike Notice in Card Body ---');
 assert(
   memberCardContent.includes('isMetastrikeActive && !isNagNow && (') &&
   memberCardContent.includes('min-h-[44px] min-w-0') &&
-  memberCardContent.includes('<span className="truncate">\n              Metastrike Active:'),
+  memberCardContent.includes('<span className="truncate">Protected by Metastrike</span>'),
   'Body Metastrike Active notice must enforce min-w-0 and truncate'
 );
 console.log('✅ PASSED: Body Metastrike Active notice includes min-w-0 and truncate.');
