@@ -1,7 +1,7 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-23T20:12:04+05:30
-> **Active working branch:** `codex/accountability-2-strike-corrections`, based on `origin/dev` at `b6e573b`. Phase 2 implementation commit `002e476` and [PR #114](https://github.com/KrishJdev/Z-Catchers/pull/114) into `dev`.
+> **Last Updated:** 2026-11-23T20:15:24+05:30
+> **Active working branch:** `codex/accountability-2-strike-corrections`, based on `origin/dev` at `b6e573b`. Phase 2 implementation commit `002e476`, My Sleep refresh commit `22e68c9`, and [PR #114](https://github.com/KrishJdev/Z-Catchers/pull/114) into `dev`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Phase 6 implementation commit:** `51ef311` on `krish`, based on the [verified Phase 5 dev merge](https://github.com/KrishJdev/Z-Catchers/actions/runs/44910696705).
@@ -17,9 +17,9 @@
 ## Punishments Phase 2 dated staff corrections
 
 - Mod Panel → Roster → Review strikes opens a member's dated sources by local month, including profiles with zero tasks. Additions require the cycle date and reason. Removals select the source and audit the actor, reason and original nightly snapshot when applicable.
-- The roster correction RPC locks rollout, actor and target and reuses the existing reconciler. Exact retries reuse the correction ID. Corrections earn, cancel and reopen thresholds while preserving completed tasks. The roster and punishment queue refresh from the updated ledger. Owner-only Metastrike balance and reversal controls remain available.
-- The disposable PGlite route suite verified role and source checks, corrections with zero tasks, exact retries, and task history. Edge at 320 px and 1280 px verified month navigation, closed and retryable reads, a lost correction response, source removal and queue refresh with fixtures. The hosted dispatcher smoke exercises an overlapping exact retry in PostgreSQL and the task cancellation and reopening HTTP flow.
-- Added `src/components/ModeratorStrikeReview.tsx` and `supabase/migrations/20261129_staff_strike_corrections.sql`. Updated `src/app/api/mod/route.ts`, `src/components/ModDrawer.tsx`, `src/lib/strikes.ts`, `supabase/schema.sql`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-moderation-live-roles.mjs`, `scripts/test-strikes-system.mjs`, `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `DESIGN_SYSTEM.md`, `PUNISHMENTS_RELEASE_CHECKLIST.md`, and this handoff.
+- The roster correction RPC locks rollout, actor and target and reuses the existing reconciler. Exact retries reuse the correction ID. Corrections earn, cancel and reopen thresholds while preserving completed tasks. The roster and punishment queue refresh from the updated ledger. An open My Sleep punishment tab reloads its private summary when the existing roster sync delivers revised totals. Owner-only Metastrike balance and reversal controls remain available.
+- The disposable PGlite route suite verified role and source checks, corrections with zero tasks, exact retries, and task history. Edge at 320 px and 1280 px verified month navigation, closed and retryable reads, a lost correction response, source removal, queue refresh, and an open My Sleep refresh with fixtures. The hosted dispatcher smoke exercises an overlapping exact retry in PostgreSQL and the task cancellation and reopening HTTP flow.
+- Added `src/components/ModeratorStrikeReview.tsx` and `supabase/migrations/20261129_staff_strike_corrections.sql`. Updated `src/app/api/mod/route.ts`, `src/components/ModDrawer.tsx`, `src/components/SleepCalendarModal.tsx`, `src/lib/strikes.ts`, `supabase/schema.sql`, `scripts/test-dispatcher-ci.mjs`, `scripts/test-moderation-live-roles.mjs`, `scripts/test-strikes-system.mjs`, `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `DESIGN_SYSTEM.md`, `PUNISHMENTS_RELEASE_CHECKLIST.md`, and this handoff.
 - The release checklist records the proposed Owner task exception. Release-owner approval and an independent authorized operator are required for the first such task. The Phase 2 review uses the existing production visibility gate and awaits the separate recovery and release steps.
 
 | Milestone | Status | Evidence |
