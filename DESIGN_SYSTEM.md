@@ -144,7 +144,7 @@ On wider viewports, Z Catchers transforms into a spacious, multi-column communit
   * Left: Fox mascot SVG logo + "Z Catchers" brand wordmark.
   * Center: Live local digital clock (`tabular-nums`) with viewer's timezone string and a read-only Sleep Shield status.
   * Right: Desktop quick-action navigation buttons:
-    * **My Sleep** opens the calendar, timetable, and punishments.
+    * **My Sleep** opens the calendar, timetable, and punishments. The private calendar uses a rust lightning bolt for strike history and an amber shield for Metastrike-only days, alongside the sleep-status dot. The selected month's history lists dates newest first and opens the day inspector with the issuance time, timezone, source and counting status. Give strike history its own retry control so members can still browse sleep logs when the history service is unavailable.
     * **Mod Panel** opens the moderator drawer for effective moderators.
     * The bell opens Notification settings and reflects this device’s push status. The adjacent avatar opens Profile, with Edit profile, Sleep schedule, and Sign out.
 * **Bottom Nav Hidden:** Sticky mobile bottom bar is completely hidden (`hidden md:hidden`) on desktop.

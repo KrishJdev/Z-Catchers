@@ -2,6 +2,7 @@
 
 import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import { MemberPunishmentList } from '@/components/PunishmentList';
+import { StrikeDayDetails, StrikeHistoryList, type StrikeHistoryEntry, type StrikeHistoryMonth } from '@/components/StrikeHistory';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X,
@@ -158,6 +159,13 @@ export function SleepCalendarModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [strikeHistory, setStrikeHistory] = useState<{
+    memberId: string;
+    month: string;
+    data: StrikeHistoryMonth | null;
+  } | null>(null);
+  const [strikeHistoryRetry, setStrikeHistoryRetry] = useState(0);
+  const dayDetailsRef = useRef<HTMLDivElement>(null);
 
   // The existing roster sync delivers current totals to an open My Sleep panel.
   const punishmentSnapshot = [
@@ -167,7 +175,9 @@ export function SleepCalendarModal({
 
   // Active month in "YYYY-MM" format
   const [currentMonth, setCurrentMonth] = useState<string>(() => {
-    return DateTime.now().toFormat('yyyy-MM');
+    const now = DateTime.now();
+    const local = now.setZone(toValidLuxonZone((initialMember ?? currentUser)?.timezone));
+    return (isMySleep && local.isValid ? local : now).toFormat('yyyy-MM');
   });
 
   const requestSeqRef = useRef(0);
@@ -269,16 +279,14 @@ export function SleepCalendarModal({
 
   // Set default selected date when data changes or month loads
   useEffect(() => {
-    if (data && data.logs.length > 0) {
-      const latestLog = data.logs[data.logs.length - 1];
-      setSelectedDate(latestLog.cycle_date);
-    } else if (isOpen) {
-      setSelectedDate(`${currentMonth}-01`);
+    if (data?.month === currentMonth || error) {
+      setSelectedDate(previous => previous?.startsWith(`${currentMonth}-`) ? previous
+        : data?.logs.at(-1)?.cycle_date ?? `${currentMonth}-01`);
     }
     setIsEditingWakeTime(false);
     setEditError(null);
     setEditSuccess(null);
-  }, [data, currentMonth, isOpen]);
+  }, [data, currentMonth, error]);
 
   // Navigation handlers
   const handlePrevMonth = () => {
@@ -377,6 +385,53 @@ export function SleepCalendarModal({
   }, [data?.member, initialMember, memberId]);
 
   const isViewer = Boolean(currentUser && resolvedProfile.id && currentUser.id === resolvedProfile.id);
+  const privateCalendar = isOpen && isMySleep && isViewer && activeTab === 'calendar';
+
+  useEffect(() => {
+    if (!privateCalendar || !activeTargetId) {
+      setStrikeHistory(null);
+      return;
+    }
+    // Roster sync refreshes even when a correction only affects a prior month.
+    const controller = new AbortController();
+    const query = { memberId: activeTargetId, month: currentMonth };
+    const params = new URLSearchParams(query);
+    async function loadHistory() {
+      try {
+        const response = await fetch(`/api/members/strikes?${params}`, { signal: controller.signal, cache: 'no-store' });
+        if (!response.ok) throw new Error('Strike history is unavailable');
+        const result: StrikeHistoryMonth = await response.json();
+        if (!controller.signal.aborted) setStrikeHistory({ ...query, data: result });
+      } catch {
+        if (!controller.signal.aborted) setStrikeHistory({ ...query, data: null });
+      }
+    }
+    void loadHistory();
+    return () => controller.abort();
+  }, [privateCalendar, activeTargetId, currentMonth, initialMember, strikeHistoryRetry]);
+
+  const historyForView = privateCalendar && strikeHistory?.memberId === activeTargetId &&
+    strikeHistory?.month === currentMonth ? strikeHistory : null;
+  const visibleStrikeHistory = historyForView?.data;
+  const strikeDays = useMemo(() => {
+    const days = new Map<string, StrikeHistoryEntry[]>();
+    for (const entry of visibleStrikeHistory?.entries ?? []) {
+      const day = days.get(entry.cycle_date);
+      if (day) day.push(entry);
+      else days.set(entry.cycle_date, [entry]);
+    }
+    return days;
+  }, [visibleStrikeHistory]);
+  const displayedDate = selectedDate?.startsWith(`${currentMonth}-`) ? selectedDate : `${currentMonth}-01`;
+  const selectedStrikeEntries = strikeDays.get(displayedDate);
+
+  const selectDay = (date: string) => {
+    triggerHaptic(10);
+    setSelectedDate(date);
+    setIsEditingWakeTime(false);
+    setEditError(null);
+    setEditSuccess(null);
+  };
 
   // Map of logs keyed on cycle_date
   const logsMap = useMemo(() => {
@@ -424,20 +479,19 @@ export function SleepCalendarModal({
 
   // Selected log details
   const selectedLog = useMemo(() => {
-    if (!selectedDate) return null;
-    return logsMap.get(selectedDate) || null;
-  }, [selectedDate, logsMap]);
+    return data?.month === currentMonth ? logsMap.get(displayedDate) ?? null : null;
+  }, [data?.month, currentMonth, displayedDate, logsMap]);
 
   // Check if selected date is eligible for self-edit
   const isEligibleForSelfEdit = useMemo(() => {
-    if (!currentUser || !resolvedProfile.id || currentUser.id !== resolvedProfile.id || !selectedDate) {
+    if (!currentUser || !resolvedProfile.id || currentUser.id !== resolvedProfile.id || selectedDate !== displayedDate) {
       return false;
     }
     const targetDt = DateTime.fromISO(selectedDate);
     const now = DateTime.now();
     const diffDays = now.startOf('day').diff(targetDt.startOf('day'), 'days').days;
     return diffDays >= 0 && diffDays <= 7;
-  }, [currentUser, resolvedProfile.id, selectedDate]);
+  }, [currentUser, resolvedProfile.id, selectedDate, displayedDate]);
 
   // Submit manual wake-up time for selected date
   const handleSaveWakeTime = async (e: React.FormEvent) => {
@@ -781,8 +835,11 @@ export function SleepCalendarModal({
                       );
                     }
 
-                    const isSelected = selectedDate === cell.dateStr;
+                    const date = cell.dateStr;
+                    const isSelected = displayedDate === date;
                     const log = cell.log;
+                    const strikeEntries = strikeDays.get(date);
+                    const hasStrike = strikeEntries?.some(entry => entry.record_type === 'strike');
 
                     let cellBadgeClass = 'bg-night-elevated/40 border-night-border/50 text-cream-secondary';
                     let indicatorDotClass = 'bg-cream-muted/40';
@@ -809,13 +866,9 @@ export function SleepCalendarModal({
                       <button
                         key={cell.dateStr}
                         type="button"
-                        onClick={() => {
-                          triggerHaptic(10);
-                          setSelectedDate(cell.dateStr!);
-                          setIsEditingWakeTime(false);
-                          setEditError(null);
-                          setEditSuccess(null);
-                        }}
+                        aria-pressed={isSelected}
+                        aria-label={`${DateTime.fromISO(date).toFormat('LLLL d')}${strikeEntries ? hasStrike ? ', strike history' : ', Metastrike history' : ''}`}
+                        onClick={() => selectDay(date)}
                         className={`min-h-[48px] rounded-xl border p-1 sm:p-1.5 flex flex-col justify-between items-center transition-all cursor-pointer relative ${cellBadgeClass} ${
                           isSelected ? 'ring-2 ring-status-amber border-status-amber scale-[1.02] shadow-md' : 'hover:border-cream-secondary/40'
                         }`}
@@ -824,8 +877,11 @@ export function SleepCalendarModal({
                           {cell.dayNumber}
                         </span>
 
-                        <div className="flex items-center justify-center w-full my-0.5">
+                        <div aria-hidden="true" className="flex items-center justify-center gap-1 w-full my-0.5">
                           <span className={`h-1.5 w-1.5 rounded-full ${indicatorDotClass}`} />
+                          {strikeEntries && (hasStrike
+                            ? <Zap className="h-3.5 w-3.5 shrink-0 text-fox-rust" />
+                            : <Shield className="h-3.5 w-3.5 shrink-0 text-status-amber" />)}
                         </div>
 
                         {log?.duration_minutes ? (
@@ -839,18 +895,37 @@ export function SleepCalendarModal({
                     );
                   })}
                 </div>
+                {strikeDays.size > 0 && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1 text-[11px] text-cream-secondary">
+                    <span className="inline-flex items-center gap-1"><Zap aria-hidden="true" className="h-3.5 w-3.5 text-fox-rust" /> Strike history</span>
+                    <span className="inline-flex items-center gap-1"><Shield aria-hidden="true" className="h-3.5 w-3.5 text-status-amber" /> Metastrike only</span>
+                  </div>
+                )}
               </div>
             )}
 
+            {privateCalendar && (
+              <StrikeHistoryList days={strikeDays} loading={!historyForView}
+                failed={historyForView?.data === null} onRetry={() => {
+                  setStrikeHistory(null);
+                  setStrikeHistoryRetry(value => value + 1);
+                }}
+                onSelectDay={date => {
+                  selectDay(date);
+                  dayDetailsRef.current?.focus();
+                }} />
+            )}
+
             {/* Selected Day Inspector Card */}
-            {selectedDate && (
-              <div className="rounded-2xl border border-night-border/90 bg-night-elevated/70 p-3.5 sm:p-4 flex flex-col gap-3">
+            {(selectedDate || privateCalendar) && (
+              <div ref={dayDetailsRef} tabIndex={-1} aria-labelledby="selected-sleep-date"
+                className="rounded-2xl border border-night-border/90 bg-night-elevated/70 p-3.5 sm:p-4 flex flex-col gap-3">
                 <div className="flex items-center justify-between border-b border-night-border/60 pb-2">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-status-amber" />
-                    <span className="text-xs sm:text-sm font-bold text-cream-primary">
-                      {DateTime.fromISO(selectedDate).toFormat('cccc, LLLL d, yyyy')}
-                    </span>
+                    <h3 id="selected-sleep-date" className="text-xs sm:text-sm font-bold text-cream-primary">
+                      {DateTime.fromISO(displayedDate).toFormat('cccc, LLLL d, yyyy')}
+                    </h3>
                   </div>
 
                   {selectedLog?.wake_source && (
@@ -905,6 +980,10 @@ export function SleepCalendarModal({
                   <div className="py-2 text-xs text-cream-muted italic">
                     No sleep activity recorded for this night.
                   </div>
+                )}
+
+                {selectedStrikeEntries && visibleStrikeHistory && (
+                  <StrikeDayDetails entries={selectedStrikeEntries} timezone={visibleStrikeHistory.timezone} />
                 )}
 
                 {/* Self-Edit Action for Current User */}

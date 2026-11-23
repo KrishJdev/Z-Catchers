@@ -14,7 +14,7 @@ on:
       - 'src/app/api/members/cancel-pending/**'
       - 'src/app/api/members/in-bed/**'
       - 'src/app/api/members/nag-notif/**'
-      - 'src/app/api/members/strikes/metastrike/**'
+      - 'src/app/api/members/strikes/**'
       - 'src/app/api/members/update-schedule/**'
       - 'src/app/api/members/wake-up/**'
       - 'src/app/api/members/route.ts'
