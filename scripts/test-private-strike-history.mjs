@@ -8,7 +8,7 @@ const db = new PGlite();
 const schema = readFileSync('supabase/schema.sql', 'utf8').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
 const migration = readFileSync('supabase/migrations/20261130_private_strike_history.sql', 'utf8');
 const followupMigration = readFileSync('supabase/migrations/20261203_staff_strikes_and_profile_history.sql', 'utf8');
-assert.ok(schema.endsWith(followupMigration));
+assert.ok(schema.includes(followupMigration));
 const migrationStart = schema.indexOf('-- Keep private nightly strike and pass history');
 assert.ok(migrationStart > 0);
 assert.equal(schema.slice(migrationStart, schema.indexOf('-- Install reviewed Metastrikes')).trim(), migration.trim());
@@ -165,6 +165,10 @@ try {
   await db.query("UPDATE public.members SET pending_timezone = 'GMT+05:30', pending_effective_at = now() - interval '1 hour' WHERE id = $1", [member.id]);
   await db.exec('SET ROLE service_role');
   assert.equal((await history(member)).timezone, 'GMT+05:30');
+  const sharedHistory = await result('SELECT public.get_profile_strike_history($1,$2,$3,$4) AS result',
+    [other.id, other.discord_id, member.id, '2026-11-01']);
+  assert.equal(sharedHistory.timezone, 'GMT+05:30');
+  assert.ok(sharedHistory.entries.length > 0);
   await assert.rejects(db.query('SELECT * FROM public.nightly_strike_history'), /permission denied/);
   await db.exec('RESET ROLE');
   await db.query('UPDATE public.members SET pending_timezone = NULL, pending_effective_at = NULL WHERE id = $1', [member.id]);

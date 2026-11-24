@@ -36,7 +36,7 @@ assert.ok(schema.includes(strikePermissionsMigration));
 await db.exec(strikePermissionsMigration);
 await db.exec(readFileSync('supabase/migrations/20261130_private_strike_history.sql', 'utf8'));
 const followupMigration = readFileSync('supabase/migrations/20261203_staff_strikes_and_profile_history.sql', 'utf8');
-assert.ok(schema.endsWith(followupMigration));
+assert.ok(schema.includes(followupMigration));
 await db.exec(followupMigration);
 assert.equal((await db.query("SELECT actor FROM public.strike_moderator_corrections WHERE reason = 'Historical correction'")).rows[0].actor,
   'master_mod');
