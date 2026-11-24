@@ -1,16 +1,30 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-24T12:39:32+05:30
-> **Active working branch:** `codex/roster-strike-permissions`, based on `origin/dev` at `a52e075`. Latest implementation commit `9dc20f0` in [PR #119](https://github.com/KrishJdev/Z-Catchers/pull/119).
+> **Last Updated:** 2026-11-25T01:39:04.911+05:30
+> **Active working branch:** `codex/roster-edits-shared-calendars` from `origin/dev` at `8825238`. Implementation commit `890323d` is in [PR #121](https://github.com/KrishJdev/Z-Catchers/pull/121).
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit`, all 55 `npm run test:unit` suites, `npm run build`, dispatcher script syntax and `git diff --check` passed before the lock-order follow-up. The focused live-role test, TypeScript and dispatcher script syntax passed on `9dc20f0`. See the [latest hosted checks](https://github.com/KrishJdev/Z-Catchers/pull/119/checks).
+> **Build Status:** `npx tsc --noEmit --incremental false`, all 55 `npm run test:unit` suites, `npm run build`, and fixture browser checks at 390px and 1440px passed. [PR #121 checks](https://github.com/KrishJdev/Z-Catchers/pull/121/checks)
 
 ---
+
+## Roster strike edits and shared calendars
+
+- The Owner and eligible Moderators can add or remove dated strikes through **Mod Panel → Roster → Edit strikes** while punishments are closed. Inactive-rollout corrections preserve the legacy counter balance across retries, and a dated removal prevents the legacy dispatcher from reissuing that nightly strike. The live rollout and task cutover stay pending.
+- Every signed-in Discord member can view dated strikes and Metastrikes on other active members’ calendars. Shared responses include available timestamps and event status. Reasons, request decisions, internal source IDs, replacement deadlines, and punishment details stay private.
+- Added `supabase/migrations/20261203_staff_strikes_and_profile_history.sql` and mirrored it in `supabase/schema.sql`. Updated `src/app/api/members/strikes/route.ts`, `src/components/ModDrawer.tsx`, `src/components/ModeratorStrikeReview.tsx`, `src/components/SleepCalendarModal.tsx`, and `src/components/StrikeHistory.tsx`.
+- Extended `scripts/test-moderation-live-roles.mjs`, `scripts/test-private-strike-history.mjs`, and `scripts/test-dispatcher-ci.mjs`. Updated `BACKEND_TZ_PWA_SPEC.md`, `DESIGN_SYSTEM.md`, `PROJECT_SPEC.md`, `PUNISHMENTS_RELEASE_CHECKLIST.md`, and `HANDOFF.md`.
+
+| Milestone | Status | Evidence |
+| --- | --- | --- |
+| Strike corrections with punishment screens closed | DONE | Role, retry, counter, dispatcher and task-gate assertions plus desktop and mobile browser fixtures. |
+| Shared profile strike and Metastrike calendars | DONE | Regular member browser flows and monthly access, event, redaction and legacy fixtures. |
+| Integration into `dev` and production release | IN PROGRESS | [PR #121](https://github.com/KrishJdev/Z-Catchers/pull/121) is open. Migration and deployment verification remain for release. |
+| Production punishment cutover | TODO | Deferred at the owner's request. |
 
 ## Roster strike permissions
 
@@ -23,7 +37,7 @@
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | Roster strike permissions and local verification | DONE | Implementation `82020ec` and lock-order follow-up `9dc20f0`. |
-| Integration into `dev` | IN PROGRESS | [PR #119](https://github.com/KrishJdev/Z-Catchers/pull/119) and its [checks](https://github.com/KrishJdev/Z-Catchers/pull/119/checks). |
+| Integration into `dev` | DONE | [PR #119](https://github.com/KrishJdev/Z-Catchers/pull/119) merged at `8825238`. |
 | Production release | TODO | Apply the ordered migrations and release through `dev` → `main`. |
 
 Finish the hosted checks on PR #119 before integration. Follow the [release checklist](PUNISHMENTS_RELEASE_CHECKLIST.md#reviewed-metastrike-release) for the separate application release and migration order. Once the punishment screens are visible, verify the Owner's own row and a Moderator's other and own rows with controlled Discord accounts.
@@ -3251,6 +3265,8 @@ d:\Projects\Z Catchers\
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
+
+**Release roster strike edits and profile calendars.** Review [PR #121](https://github.com/KrishJdev/Z-Catchers/pull/121) and its hosted checks. After integration, follow the [independent release steps](PUNISHMENTS_RELEASE_CHECKLIST.md#release-strike-editing-and-shared-calendars) for the migration, app deployment and controlled Owner, Moderator and Member checks. Resume punishment cutover when requested.
 
 **Production moderation verification.** Confirm the new public deployment is accessible and legacy URLs remain gated. Record live moderator grant and revocation, installed PWA, retired Vercel variables and the next scheduled dispatcher HTTP result in the [rollout checklist](MODERATION_ROLLOUT_CHECKLIST.md#switch-to-the-role-only-release).
 
