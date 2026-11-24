@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   supabaseAdmin,
   Member,
+  type ModerationRosterMember,
   updateMemberSafe,
   getMemberByIdSafe,
 } from '@/lib/db';
@@ -98,7 +99,7 @@ export async function GET(request: Request) {
     }
 
     // Run self-healing promotion check on all members
-    const processedMembers: Member[] = [];
+    const processedMembers: ModerationRosterMember[] = [];
     for (const member of (members as Member[]) || []) {
       const { promoted, activeMember } = checkCooldownPromotion(member);
       let rosterMember = member;
@@ -130,6 +131,7 @@ export async function GET(request: Request) {
       }
       processedMembers.push({
         ...sanitizeMember(hydrated),
+        can_review_strikes: auth.actor.role === 'owner' || auth.actor.id !== hydrated.id,
         strike_counts_unavailable: !strikeCounts,
         strikes_used: strikeCounts?.strikes_used,
         strikes_count: strikeCounts?.strikes_used,
@@ -139,7 +141,7 @@ export async function GET(request: Request) {
       });
     }
 
-    return NextResponse.json({
+    return punishmentResponse({
       success: true,
       members: processedMembers,
     });

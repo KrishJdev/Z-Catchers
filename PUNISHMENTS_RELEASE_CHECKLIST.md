@@ -18,6 +18,8 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse reco
    | 7 | `20261128_punishment_diagnostics.sql` before deploying the Phase 1 diagnostics release |
    | 8 | `20261129_staff_strike_corrections.sql` before deploying the Phase 2 roster review |
    | 9 | `20261130_private_strike_history.sql` before deploying the Phase 3 My Sleep calendar |
+   | 10 | `20261201_reviewed_metastrikes.sql` before deploying the reviewed Metastrike screens |
+   | 11 | `20261202_roster_strike_permissions.sql` before deploying the updated roster strike controls |
 
 2. On the first cutover, expect `activated_at = NULL`, `screens_visible = false`, and zero task and action rows. Confirm Vercel is serving a role-only release and verify the active, Discord-linked Owner and intended Moderators. With the flags still in place, verify a returning Discord sign-in and confirm HTTP 503 for the member's punishment list and both staff roles' queue requests. Check that `zcatchers-dispatch` is active and targeting this deployment. To install the job for a disposable target, use [schedule_dispatch.sql](supabase/schedule_dispatch.sql) with the matching Vault values.
 
@@ -118,7 +120,7 @@ Use **Mod Panel → Roster → Review strikes** on the disposable environment fi
 
 ## Owner task exception
 
-The Owner can see their own tasks in My Sleep. The app excludes the Owner from staff targets and blocks staff from acting on their own profiles. Before handling an Owner task, the release owner must approve an independent, authorized database operator and record that approval privately. Record the task ID, evidence, intended action, reviewer and operator reference. In the operator session, verify the task belongs to the current Owner and lock the rollout and member for the transaction. Use the existing task state machine with the identified operator as the audit actor. Verify the resulting action and member-visible task state, then record the outcome. Leave the task available in My Sleep until an independent operator can handle it. Use the existing operator recovery flow for evidence corrections.
+The Owner can see their own tasks in My Sleep. Before assigning, editing, or completing an Owner task, the release owner must approve an independent, authorized database operator and record that approval privately. Record the task ID, evidence, intended action, reviewer and operator reference. In the operator session, verify the task belongs to the current Owner and lock the rollout and member for the transaction. Use the existing task state machine with the identified operator as the audit actor. Verify the resulting action and member-visible task state, then record the outcome. For dated strike corrections, the Owner can use **Review strikes** on any roster row. Moderators can use it on every row except their own.
 
 ## Reviewed Metastrike release
 
@@ -128,7 +130,7 @@ Use the **Dispatcher integration** check for the Phase 6 PR. The disposable job 
 
 ### Apply migrations and verify the deployed app
 
-1. Open a separate `dev` → `main` release PR after Phase 6 merges. Confirm the target Supabase project and a usable restore point. Verify the existing moderated release and installed migrations through `20261127_moderation_live_roles.sql`. Apply any missing prerequisites in migration order, then `20261128_punishment_diagnostics.sql`, `20261129_staff_strike_corrections.sql`, `20261130_private_strike_history.sql`, and `20261201_reviewed_metastrikes.sql`, before the reviewed app goes live. The last migration installs both switches with a default of false. Keep reviewed intake closed during recovery.
+1. Open a separate `dev` → `main` release PR after Phase 6 merges. Confirm the target Supabase project and a usable restore point. Verify the existing moderated release and installed migrations through `20261127_moderation_live_roles.sql`. Apply pending migrations in the [order above](#apply-and-preview) through `20261202_roster_strike_permissions.sql` before the reviewed app goes live. The reviewed Metastrike migration installs both switches with a default of false. Keep reviewed intake closed during recovery.
 2. Complete the [November ledger recovery](#activate-seed-and-verify) and confirm the punishment screens are visible. Record the activation timestamp, fixed November check and [rolling ledger audit](#ongoing-ledger-audit). Both audits must return zero rows before enabling review. Stop the cutover if either audit fails or reports issues.
 3. Confirm the Vercel production deployment serves the release commit, points to the verified Supabase project, and exposes the new member and moderator screens to controlled Discord accounts. Before opening intake, check the closed request state, staff queue, existing assignments and month balances. Verify the Cron destination in the restricted operator session, correlate at least three consecutive scheduled HTTP 200 responses, and require `success: true`, empty `details.errors` and `strikeWriteFailures: 0`. See [Verify the live release](#verify-the-live-release).
 

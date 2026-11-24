@@ -6,10 +6,10 @@ import { DateTime } from 'luxon';
 import { metastrikeCycleContext } from '../src/lib/metastrikes.ts';
 
 const db = new PGlite();
-const suffix = '-- Install reviewed Metastrikes without enabling them.';
 const schema = readFileSync('supabase/schema.sql', 'utf8').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
 const migration = readFileSync('supabase/migrations/20261201_reviewed_metastrikes.sql', 'utf8');
-assert.equal(schema.slice(schema.indexOf(suffix)).trim(), migration.trim());
+const migrationStart = schema.indexOf(migration);
+assert.ok(migrationStart > 0, 'Expected the reviewed Metastrikes migration in schema.sql.');
 
 const first = async (sql, args = []) => (await db.query(sql, args)).rows[0];
 const result = async (sql, args) => (await first(sql, args))?.result;
@@ -59,7 +59,7 @@ try {
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
     CREATE SCHEMA auth; CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS 'SELECT current_user::text';
   `);
-  await db.exec(schema.slice(0, schema.indexOf(suffix)));
+  await db.exec(schema.slice(0, migrationStart));
   await db.exec(migration);
   const fox = await addMember('111111111111111100');
   const other = await addMember('111111111111111101');

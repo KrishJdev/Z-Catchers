@@ -16,7 +16,7 @@ import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import { RosterRoleAction, type ModeratorRoleChange } from '@/components/RosterRoleAction';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FoxMascot } from './FoxMascot';
-import { Member } from '@/lib/db';
+import type { Member, ModerationRosterMember } from '@/lib/db';
 import { pendingScheduleSnapshot } from '@/lib/pendingSchedule';
 import { isDemoSeedMember } from '@/lib/demoSeed';
 import { DateTime } from 'luxon';
@@ -103,7 +103,7 @@ export function ModDrawer({
   } | null>(null);
 
   // Moderator roster data (includes inactive and pending members)
-  const [modMembers, setModMembers] = useState<Member[]>([]);
+  const [modMembers, setModMembers] = useState<ModerationRosterMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [strikeReviewMemberId, setStrikeReviewMemberId] = useState<string | null>(null);
@@ -134,7 +134,9 @@ export function ModDrawer({
   const actorId = currentUser?.id;
   const canManage = useCallback((member: Member) => isModUser && member.id !== actorId &&
     (member.role === 'member' || (isOwner && member.role === 'moderator')), [isModUser, actorId, isOwner]);
-  const strikeReviewMember = modMembers.find(member => member.id === strikeReviewMemberId && canManage(member));
+  const strikeReviewMember = isModUser
+    ? modMembers.find(member => member.id === strikeReviewMemberId && member.can_review_strikes)
+    : undefined;
 
   useEffect(() => {
     try {
@@ -1523,7 +1525,7 @@ export function ModDrawer({
                               </>
                             )}
 
-                            {canManage(member) && (
+                            {member.can_review_strikes && (
                               <button type="button" id={`review-strikes-${member.id}`}
                                 aria-label={`Review strikes for ${member.discord_username}`}
                                 onClick={() => {

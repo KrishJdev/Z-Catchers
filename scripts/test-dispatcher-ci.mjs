@@ -68,7 +68,7 @@ function sqlSession(name) {
   return { child, done };
 }
 
-async function concurrentSql(first, second) {
+async function concurrentSql(first, second, beforeCommit = '') {
   const writer = sqlSession('zc_ledger_writer');
   let waiter;
   try {
@@ -81,7 +81,7 @@ async function concurrentSql(first, second) {
     await waitFor(() => sql(`SELECT 1 FROM pg_stat_activity
       WHERE application_name = 'zc_ledger_waiter' AND wait_event_type = 'Lock'`), 10_000,
     () => 'Second PostgreSQL session did not wait on a lock');
-    writer.child.stdin.end('COMMIT;\n');
+    writer.child.stdin.end(beforeCommit + '\nCOMMIT;\n');
     const results = await Promise.all([writer.done, waiter.done]);
     for (const row of results) assert.equal(row.code, 0, row.errors);
     return results.map(row => JSON.parse(row.output));
@@ -1143,6 +1143,51 @@ try {
     assert.equal(sql(`SELECT status FROM public.metastrike_requests WHERE id = '${correctedRequest}'`), 'pending');
     console.log('Verified reviewed Metastrike HTTP routes, the legacy write fence, and concurrent dispatch and correction in PostgreSQL.');
   }
+
+  sql(readFileSync('supabase/migrations/20261202_roster_strike_permissions.sql', 'utf8'));
+  const peerModId = sql(`SELECT id FROM public.members WHERE discord_id = '${discordAccounts['second-mod']}'`);
+  const strikeReview = memberId => '/api/mod?view=strike_month&month=2026-11&member_id=' + memberId;
+  const rosterStrike = {
+    action: 'add_strike', cycle_date: '2026-11-10', reason: 'Verified disposable staff fixture',
+  };
+  const ownerStrike = await post('/api/mod', ownerCookie, {
+    ...rosterStrike, member_id: owner.id, request_id: randomUUID(),
+  }, 200, origin);
+  const ownerReview = await getTaskData(strikeReview(owner.id), dbModCookie);
+  assert.ok(ownerReview.verified_strikes.some(strike => strike.source_id === ownerStrike.correction_id));
+  await post('/api/mod', dbModCookie, {
+    ...rosterStrike, action: 'remove_strike', member_id: owner.id, source_id: ownerStrike.correction_id, request_id: randomUUID(),
+  }, 200, origin);
+  await getTaskData(strikeReview(modId), dbModCookie, 403);
+  await post('/api/mod', dbModCookie, { ...rosterStrike, member_id: modId, request_id: randomUUID() }, 403, origin);
+
+  const reciprocalStrike = (actorId, account, targetId) => `SELECT public.moderate_dated_strike(
+    '${actorId}', '${discordAccounts[account]}', '${targetId}', 'add_strike', '${rosterStrike.cycle_date}',
+    NULL, 'Concurrent staff correction', '${randomUUID()}')`;
+  const [peerStrike, moderatorStrike] = await concurrentSql(
+    reciprocalStrike(modId, 'database-mod', peerModId), reciprocalStrike(peerModId, 'second-mod', modId));
+  for (const [cookie, memberId, added] of [[dbModCookie, peerModId, peerStrike], [secondModCookie, modId, moderatorStrike]]) {
+    await post('/api/mod', cookie, {
+      ...rosterStrike, action: 'remove_strike', member_id: memberId, source_id: added.correction_id, request_id: randomUUID(),
+    }, 200, origin);
+  }
+  const promotionId = '00000000-0000-4000-8000-000000000001';
+  const promotionDiscordId = '100000000000004012';
+  assert.ok(promotionId < modId);
+  sql(`INSERT INTO public.members(id, discord_id, discord_username, journal_url, bedtime_local, timezone)
+    VALUES ('${promotionId}', '${promotionDiscordId}', 'Concurrent Strike Promotion',
+      'https://discord.com/channels/123/456', '23:00', 'UTC')`);
+  const promoteDuringCorrection = `SELECT to_jsonb(public.set_moderator('${owner.id}', '${discordAccounts.owner}',
+    '${promotionId}', 'member', 'moderator'))`;
+  // The correction must wait on the lower-ID target without first locking its actor.
+  const lockActorBeforePromotionCommits = `DO $$ BEGIN
+    PERFORM FROM public.members WHERE id = '${modId}' FOR NO KEY UPDATE;
+  END $$;`;
+  const [promotedDuringCorrection, correctedDuringPromotion] = await concurrentSql(
+    promoteDuringCorrection, reciprocalStrike(modId, 'database-mod', promotionId), lockActorBeforePromotionCommits);
+  assert.equal(promotedDuringCorrection, 'moderator');
+  assert.equal(correctedDuringPromotion.strikes_used, 1);
+  console.log('Verified Owner self-correction, Moderator self-denial, reciprocal corrections and a concurrent promotion.');
 
   const recovery = readFileSync('supabase/recover_moderation_owner.sql', 'utf8')
     .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${owner.id}';`)
