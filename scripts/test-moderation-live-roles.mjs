@@ -34,6 +34,10 @@ await db.exec(reviewMigration);
 const strikePermissionsMigration = readFileSync('supabase/migrations/20261202_roster_strike_permissions.sql', 'utf8');
 assert.ok(schema.includes(strikePermissionsMigration));
 await db.exec(strikePermissionsMigration);
+await db.exec(readFileSync('supabase/migrations/20261130_private_strike_history.sql', 'utf8'));
+const followupMigration = readFileSync('supabase/migrations/20261203_staff_strikes_and_profile_history.sql', 'utf8');
+assert.ok(schema.endsWith(followupMigration));
+await db.exec(followupMigration);
 assert.equal((await db.query("SELECT actor FROM public.strike_moderator_corrections WHERE reason = 'Historical correction'")).rows[0].actor,
   'master_mod');
 assert.equal((await db.query("SELECT to_regprocedure('public.reserve_moderator_passcode_attempt(text,timestamptz)') AS fn")).rows[0].fn, null);
@@ -346,8 +350,50 @@ try {
   await expect(modRoute, 403, modSession, { ...first, member_id: mod.id });
   await expect(modRoute, 403, memberSession, first);
   await review(ownerSession, randomUUID(), 404);
-  assert.equal((await review(modSession, member.id, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
-  assert.equal((await expect(modRoute, 503, modSession, first)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
+  const liveCycle = (await db.query("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date::text AS cycle")).rows[0].cycle;
+  const liveMonth = liveCycle.slice(0, 7);
+  await db.query(`
+    UPDATE public.members SET strikes_used = 1, strikes_count = 2, strike_cycle_month = $2,
+      metastrikes_used = 1, metastrikes_count = 1 WHERE id = $1
+  `, [member.id, liveMonth]);
+  const inactiveReview = await review(modSession, member.id, 200, liveMonth);
+  assert.equal(inactiveReview.open_count, null);
+  assert.equal(inactiveReview.strikes_used, 0);
+  assert.equal(inactiveReview.current_strikes_used, 2);
+
+  const inactiveAdd = change(liveCycle);
+  const inactiveAdded = await expect(modRoute, 200, modSession, inactiveAdd);
+  assert.equal(inactiveAdded.strikes_used, 1);
+  assert.equal(inactiveAdded.current_strikes_used, 3);
+  assert.equal(inactiveAdded.open_count, null);
+  assert.deepEqual(await expect(modRoute, 200, modSession, inactiveAdd), inactiveAdded);
+  const inactiveRemove = change(liveCycle, { action: 'remove_strike', source_id: inactiveAdded.correction_id });
+  const inactiveRemoved = await expect(modRoute, 200, ownerSession, inactiveRemove);
+  assert.equal(inactiveRemoved.strikes_used, 0);
+  assert.equal(inactiveRemoved.current_strikes_used, 2);
+  assert.deepEqual(await expect(modRoute, 200, ownerSession, inactiveRemove), inactiveRemoved);
+  const inactiveMember = await getMember(member.id);
+  assert.equal(inactiveMember.strikes_used, 2);
+  assert.equal(inactiveMember.strikes_count, 2);
+  assert.equal(inactiveMember.metastrikes_used, 1);
+  assert.equal(inactiveMember.metastrikes_count, 1);
+
+  const { rows: [{ id: inactiveNightly }] } = await db.query(`
+    INSERT INTO public.nightly_strike_logs(target_member_id, sleep_cycle_date, record_type, reason)
+    VALUES ($1, $2, 'strike', 'Legacy nightly evidence') RETURNING id
+  `, [member.id, liveCycle]);
+  assert.equal((await expect(modRoute, 200, modSession, change(liveCycle, {
+    action: 'remove_strike', source_id: inactiveNightly,
+  }))).current_strikes_used, 1);
+  const { rows: [{ result: retryNightly }] } = await db.query(`
+    SELECT public.apply_nightly_strike($1, $2, $3, NULL, 'strike', 'Missed check-in', now(),
+      ($3 || '-01')::date::timestamptz, NULL::timestamptz, NULL::timestamptz, NULL::text, NULL::integer) AS result
+  `, [member.id, liveCycle, liveMonth]);
+  assert.equal(retryNightly.reason, 'moderator_cleared');
+  assert.equal((await db.query('SELECT count(*)::int AS count FROM public.punishments')).rows[0].count, 0);
+  assert.equal((await db.query('SELECT activated_at FROM public.punishment_rollout')).rows[0].activated_at, null);
+  assert.equal((await expect(memberPunishments, 503, memberSession)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
+  await db.query('UPDATE public.members SET metastrikes_used = 0, metastrikes_count = 0 WHERE id = $1', [member.id]);
 
   await db.exec(`UPDATE public.punishment_rollout SET activated_at = clock_timestamp(), screens_visible = true;
     INSERT INTO public.nightly_strike_logs (target_member_id, sleep_cycle_date, record_type, reason, replacement_until)
@@ -381,7 +427,14 @@ try {
   beforeRpc = () => db.query("UPDATE public.members SET role = 'member' WHERE id = $1", [mod.id]);
   await expect(modRoute, 403, modSession, first);
   await db.query("UPDATE public.members SET role = 'moderator' WHERE id = $1", [mod.id]);
+  await db.exec('UPDATE public.punishment_rollout SET screens_visible = false');
+  const addedWhileHidden = await expect(modRoute, 200, modSession, first);
+  assert.equal(addedWhileHidden.open_count, null);
+  assert.equal(addedWhileHidden.strikes_used, 3);
+  assert.equal((await expect(memberPunishments, 503, memberSession)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
+  await db.exec('UPDATE public.punishment_rollout SET screens_visible = true');
   const added = await expect(modRoute, 200, modSession, first);
+  assert.equal(added.correction_id, addedWhileHidden.correction_id);
   assert.equal(added.open_count, 1);
   assert.equal(added.strikes_used, 3);
   assert.deepEqual(await expect(modRoute, 200, modSession, first), added);

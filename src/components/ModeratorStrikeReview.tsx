@@ -18,7 +18,8 @@ interface StrikeMonth {
   latest_cycle_date: string;
   verified_strikes: StrikeSource[];
   strikes_used: number;
-  open_count: number;
+  current_strikes_used?: number;
+  open_count: number | null;
 }
 
 const firstMonth = '2026-11';
@@ -29,7 +30,7 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
   memberId: string;
   memberName: string;
   onClose: () => void;
-  onChanged: (counts: { strikes_used: number; month: string; current_month: string }) => void;
+  onChanged: (counts: StrikeMonth) => void;
   onAccessChanged?: () => void;
 }) {
   const headingId = useId();
@@ -150,7 +151,7 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
       <button autoFocus type="button" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-semibold text-cream-secondary hover:text-cream-primary" onClick={onClose}>
         <ArrowLeft size={16} aria-hidden="true" /> Back to roster
       </button>
-      <h3 id={headingId} className="break-words font-bold text-cream-primary">Review strikes for {memberName}</h3>
+      <h3 id={headingId} className="break-words font-bold text-cream-primary">Edit strikes for {memberName}</h3>
       {review && selectedMonth && (
         <div className="flex items-center justify-between gap-2">
           <button type="button" aria-label="Previous month" className={control} onClick={() => changeMonth(-1)} disabled={loading || locked || review.month === firstMonth}>
@@ -175,7 +176,9 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
       )}
       {review && !loading && !readError && (
         <>
-          <p className="text-sm text-cream-secondary">{review.strikes_used} verified {review.strikes_used === 1 ? 'strike' : 'strikes'} this month · {review.open_count} open {review.open_count === 1 ? 'punishment' : 'punishments'} across all months</p>
+          <p className="text-sm text-cream-secondary">{review.strikes_used} verified {review.strikes_used === 1 ? 'strike' : 'strikes'} this month
+            {review.open_count != null && ` · ${review.open_count} open ${review.open_count === 1 ? 'punishment' : 'punishments'} across all months`}
+          </p>
           {review.verified_strikes.length === 0 ? (
             <p className="text-sm text-cream-muted">No dated strikes this month.</p>
           ) : (

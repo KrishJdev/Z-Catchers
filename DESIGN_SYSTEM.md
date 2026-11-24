@@ -144,7 +144,7 @@ On wider viewports, Z Catchers transforms into a spacious, multi-column communit
   * Left: Fox mascot SVG logo + "Z Catchers" brand wordmark.
   * Center: Live local digital clock (`tabular-nums`) with viewer's timezone string and a read-only Sleep Shield status.
   * Right: Desktop quick-action navigation buttons:
-    * **My Sleep** opens the calendar, timetable, and punishments. The private calendar uses a rust lightning bolt for strike history and an amber shield for Metastrike-only days, alongside the sleep-status dot. The selected month's history lists dates newest first and opens the day inspector with the issuance time, timezone, source and counting status. Give strike history its own retry control so members can still browse sleep logs when the history service is unavailable.
+    * **My Sleep** opens the calendar, timetable, and punishments. Signed-in profile calendars and My Sleep use a rust lightning bolt for strike history and an amber shield for Metastrike-only days, alongside the sleep-status dot. The selected month's history lists dates newest first and opens the day inspector with the issuance time, timezone, source and counting status. Give strike history its own retry control so members can still browse sleep logs when the history service is unavailable.
     * **Mod Panel** opens the moderator drawer for effective moderators.
     * The bell opens Notification settings and reflects this device’s push status. The adjacent avatar opens Profile, with Edit profile, Sleep schedule, and Sign out.
 * **Bottom Nav Hidden:** Sticky mobile bottom bar is completely hidden (`hidden md:hidden`) on desktop.
@@ -258,7 +258,7 @@ Show the Mod entry for signed-in Owners and Moderators based on current server p
 
 In **Roster**, give the Owner **Make moderator** and **Remove moderator** on eligible rows. Confirm the account and change before saving, then refresh the row. Gate other actions by the server’s capabilities and refresh those capabilities on role-related errors.
 
-Show **Review strikes** according to the roster row's `can_review_strikes` capability. The Owner sees it on every profile, including their own. A Moderator sees it on every other profile.
+Show **Edit strikes** according to the roster row's `can_review_strikes` capability. The Owner sees it on every profile, including their own. A Moderator sees it on every other profile.
 
 ### 6.3 PWA & Push Permission Banner (`PwaBanner.tsx`)
 * **Condition 1 (iOS Browser, Not Installed):** If detected on iOS Safari and `window.navigator.standalone !== true`, render a collapsible warm card:

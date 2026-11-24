@@ -20,6 +20,7 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse reco
    | 9 | `20261130_private_strike_history.sql` before deploying the Phase 3 My Sleep calendar |
    | 10 | `20261201_reviewed_metastrikes.sql` before deploying the reviewed Metastrike screens |
    | 11 | `20261202_roster_strike_permissions.sql` before deploying the updated roster strike controls |
+   | 12 | `20261203_staff_strikes_and_profile_history.sql` before deploying independent strike editing and shared calendars |
 
 2. On the first cutover, expect `activated_at = NULL`, `screens_visible = false`, and zero task and action rows. Confirm Vercel is serving a role-only release and verify the active, Discord-linked Owner and intended Moderators. With the flags still in place, verify a returning Discord sign-in and confirm HTTP 503 for the member's punishment list and both staff roles' queue requests. Check that `zcatchers-dispatch` is active and targeting this deployment. To install the job for a disposable target, use [schedule_dispatch.sql](supabase/schedule_dispatch.sql) with the matching Vault values.
 
@@ -116,11 +117,17 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse reco
 
 ## Verify dated staff corrections
 
-Use **Mod Panel → Roster → Review strikes** on the disposable environment first. Confirm a Moderator can review and correct an eligible Member with zero tasks. Add a verified third strike, remove its precise source, and add the evidence again. Verify the task is earned, canceled and reopened with the same ID. Repeat an exact request and compare the correction ID and audit count. Complete a separate test task and verify a later correction preserves the member's completed history. Confirm the Owner can review Moderators, and that staff cannot act on their own profiles or the Owner.
+Use **Mod Panel → Roster → Edit strikes** on the disposable environment first. With the ledger inactive and screens closed, confirm a Moderator can add and remove a dated strike and that a retry preserves the correction ID and current balance. Check that the punishment queue stays closed. Open the disposable rollout for the task reconciliation checks below. Confirm a Moderator can review and correct an eligible Member with zero tasks. Add a verified third strike, remove its precise source, and add the evidence again. Verify the task is earned, canceled and reopened with the same ID. Repeat an exact request and compare the correction ID and audit count. Complete a separate test task and verify a later correction preserves the member's completed history. Confirm the Owner can review Moderators, and that staff cannot act on their own profiles or the Owner.
+
+## Release strike editing and shared calendars
+
+Verify the correct production project and recovery point, then apply pending migrations through `20261203_staff_strikes_and_profile_history.sql` before deploying the corresponding app release. Capture the current rollout flags and compare them after the migration and app deployment.
+
+With an Owner and a Moderator, open **Mod Panel → Roster → Edit strikes** and verify the dated controls against a controlled profile. Confirm the current balance and correction history after a permitted test write. With a signed-in Member, open a different active profile and check the strike and Metastrike markers, timestamps and month navigation. The punishment cutover and reviewed Metastrike switches follow their existing release steps.
 
 ## Owner task exception
 
-The Owner can see their own tasks in My Sleep. Before assigning, editing, or completing an Owner task, the release owner must approve an independent, authorized database operator and record that approval privately. Record the task ID, evidence, intended action, reviewer and operator reference. In the operator session, verify the task belongs to the current Owner and lock the rollout and member for the transaction. Use the existing task state machine with the identified operator as the audit actor. Verify the resulting action and member-visible task state, then record the outcome. For dated strike corrections, the Owner can use **Review strikes** on any roster row. Moderators can use it on every row except their own.
+The Owner can see their own tasks in My Sleep. Before assigning, editing, or completing an Owner task, the release owner must approve an independent, authorized database operator and record that approval privately. Record the task ID, evidence, intended action, reviewer and operator reference. In the operator session, verify the task belongs to the current Owner and lock the rollout and member for the transaction. Use the existing task state machine with the identified operator as the audit actor. Verify the resulting action and member-visible task state, then record the outcome. For dated strike corrections, the Owner can use **Edit strikes** on any roster row. Moderators can use it on every row except their own.
 
 ## Reviewed Metastrike release
 

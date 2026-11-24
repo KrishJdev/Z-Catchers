@@ -1145,6 +1145,7 @@ try {
   }
 
   sql(readFileSync('supabase/migrations/20261202_roster_strike_permissions.sql', 'utf8'));
+  sql(readFileSync('supabase/migrations/20261203_staff_strikes_and_profile_history.sql', 'utf8'));
   const peerModId = sql(`SELECT id FROM public.members WHERE discord_id = '${discordAccounts['second-mod']}'`);
   const strikeReview = memberId => '/api/mod?view=strike_month&month=2026-11&member_id=' + memberId;
   const rosterStrike = {
@@ -1155,6 +1156,12 @@ try {
   }, 200, origin);
   const ownerReview = await getTaskData(strikeReview(owner.id), dbModCookie);
   assert.ok(ownerReview.verified_strikes.some(strike => strike.source_id === ownerStrike.correction_id));
+  const profilePath = '/api/members/strikes?view=profile&month=2026-11&memberId=' + owner.id;
+  const profileHistory = await getTaskData(profilePath, regularCookie);
+  assert.ok(profileHistory.entries.some(entry => entry.cycle_date === rosterStrike.cycle_date
+    && entry.record_type === 'strike' && entry.source_type === 'moderator' && entry.status === 'counted'));
+  assert.doesNotMatch(JSON.stringify(profileHistory), /source_id|replacement_until|Verified disposable staff fixture/);
+  await getTaskData(profilePath, '', 401);
   await post('/api/mod', dbModCookie, {
     ...rosterStrike, action: 'remove_strike', member_id: owner.id, source_id: ownerStrike.correction_id, request_id: randomUUID(),
   }, 200, origin);

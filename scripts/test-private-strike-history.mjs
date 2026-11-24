@@ -7,6 +7,8 @@ import { DateTime } from 'luxon';
 const db = new PGlite();
 const schema = readFileSync('supabase/schema.sql', 'utf8').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');
 const migration = readFileSync('supabase/migrations/20261130_private_strike_history.sql', 'utf8');
+const followupMigration = readFileSync('supabase/migrations/20261203_staff_strikes_and_profile_history.sql', 'utf8');
+assert.ok(schema.endsWith(followupMigration));
 const migrationStart = schema.indexOf('-- Keep private nightly strike and pass history');
 assert.ok(migrationStart > 0);
 assert.equal(schema.slice(migrationStart, schema.indexOf('-- Install reviewed Metastrikes')).trim(), migration.trim());
@@ -149,11 +151,15 @@ try {
   await write('metastrike', 'clear', '2026-12-01T00:14Z');
   assert.deepEqual((await history(member)).entries.slice(0, 2).map(e => e.status), ['replaced', 'reversed']);
 
+  await db.exec(followupMigration);
+
   for (const role of ['anon', 'authenticated']) {
     await db.exec(`SET ROLE ${role}`);
     await assert.rejects(db.query('SELECT * FROM public.nightly_strike_history'), /permission denied/);
     await assert.rejects(db.query('SELECT * FROM public.nightly_strike_logs'), /permission denied/);
     await assert.rejects(history(member), /permission denied/);
+    await assert.rejects(result('SELECT public.get_profile_strike_history($1,$2,$3,$4) AS result',
+      [other.id, other.discord_id, member.id, '2026-11-01']), /permission denied/);
     await db.exec('RESET ROLE');
   }
   await db.query("UPDATE public.members SET pending_timezone = 'GMT+05:30', pending_effective_at = now() - interval '1 hour' WHERE id = $1", [member.id]);
@@ -169,6 +175,13 @@ try {
     const url = new URL(req.url, 'http://localhost');
     try {
       switch (url.pathname) {
+        case '/rest/v1/rpc/get_profile_strike_history': {
+          let raw = '';
+          for await (const chunk of req) raw += chunk;
+          const { p_viewer_id, p_viewer_discord_id, p_member_id, p_month } = JSON.parse(raw);
+          return res.end(JSON.stringify(await result('SELECT public.get_profile_strike_history($1,$2,$3,$4) AS result',
+            [p_viewer_id, p_viewer_discord_id, p_member_id, p_month])));
+        }
         case '/rest/v1/rpc/get_member_strike_history': {
           if (failHistory) return res.writeHead(500).end(JSON.stringify({ code: '57014', message: 'private query data' }));
           let raw = '';
@@ -251,8 +264,29 @@ try {
   }
   const privateRead = await expectHistory(request(member), 200);
   assert.deepEqual(privateRead, await history(member));
+
+  const profileQuery = '&view=profile&memberId=' + member.id;
+  await expectHistory(request(null, profileQuery), 401);
+  await expectHistory(request(other, profileQuery, mod.discord_id), 403);
+  await expectHistory(request(other, '&view=profile&memberId=invalid'), 400);
+  await expectHistory(request(other, '&view=profile&memberId=47ae6f13-a50f-4a2b-8dd1-9aa16ef2d884'), 404);
+  const profileRead = await expectHistory(request(other, profileQuery), 200);
+  assert.deepEqual(profileRead, {
+    ...privateRead,
+    entries: privateRead.entries.map(({ source_id, replacement_until, ...entry }) => entry),
+  });
+  assert.ok(profileRead.entries.some(entry => entry.status === 'replaced'));
+  assert.ok(profileRead.entries.some(entry => entry.status === 'reversed'));
+  assert.ok(profileRead.entries.some(entry => entry.status === 'removed'));
+  assert.ok(profileRead.entries.some(entry => entry.cycle_date === '2026-11-30' && entry.issued_at));
+  assert.doesNotMatch(JSON.stringify(profileRead), /source_id|replacement_until|reason|evidence_key|actor|punishment/);
+  const legacyProfile = await expectHistory(new Request(request(other, profileQuery).url.replace('2026-11', '2026-10'),
+    request(other)), 200);
+  assert.equal(legacyProfile.entries[0].issued_at, null);
   await db.query('UPDATE public.members SET is_active = false WHERE id = $1', [member.id]);
   await expectHistory(request(member), 403);
+  await expectHistory(request(other, profileQuery), 404);
+  await expectHistory(request(member, '&view=profile&memberId=' + other.id), 403);
   await db.query('UPDATE public.members SET is_active = true WHERE id = $1', [member.id]);
 
   failHistory = true;
@@ -293,7 +327,7 @@ try {
   await db.query('DELETE FROM public.members WHERE id = $1', [member.id]);
   assert.equal(await result('SELECT count(*)::int AS result FROM public.nightly_strike_history WHERE member_id = $1',
     [member.id]), 0);
-  console.log('Verified migration, transaction capture, original timestamps, dated corrections, rollover, retry, and private monthly reads.');
+  console.log('Verified migration, transaction capture, original timestamps, dated corrections, rollover, retry, and private and shared monthly reads.');
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   await db.close();

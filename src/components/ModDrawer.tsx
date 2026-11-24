@@ -1376,10 +1376,11 @@ export function ModDrawer({
                   setStrikeReviewMemberId(null);
                   requestAnimationFrame(() => document.getElementById(`review-strikes-${strikeReviewMember.id}`)?.focus());
                 }}
-                onChanged={({ strikes_used, month, current_month }) => {
+                onChanged={({ current_strikes_used, strikes_used, month, current_month }) => {
                   if (month === current_month) {
+                    const total = current_strikes_used ?? strikes_used;
                     setModMembers(members => members.map(member => member.id === strikeReviewMember.id
-                      ? { ...member, strikes_used, strikes_count: strikes_used } : member));
+                      ? { ...member, strikes_used: total, strikes_count: total } : member));
                   }
                   void onRosterChanged();
                 }}
@@ -1506,7 +1507,8 @@ export function ModDrawer({
                                       onClick={() => handleAdjustPasses(member, -1)}
                                       disabled={actionLoadingId === `passes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) <= 0}
                                       className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                      title="Decrement metastrikes"
+                                      aria-label="Decrease Metastrikes used"
+                                      title="Decrease Metastrikes used"
                                     >
                                       -
                                     </button>)}
@@ -1515,7 +1517,8 @@ export function ModDrawer({
                                       onClick={() => handleAdjustPasses(member, 1)}
                                       disabled={actionLoadingId === `passes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) >= 3}
                                       className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                      title="Increment metastrikes"
+                                      aria-label="Increase Metastrikes used"
+                                      title="Increase Metastrikes used"
                                     >
                                       +
                                     </button>)}
@@ -1527,14 +1530,14 @@ export function ModDrawer({
 
                             {member.can_review_strikes && (
                               <button type="button" id={`review-strikes-${member.id}`}
-                                aria-label={`Review strikes for ${member.discord_username}`}
+                                aria-label={`Edit strikes for ${member.discord_username}`}
                                 onClick={() => {
                                   setErrorMessage(null);
                                   setSuccessMessage(null);
                                   setStrikeReviewMemberId(member.id);
                                 }}
                                 className="min-h-[44px] rounded-lg border border-night-border bg-night-elevated px-2 text-xs font-semibold text-cream-primary hover:border-status-amber">
-                                Review strikes
+                                Edit strikes
                               </button>
                             )}
                             {isOwner && canManage(member) && (<button

@@ -2,7 +2,7 @@ import { DateTime } from 'luxon';
 import { toValidLuxonZone } from '@/lib/timezone';
 
 export type StrikeHistoryEntry = {
-  source_id: string;
+  source_id?: string;
   cycle_date: string;
   record_type: 'strike' | 'metastrike';
   source_type: 'nightly' | 'moderator';
@@ -10,7 +10,7 @@ export type StrikeHistoryEntry = {
   issuance_timezone: string | null;
   recorded_at: string | null;
   changed_at: string | null;
-  replacement_until: string | null;
+  replacement_until?: string | null;
   counts: boolean;
   status: 'counted' | 'replaced' | 'removed' | 'protected' | 'reversed';
   replaced_strike: boolean;
@@ -81,14 +81,14 @@ export function StrikeDayDetails({ entries, timezone }: { entries: StrikeHistory
     <section aria-label="Strike details" className="border-t border-night-border/60 pt-3">
       <h3 className="text-xs font-bold text-cream-primary">Strike details</h3>
       <ul className="mt-2 grid gap-2">
-        {entries.map(entry => {
+        {entries.map((entry, index) => {
           const isPass = entry.record_type === 'metastrike';
           const source = isPass
             ? (entry.replaced_strike ? 'Metastrike replacement' : entry.issuance_timezone ? 'Bedtime protection' : 'Metastrike pass')
             : (entry.source_type === 'moderator' ? 'Staff correction' : 'Nightly strike');
           const zone = entry.issuance_timezone ?? timezone;
           return (
-            <li key={`${entry.source_id}:${entry.record_type}`}
+            <li key={`${entry.source_id ?? index}:${entry.record_type}`}
               className="min-w-0 rounded-lg border border-night-border/80 bg-night-surface/60 px-3 py-2 text-xs text-cream-secondary [overflow-wrap:anywhere]">
               <p className="font-semibold text-cream-primary">{STATUS_LABELS[entry.status]} · {source}</p>
               {!isPass && <p className="mt-1">{entry.counts ? 'Counts toward punishments.' : 'No longer counts toward punishments.'}</p>}
