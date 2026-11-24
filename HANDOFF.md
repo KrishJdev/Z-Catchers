@@ -1,16 +1,31 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-24T03:50:58+05:30
-> **Active working branch:** `codex/accountability-6-metastrike-release`, based on `origin/dev` at `a64a9bf`. Latest verified implementation commit `3238532` in [PR #118](https://github.com/KrishJdev/Z-Catchers/pull/118).
+> **Last Updated:** 2026-11-24T12:32:10+05:30
+> **Active working branch:** `codex/roster-strike-permissions`, based on `origin/dev` at `a52e075`. Latest verified implementation commit `82020ec` in [PR #119](https://github.com/KrishJdev/Z-Catchers/pull/119).
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit`, all 55 `npm run test:unit` suites, `npm run build`, dispatcher script syntax and `git diff --check` passed. See the [Phase 6 hosted checks](https://github.com/KrishJdev/Z-Catchers/pull/118/checks).
+> **Build Status:** `npx tsc --noEmit`, all 55 `npm run test:unit` suites, `npm run build`, dispatcher script syntax and `git diff --check` passed. The [hosted build and tests](https://github.com/KrishJdev/Z-Catchers/actions/runs/45344415464) passed for `82020ec`.
 
 ---
+
+## Roster strike permissions
+
+- **Review strikes** is available to the Owner on every roster row, including their own. Moderators can correct strikes on other profiles, including other Moderators and the Owner. The server rejects a Moderator's own review and correction requests. Dated corrections continue to use the existing source and audit history.
+- Added `supabase/migrations/20261202_roster_strike_permissions.sql` and mirrored it in `supabase/schema.sql`. Updated `src/app/api/mod/route.ts`, `src/components/ModDrawer.tsx` and `src/lib/db.ts` for the per-row permission.
+- Updated `scripts/test-moderation-live-roles.mjs` for permission and live role checks, `scripts/test-dispatcher-ci.mjs` for PostgreSQL coverage including reciprocal Moderator corrections, and `scripts/test-reviewed-metastrikes.mjs` to verify its migration within the expanded schema. The fixture-based Edge browser checks exercised roster visibility, strike addition and strike removal for both roles at 390px and 1440px.
+- Updated `PROJECT_SPEC.md`, `BACKEND_TZ_PWA_SPEC.md`, `DESIGN_SYSTEM.md`, `PUNISHMENTS_IMPLEMENTATION_PLAN.md`, `PUNISHMENTS_RELEASE_CHECKLIST.md` and `HANDOFF.md`.
+
+| Milestone | Status | Evidence |
+| --- | --- | --- |
+| Roster strike permissions and local verification | DONE | Implementation `82020ec`. |
+| Integration into `dev` | IN PROGRESS | [PR #119](https://github.com/KrishJdev/Z-Catchers/pull/119) and its [checks](https://github.com/KrishJdev/Z-Catchers/pull/119/checks). |
+| Production release | TODO | Apply the ordered migrations and release through `dev` → `main`. |
+
+Finish the hosted checks on PR #119 before integration. Follow the [release checklist](PUNISHMENTS_RELEASE_CHECKLIST.md#reviewed-metastrike-release) for the separate application release and migration order. Once the punishment screens are visible, verify the Owner's own row and a Moderator's other and own rows with controlled Discord accounts.
 
 ## Punishments Phase 6 reviewed Metastrike release
 
@@ -22,7 +37,7 @@
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | Phase 6 rehearsal and operator checklist | DONE | Verified on `3238532` by the hosted build and tests and the disposable Supabase rehearsal. |
-| Phase 6 integration | IN PROGRESS | [PR #118](https://github.com/KrishJdev/Z-Catchers/pull/118) targets `dev`. |
+| Phase 6 integration | DONE | [PR #118](https://github.com/KrishJdev/Z-Catchers/pull/118) merged into `dev` at `a52e075`. |
 | Reviewed Metastrike production cutover | TODO | Separate `dev` → `main` release, usable restore point, verified active and visible ledger, approved cutover and live member, staff, PWA and dispatcher checks. |
 
 After the Phase 6 PR merges, follow the [reviewed release checklist](PUNISHMENTS_RELEASE_CHECKLIST.md#reviewed-metastrike-release) for migration and application order. Use the verified November recovery first if the live ledger is inactive or hidden. After the separately authorized cutover, record the deployment commit, UTC switch time, controlled approvals, scheduler results and zero-row ledger audits. This integration work left the production deployment and flags untouched.
