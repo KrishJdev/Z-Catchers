@@ -31,6 +31,9 @@ const reviewMigration = readFileSync('supabase/migrations/20261129_staff_strike_
 assert.ok(schema.includes(reviewMigration));
 await db.exec(readFileSync('supabase/migrations/20261128_punishment_diagnostics.sql', 'utf8'));
 await db.exec(reviewMigration);
+const strikePermissionsMigration = readFileSync('supabase/migrations/20261202_roster_strike_permissions.sql', 'utf8');
+assert.ok(schema.includes(strikePermissionsMigration));
+await db.exec(strikePermissionsMigration);
 assert.equal((await db.query("SELECT actor FROM public.strike_moderator_corrections WHERE reason = 'Historical correction'")).rows[0].actor,
   'master_mod');
 assert.equal((await db.query("SELECT to_regprocedure('public.reserve_moderator_passcode_attempt(text,timestamptz)') AS fn")).rows[0].fn, null);
@@ -69,6 +72,7 @@ const parameters = {
   moderate_sleep: ['p_actor_id', 'p_actor_discord_id', 'p_target_id', 'p_action', 'p_cycle',
     'p_now', 'p_expected_updated_at', 'p_entry', 'p_guarded', 'p_expected_in_bed_at', 'p_expected_sleep_updated_at'],
   cancel_own_sleep_check_in: ['p_member_id', 'p_discord_id', 'p_cycle', 'p_clear_pending', 'p_expected_updated_at'],
+  refresh_member_strike_projection: ['p_member_id', 'p_now'],
   moderate_strike_counts: ['p_actor_id', 'p_actor_discord_id', 'p_member_id', 'p_strikes', 'p_passes', 'p_relative'],
   moderate_nightly_strike: ['p_actor_id', 'p_actor_discord_id', 'p_member_id', 'p_cycle', 'p_month',
     'p_previous_type', 'p_type', 'p_reason', 'p_now', 'p_month_start', 'p_strike_cutoff', 'p_replacement_until',
@@ -327,11 +331,20 @@ try {
     reason: ' Evidence reviewed ', request_id: randomUUID(), ...overrides,
   });
   const first = change('2026-11-05');
+  const fixtureIds = [owner, mod, member, peer, candidate].map(row => row.id);
+  for (const [token, allowed] of [
+    [ownerSession, [owner, mod, member, peer, candidate]],
+    [modSession, [owner, member, peer, candidate]],
+  ]) {
+    const { members } = await expect(modRead, 200, token);
+    assert.deepEqual(members.filter(row => row.can_review_strikes && fixtureIds.includes(row.id)).map(row => row.id).sort(),
+      allowed.map(row => row.id).sort());
+  }
   await review('', member.id, 401);
   await review(memberSession, member.id, 403);
   await review(modSession, mod.id, 403);
-  await review(modSession, peer.id, 403);
-  await review(ownerSession, owner.id, 403);
+  await expect(modRoute, 403, modSession, { ...first, member_id: mod.id });
+  await expect(modRoute, 403, memberSession, first);
   await review(ownerSession, randomUUID(), 404);
   assert.equal((await review(modSession, member.id, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
   assert.equal((await expect(modRoute, 503, modSession, first)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
@@ -345,27 +358,29 @@ try {
   assert.equal(initial.strikes_used, 2);
   assert.equal(initial.verified_strikes[0].source_type, 'nightly');
   assert.equal(initial.verified_strikes[0].reason, 'Missed check-in');
-  assert.equal((await review(ownerSession, peer.id)).strikes_used, 0);
-  const peerAdded = await expect(modRoute, 200, ownerSession, change('2026-11-05', { member_id: peer.id }));
-  assert.equal(peerAdded.open_count, 0);
-  const peerRemoved = await expect(modRoute, 200, ownerSession, change('2026-11-05', {
-    member_id: peer.id, action: 'remove_strike', source_id: peerAdded.correction_id,
-  }));
-  assert.equal(peerRemoved.strikes_used, 0);
-  assert.equal(peerRemoved.open_count, 0);
+  for (const [token, target] of [[ownerSession, owner], [modSession, owner], [modSession, peer], [ownerSession, mod]]) {
+    assert.equal((await review(token, target.id)).strikes_used, 0);
+    const staffAdd = await expect(modRoute, 200, token, change('2026-11-05', { member_id: target.id }));
+    assert.equal(staffAdd.strikes_used, 1);
+    assert.equal(staffAdd.open_count, 0);
+    const staffRemove = change('2026-11-05', {
+      member_id: target.id, action: 'remove_strike', source_id: staffAdd.correction_id,
+    });
+    if (target.role === 'moderator') await expect(modRoute, 403, session(target), staffRemove);
+    const staffRemoved = await expect(modRoute, 200, token, staffRemove);
+    assert.equal(staffRemoved.strikes_used, 0);
+    assert.equal(staffRemoved.open_count, 0);
+  }
   await review(modSession, member.id, 400, '2026-13');
   await expect(modRoute, 400, modSession, { ...first, cycle_date: '2026-11-31' });
   await expect(modRoute, 400, modSession, { ...first, reason: ' '.repeat(3) });
   await expect(modRoute, 400, modSession, { ...first, request_id: 'unstable' });
   await expect(modRoute, 400, modSession, { ...first, action: 'remove_strike' });
   await expect(modRoute, 403, modSession, first, { Origin: 'https://other.invalid' });
-  await expect(modRoute, 403, modSession, { ...first, member_id: peer.id });
-  await expect(modRoute, 403, ownerSession, { ...first, member_id: owner.id });
-
-  // The target can become a moderator after session verification and before the RPC locks it.
-  beforeRpc = () => db.query("UPDATE public.members SET role = 'moderator' WHERE id = $1", [member.id]);
+  // The actor must still be staff when the RPC runs, even if the route verified the session.
+  beforeRpc = () => db.query("UPDATE public.members SET role = 'member' WHERE id = $1", [mod.id]);
   await expect(modRoute, 403, modSession, first);
-  await db.query("UPDATE public.members SET role = 'member' WHERE id = $1", [member.id]);
+  await db.query("UPDATE public.members SET role = 'moderator' WHERE id = $1", [mod.id]);
   const added = await expect(modRoute, 200, modSession, first);
   assert.equal(added.open_count, 1);
   assert.equal(added.strikes_used, 3);

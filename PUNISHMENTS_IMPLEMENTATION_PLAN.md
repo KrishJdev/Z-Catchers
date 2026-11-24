@@ -51,7 +51,7 @@ git worktree add -b codex/accountability-0-recovery "../Z Catchers - accountabil
 **Depends on** Phase 1. **Start with** `src/components/ModDrawer.tsx`, `src/app/api/mod/route.ts`, and `record_dated_strike_correction()`.
 
 - Add a member-and-month review in the staff roster, including profiles with zero tasks. Show dated sources. Require the date, reason, and a stable request ID. A removal also requires the precise source ID. Reuse the existing transactional reconciler and live target-role checks.
-- Route ordinary strike adjustments through the dated workflow instead of editing a generic counter. Keep pass-balance controls separate. Audit corrections, return revised counts, and refresh the staff queue and member view. Document the Owner's task exception with the release owner, retaining the prohibition on staff acting on themselves.
+- Route ordinary strike adjustments through the dated workflow. Audit corrections, return revised counts, and refresh the staff queue and member view. The Owner can correct every profile and Moderators can correct other profiles. Keep the Owner task exception for assignment, editing and completion.
 
 **Done when** a permitted staff member can add or remove a dated strike for a member with zero punishments, a retry is safe, and the resulting threshold is created, canceled or reopened correctly. Completed history survives corrections.
 

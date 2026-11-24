@@ -105,6 +105,8 @@ export interface Member {
   is_metastrike_active?: boolean;
 }
 
+export type ModerationRosterMember = Member & { can_review_strikes: boolean };
+
 export type StrikeRecordType = 'pending_vote' | 'strike' | 'metastrike';
 
 export type SleepLogStatus = 'on_time' | 'late' | 'missed' | 'metastrike';

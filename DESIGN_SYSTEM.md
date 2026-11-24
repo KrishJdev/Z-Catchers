@@ -258,6 +258,8 @@ Show the Mod entry for signed-in Owners and Moderators based on current server p
 
 In **Roster**, give the Owner **Make moderator** and **Remove moderator** on eligible rows. Confirm the account and change before saving, then refresh the row. Gate other actions by the server’s capabilities and refresh those capabilities on role-related errors.
 
+Show **Review strikes** according to the roster row's `can_review_strikes` capability. The Owner sees it on every profile, including their own. A Moderator sees it on every other profile.
+
 ### 6.3 PWA & Push Permission Banner (`PwaBanner.tsx`)
 * **Condition 1 (iOS Browser, Not Installed):** If detected on iOS Safari and `window.navigator.standalone !== true`, render a collapsible warm card:
   * `"📲 Install Z Catchers for Bedtime Alerts: Tap Share and select 'Add to Home Screen' to unlock push notifications."`
