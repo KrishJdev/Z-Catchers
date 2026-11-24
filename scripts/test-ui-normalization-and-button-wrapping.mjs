@@ -104,10 +104,10 @@ assert(
   'ModDrawer strike adjusters must have min-h-[44px] min-w-[44px]'
 );
 assert(
-  modDrawerContent.includes('grid grid-cols-3') &&
+  modDrawerContent.includes('grid grid-cols-2') && modDrawerContent.includes('sm:grid-cols-4') &&
   modDrawerContent.includes('font-semibold transition-all min-h-[44px]') &&
   modDrawerContent.includes('min-h-[44px] rounded-lg px-1 py-2 font-semibold'),
-  'All three moderator tabs meet the minimum touch height on narrow screens'
+  'All four moderator tabs meet the minimum touch height on narrow screens'
 );
 
 // 11. SleepCalendarModal: Edit Schedule button normalized with min-h-[44px] and whitespace-nowrap shrink-0

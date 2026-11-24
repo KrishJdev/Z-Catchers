@@ -1,13 +1,15 @@
 import { isSameOriginMutation, verifyModeratorSession } from '@/lib/auth';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/db';
-import { punishmentResponse, punishmentRpcResponse, PUNISHMENTS_UNAVAILABLE, UUID_PATTERN } from '@/lib/punishments';
+import { supabaseAdmin } from '@/lib/db';
+import { punishmentDependencyResponse, punishmentResponse, punishmentRpcResponse, UUID_PATTERN } from '@/lib/punishments';
 import { staffIdentity } from '@/lib/moderation';
 import { DateTime } from 'luxon';
 
 export async function GET(request: Request) {
   const auth = await verifyModeratorSession(request);
-  if (!auth.authorized) return punishmentResponse({ error: auth.error }, auth.status);
-  if (!isSupabaseConfigured) return punishmentResponse({ error: PUNISHMENTS_UNAVAILABLE }, 503);
+  if (!auth.authorized) {
+    if (auth.status === 503) return punishmentDependencyResponse('moderator read', auth.databaseCode);
+    return punishmentResponse({ error: auth.error }, auth.status);
+  }
 
   const params = new URL(request.url).searchParams;
   const id = params.get('punishment_id');
@@ -25,15 +27,17 @@ export async function GET(request: Request) {
     p_status: status,
     p_offset: Number(offset),
   });
-  return punishmentRpcResponse(data, error);
+  return punishmentRpcResponse('moderator read', data, error);
 }
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   if (!isSameOriginMutation(request)) return punishmentResponse({ error: 'Use a same-origin request.' }, 403);
   const auth = await verifyModeratorSession(request);
-  if (!auth.authorized) return punishmentResponse({ error: auth.error }, auth.status);
-  if (!isSupabaseConfigured) return punishmentResponse({ error: PUNISHMENTS_UNAVAILABLE }, 503);
+  if (!auth.authorized) {
+    if (auth.status === 503) return punishmentDependencyResponse('moderator write', auth.databaseCode);
+    return punishmentResponse({ error: auth.error }, auth.status);
+  }
 
   if (typeof body?.punishment_id !== 'string' || !UUID_PATTERN.test(body.punishment_id) || 'member_id' in body) {
     return punishmentResponse({ error: 'Provide a punishment ID to identify the task and its member.' }, 400);
@@ -65,5 +69,5 @@ export async function POST(request: Request) {
   }
 
   const { data, error } = await supabaseAdmin.rpc('moderate_punishment', args);
-  return punishmentRpcResponse(data, error);
+  return punishmentRpcResponse('moderator write', data, error);
 }

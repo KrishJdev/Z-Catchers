@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { executeNotificationDispatcher } from '@/lib/cronDispatcher';
 
+const privateHeaders = { 'Cache-Control': 'private, no-store' };
+
 /**
  * Validates timing-safe authorization against CRON_SECRET from Bearer token or x-cron-secret header.
  *
@@ -66,10 +68,10 @@ export async function GET(request: Request) {
       forcedMemberId,
     });
     const success = results.details.errors.length === 0;
-    return NextResponse.json({ success, ...results }, { status: success ? 200 : 503 });
+    return NextResponse.json({ success, ...results }, { status: success ? 200 : 503, headers: privateHeaders });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown cron error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500, headers: privateHeaders });
   }
 }
 
@@ -98,9 +100,9 @@ export async function POST(request: Request) {
     });
 
     const success = results.details.errors.length === 0;
-    return NextResponse.json({ success, ...results }, { status: success ? 200 : 503 });
+    return NextResponse.json({ success, ...results }, { status: success ? 200 : 503, headers: privateHeaders });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown cron error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500, headers: privateHeaders });
   }
 }

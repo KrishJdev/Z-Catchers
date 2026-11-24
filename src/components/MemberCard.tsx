@@ -37,7 +37,7 @@ interface MemberCardProps {
   onCheckIn?: (memberId: string) => Promise<boolean | void> | void;
   onCancelInBed?: (memberId: string) => Promise<boolean | void>;
   isCheckingIn?: boolean;
-  onOpenMetastrike?: (member: Member, mode: 'proactive' | 'convert_retroactive') => void;
+  onOpenMetastrike?: (member: Member) => void;
   isVotingStrike?: boolean;
   isModerator?: boolean;
   onOpenPunishments?: () => void;
@@ -348,9 +348,6 @@ export function MemberCard({
     member.is_metastrike_active || member.tonight_strike_log?.record_type === 'metastrike'
   );
   const isStrikeIssuedTonight = Boolean(member.tonight_strike_log?.record_type === 'strike');
-  const isStrikeConvertible = Boolean(
-    isStrikeIssuedTonight || member.convertible_strike_log
-  );
 
   const isNagNow = bucket === 'BEDTIME_NOW' || state.status === 'BEDTIME_GRACE' || state.status === 'OVERDUE_NAG_NOW';
 
@@ -1071,14 +1068,10 @@ export function MemberCard({
               {isMetastrikeActive && !isNagNow && (
                 <div
                   className="flex items-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber min-h-[44px] min-w-0"
-                  title={`Protected tonight: ${
-                    member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'
-                  }`}
+                  title="Protected by Metastrike"
                 >
                   <Shield className="h-4 w-4 fill-status-amber/20 shrink-0" />
-            <span className="truncate">
-              Metastrike Active: {member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'}
-            </span>
+                  <span className="truncate">Protected by Metastrike</span>
                 </div>
               )}
 
@@ -1210,35 +1203,19 @@ export function MemberCard({
                   </button>
 
                   {/* Trigger for MetastrikeModal.tsx */}
-                  {onOpenMetastrike && isViewer && !member.strike_counts_unavailable && metastrikesUsed < 3 && (isStrikeConvertible || !isMetastrikeActive) && (
+                  {onOpenMetastrike && isViewer && (
                     <button
                       type="button"
                       onClick={() => {
                         triggerHaptic(10);
                         setIsDetailsOpen(false);
-                        onOpenMetastrike(
-                          member,
-                          isViewer && isStrikeConvertible ? 'convert_retroactive' : 'proactive'
-                        );
+                        onOpenMetastrike(member);
                       }}
                       className="w-full min-h-[44px] flex items-center justify-between px-3 py-2 rounded-xl border border-night-border bg-night-surface text-xs font-semibold text-cream-primary hover:border-status-amber/40 hover:text-status-amber transition-colors"
-                      title={
-                        isViewer
-                          ? isStrikeConvertible
-                            ? 'Convert Strike to Metastrike (24h Swap)'
-                            : 'Use Metastrike Tonight (Excused Pass)'
-                          : 'View Metastrike status & excused passes'
-                      }
                     >
                       <span className="flex items-center gap-1.5 truncate">
                         <Shield className="h-3.5 w-3.5 text-status-amber shrink-0" />
-                        <span className="truncate">
-                          {isViewer && isStrikeConvertible
-                            ? 'Convert Strike'
-                            : isViewer
-                            ? 'Use Metastrike'
-                            : 'Metastrike Passes'}
-                        </span>
+                        <span className="truncate">Request Metastrike</span>
                       </span>
                       <ExternalLink className="h-3.5 w-3.5 text-cream-muted shrink-0 ml-1" />
                     </button>
@@ -1381,14 +1358,10 @@ export function MemberCard({
                     {isMetastrikeActive ? (
                       <div
                         className={`${isEligibleForNagNotif ? 'flex-1' : 'w-full'} min-w-0 h-9 min-h-[36px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-2.5 text-xs font-semibold text-status-amber shadow-sm`}
-                        title={`Protected tonight: ${
-                          member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'
-                        }`}
+                        title="Protected by Metastrike"
                       >
                         <Shield className="h-3.5 w-3.5 fill-status-amber/20 shrink-0" />
-                  <span className="truncate">
-                    Metastrike: {member.metastrike_reason || member.tonight_strike_log?.reason || 'Excused'}
-                  </span>
+                        <span className="truncate">Protected by Metastrike</span>
                       </div>
                     ) : isStrikeIssuedTonight ? (
                       <div

@@ -144,7 +144,7 @@ On wider viewports, Z Catchers transforms into a spacious, multi-column communit
   * Left: Fox mascot SVG logo + "Z Catchers" brand wordmark.
   * Center: Live local digital clock (`tabular-nums`) with viewer's timezone string and a read-only Sleep Shield status.
   * Right: Desktop quick-action navigation buttons:
-    * **My Sleep** opens the calendar, timetable, and punishments.
+    * **My Sleep** opens the calendar, timetable, and punishments. The private calendar uses a rust lightning bolt for strike history and an amber shield for Metastrike-only days, alongside the sleep-status dot. The selected month's history lists dates newest first and opens the day inspector with the issuance time, timezone, source and counting status. Give strike history its own retry control so members can still browse sleep logs when the history service is unavailable.
     * **Mod Panel** opens the moderator drawer for effective moderators.
     * The bell opens Notification settings and reflects this device’s push status. The adjacent avatar opens Profile, with Edit profile, Sleep schedule, and Sign out.
 * **Bottom Nav Hidden:** Sticky mobile bottom bar is completely hidden (`hidden md:hidden`) on desktop.
@@ -224,6 +224,7 @@ Every `MemberCard` includes a compact, warm dark accountability row positioned d
   * Color token: Warm gold / amber (`#F4A261` / `fox-amber` / `border-fox-amber/40 text-fox-amber`).
   * Visual Pips: 3 horizontal mini-shield dots ($6\text{px} \times 6\text{px}$). Filled dots render in golden amber (`bg-fox-amber shadow-[0_0_6px_rgba(244,162,97,0.4)]`), unfilled dots render in subtle border tone (`bg-night-border`).
   * Counter text: `🛡️ Meta: 2/3` (cream text with amber accent).
+* **Staff strike review:** The roster opens a member's review inside the Mod Panel. Use labeled month navigation and list verified sleep-cycle dates, source type and recorded reason. A dated correction takes a reason, and removal selects a specific source. Keep Metastrike balance controls in the roster. Maintain 44 px touch targets in the mobile sheet.
 * **Open punishments:** The signed-in member’s own card shows the open count as a link to the authenticated task list.
 
 ### 5.7 Action Bar Secondary Pill Variants
@@ -232,12 +233,9 @@ Next to the primary `"Nag in Discord Journal ↗"` button, contextual secondary 
 | Pill Variant | Condition | Visual Styling & Label |
 | :--- | :--- | :--- |
 | **Grace Period** | Bedtime hit, within 0–5 minutes | `⏳ Grace: Xm left` (subtle amber border, voting locked) |
-| **Vote Strike (0/2)** | > 5m overdue, 0 votes cast | `Vote Strike (0/2)` (warm coral border `#D96B52`, clickable by community) |
-| **Vote Strike (1/2)** | > 5m overdue, 1 vote cast | `Vote Strike (1/2)` (pulsing coral border `#D96B52`, 1 vote needed to confirm) |
-| **Strike Issued** | 2 votes confirmed tonight | `Strike Issued Tonight` (solid dark coral `#D96B52/20`, locked) |
-| **Metastrike Active** | Proactive pass activated for tonight | `🛡️ Metastrike: [Reason]` (warm golden amber `#F4A261`, voting locked) |
-| **Self-Service Pass** | Member's own card, tonight | `"Use Metastrike Tonight"` button (warm amber secondary action) |
-| **24-Hour Swap** | Member received strike within 24h | `"Convert to Metastrike (24h Pass)"` button (retroactive excuse conversion) |
+| **Strike Issued** | The dispatcher recorded a nightly strike | `Strike Issued` (dark coral `#D96B52/20`) |
+| **Metastrike Active** | The current cycle is protected | `Protected by Metastrike` (warm amber `#F4A261`) |
+| **Request Metastrike** | Member's own card or My Sleep | `Request Metastrike` (warm amber secondary action) |
 
 ---
 
@@ -252,13 +250,15 @@ When a user edits their existing bedtime or timezone, display a clear callout bo
 * **Style:** `bg-status-amber/10 border border-status-amber/30 rounded-xl p-3 text-xs text-cream-secondary leading-relaxed`
 * **Copy:** `"🛡️ Accountability Cooldown: Changing your bedtime or timezone takes 48 hours to take effect so nobody can dodge their bedtime at the last minute. Updating your Discord Journal link is instant."`
 
-The same callout applies to every role after the [moderation cutover](MODERATION_PLAN.md). Show immediate edits and early approval as explicit actions in **Mod Panel** for eligible targets.
+The same callout applies to every role. Show immediate edits and early approval as explicit actions in **Mod Panel** for eligible targets.
 
 ### Mod Panel after the moderation cutover
 
 Show the Mod entry for signed-in Owners and Moderators based on current server permissions. Open the Warm Dark desktop dialog or mobile sheet directly, with the **Owner** or **Moderator** badge, **Close**, the Sleepy Fox and touch targets of at least 44 px.
 
 In **Roster**, give the Owner **Make moderator** and **Remove moderator** on eligible rows. Confirm the account and change before saving, then refresh the row. Gate other actions by the server’s capabilities and refresh those capabilities on role-related errors.
+
+Show **Review strikes** according to the roster row's `can_review_strikes` capability. The Owner sees it on every profile, including their own. A Moderator sees it on every other profile.
 
 ### 6.3 PWA & Push Permission Banner (`PwaBanner.tsx`)
 * **Condition 1 (iOS Browser, Not Installed):** If detected on iOS Safari and `window.navigator.standalone !== true`, render a collapsible warm card:
@@ -267,16 +267,10 @@ In **Roster**, give the Owner **Make moderator** and **Remove moderator** on eli
   * `"🔔 Turn on Bedtime & Nag Notifications"` button (`bg-status-amber text-night-bg font-semibold rounded-xl min-h-[44px]`).
 * **Condition 3 (Subscribed & Ready):** Hide banner and display active badge in header/command bar (`"🔔 Alerts On"`).
 
-### 6.4 Metastrike Excuse Modal (`MetastrikeModal.tsx`)
-* **Purpose:** Allows members to activate an excused Metastrike pass (proactively or retroactively within 24 hours of an issued strike).
-* **Modal Architecture:** Responsive dialog (centered on desktop, slide-up sheet on mobile) with Warm Dark aesthetic and Sleepy Fox shield motif.
-* **Component Features:**
-  * **Passes Remaining Indicator:** Visual meter showing `X of 3 passes remaining this month`.
-  * **Quick Reason Pills:** One-tap preset selections:
-    * `"Monthly Battle"` (e.g. community game or guild event)
-    * `"Family Event"` (family gathering or dinner)
-    * `"Birthday Celebration"`
-    * `"Overtime / Work Deadline"`
-    * `"Health & Emergency"`
-  * **Custom Reason Input:** Clean text field for specific personal notes.
-  * **Action Button:** `"Activate Metastrike Shield"` (proactive) or `"Convert Strike to Metastrike"` (24h retroactive swap).
+### 6.4 Reviewed Metastrikes
+
+Use a centered Warm Dark dialog on desktop and a scrollable bottom sheet with safe-area padding on mobile. Keep the Sleepy Fox and 44 px controls. The date picker labels unavailable nights and shows the selected month's used, reserved and remaining slots. Put validation beside the reason field and confirm that the request was sent for review.
+
+In My Sleep, show the calendar month's requests with a text status, private reason and any decision explanation. Offer withdrawal on pending requests. Shared views use **Protected by Metastrike**.
+
+In the Mod Panel, show pending count, oldest requests first and recent decisions. Show the member, cycle, reason, submission time, applicable strike and monthly quota in each pending row. Confirm approval and require an explanation for decline. Show the hold in the member and staff task lists, where it pauses assignment or completion.

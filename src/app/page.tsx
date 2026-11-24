@@ -12,6 +12,7 @@ import { ModDrawer } from '@/components/ModDrawer';
 import { PushModal } from '@/components/PushModal';
 import { BottomNav, type MobileNavTab } from '@/components/BottomNav';
 import { MetastrikeModal } from '@/components/MetastrikeModal';
+import { withoutMetastrikeReasons } from '@/lib/rosterPrivacy';
 import { SleepCalendarModal } from '@/components/SleepCalendarModal';
 import { PinnedSelfActionBar } from '@/components/PinnedSelfActionBar';
 import { computeMemberState, hasRosterSleepShield, MemberState } from '@/lib/sleepEngine';
@@ -41,7 +42,7 @@ const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
 const STORAGE_KEY_CACHED_ROSTER = 'zcatchers_cached_roster';
 
 function rosterWithoutPrivateCounts(members: Member[]): Member[] {
-  return members.map(({ open_punishment_count: _privateCount, ...member }) => member);
+  return members.map(({ open_punishment_count: _privateCount, ...member }) => withoutMetastrikeReasons(member));
 }
 
 function readCachedRoster(): Member[] {
@@ -49,7 +50,9 @@ function readCachedRoster(): Member[] {
     const snapshot = JSON.parse(localStorage.getItem(STORAGE_KEY_CACHED_ROSTER) ?? 'null');
     if (!Array.isArray(snapshot)) return [];
     const roster = rosterWithoutPrivateCounts(snapshot);
-    if (snapshot.some(member => 'open_punishment_count' in member)) {
+    if (snapshot.some(member => 'open_punishment_count' in member || 'metastrike_reason' in member ||
+      (member.tonight_strike_log && 'reason' in member.tonight_strike_log) ||
+      (member.convertible_strike_log && 'reason' in member.convertible_strike_log))) {
       try {
         localStorage.setItem(STORAGE_KEY_CACHED_ROSTER, JSON.stringify(roster));
       } catch {
@@ -95,8 +98,8 @@ export default function HomePage() {
   const [isCheckingIn, setIsCheckingIn] = useState(false);
 
   // Strikes & Metastrikes accountability states
-  const [metastrikeMember, setMetastrikeMember] = useState<Member | null>(null);
-  const [metastrikeMode, setMetastrikeMode] = useState<'proactive' | 'convert_retroactive'>('proactive');
+  const [metastrikeRequest, setMetastrikeRequest] = useState<{ memberId: string; cycle?: string } | null>(null);
+  const [accountabilityRevision, setAccountabilityRevision] = useState(0);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const [activeModal, setActiveModal] = useState<'profile' | 'schedule' | 'mod' | 'push' | null>(null);
@@ -135,6 +138,7 @@ export default function HomePage() {
       setCurrentUser(null);
       setActiveModal(null);
       setCalendarView(null);
+      setMetastrikeRequest(null);
       setToastMessage({
         text: 'Logged out of Fox Den successfully.',
         type: 'info',
@@ -683,11 +687,11 @@ export default function HomePage() {
     });
   };
 
-  // Metastrike Excuse Modal Handler
-  const handleOpenMetastrike = (member: Member, mode: 'proactive' | 'convert_retroactive') => {
-    setMetastrikeMember(member);
-    setMetastrikeMode(mode);
-  };
+  const handleOpenMetastrike = (member: Member) => setMetastrikeRequest({ memberId: member.id });
+  const refreshAccountability = useCallback(async () => {
+    setAccountabilityRevision(value => value + 1);
+    await fetchRoster();
+  }, [fetchRoster]);
 
   // Claimed member profile & state
   const claimedMember = useMemo(() => {
@@ -1141,29 +1145,9 @@ export default function HomePage() {
         onClose={handleCloseModal}
         viewerTimezone={viewerTimezone}
         onRosterChanged={fetchRoster}
+        onMetastrikeReviewed={refreshAccountability}
         currentUser={currentUser}
       />
-
-      {/* Metastrike Excuse Pass Modal */}
-      {metastrikeMember && (
-        <MetastrikeModal
-          isOpen={true}
-          onClose={() => setMetastrikeMember(null)}
-          member={metastrikeMember}
-          mode={metastrikeMode}
-          onSuccess={async () => {
-            await fetchRoster();
-            setToastMessage({
-              text:
-                metastrikeMode === 'convert_retroactive'
-                  ? 'Metastrike pass applied! Strike successfully converted.'
-                  : 'Protected by Metastrike tonight.',
-              type: 'success',
-            });
-            setTimeout(() => setToastMessage(null), 4000);
-          }}
-        />
-      )}
 
       {/* Interactive Member Profile, Sleep & Wake History Calendar, and Weekly Timetable Modal */}
       {calendarView && (!calendarView.personal || calendarView.memberId === currentUser?.id) && (
@@ -1179,10 +1163,21 @@ export default function HomePage() {
           isStarred={starredMembers.includes(calendarView.memberId)}
           initialTab={calendarView.tab}
           isMySleep={calendarView.personal}
+          accountabilityRevision={accountabilityRevision}
+          onMetastrikeChanged={refreshAccountability}
+          onRequestMetastrike={cycle => setMetastrikeRequest({ memberId: calendarView.memberId, cycle })}
           onOpenScheduleModal={() => {
             setCalendarView(null);
             setActiveModal('schedule');
           }}
+        />
+      )}
+      {currentUser && metastrikeRequest?.memberId === currentUser.id && (
+        <MetastrikeModal
+          initialCycle={metastrikeRequest.cycle}
+          isOwner={currentUser.role === 'owner'}
+          onClose={() => setMetastrikeRequest(null)}
+          onSuccess={() => void refreshAccountability()}
         />
       )}
     </main>

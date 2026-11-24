@@ -1,10 +1,10 @@
 # November punishments cutover checklist
 
-Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable rehearsal. After the Phase 6 PR merges to `dev` and its checks pass, open the `dev` → `main` release PR. Apply the pending migrations before merging that release PR. Keep a restricted record of member-level evidence and put the release commit, verification links, UTC activation time, and aggregate results in [HANDOFF.md](HANDOFF.md).
+Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) to rehearse recovery on disposable Supabase. The role-only application shipped in [PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110). Verify the production deployment against the [moderation rollout](MODERATION_ROLLOUT_CHECKLIST.md) before continuing the existing November cutover. Any application fix ships through a separate `dev` → `main` release PR after validation. Keep member-level evidence and backup metadata in a restricted operator record. Record the release commit, verification links, UTC activation time, and aggregate results in [HANDOFF.md](HANDOFF.md).
 
 ## Apply and preview
 
-1. Match the Vercel production deployment and its Supabase project ref to the project open in Supabase. Record the deployment URL, project ref, migration status, and the backup or point-in-time recovery reference. Confirm that the restore point is available for that project. Apply only pending migrations in order through the project's Supabase migration process.
+1. Match the Vercel production deployment and its Supabase project ref to the project open in Supabase. Record the deployment URL, project ref, migration status, and an available restore point for that project. Pause live changes if no restorable backup is available. When migration history is empty, verify the installed schema and routines against the release before deciding which migrations are pending. Apply only pending migrations through the project's Supabase migration process.
 
    | Order | Migration |
    | --- | --- |
@@ -13,8 +13,15 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable r
    | 2 | `20261123_punishment_task_apis.sql` |
    | 3 | `20261124_guard_active_wake.sql` |
    | 4 | `20261125_verify_punishment_cutover.sql` |
+   | 5 | `20261126_moderation_owner_and_roles.sql` |
+   | 6 | `20261127_moderation_live_roles.sql` |
+   | 7 | `20261128_punishment_diagnostics.sql` before deploying the Phase 1 diagnostics release |
+   | 8 | `20261129_staff_strike_corrections.sql` before deploying the Phase 2 roster review |
+   | 9 | `20261130_private_strike_history.sql` before deploying the Phase 3 My Sleep calendar |
+   | 10 | `20261201_reviewed_metastrikes.sql` before deploying the reviewed Metastrike screens |
+   | 11 | `20261202_roster_strike_permissions.sql` before deploying the updated roster strike controls |
 
-2. On the first cutover, expect `activated_at = NULL`, `screens_visible = false`, and zero task and action rows. Merge the release PR and confirm that Vercel is serving its commit. With the flags still in place, verify a returning Discord sign-in and confirm the authenticated punishment API returns HTTP 503. Check that `zcatchers-dispatch` is active and targeting this deployment. To install the job for a disposable target, use [schedule_dispatch.sql](supabase/schedule_dispatch.sql) with the matching Vault values.
+2. On the first cutover, expect `activated_at = NULL`, `screens_visible = false`, and zero task and action rows. Confirm Vercel is serving a role-only release and verify the active, Discord-linked Owner and intended Moderators. With the flags still in place, verify a returning Discord sign-in and confirm HTTP 503 for the member's punishment list and both staff roles' queue requests. Check that `zcatchers-dispatch` is active and targeting this deployment. To install the job for a disposable target, use [schedule_dispatch.sql](supabase/schedule_dispatch.sql) with the matching Vault values.
 
    ```sql
    SELECT activated_at, screens_visible FROM public.punishment_rollout WHERE singleton;
@@ -23,10 +30,11 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable r
    SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname = 'zcatchers-dispatch';
    ```
 
-3. Save the read-only preview in the operator's restricted release notes. Check the dated evidence behind each discrepancy. A legacy counter alone provides no basis for a correction.
+3. Time the read-only preview and audit as a database operator and save the results in the restricted release notes. Before activation, expect the audit to report any eligible tasks that still need seeding. Check the dated evidence behind each discrepancy. A legacy counter alone provides no basis for a correction.
 
    ```sql
    SELECT * FROM public.november_punishment_preview() ORDER BY member_id;
+   SELECT issue, count(*) FROM public.punishment_ledger_issues() GROUP BY issue ORDER BY issue;
    ```
 
    - To add a missing strike backed by dated evidence, call `public.record_verified_november_correction(member_id, cycle_date, evidence_key, actor, reason)` once per verified reference.
@@ -38,7 +46,7 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable r
    | --- | ---: | ---: | --- |
    | Counter only | 0 | 3 | 0. There is no dated evidence. |
    | Nightly record and documented correction | 2 | 2 | 0, with two strikes toward the next task. |
-   | Los Angeles | 3 | 3 | 1 awaiting assignment. |
+   | Los Angeles | 3 | 2 | 1 awaiting assignment based on the three dated strikes. |
    | Tokyo | 6 | 3 | 2, one awaiting assignment and one pending behind a replacement window. Preserve both used Metastrikes. |
 
 4. Send `GET /api/cron/dispatch-notifications?dry_run=true` on the target deployment with `Authorization: Bearer <CRON_SECRET>`. Expect HTTP 200, `success: true`, and no database changes or notifications. The dry run lists candidates before the writer's activation check. In the rehearsal it reports two candidates. After activation only the candidate with a normal strike cutoff at or after activation is charged.
@@ -102,9 +110,89 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable r
    FROM net._http_response ORDER BY id DESC LIMIT 20;
    ```
 
-2. Use a controlled account to confirm Discord sign-in, My Sleep, and the private roster badge. Compare the member's open count with pending, awaiting-assignment, and assigned records across all months. Verify the Punishments queue with a database-role moderator and a configured Discord-ID moderator. Use an approved qualifying task for any live assignment or completion test. Record the result and verify its audit action and updated count.
+2. Use a controlled account to confirm Discord sign-in, My Sleep, task history, and the private roster badge. Compare the member's open count with pending, awaiting-assignment, and assigned records across all months. Verify all three Punishments queue sections with the database Owner and a database Moderator. The Owner can manage eligible Moderator and Member tasks, and Moderators can manage eligible Member tasks. Verify that staff cannot act on themselves or the Owner and that a Member cannot open the queue or another member's tasks. Use an approved qualifying task for any live assignment or completion test. Record its audit action and updated count.
 3. Recheck the ledger during the first live cycles and after the first assignments. At rollover, verify that the new month starts at zero where there are no new strikes and that open November tasks carry over. Confirm the +10-minute cutoff, open check-in protection, eight-hour Sleep Shield, and 15-minute pre-bedtime quiet period. Record which checks used controlled live accounts, a subscribed physical device, or disposable fixtures and an encrypted push relay. Track any deferred checks separately.
 4. In the handoff, record the release commit, migration status, backup reference, activation timestamp, seed and audit totals, verification links, and unresolved checks.
+
+## Verify dated staff corrections
+
+Use **Mod Panel → Roster → Review strikes** on the disposable environment first. Confirm a Moderator can review and correct an eligible Member with zero tasks. Add a verified third strike, remove its precise source, and add the evidence again. Verify the task is earned, canceled and reopened with the same ID. Repeat an exact request and compare the correction ID and audit count. Complete a separate test task and verify a later correction preserves the member's completed history. Confirm the Owner can review Moderators, and that staff cannot act on their own profiles or the Owner.
+
+## Owner task exception
+
+The Owner can see their own tasks in My Sleep. Before assigning, editing, or completing an Owner task, the release owner must approve an independent, authorized database operator and record that approval privately. Record the task ID, evidence, intended action, reviewer and operator reference. In the operator session, verify the task belongs to the current Owner and lock the rollout and member for the transaction. Use the existing task state machine with the identified operator as the audit actor. Verify the resulting action and member-visible task state, then record the outcome. For dated strike corrections, the Owner can use **Review strikes** on any roster row. Moderators can use it on every row except their own.
+
+## Reviewed Metastrike release
+
+### Rehearse the upgrade
+
+Use the **Dispatcher integration** check for the Phase 6 PR. The disposable job starts with legacy November data and runs the current dispatcher and instant-pass endpoints before the reviewed migration. It adds the migration with both switches off, compares outstanding and completed work and pass balances, and verifies the legacy path still works. It then exercises the review fence, signed member and staff requests, an assigned task on hold, previous-month charging, decision retries, and intake and visibility recovery. Record the run URL and results before promoting the app.
+
+### Apply migrations and verify the deployed app
+
+1. Open a separate `dev` → `main` release PR after Phase 6 merges. Confirm the target Supabase project and a usable restore point. Verify the existing moderated release and installed migrations through `20261127_moderation_live_roles.sql`. Apply pending migrations in the [order above](#apply-and-preview) through `20261202_roster_strike_permissions.sql` before the reviewed app goes live. The reviewed Metastrike migration installs both switches with a default of false. Keep reviewed intake closed during recovery.
+2. Complete the [November ledger recovery](#activate-seed-and-verify) and confirm the punishment screens are visible. Record the activation timestamp, fixed November check and [rolling ledger audit](#ongoing-ledger-audit). Both audits must return zero rows before enabling review. Stop the cutover if either audit fails or reports issues.
+3. Confirm the Vercel production deployment serves the release commit, points to the verified Supabase project, and exposes the new member and moderator screens to controlled Discord accounts. Before opening intake, check the closed request state, staff queue, existing assignments and month balances. Verify the Cron destination in the restricted operator session, correlate at least three consecutive scheduled HTTP 200 responses, and require `success: true`, empty `details.errors` and `strikeWriteFailures: 0`. See [Verify the live release](#verify-the-live-release).
+
+### Enable and verify review
+
+Once the prerequisites are verified and the cutover is authorized, an operator sets both switches together. The update should return one row on the first cutover. If it returns zero, inspect the rollout row and resume from the observed state. The review requirement is irreversible.
+
+```sql
+UPDATE public.punishment_rollout
+SET reviewed_metastrikes_required = true, metastrike_requests_open = true
+WHERE singleton AND activated_at IS NOT NULL AND screens_visible
+  AND NOT reviewed_metastrikes_required AND NOT metastrike_requests_open
+RETURNING activated_at, screens_visible, reviewed_metastrikes_required, metastrike_requests_open;
+```
+
+1. With the approved fixture member and staff accounts, verify an authenticated legacy instant request on an available cycle returns HTTP 409 with the reviewed-request error. Check that the pass balance and nightly record stay unchanged.
+2. Submit a valid proactive request for a controlled cycle. Confirm that it reserves a slot and shows as pending. Approve it before cutoff and verify the protected night, one charge in the selected month, the reviewer and decision timestamp, and the private history. Repeat the same submission and approval IDs to confirm the charge and decision are unchanged.
+3. With an approved, eligible past strike, verify the source in the queue and note the expected task outcome before approval. Check the original strike and replacement in the member's My Sleep calendar, the selected month's balance, the task count and status, and the decision audit. Confirm that shared member views use the generic protection label. Verify My Sleep and the request flow on the installed phone PWA.
+4. Recheck scheduled dispatch and the rolling ledger after enabling review and after the controlled approvals. Record the release PR and commit, migration evidence, UTC switch time, scheduler evidence, audit totals and live account and device check results in the handoff. Keep request reasons, account identifiers and backup details in the restricted operator record.
+
+Reviewers confirm the nightly source shown by the queue. A source conflict requires a refresh. If the original source was replaced with a different strike, decline with an explanation and let the member submit against the new source while the date is eligible. A pending settlement can be reviewed after dispatch records a strike or durable evidence confirms that the cycle has no strike. Staff can see an assigned task on hold and the saved instructions remain available during review.
+
+Owner requests are currently blocked. Before adding an Owner submission path, the release owner must approve an independent, authorized database operator and document the approved access privately. The operator procedure must verify the current linked Owner, capture the request and exact nightly source, and use the same locked decision, quota, history and reconciliation transaction with an auditable operator identity. Rehearse approval and decline with the disposable Owner before enabling intake. The existing staff endpoints exclude the Owner and self-review.
+
+### Pause intake and recover
+
+Keep review required, retain the additive migrations and preserve the active strike writer. Pause new submissions on the rollout row. Review, withdrawal and private history remain available on a compatible build. Accepted requests still hold affected tasks while pending.
+
+```sql
+UPDATE public.punishment_rollout
+SET metastrike_requests_open = false
+WHERE singleton AND reviewed_metastrikes_required
+RETURNING activated_at, screens_visible, reviewed_metastrikes_required, metastrike_requests_open;
+```
+
+- If the punishment views are faulty, also hide them using the [ledger recovery switch](#recovery). The request picker shows closed intake. For a fault in the review screens themselves, deploy a reviewed-compatible fix that can suppress the affected UI and keep the decision and history data available for recovery.
+- Compare pending requests, decision IDs, monthly charges and task history against the restricted incident snapshot. Check legacy instant writes still receive the review error, automatic strikes still persist, and scheduled dispatch remains healthy. Resolve genuine evidence or task discrepancies using the ledger recovery procedure.
+- Validate the compatible build with signed member and staff sessions. Verify zero findings from both ledger checks. If the punishment views were hidden, restore them with `public.show_verified_november_punishments()`. Then reopen intake and repeat the controlled member, staff and dispatcher checks. Use the same rollout row so existing requests and decisions remain available.
+
+  ```sql
+  UPDATE public.punishment_rollout
+  SET metastrike_requests_open = true
+  WHERE singleton AND activated_at IS NOT NULL AND screens_visible
+    AND reviewed_metastrikes_required AND NOT metastrike_requests_open
+  RETURNING activated_at, screens_visible, reviewed_metastrikes_required, metastrike_requests_open;
+  ```
+
+## Ongoing ledger audit
+
+After activation, run the rolling audit in the restricted database operator session. Each profile uses its current and previous local-cycle months, including an effective pending timezone. The November visibility gate continues to use its fixed-month audit.
+
+```sql
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SELECT member_id, earned_month, threshold_number, punishment_id, issue
+FROM public.recent_punishment_ledger_issues()
+ORDER BY earned_month, member_id, threshold_number, issue;
+ROLLBACK;
+```
+
+Zero rows means the audited months reconcile. Keep findings in restricted operator records. Include the audit timestamp and compare the member, month, threshold and issue against the previous run to flag new discrepancies. A query error or timeout needs review before treating the audit as clean. Time the exact operator query on representative disposable data and confirm the production operator runtime before adding a schedule.
+
+Check the authenticated dispatcher response and restricted Vercel logs for automatic strike write failures. A nonzero `strikeWriteFailures` signals failed writes and makes that dispatcher request return HTTP 503. The corresponding `[dispatcher] Automatic strike write failed` log gives the database error code when available. Check the next scheduled results and review the affected cycle's dated evidence before using the repair procedure below.
 
 ## Recovery
 
@@ -132,4 +220,4 @@ Use the [dispatcher smoke test](scripts/test-dispatcher-ci.mjs) for disposable r
    $$;
    ```
 
-- Recheck every affected month and the scheduled dispatcher. If action history is inconsistent, review the existing audit with the release owner before restoring visibility. Use `show_verified_november_punishments()` to reopen the screens and repeat the member and moderator checks.
+- Recheck every affected month and the scheduled dispatcher. If an earned action is missing or duplicated, review the action trail and dated evidence with the release owner. The reconciler repairs derived task eligibility and preserves existing action history. Resolve action-history discrepancies through a separately reviewed correction before restoring visibility. Use `show_verified_november_punishments()` to reopen the screens and repeat the member and moderator checks.

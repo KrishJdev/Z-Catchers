@@ -8,9 +8,9 @@
 
 ## 1. Golden Operating Rules
 
-1. **Active Branch:** Work on and commit to **`krish`** by default. Follow the [moderation rollout workflow](MODERATION_PLAN.md#feature-branch-workflow) for its phase branches. Never commit directly to `dev` or `main`.
+1. **Active Branch:** Work on and commit to **`krish`** by default. Start each Punishments implementation phase on its own feature branch from the latest `origin/dev` and open a separate PR into `dev` following the [Punishments feature branch workflow](PUNISHMENTS_IMPLEMENTATION_PLAN.md#feature-branch-workflow). Never commit directly to `dev` or `main`.
 2. **Timezone Math:** Always use `luxon`. Never use native JavaScript `new Date().getTimezoneOffset()` or manual offset math.
-3. **48-Hour Cooldown:** Self-service schedule changes for every role enter a 48-hour pending state once role-only moderation ships. Early approval and immediate edits use explicit, server-authorized staff actions in `/api/mod` with target role checks. The current release uses the legacy passcode for schedule overrides until the [moderation cutover](MODERATION_ROLLOUT_CHECKLIST.md#application-and-database-cutover-order).
+3. **48-Hour Cooldown:** Self-service schedule changes for every role enter a 48-hour pending state. Early approval and immediate edits use explicit, server-authorized staff actions in `/api/mod` with target role checks.
 4. **Sleep Shield:** Members who have not checked in may receive personal notifications and nags after bedtime. Suppress pushes for open check-ins and for members who have slept during the eight-hour sleep window. The 15-minute pre-bedtime community quiet period still applies.
 5. **Discord URL Sanitization:** Enforce the regex `^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$` for all journal links.
 6. **Warm Dark UI:** Strictly adhere to the Warm Dark low-blue-light design system (`#120F0D` background, `#F5EBE1` text) and include the Sleepy Fox mascot.

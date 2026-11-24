@@ -847,6 +847,7 @@ async function applyNightlyStrike(
 ): Promise<{
   success: boolean; strikeIssued: boolean; log?: NightlyStrikeLog;
   strikesUsed?: number; metastrikesUsed?: number; cycleStrikesUsed?: number; reason?: string; error?: string; status?: number;
+  databaseCode?: string;
 }> {
   const localNow = nowUtc.setZone(toValidLuxonZone(member.timezone));
   const bedtime = type === 'strike'
@@ -868,6 +869,7 @@ async function applyNightlyStrike(
       success: false,
       strikeIssued: false,
       status: moderationErrorStatus(error),
+      databaseCode: error?.code,
       reason: error?.code === 'PT409' ? 'stale_strike_cycle_month' : undefined,
       error: error?.message || 'Missing strike transaction result.',
     };
@@ -909,6 +911,7 @@ export async function issueAutomaticBedtimeStrike(
   cycleStrikesUsed?: number;
   reason?: string;
   error?: string;
+  databaseCode?: string;
 }> {
   const cycleDate = sleepCycleDate || getSleepCycleDate(member, nowUtc);
 
@@ -1160,51 +1163,49 @@ export async function convertStrikeToMetastrike(
 }
 
 function moderationErrorStatus(error: { code?: string } | null): number | undefined {
-  return error?.code && /^PT(403|404|409)$/.test(error.code) ? Number(error.code.slice(2)) : undefined;
+  return error?.code && /^PT(400|403|404|409)$/.test(error.code) ? Number(error.code.slice(2)) : undefined;
 }
 
-/** Record moderator corrections through the same transaction as nightly strikes. */
-export async function modAdjustStrikes(
+/** Adjust the pass balance through the existing locked strike projection. */
+export async function modAdjustPasses(
   memberId: string,
-  strikes: number | null,
-  passes: number | null,
+  passes: number,
   relative: boolean,
   actor: StaffActor
 ): Promise<{ success: true; strikesUsed: number; metastrikesUsed: number } | { success: false; error: string; status?: number }> {
   if (!isSupabaseConfigured) {
     const member = getInMemoryMember(memberId) || { id: memberId } as Member;
     const counts = await resolveMemberStrikeCounts(member);
-    const strikesUsed = relative ? Math.max(0, counts.strikes_used + (strikes ?? 0)) : (strikes ?? counts.strikes_used);
-    const metastrikesUsed = relative
-      ? Math.max(0, Math.min(3, counts.metastrikes_used + (passes ?? 0)))
-      : (passes ?? counts.metastrikes_used);
+    const strikesUsed = counts.strikes_used;
+    const metastrikesUsed = relative ? Math.max(0, Math.min(3, counts.metastrikes_used + passes)) : passes;
     await updateMemberStrikeCounts(memberId, strikesUsed, metastrikesUsed, counts.strike_cycle_month);
     return { success: true, strikesUsed, metastrikesUsed };
   }
 
   const { data, error } = await supabaseAdmin.rpc('moderate_strike_counts', {
-    ...staffIdentity(actor), p_member_id: memberId, p_strikes: strikes, p_passes: passes, p_relative: relative,
+    ...staffIdentity(actor), p_member_id: memberId, p_strikes: null, p_passes: passes, p_relative: relative,
   });
-  if (error || !data) return { success: false, error: error?.message || 'Could not update strike counts.', status: moderationErrorStatus(error) };
+  if (error || !data) return { success: false, error: error?.message || 'Could not update the Metastrike balance.', status: moderationErrorStatus(error) };
   return { success: true, strikesUsed: data.strikesUsed, metastrikesUsed: data.metastrikesUsed };
 }
 
 /**
- * Moderator action to clear an accidental strike or metastrike log and adjust counts.
+ * Reverse an existing Metastrike and credit the month that was charged.
  *
  * @param memberId - Target member ID
  * @param sleepCycleDate - Sleep cycle date string ('YYYY-MM-DD')
  * @returns Result object with success flag and optional error message
  */
-export async function modClearStrikeLog(
+export async function modClearMetastrikeLog(
   memberId: string,
   sleepCycleDate: string,
   moderator: StaffActor
-): Promise<{ success: boolean; error?: string; status?: number }> {
+): Promise<{ success: boolean; cleared?: boolean; error?: string; status?: number }> {
   try {
     const existingLog = await getNightlyStrikeLog(memberId, sleepCycleDate, { requireFresh: isSupabaseConfigured });
-    if (!existingLog) {
-      return { success: true };
+    if (!existingLog) return { success: true, cleared: false };
+    if (existingLog.record_type !== 'metastrike') {
+      return { success: false, status: 409, error: 'Use Review strikes to remove a dated strike.' };
     }
 
     const { data: rawMember } = await getMemberByIdSafe(memberId);
@@ -1212,18 +1213,16 @@ export async function modClearStrikeLog(
     if (isSupabaseConfigured) {
       if (!rawMember) return { success: false, error: 'Member not found.' };
       const result = await applyNightlyStrike(rawMember, sleepCycleDate, existingLog.record_type, 'clear',
-        'Moderator cleared nightly record', DateTime.utc(), moderator);
+        'Moderator cleared nightly Metastrike', DateTime.utc(), moderator);
       if (result.success) memoryStore.logs.delete(getStrikeLogKey(memberId, sleepCycleDate));
-      return { success: result.success, error: result.error, status: result.status };
+      return { success: result.success, cleared: result.success, error: result.error, status: result.status };
     }
 
     const counts = await resolveMemberStrikeCounts(rawMember || { id: memberId } as Member);
-    await updateMemberStrikeCounts(memberId,
-      counts.strikes_used - Number(existingLog.record_type === 'strike'),
-      counts.metastrikes_used - Number(existingLog.record_type === 'metastrike'),
-      counts.strike_cycle_month);
+    await updateMemberStrikeCounts(memberId, counts.strikes_used,
+      counts.metastrikes_used - 1, counts.strike_cycle_month);
     await deleteNightlyStrikeLog(memberId, sleepCycleDate);
-    return { success: true };
+    return { success: true, cleared: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return { success: false, error: msg };

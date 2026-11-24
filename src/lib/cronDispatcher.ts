@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import {
   supabaseAdmin,
   isSupabaseConfigured,
+  safeDatabaseErrorCode,
   Member,
   PushSubscriptionRecord,
   fetchAllNotificationLogs,
@@ -319,6 +320,7 @@ export interface DispatchResults {
   bedtimeHitDispatched: number;
   communityNagsDispatched: number;
   autoStrikesDispatched: number;
+  strikeWriteFailures: number;
   discordWebhooksCount: number;
   sleepShieldSuppressionsCount: number;
   prunedSubscriptionsCount: number;
@@ -360,6 +362,7 @@ export async function executeNotificationDispatcher(options: {
     bedtimeHitDispatched: 0,
     communityNagsDispatched: 0,
     autoStrikesDispatched: 0,
+    strikeWriteFailures: 0,
     discordWebhooksCount: 0,
     sleepShieldSuppressionsCount: 0,
     prunedSubscriptionsCount: 0,
@@ -912,7 +915,11 @@ export async function executeNotificationDispatcher(options: {
           const issuedAt = currentTime();
           const strikeResult = await issueAutomaticBedtimeStrike(member, cycle, issuedAt);
           if (!strikeResult.success) {
-            results.details.errors.push(`Auto Bedtime Strike (${member.discord_username}): ${strikeResult.error}`);
+            results.strikeWriteFailures++;
+            results.details.errors.push('Automatic strike write failed.');
+            console.error('[dispatcher] Automatic strike write failed', {
+              databaseCode: safeDatabaseErrorCode(strikeResult.databaseCode),
+            });
             continue;
           }
           if (strikeResult.strikeIssued) {
@@ -955,7 +962,7 @@ export async function executeNotificationDispatcher(options: {
           if (ttl < 1) break;
           const sent = await deliverPush(sub, {
             title: '⚠️ Z Catchers: Bedtime Strike Recorded',
-            body: 'You missed your scheduled bedtime check-in by 10 minutes. A normal strike has been recorded. You can replace it with a Metastrike anytime before your next bedtime.',
+            body: 'You missed your scheduled bedtime check-in by 10 minutes. A normal strike has been recorded. Open My Sleep to check your Metastrike options.',
             url: member.journal_url,
           }, ttl);
           if (sent) await recordCronLockDeliveredSub(lease, sub.id);

@@ -324,7 +324,7 @@ export async function sendStrikeDiscordWebhook(
       },
       {
         name: '🛡️ Excused Pass (Metastrike)',
-        value: 'Members can replace an automatic normal strike with an excused Metastrike anytime before their next scheduled bedtime in the app.',
+        value: 'Members can request a Metastrike for an eligible sleep cycle in My Sleep. An approved request can replace a recorded nightly strike.',
         inline: false,
       },
     ],

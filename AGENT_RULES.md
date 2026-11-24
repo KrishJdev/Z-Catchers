@@ -67,7 +67,6 @@ z-catchers/
 ### 3.3 The 48-Hour Cooldown Governance Rule
 * **FORBIDDEN:** Regular members (`role = 'member'`) must **never** be able to overwrite `bedtime_local` or `timezone` directly via the self-service API once their profile is created.
 * **REQUIRED:** Self-service schedule changes must write to `pending_bedtime_local`, `pending_timezone`, and `pending_effective_at = NOW() + 48 hours`.
-* **Current release:** `MOD_SECRET_PASSCODE` authorizes the legacy schedule override until the moderation cutover.
 * **Role-only moderation:** Self-service uses the queue for every role. Only explicit staff actions in `/api/mod` can approve a pending change early or edit an active schedule immediately. Check the actor’s active linked Discord identity and live database role, the target’s role and, for approval, the pending schedule the staff member reviewed. Moderators can act on members, the Owner can act on members and moderators, and staff use self-service for their own schedules.
 * **REQUIRED:** Updating `journal_url` or `discord_username` does **not** trigger the 48-hour cooldown and applies immediately.
 
@@ -122,8 +121,9 @@ Whenever you complete a milestone from `PROJECT_SPEC.md`:
 
 ## 7. Git & Branching Protocol
 
-* **Active Working Branch:** Use `krish` for regular work. Follow the [moderation rollout workflow](MODERATION_PLAN.md#feature-branch-workflow) for the phase branches.
-* **Target Integration Branch:** `dev` is the repository's default branch on GitHub. Pull Requests opened from `krish` target `dev`.
+* **Active Working Branch:** Use `krish` for regular work.
+* **Punishments Implementation Phases:** Start each phase on its specified feature branch from the latest `origin/dev` after the previous phase merges. Open one PR per phase into `dev`. Follow the [Punishments implementation plan](PUNISHMENTS_IMPLEMENTATION_PLAN.md#feature-branch-workflow) and release through `dev` → `main`.
+* **Target Integration Branch:** Open pull requests from the working branch to `dev`, the repository's default branch on GitHub.
 * **Production Branch:** `main` is reserved for tagged releases and production-ready deployments merged from `dev`.
 
 ---

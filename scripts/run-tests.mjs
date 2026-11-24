@@ -59,6 +59,8 @@ const UNIT_TESTS = [
   'test-dispatch-recovery.mjs',
   'test-nightly-strike-transaction.mjs',
   'test-punishment-strike-ledger.mjs',
+  'test-private-strike-history.mjs',
+  'test-reviewed-metastrikes.mjs',
   'test-punishment-task-apis.mjs',
   'test-november-cutover.mjs',
   'test-punishment-screens.mjs',

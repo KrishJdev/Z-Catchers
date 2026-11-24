@@ -37,9 +37,9 @@ Members of an international Discord community want to keep each other accountabl
 
 6. **Monthly Strikes & Metastrikes Accountability System:**
    * **Strikes and punishments:** The dispatcher issues one strike for a missed check-in starting ten minutes after bedtime. Each third verified strike in a local calendar month earns a separate task.
-   * **Metastrikes (Max 3 per month):** Excused passes used for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
+   * **Metastrikes (Max 3 per month):** Moderator-reviewed passes for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
    * **Monthly rollover:** Strike progress and used Metastrikes reset on the first day of the member’s local month. Unfinished tasks carry forward.
-   * **Nightly evidence:** An in-app check-in, completed sleep log or Metastrike protects that cycle. See section 5.6 for the automatic strike and replacement rules.
+   * **Nightly evidence:** An in-app check-in, completed sleep log or Metastrike protects that cycle. See section 5.6 for the automatic strike and reviewed request rules.
 
 ## 2. Recommended Tech Stack (For Antigravity Execution)
 
@@ -350,8 +350,7 @@ Manual push nags require an active member session. Each sender, target, sleep cy
 
 * First-time members use `/join` and Discord OAuth to create a profile. Returning members sign in to the profile already linked to their Discord ID. Member writes require the active profile's linked Discord session.
 * Members can update their display name or journal link immediately. A change to an existing sleep schedule or timezone queues for 48 hours and the member can cancel it before it takes effect.
-* In the current release, an active linked profile qualifies for moderator access through the database role or the `MOD_DISCORD_IDS` allowlist. Legacy immediate schedule edits and early approvals use `MOD_SECRET_PASSCODE`.
-* After the [role-only moderation cutover](MODERATION_PLAN.md), the sole Owner appoints Moderators from the active Discord-linked roster. Moderators can manage members. The Owner can also manage moderators and retains role changes, account activation, webhook tools, and destructive or bulk operations. The Owner uses the normal self-service cooldown, and operator recovery protects the Owner's link and role.
+* Staff access follows the active Discord-linked profile's database role. The sole Owner appoints Moderators from the roster. Moderators can manage members. The Owner can also manage moderators and retains role changes, account activation, webhook tools, and destructive or bulk operations. The Owner uses the normal self-service cooldown. See the [Owner recovery procedure](MODERATION_ROLLOUT_CHECKLIST.md#owner-recovery).
 * A signed-in member links each device to their profile. The device's service worker uses its own rotation credential to recover updates after the Discord session expires.
 
 ### 5.6 Monthly Strikes & Metastrikes Accountability Engine
@@ -361,23 +360,26 @@ Manual push nags require an active member session. Each sender, target, sleep cy
    * **Scope Restriction:** Strikes apply strictly to missed bedtimes. Wake-up actions in `src/app/api/members/wake-up/route.ts` must never trigger strikes.
    * **Peer Strike Voting Removed:** Manual peer strike voting has been removed and disabled (`POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`). Regular members cannot vote to strike others.
    * **Monthly thresholds:** Every third verified strike earns a separate punishment (3, 6, 9, and so on). The stored local sleep-cycle date determines its month, including a November 30 strike dispatched on December 1.
-   * **Metastrikes (Max 3 per month):** Excused passes used for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
+   * **Metastrikes (Max 3 per month):** Moderator-reviewed passes for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
    * **Monthly rollover:** Progress toward the next punishment resets on the first day of the member’s local month. All open tasks carry over. The member has three Metastrikes per local month.
 
 2. **5-Minute Grace Period & 10-Minute Cutoff Logic:**
    * `diffMinutes >= 0 && diffMinutes <= 5`: Status is `BEDTIME_GRACE` (`"Grace Period: Xm left"`).
    * `diffMinutes > 5 && diffMinutes < 10`: Status is `OVERDUE_NAG_NOW`. Nags are active, but strike is not yet issued.
-   * `diffMinutes >= 10`: If the member has neither checked in via `"I'm in Bed"` nor applied a Metastrike for tonight's sleep cycle, the cron dispatcher automatically issues 1 normal strike via `issueAutomaticBedtimeStrike()`.
+   * `diffMinutes >= 10`: If the member has neither checked in via `"I'm in Bed"` nor received a Metastrike for tonight's sleep cycle, the cron dispatcher automatically issues 1 normal strike via `issueAutomaticBedtimeStrike()`.
    * **Idempotency:** Automatic strikes are strictly capped at 1 per member per sleep cycle date across repeated cron passes (`AUTO_BEDTIME_STRIKE` in `notification_logs` and `nightly_strike_logs`).
 
-3. **Metastrike Prevention & Pre-Next-Bedtime Replacement Workflows:**
-   * **Applied Before Bedtime (+10m Cutoff):** If a member activates a Metastrike before the 10-minute auto-strike cutoff, the cycle is marked with `record_type: 'metastrike'`, preventing any normal strike from being issued.
-   * **Pre-Next-Bedtime Replacement Window:** If an automatic normal strike was already issued at +10 minutes, the member can apply a Metastrike at any point—all the way until their next scheduled bedtime (`currentLocalTime < nextScheduledBedtime`), including the next morning or afternoon. Doing so decrements `strikes_used` by 1, increments `metastrikes_used` by 1, and updates the nightly log's `record_type` from `'strike'` to `'metastrike'`. Once the next scheduled bedtime arrives, this replacement window expires.
+3. **Reviewed Metastrike requests**
+   * From their own card or My Sleep, linked members choose the current sleep cycle or a date up to three cycles away. A past cycle requires a recorded nightly strike. Enter a reason of 1–500 characters and review the used, reserved and remaining slots for the selected cycle's month.
+   * A pending request reserves one slot. The dispatcher evaluates the night normally until approval. The My Sleep calendar shows pending, approved, declined, withdrawn and closed requests by month. Members can withdraw a pending request. Decline, withdrawal and closure without use release the reservation.
+   * Staff see eligible requests oldest first in **Mod Panel → Metastrikes**. They can approve or decline with a member-facing explanation. Approval protects a cycle before cutoff or replaces its recorded nightly strike. A past cycle that is still settling stays pending. A confirmed no-strike cycle closes and releases the reservation. Only approval consumes a pass.
+   * The shared card shows **Protected by Metastrike** for an active pass. Request reasons and decision explanations are available in the linked member's private history and to authorized reviewers. Owner submission requires the operator review procedure.
 
 4. **Punishment status and moderation**
-   * An earned punishment counts as open immediately. It shows **Pending** while replacement can undo the threshold and **Awaiting assignment** afterward. Assigned tasks also count as open.
+   * An earned punishment counts as open immediately. The queue and member task list explain a Metastrike hold when a replacement window or pending request could undo the threshold. Assignment waits for the hold to clear. An affected assigned task retains its instructions while completion is on hold.
    * A moderator assigns a short title and optional instructions, can edit an assigned task, and completes each task individually. Completion lowers the open count by one and moves the task to history.
    * A dated correction or Metastrike replacement cancels any disqualified open threshold. Earning it again reuses its record. Completed tasks stay in history.
+   * In the Mod Panel roster, the Owner can review and correct strikes on every profile, including their own. Moderators can review and correct strikes on any other profile, including another Moderator or the Owner. A Moderator's own strikes require another Moderator or the Owner. The review is available for profiles with zero tasks. Corrections require a cycle date and reason. Removal also requires the exact source.
    * Members read their own progress, tasks, and completed history. The roster includes only the signed-in member’s own open count and includes no task instructions. Effective moderators can read the queue and manage tasks. See the [accountability API contract](BACKEND_TZ_PWA_SPEC.md#23-monthly-strikes--metastrikes-accountability-system-engine).
 
 ### 5.7 "I Woke Up" Mechanic & State Transition Engine
@@ -401,7 +403,8 @@ Manual push nags require an active member session. Each sender, target, sleep cy
      * **Emerald/Green:** Checked into bed on time & logged wake-up.
      * **Indigo/Blue:** Checked into bed on time (currently sleeping or wake time pending).
      * **Amber/Purple:** Excused pass or Metastrike used.
-     * **Rose/Red:** Late check-in or confirmed Strike.
+     * **Rose/Red:** Late or missed sleep check-in.
+   * **Private strike history:** In My Sleep, a separate marker and monthly list open the dated strike or Metastrike details. A strike stays on its stored sleep-cycle date even if issued after midnight. Details show known local issuance time, source, and whether the strike still counts. Replaced and removed strikes stay in history. Other members' calendars omit these details.
    * **3-Pill Monthly Summary Bar:**
      * Average Sleep Duration (e.g., `7h 32m`)
      * Average Bed & Wake Times (e.g., `23:18 → 07:05`, calculated circular across midnight)
@@ -452,7 +455,7 @@ Manual push nags require an active member session. Each sender, target, sleep cy
 
 * [x] **Sleep Consistency Streaks:** Track consecutive days a member checks in on time without using schedule changes.
 
-* [x] **Monthly Strikes & Metastrikes Accountability System:** A separate punishment at every third valid strike, three Metastrikes per local month, 5-minute grace period (`BEDTIME_GRACE`), automatic evaluation at +10 minutes, replacement before the next bedtime, and moderator controls.
+* [x] **Monthly Strikes & Metastrikes Accountability System:** A separate punishment at every third valid strike, three Metastrikes per local month, 5-minute grace period (`BEDTIME_GRACE`), automatic evaluation at +10 minutes, reviewed requests with private reasons, and moderator controls.
 
 * [x] **7-Day Variable Sleep Schedule Engine:** Full `mon` through `sun` custom routine support stored in `weekly_schedule JSONB`, with cross-midnight cycle resolution, fallback synchronization to flat columns, 48-hour cooldown enforcement, and 3-mode mobile-friendly schedule editor (Every Day, Weekdays/Weekends, Custom Per Day).
 
@@ -482,9 +485,9 @@ Follow these exact milestones in order. Verify each milestone compiles and passe
 
    * `GET /api/members` — Fetches all active members, auto-promotes any expired 48h pending schedules in the DB, and returns the list.
 
-   * `POST /api/members/update-schedule` queues schedule changes from the active profile's linked Discord session in `pending_*` for 48 hours. The current release also has a rate-limited legacy override. A valid `MOD_SECRET_PASSCODE` in the `mod_passcode` body field or the `x-mod-passcode` header applies the schedule change immediately without a profile-owner session. The role-only cutover retires the passcode override and moves immediate schedule edits to explicit staff actions in `/api/mod`.
+   * `POST /api/members/update-schedule` queues schedule changes from the active profile's linked Discord session in `pending_*` for 48 hours. Authorized staff make immediate changes and approve reviewed pending requests through explicit actions in `/api/mod`.
 
-   * `POST /api/mod` — Staff roster management and pending schedule approvals. After the role-only cutover, the server verifies the actor’s current role and target eligibility for each action. New profiles are created through Discord onboarding.
+   * `POST /api/mod` — Staff roster management and pending schedule approvals. The server verifies the actor’s current role and target eligibility for each action. New profiles are created through Discord onboarding.
 
 ### Milestone 3: Warm Dark UI, Responsive Desktop Dashboard & Sleepy Fox Mascot
 
@@ -506,7 +509,7 @@ Follow these exact milestones in order. Verify each milestone compiles and passe
 
 1. Build the **"My Schedule"** modal/tab (centered dialog on desktop, bottom sheet on mobile) where a signed-in member updates their Discord Journal thread URL, or requests a bedtime change (with a clear warning that bedtime edits take **48 hours** to take effect).
 
-2. Provide **Mod Panel** for roster management and explicit staff schedule actions. Follow the [moderation rollout](MODERATION_PLAN.md) for role-based controls and the passcode cutover. Members create their own profiles through Discord onboarding.
+2. Provide **Mod Panel** for roster management and explicit staff schedule actions. Members create their own profiles through Discord onboarding.
 
 ### Milestone 5: PWA Configuration, Fox Mascot Assets & Web Push Notifications
 

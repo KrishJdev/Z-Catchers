@@ -10,11 +10,13 @@ function DiscordIcon({ className = 'w-4 h-4' }: { className?: string }) {
 
 
 import { ModeratorPunishmentQueue } from '@/components/ModeratorPunishmentQueue';
+import { ModeratorMetastrikeQueue } from '@/components/ModeratorMetastrikeQueue';
+import { ModeratorStrikeReview } from '@/components/ModeratorStrikeReview';
 import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import { RosterRoleAction, type ModeratorRoleChange } from '@/components/RosterRoleAction';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FoxMascot } from './FoxMascot';
-import { Member } from '@/lib/db';
+import type { Member, ModerationRosterMember } from '@/lib/db';
 import { pendingScheduleSnapshot } from '@/lib/pendingSchedule';
 import { isDemoSeedMember } from '@/lib/demoSeed';
 import { DateTime } from 'luxon';
@@ -63,14 +65,15 @@ interface ModDrawerProps {
   onClose: () => void;
   viewerTimezone: string;
   onRosterChanged: () => Promise<void>;
+  onMetastrikeReviewed: () => Promise<void>;
   currentUser?: Member | null;
   onAccessChanged?: () => void;
 }
 
 /**
  * Moderator administration drawer.
- * Provides privileged schedule overrides, manual strike & metastrike adjustments,
- * strike log clearing, and Discord community webhook management.
+ * Provides privileged schedule overrides, dated strike corrections, Metastrike
+ * balance controls, and Discord community webhook management.
  *
  * @param props - Component props with isOpen, onClose, viewerTimezone, and onRosterChanged
  * @returns React JSX slide-over drawer element
@@ -80,12 +83,13 @@ export function ModDrawer({
   onClose,
   viewerTimezone,
   onRosterChanged,
+  onMetastrikeReviewed,
   currentUser,
   onAccessChanged,
 }: ModDrawerProps) {
 
   // Main tabs and advanced tools
-  const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'punishments' | 'webhook'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'roster' | 'punishments' | 'metastrikes' | 'webhook'>('pending');
 
   // Webhook Tab state
   const [webhookUrlInput, setWebhookUrlInput] = useState('');
@@ -99,9 +103,10 @@ export function ModDrawer({
   } | null>(null);
 
   // Moderator roster data (includes inactive and pending members)
-  const [modMembers, setModMembers] = useState<Member[]>([]);
+  const [modMembers, setModMembers] = useState<ModerationRosterMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [strikeReviewMemberId, setStrikeReviewMemberId] = useState<string | null>(null);
   const [roleChangeMemberId, setRoleChangeMemberId] = useState<string | null>(null);
   const [savingRoleChange, setSavingRoleChange] = useState(false);
 
@@ -129,6 +134,9 @@ export function ModDrawer({
   const actorId = currentUser?.id;
   const canManage = useCallback((member: Member) => isModUser && member.id !== actorId &&
     (member.role === 'member' || (isOwner && member.role === 'moderator')), [isModUser, actorId, isOwner]);
+  const strikeReviewMember = isModUser
+    ? modMembers.find(member => member.id === strikeReviewMemberId && member.can_review_strikes)
+    : undefined;
 
   useEffect(() => {
     try {
@@ -186,9 +194,10 @@ export function ModDrawer({
 
   useEffect(() => {
     if (!isOpen || !isOwner || activeTab !== 'roster') setRoleChangeMemberId(null);
+    if (!isOpen || activeTab !== 'roster' || !strikeReviewMember) setStrikeReviewMemberId(null);
     if (!isOwner && activeTab === 'webhook') setActiveTab('pending');
     setEditingMember(member => member && canManage(member) ? member : null);
-  }, [isOpen, isOwner, activeTab, canManage]);
+  }, [isOpen, isOwner, activeTab, canManage, strikeReviewMember]);
 
   const handleModeratorRoleChange = async (change: ModeratorRoleChange, member: Member) => {
     setSavingRoleChange(true);
@@ -563,9 +572,8 @@ export function ModDrawer({
     }
   };
 
-  // Action: Moderator Adjust Strikes & Metastrikes
-  const handleAdjustStrikes = async (member: Member, deltaStrikes: number, deltaMetas: number) => {
-    setActionLoadingId(`strikes_${member.id}`);
+  const handleAdjustPasses = async (member: Member, delta: number) => {
+    setActionLoadingId(`passes_${member.id}`);
     setErrorMessage(null);
 
     try {
@@ -573,11 +581,9 @@ export function ModDrawer({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'adjust_strikes',
-
+          action: 'adjust_passes',
           member_id: member.id,
-          strike_delta: deltaStrikes,
-          metastrike_delta: deltaMetas,
+          metastrike_delta: delta,
         }),
       });
 
@@ -585,23 +591,22 @@ export function ModDrawer({
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
       if (res.status === 409) await fetchModRoster();
       if (!res.ok) {
-        setErrorMessage(data.error || 'Failed to adjust strikes.');
+        setErrorMessage(data.error || 'Failed to adjust the Metastrike balance.');
         return;
       }
 
-      setSuccessMessage(`Updated strikes for ${member.discord_username}: ⚡ ${data.strikes_used} • 🛡️ ${data.metastrikes_used}/3`);
+      setSuccessMessage(`Metastrikes used by ${member.discord_username}: ${data.metastrikes_used}/3`);
       await fetchModRoster();
       await onRosterChanged();
       setTimeout(() => setSuccessMessage(null), 3500);
     } catch {
-      setErrorMessage('Network error adjusting member strikes.');
+      setErrorMessage('Could not reach the server to adjust Metastrikes.');
     } finally {
       setActionLoadingId(null);
     }
   };
 
-  // Action: Clear Nightly Strike Log (Undo accidental vote / strike)
-  const handleClearNightlyLog = async (member: Member) => {
+  const handleClearMetastrikeLog = async (member: Member) => {
     setActionLoadingId(`clear_${member.id}`);
     setErrorMessage(null);
 
@@ -610,8 +615,7 @@ export function ModDrawer({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'clear_strike_log',
-
+          action: 'clear_metastrike_log',
           member_id: member.id,
         }),
       });
@@ -620,16 +624,16 @@ export function ModDrawer({
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
       if (res.status === 409) await fetchModRoster();
       if (!res.ok) {
-        setErrorMessage(data.error || 'Failed to clear strike log.');
+        setErrorMessage(data.error || 'Failed to clear the Metastrike.');
         return;
       }
 
-      setSuccessMessage(`Cleared tonight's strike log for ${member.discord_username}.`);
+      setSuccessMessage(data.message);
       await fetchModRoster();
       await onRosterChanged();
       setTimeout(() => setSuccessMessage(null), 3500);
     } catch {
-      setErrorMessage('Network error clearing strike log.');
+      setErrorMessage('Could not reach the server to clear the Metastrike.');
     } finally {
       setActionLoadingId(null);
     }
@@ -767,7 +771,7 @@ export function ModDrawer({
 
           <div className="mt-4 flex flex-col">
             {/* Tab Navigation Pill Bar */}
-            <div className="grid grid-cols-3 gap-1 rounded-xl border border-night-border bg-night-elevated p-1 text-xs">
+            <div className="grid grid-cols-2 gap-1 rounded-xl border border-night-border bg-night-elevated p-1 text-xs sm:grid-cols-4">
               <button
                 type="button"
                 onClick={() => {
@@ -827,6 +831,12 @@ export function ModDrawer({
               }} className={`min-h-[44px] rounded-lg px-1 py-2 font-semibold ${activeTab === 'punishments' ? 'bg-status-amber text-night-bg shadow-sm' : 'text-cream-secondary hover:text-cream-primary'}`}>
                 Punishments
               </button>
+              <button type="button" aria-pressed={activeTab === 'metastrikes'} onClick={() => {
+                setActiveTab('metastrikes');
+                setEditingMember(null);
+              }} className={`min-h-[44px] rounded-lg px-1 py-2 font-semibold ${activeTab === 'metastrikes' ? 'bg-status-amber text-night-bg shadow-sm' : 'text-cream-secondary hover:text-cream-primary'}`}>
+                Metastrikes
+              </button>
             </div>
             {isOwner && <button type="button" aria-pressed={activeTab === 'webhook'} onClick={() => {
               setActiveTab('webhook');
@@ -838,6 +848,9 @@ export function ModDrawer({
 
             {activeTab === 'punishments' && (
               <ModeratorPunishmentQueue onTaskChanged={onRosterChanged} onAccessChanged={onAccessChanged} />
+            )}
+            {activeTab === 'metastrikes' && (
+              <ModeratorMetastrikeQueue key={actorId} onReviewed={() => void onMetastrikeReviewed()} onAccessChanged={onAccessChanged} />
             )}
 
             {/* Sub-View: Inline Member Editor */}
@@ -1353,7 +1366,26 @@ export function ModDrawer({
             )}
 
             {/* TAB 2: FULL ROSTER MANAGEMENT */}
-            {activeTab === 'roster' && !editingMember && (
+            {activeTab === 'roster' && !editingMember && strikeReviewMember && (
+              <ModeratorStrikeReview
+                key={strikeReviewMember.id}
+                memberId={strikeReviewMember.id}
+                memberName={strikeReviewMember.discord_username}
+                onAccessChanged={onAccessChanged}
+                onClose={() => {
+                  setStrikeReviewMemberId(null);
+                  requestAnimationFrame(() => document.getElementById(`review-strikes-${strikeReviewMember.id}`)?.focus());
+                }}
+                onChanged={({ strikes_used, month, current_month }) => {
+                  if (month === current_month) {
+                    setModMembers(members => members.map(member => member.id === strikeReviewMember.id
+                      ? { ...member, strikes_used, strikes_count: strikes_used } : member));
+                  }
+                  void onRosterChanged();
+                }}
+              />
+            )}
+            {activeTab === 'roster' && !editingMember && !strikeReviewMember && (
               <div className="mt-4 space-y-3">
                 {/* Pre-seeded demo profiles banner */}
                 {isOwner && hasDemoMembers && (
@@ -1449,55 +1481,30 @@ export function ModDrawer({
                             onConfirm={change => void handleModeratorRoleChange(change, member)}
                           />
 
-                          {/* Mod Accountability Row: Adjust Strikes & Metastrikes */}
+                          {/* Strike progress and Metastrike balance */}
                           <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl border border-night-border/70 bg-night-bg/50 px-2.5 py-1.5 text-[11px]">
                             {member.strike_counts_unavailable ? (
                               <span className="text-cream-secondary">Strike and pass counts unavailable</span>
                             ) : (
                               <>
-                                {/* Strikes Adjuster */}
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-semibold text-fox-rust flex items-center gap-1">
-                                    <Zap className="h-3 w-3 fill-fox-rust text-fox-rust" />
-                                    <span>Strikes:</span>
-                                    <strong className="tabular-nums font-bold">{Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0)}</strong>
-                                  </span>
-                                  <div className="flex items-center gap-0.5 ml-1">
-                                    {isOwner && canManage(member) && (<button
-                                      type="button"
-                                      onClick={() => handleAdjustStrikes(member, -1, 0)}
-                                      disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0) <= 0}
-                                      className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                      title="Decrement strikes"
-                                    >
-                                      -
-                                    </button>)}
-                                    {isOwner && canManage(member) && (<button
-                                      type="button"
-                                      onClick={() => handleAdjustStrikes(member, 1, 0)}
-                                      disabled={actionLoadingId === `strikes_${member.id}`}
-                                      className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                      title="Increment strikes"
-                                    >
-                                      +
-                                    </button>)}
-                                  </div>
-                                </div>
-
-                                <span className="text-cream-muted">•</span>
+                                <span className="flex items-center gap-1 font-semibold text-fox-rust">
+                                  <Zap className="h-3 w-3 fill-fox-rust" aria-hidden="true" />
+                                  <span>Strikes</span>
+                                  <strong className="tabular-nums">{Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0)}</strong>
+                                </span>
 
                                 {/* Metastrikes Adjuster */}
                                 <div className="flex items-center gap-1.5">
                                   <span className="font-semibold text-fox-amber flex items-center gap-1">
                                     <Shield className="h-3 w-3 fill-fox-amber/20 text-fox-amber" />
-                                    <span>Meta:</span>
+                                    <span>Metastrikes</span>
                                     <strong className="tabular-nums font-bold">{Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0)}/3</strong>
                                   </span>
                                   <div className="flex items-center gap-0.5 ml-1">
                                     {isOwner && canManage(member) && (<button
                                       type="button"
-                                      onClick={() => handleAdjustStrikes(member, 0, -1)}
-                                      disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) <= 0}
+                                      onClick={() => handleAdjustPasses(member, -1)}
+                                      disabled={actionLoadingId === `passes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) <= 0}
                                       className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                       title="Decrement metastrikes"
                                     >
@@ -1505,8 +1512,8 @@ export function ModDrawer({
                                     </button>)}
                                     {isOwner && canManage(member) && (<button
                                       type="button"
-                                      onClick={() => handleAdjustStrikes(member, 0, 1)}
-                                      disabled={actionLoadingId === `strikes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) >= 3}
+                                      onClick={() => handleAdjustPasses(member, 1)}
+                                      disabled={actionLoadingId === `passes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) >= 3}
                                       className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
                                       title="Increment metastrikes"
                                     >
@@ -1515,19 +1522,28 @@ export function ModDrawer({
                                   </div>
                                 </div>
 
-                                <span className="text-cream-muted">•</span>
                               </>
                             )}
 
-                            {/* Clear Tonight's Strike Log */}
+                            {member.can_review_strikes && (
+                              <button type="button" id={`review-strikes-${member.id}`}
+                                aria-label={`Review strikes for ${member.discord_username}`}
+                                onClick={() => {
+                                  setErrorMessage(null);
+                                  setSuccessMessage(null);
+                                  setStrikeReviewMemberId(member.id);
+                                }}
+                                className="min-h-[44px] rounded-lg border border-night-border bg-night-elevated px-2 text-xs font-semibold text-cream-primary hover:border-status-amber">
+                                Review strikes
+                              </button>
+                            )}
                             {isOwner && canManage(member) && (<button
                               type="button"
-                              onClick={() => handleClearNightlyLog(member)}
+                              onClick={() => handleClearMetastrikeLog(member)}
                               disabled={actionLoadingId === `clear_${member.id}`}
                               className="min-h-[44px] text-[10px] text-cream-muted hover:text-fox-rust underline transition-colors"
-                              title="Clear tonight's strike log"
                             >
-                              Clear Tonight&apos;s Log
+                              Clear tonight&apos;s Metastrike
                             </button>)}
 
                             {canManage(member) && member.is_active && (member.is_in_bed || (member.last_notified_stage === 'IN_BED_EARLY' &&

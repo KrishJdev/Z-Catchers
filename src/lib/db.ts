@@ -40,6 +40,10 @@ export const supabaseAdmin = supabaseServiceKey
     })
   : supabase;
 
+export function safeDatabaseErrorCode(code: unknown): string | undefined {
+  return typeof code === 'string' && /^(?:[A-Z0-9]{5}|PGRST[0-9]{3})$/.test(code) ? code : undefined;
+}
+
 export type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
 export interface DailySchedule {
@@ -95,12 +99,13 @@ export interface Member {
   in_bed_at?: string | null;
   streak_days?: number;
   nag_assists_count?: number;
-  tonight_strike_log?: ActiveNightlyStrikeLog | null;
-  convertible_strike_log?: ActiveNightlyStrikeLog | null;
+  tonight_strike_log?: Omit<ActiveNightlyStrikeLog, 'reason'> | null;
+  convertible_strike_log?: Omit<ActiveNightlyStrikeLog, 'reason'> | null;
   open_punishment_count?: number | null;
   is_metastrike_active?: boolean;
-  metastrike_reason?: string | null;
 }
+
+export type ModerationRosterMember = Member & { can_review_strikes: boolean };
 
 export type StrikeRecordType = 'pending_vote' | 'strike' | 'metastrike';
 
