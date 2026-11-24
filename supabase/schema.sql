@@ -3340,6 +3340,7 @@ CREATE OR REPLACE FUNCTION public.moderate_dated_strike(
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
   actor_role text;
+  locked_member_id uuid;
   target public.members;
   correction_id uuid;
   evidence text := 'roster:' || p_request_id;
@@ -3352,16 +3353,26 @@ BEGIN
   END IF;
 
   PERFORM FROM public.punishment_rollout WHERE singleton FOR SHARE;
-  -- Follow the Owner-to-Moderator-to-Member order used by other staff writes.
-  -- Break ties by ID when two Moderators correct one another's strikes.
-  PERFORM FROM public.members WHERE id IN (p_actor_id, p_member_id)
-    ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'moderator' THEN 1 ELSE 2 END, id FOR NO KEY UPDATE;
-  actor_role := public.lock_moderation_actor(p_actor_id, p_actor_discord_id, false);
+  -- Take the protected Owner row first, as other staff writes do. Member and
+  -- Moderator rows keep the same ID order through promotions and revocations.
+  FOR locked_member_id IN
+    SELECT id FROM public.members WHERE id IN (p_actor_id, p_member_id)
+      ORDER BY (role = 'owner') DESC, id
+  LOOP
+    IF locked_member_id = p_member_id THEN
+      SELECT * INTO target FROM public.members WHERE id = p_member_id FOR NO KEY UPDATE;
+    END IF;
+    IF locked_member_id = p_actor_id THEN
+      actor_role := public.lock_moderation_actor(p_actor_id, p_actor_discord_id, false);
+    END IF;
+  END LOOP;
+  IF actor_role IS NULL THEN
+    RAISE SQLSTATE 'PT403' USING MESSAGE = 'Your staff access has changed.';
+  END IF;
   IF actor_role = 'moderator' AND p_member_id = p_actor_id THEN
     RAISE SQLSTATE 'PT403' USING MESSAGE = 'Another Moderator or the Owner can correct your strikes.';
   END IF;
-  SELECT * INTO target FROM public.members WHERE id = p_member_id;
-  IF NOT FOUND THEN RAISE SQLSTATE 'PT404' USING MESSAGE = 'Member not found.'; END IF;
+  IF target.id IS NULL THEN RAISE SQLSTATE 'PT404' USING MESSAGE = 'Member not found.'; END IF;
   PERFORM public.require_punishment_visibility();
 
   -- Same-member retries serialize on the member lock. The unique evidence key
