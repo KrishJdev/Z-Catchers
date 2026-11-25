@@ -4,6 +4,7 @@ import React, { useEffect, useState, type ReactNode } from 'react';
 import { DateTime } from 'luxon';
 import { FoxMascot } from '@/components/FoxMascot';
 import { readPunishmentFailure, type PunishmentReadFailure } from '@/lib/punishmentAvailability';
+import { getPunishmentDeadlineState } from '@/lib/sleepEngine';
 import type { Member } from '@/lib/db';
 
 export const punishmentStatus = {
@@ -19,6 +20,8 @@ export interface Punishment {
   status: keyof typeof punishmentStatus;
   earned_cycle_date: string;
   completed_at: string | null;
+  due_at?: string | null;
+  member_timezone?: string;
   title: string | null;
   instructions: string | null;
   metastrike_hold?: boolean;
@@ -40,6 +43,24 @@ export function PunishmentDetails({ item, memberName, children }: {
   memberName?: string;
   children?: ReactNode;
 }) {
+  const [, refreshDeadline] = useState(0);
+  const { due_at: dueAt, member_timezone: timezone, status } = item;
+  const due = getPunishmentDeadlineState(dueAt, timezone);
+  const overdue = status === 'assigned' && due?.overdue;
+
+  useEffect(() => {
+    if (status !== 'assigned' || !dueAt) return;
+    let timer: ReturnType<typeof setTimeout>;
+    function updateAtDeadline() {
+      const deadline = getPunishmentDeadlineState(dueAt, timezone);
+      if (!deadline) return;
+      if (deadline.overdue) refreshDeadline(value => value + 1);
+      else timer = setTimeout(updateAtDeadline, Math.min(deadline.remainingMs, 2147483647));
+    }
+    updateAtDeadline();
+    return () => clearTimeout(timer);
+  }, [status, dueAt, timezone]);
+
   const earned = DateTime.fromISO(item.earned_cycle_date, { zone: 'utc' }).toLocaleString(DateTime.DATE_MED);
   return (
     <li className="space-y-2 rounded-xl border border-night-border bg-night-elevated/65 p-3 [overflow-wrap:anywhere]">
@@ -55,6 +76,12 @@ export function PunishmentDetails({ item, memberName, children }: {
       )}
       {item.title && <p className="text-sm font-semibold">{item.title}</p>}
       {item.instructions && <p className="whitespace-pre-wrap text-sm text-cream-secondary">{item.instructions}</p>}
+      {due ? (
+        <p className={overdue ? 'text-sm font-semibold text-status-coral' : 'text-sm text-cream-secondary'}>
+          {overdue ? 'Overdue · due ' : 'Due '}
+          <time dateTime={dueAt ?? undefined}>{due.label}</time>
+        </p>
+      ) : item.status === 'assigned' ? <p className="text-sm text-cream-secondary">No deadline set</p> : null}
       {item.completed_at && (
         <p className="text-xs text-cream-secondary">
           Completed <time dateTime={item.completed_at}>{DateTime.fromISO(item.completed_at).toLocaleString(DateTime.DATE_MED)}</time>

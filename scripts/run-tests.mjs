@@ -62,6 +62,7 @@ const UNIT_TESTS = [
   'test-private-strike-history.mjs',
   'test-reviewed-metastrikes.mjs',
   'test-punishment-task-apis.mjs',
+  'test-punishment-deadline-rollover.mjs',
   'test-november-cutover.mjs',
   'test-punishment-screens.mjs',
   'test-guarded-active-wake.mjs',

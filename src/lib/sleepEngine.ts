@@ -1808,6 +1808,41 @@ export function computeMemberState(
   };
 }
 
+const punishmentDeadlineInputFormat = "yyyy-MM-dd'T'HH:mm";
+
+export function punishmentDeadlineInputValue(dueAt: string | null | undefined, timezone?: string): string {
+  if (!dueAt) return '';
+  const due = DateTime.fromISO(dueAt, { zone: toValidLuxonZone(timezone) });
+  return due.isValid ? due.toFormat(punishmentDeadlineInputFormat) : '';
+}
+
+/** Resolve the future occurrences of a deadline entered in the member's local time. */
+export function getPunishmentDeadlineOptions(value: string, timezone?: string, now = DateTime.now()) {
+  const local = DateTime.fromISO(value, { zone: toValidLuxonZone(timezone) });
+  if (!local.isValid || local.toFormat(punishmentDeadlineInputFormat) !== value) return null;
+
+  const occurrences = local.getPossibleOffsets();
+  const future = occurrences.filter(candidate => candidate.toMillis() > now.toMillis())
+    .sort((first, second) => first.toMillis() - second.toMillis())
+    .map(candidate => ({
+      instant: candidate.toUTC().toISO()!,
+      offset: candidate.toFormat("'UTC'ZZ"),
+    }));
+  return { ambiguous: occurrences.length > 1, future };
+}
+
+export function getPunishmentDeadlineState(dueAt: string | null | undefined, timezone?: string, now = DateTime.now()) {
+  if (!dueAt) return null;
+  const due = DateTime.fromISO(dueAt, { zone: toValidLuxonZone(timezone) });
+  if (!due.isValid) return null;
+  const remainingMs = due.toMillis() - now.toMillis();
+  return {
+    label: `${due.toLocaleString(DateTime.DATETIME_MED)} ${due.offsetNameShort}`,
+    remainingMs,
+    overdue: remainingMs <= 0,
+  };
+}
+
 /**
  * Returns the current calendar month in the member's local timezone (format: 'YYYY-MM', e.g. '2026-11').
  */

@@ -231,3 +231,8 @@ Check the authenticated dispatcher response and restricted Vercel logs for autom
    ```
 
 - Recheck every affected month and the scheduled dispatcher. If an earned action is missing or duplicated, review the action trail and dated evidence with the release owner. The reconciler repairs derived task eligibility and preserves existing action history. Resolve action-history discrepancies through a separately reviewed correction before restoring visibility. Use `show_verified_november_punishments()` to reopen the screens and repeat the member and moderator checks.
+
+## Release punishment deadlines and instant Metastrike rollover
+
+1. Apply pending migrations through `20261204_punishment_deadlines.sql` before deploying the deadline UI. Verify existing assigned tasks show their saved deadline or **No deadline set**. Compare the rollout flags with the pre-migration values.
+2. In the disposable dispatcher integration, assign a task with a custom date, extend it and complete it. Use the unit rollover fixture to verify that both counters start fresh at local midnight and that an open task keeps the same deadline. An instant replacement charges the original sleep-cycle month and a reversal credits the stored charge month. Historical charges keep their recorded month.

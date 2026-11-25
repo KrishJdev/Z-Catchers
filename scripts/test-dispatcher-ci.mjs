@@ -1146,6 +1146,16 @@ try {
 
   sql(readFileSync('supabase/migrations/20261202_roster_strike_permissions.sql', 'utf8'));
   sql(readFileSync('supabase/migrations/20261203_staff_strikes_and_profile_history.sql', 'utf8'));
+  sql("NOTIFY pgrst, 'reload schema'");
+  await waitFor(async () => {
+    const { error } = await db.rpc('get_profile_strike_history', {
+      p_viewer_id: owner.id, p_viewer_discord_id: discordAccounts.owner,
+      p_member_id: owner.id, p_month: '2026-11-01',
+    });
+    if (error?.code === 'PGRST202') return false;
+    assert.equal(error, null);
+    return true;
+  }, 10_000, () => 'PostgREST did not load the shared profile strike history RPC');
   const peerModId = sql(`SELECT id FROM public.members WHERE discord_id = '${discordAccounts['second-mod']}'`);
   const strikeReview = memberId => '/api/mod?view=strike_month&month=2026-11&member_id=' + memberId;
   const rosterStrike = {
@@ -1195,6 +1205,42 @@ try {
   assert.equal(promotedDuringCorrection, 'moderator');
   assert.equal(correctedDuringPromotion.strikes_used, 1);
   console.log('Verified Owner self-correction, Moderator self-denial, reciprocal corrections and a concurrent promotion.');
+
+  sql(readFileSync('supabase/migrations/20261204_punishment_deadlines.sql', 'utf8'));
+  await waitFor(async () => {
+    const { error } = await db.rpc('moderate_punishment', {
+      p_actor_id: modId, p_actor_discord_id: discordAccounts['database-mod'],
+      p_id: null, p_action: 'assign', p_title: null, p_instructions: null,
+      p_cycle: null, p_source: null, p_reason: null, p_request_id: null, p_due_at: null,
+    });
+    if (error?.code === 'PGRST202') return false;
+    // A null ID cannot match a task. PT404 confirms the new overload ran without writing.
+    assert.equal(error?.code, 'PT404', JSON.stringify(error));
+    return true;
+  }, 10_000, () => 'PostgREST did not load the deadline-aware moderate_punishment overload');
+  const deadlineMember = raceMember('Deadline Smoke Fox');
+  for (const day of ['11', '12', '13']) {
+    await post('/api/mod', dbModCookie, {
+      ...rosterStrike, cycle_date: '2026-11-' + day, member_id: deadlineMember, request_id: randomUUID(),
+    }, 200, origin);
+  }
+  const deadlineTask = sql(`SELECT id FROM public.punishments WHERE member_id = '${deadlineMember}'`);
+  const dueAt = DateTime.utc().plus({ days: 7 }).startOf('second');
+  const assignedWithDeadline = await post(modTasks, dbModCookie, {
+    action: 'assign', punishment_id: deadlineTask, title: 'Journal check-in', due_at: dueAt.toISO(),
+  }, 200, origin);
+  assert.equal(DateTime.fromISO(assignedWithDeadline.item.due_at).toMillis(), dueAt.toMillis());
+  const extendedDueAt = dueAt.plus({ days: 2 });
+  const extendedDeadline = await post(modTasks, dbModCookie, {
+    action: 'edit', punishment_id: deadlineTask, title: 'Journal check-in', due_at: extendedDueAt.toISO(),
+  }, 200, origin);
+  assert.equal(DateTime.fromISO(extendedDeadline.item.due_at).toMillis(), extendedDueAt.toMillis());
+  const deadlineDone = await post(modTasks, dbModCookie, {
+    action: 'complete', punishment_id: deadlineTask,
+  }, 200, origin);
+  assert.equal(deadlineDone.item.due_at, extendedDeadline.item.due_at);
+  assert.equal(deadlineDone.item.status, 'completed');
+  console.log('Verified assignment, deadline extension and completion through the PostgREST task API.');
 
   const recovery = readFileSync('supabase/recover_moderation_owner.sql', 'utf8')
     .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${owner.id}';`)
