@@ -50,6 +50,7 @@ process.env.MOD_SECRET_PASSCODE = 'retired-passcode';
 process.env.MOD_DISCORD_IDS = member.discord_id;
 
 const { supabaseAdmin } = await import('../src/lib/db.ts');
+const { activeStrikeLog } = await import('../src/lib/strikes.ts');
 const { getScheduleCooldownEffectiveAt, Settings } = await import('../src/lib/sleepEngine.ts');
 const { createSessionToken } = await import('../src/lib/auth.ts');
 const { pendingScheduleSnapshot } = await import('../src/lib/pendingSchedule.ts');
@@ -395,6 +396,73 @@ try {
   assert.equal((await expect(memberPunishments, 503, memberSession)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
   await db.query('UPDATE public.members SET metastrikes_used = 0, metastrikes_count = 0 WHERE id = $1', [member.id]);
 
+  // Freeze the disposable PostgreSQL clock at a month boundary where an effective
+  // pending timezone and the stored timezone disagree on the date.
+  const realDateNow = Date.now;
+  Date.now = () => Date.parse('2026-12-01T00:30:00Z');
+  try {
+    const { rows: [rolloverMember] } = await db.query(`
+      INSERT INTO public.members (discord_username, journal_url, bedtime_local, timezone, pending_timezone,
+        pending_effective_at, strike_cycle_month, strikes_used, strikes_count, metastrikes_used, metastrikes_count)
+      VALUES ('Rollover fixture', 'https://discord.com/channels/1/2', '23:00', 'America/Los_Angeles', 'UTC',
+        '2026-12-01T00:45:00Z', '2026-11', 2, 2, 3, 3) RETURNING id`);
+    const target = [owner.id, owner.discord_id, rolloverMember.id];
+    const selectedMonth = async () => (await db.query(`
+      SELECT public.read_moderation_strike_month($1, $2, $3, NULL) AS result`, target)).rows[0].result;
+    const correct = async (cycle, source = null, requestId = randomUUID()) => (await db.query(`
+      SELECT public.moderate_dated_strike($1, $2, $3, $4, $5, $6, 'Rollover test', $7) AS result`,
+    [...target, source ? 'remove_strike' : 'add_strike', cycle, source, requestId])).rows[0].result;
+    assert.equal((await selectedMonth()).latest_cycle_date, '2026-11-30');
+    await assert.rejects(correct('2026-12-01'), { code: 'PT400' });
+    await db.query("UPDATE public.members SET pending_effective_at = '2026-12-01T00:15:00Z' WHERE id = $1", [rolloverMember.id]);
+    assert.equal((await selectedMonth()).latest_cycle_date, '2026-12-01');
+    const rolled = await correct('2026-12-01');
+    assert.equal(rolled.current_strikes_used, 1);
+    assert.equal(rolled.month, '2026-12');
+    const afterRollover = await getMember(rolloverMember.id);
+    assert.deepEqual([afterRollover.strike_cycle_month, afterRollover.metastrikes_used, afterRollover.metastrikes_count],
+      ['2026-12', 0, 0]);
+
+    await correct('2026-12-01');
+    await correct('2026-12-01');
+    assert.equal((await correct('2026-12-01')).current_strikes_used, 4);
+    const adjust = (strikes, passes) => db.query(`
+      SELECT public.adjust_member_strikes($1, $2, $3, false, $4, 'Rollover test') AS result`,
+    [rolloverMember.id, strikes, passes, owner.id]);
+    assert.deepEqual((await adjust(null, 2)).rows[0].result, { month: '2026-12', strikesUsed: 4, metastrikesUsed: 2 });
+    await assert.rejects(adjust(null, 4), { code: 'PT400' });
+    await assert.rejects(adjust(5, null), { code: 'PT400' });
+    await adjust(1, null);
+
+    const { rows: [{ result: written }] } = await db.query(`
+      SELECT public.apply_legacy_nightly_strike($1, '2026-11-30', '2026-12', NULL, 'strike', 'Missed check-in',
+        '2026-12-01T00:05:00Z', '2026-12-01T00:00:00Z') AS result`, [rolloverMember.id]);
+    const { rows: [charge] } = await db.query(`SELECT legacy_strike_charge_month::text AS month
+      FROM public.nightly_strike_logs WHERE id = $1`, [written.log.id]);
+    assert.equal(charge.month, '2026-12-01');
+    assert.equal('legacy_strike_charge_month' in activeStrikeLog(written.log), false);
+    const { rows: [{ id: earlier }, { id: olderWriter }] } = await db.query(`
+      INSERT INTO public.nightly_strike_logs(target_member_id, sleep_cycle_date, record_type, reason, updated_at)
+      VALUES ($1, '2026-11-28', 'strike', 'November charge', '2026-11-29T00:05:00Z'),
+        ($1, '2026-11-29', 'strike', 'December charge from an older writer', '2026-12-01T00:20:00Z')
+      RETURNING id`, [rolloverMember.id]);
+    // Simulate the older writer's December charge already in the legacy balance.
+    await adjust(3, null);
+    assert.equal((await correct('2026-11-28', earlier)).current_strikes_used, 3);
+    assert.equal((await correct('2026-11-29', olderWriter)).current_strikes_used, 2);
+    const removalId = randomUUID();
+    const removal = await correct('2026-11-30', written.log.id, removalId);
+    assert.equal(removal.month, '2026-11');
+    assert.equal(removal.current_month, '2026-12');
+    assert.equal(removal.current_strikes_used, 1);
+    assert.deepEqual(await correct('2026-11-30', written.log.id, removalId), removal);
+    const { rows: [history] } = await db.query(`SELECT cycle_date::text, change_type
+      FROM public.nightly_strike_history WHERE source_id = $1`, [written.log.id]);
+    assert.deepEqual(history, { cycle_date: '2026-11-30', change_type: 'removed' });
+  } finally {
+    Date.now = realDateNow;
+  }
+
   await db.exec(`UPDATE public.punishment_rollout SET activated_at = clock_timestamp(), screens_visible = true;
     INSERT INTO public.nightly_strike_logs (target_member_id, sleep_cycle_date, record_type, reason, replacement_until)
       VALUES ('${member.id}', '2026-11-03', 'strike', 'Missed check-in', '2026-11-04T00:00:00Z'),
@@ -519,6 +587,7 @@ try {
     [owner.id, owner.discord_id, member.id]), { code: '42501' });
   await assert.rejects(db.query("SELECT public.moderate_roster_member($1,$2,$3,'cancel_cooldown')",
     [owner.id, owner.discord_id, member.id]), { code: '42501' });
+
 } finally {
   Settings.now = realNow;
   await db.close();

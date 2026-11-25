@@ -3396,6 +3396,183 @@ COMMIT;
 -- Enable roster strike corrections and shared calendar history independently of punishment visibility.
 BEGIN;
 
+-- Preserve the actual legacy balance month even if the member later changes timezone.
+ALTER TABLE public.nightly_strike_logs ADD COLUMN IF NOT EXISTS legacy_strike_charge_month date;
+
+CREATE OR REPLACE FUNCTION public.refresh_member_strike_projection(p_member_id uuid, p_now timestamptz)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  activation timestamptz;
+  m public.members%ROWTYPE;
+  month_start date;
+  month_label text;
+BEGIN
+  SELECT activated_at INTO STRICT activation FROM public.punishment_rollout WHERE singleton FOR SHARE;
+  SELECT * INTO STRICT m FROM public.members WHERE id = p_member_id FOR NO KEY UPDATE;
+  month_start := public.punishment_progress_month(m, greatest(p_now, clock_timestamp()));
+  IF activation IS NOT NULL THEN RETURN public.project_member_strikes(m, month_start); END IF;
+  month_label := to_char(month_start, 'YYYY-MM');
+  IF m.strike_cycle_month < month_label THEN
+    UPDATE public.members SET strikes_used = 0, strikes_count = 0, metastrikes_used = 0, metastrikes_count = 0,
+      strike_cycle_month = month_label WHERE id = m.id;
+    RETURN jsonb_build_object('strikesUsed', 0, 'metastrikesUsed', 0, 'month', month_label, 'reset', true);
+  END IF;
+  RETURN jsonb_build_object('strikesUsed', greatest(m.strikes_used, m.strikes_count),
+    'metastrikesUsed', greatest(m.metastrikes_used, m.metastrikes_count),
+    'month', COALESCE(m.strike_cycle_month, month_label), 'reset', false);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.adjust_member_strikes(
+  p_member_id uuid, p_strikes integer, p_passes integer, p_relative boolean, p_actor text, p_reason text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  activation timestamptz;
+  m public.members%ROWTYPE;
+  now_at timestamptz;
+  local_day date;
+  target_month date;
+  month_label text;
+  total integer;
+  adjusting_strikes boolean := p_strikes IS NOT NULL;
+  previous_passes integer;
+  item record;
+BEGIN
+  SELECT activated_at INTO STRICT activation FROM public.punishment_rollout WHERE singleton FOR SHARE;
+  SELECT * INTO STRICT m FROM public.members WHERE id = p_member_id FOR NO KEY UPDATE;
+  now_at := clock_timestamp();
+  local_day := (now_at AT TIME ZONE public.strike_member_zone(CASE WHEN m.pending_effective_at <= now_at
+    THEN COALESCE(NULLIF(m.pending_timezone, ''), m.timezone) ELSE m.timezone END))::date;
+  target_month := date_trunc('month', local_day::timestamp)::date;
+  month_label := to_char(target_month, 'YYYY-MM');
+  IF p_relative IS NULL OR (p_strikes IS NULL AND p_passes IS NULL)
+    OR (p_relative AND (abs(p_strikes::bigint) > 1 OR abs(p_passes::bigint) > 1))
+    OR (NOT p_relative AND (p_strikes < 0 OR p_passes NOT BETWEEN 0 AND 3))
+    OR nullif(btrim(p_actor), '') IS NULL OR nullif(btrim(p_reason), '') IS NULL THEN
+    RAISE SQLSTATE 'PT400' USING MESSAGE = 'Invalid strike correction.';
+  END IF;
+
+  IF activation IS NULL THEN
+    IF m.strike_cycle_month > month_label THEN
+      RAISE SQLSTATE 'PT409' USING MESSAGE = 'The strike month advanced. Refresh and retry.';
+    END IF;
+    total := CASE WHEN m.strike_cycle_month = month_label THEN greatest(m.strikes_used, m.strikes_count) ELSE 0 END;
+    previous_passes := CASE WHEN m.strike_cycle_month = month_label
+      THEN greatest(m.metastrikes_used, m.metastrikes_count) ELSE 0 END;
+    p_strikes := CASE WHEN p_relative THEN greatest(0, total + COALESCE(p_strikes, 0)) ELSE COALESCE(p_strikes, total) END;
+    p_passes := CASE WHEN p_relative THEN greatest(0, least(3, previous_passes + COALESCE(p_passes, 0)))
+      ELSE COALESCE(p_passes, previous_passes) END;
+    IF adjusting_strikes AND p_strikes > 3 THEN
+      RAISE SQLSTATE 'PT400' USING MESSAGE = 'The strike ledger is inactive. At most three strikes can be recorded.';
+    END IF;
+    INSERT INTO public.strike_moderator_corrections(member_id, cycle_date, action, actor, reason, details, recorded_at)
+      VALUES (m.id, local_day, 'legacy_set_counts', p_actor, p_reason,
+        jsonb_build_object('previousMonth', m.strike_cycle_month,
+          'previousStrikes', greatest(m.strikes_used, m.strikes_count),
+          'previousPasses', greatest(m.metastrikes_used, m.metastrikes_count),
+          'strikes', p_strikes, 'passes', p_passes), now_at);
+    UPDATE public.members SET strikes_used = p_strikes, strikes_count = p_strikes,
+      metastrikes_used = p_passes, metastrikes_count = p_passes,
+      strike_cycle_month = month_label, updated_at = now_at WHERE id = m.id;
+    RETURN jsonb_build_object('strikesUsed', p_strikes, 'metastrikesUsed', p_passes, 'month', month_label);
+  END IF;
+
+  SELECT count(*) INTO total FROM public.verified_monthly_strikes(m, target_month);
+  previous_passes := public.ensure_strike_pass_month(m, target_month);
+  p_strikes := CASE WHEN p_relative THEN greatest(0, total + COALESCE(p_strikes, 0)) ELSE COALESCE(p_strikes, total) END;
+  p_passes := CASE WHEN p_relative THEN greatest(0, least(3, previous_passes + COALESCE(p_passes, 0)))
+    ELSE COALESCE(p_passes, previous_passes) END;
+  IF p_strikes - total > 31 THEN
+    RAISE SQLSTATE 'PT400' USING MESSAGE = 'A single correction can add at most 31 strike records.';
+  END IF;
+  INSERT INTO public.strike_moderator_corrections(member_id, cycle_date, action, actor, reason, recorded_at)
+    SELECT m.id, local_day, 'add_strike', p_actor, p_reason, now_at
+    FROM generate_series(1, p_strikes - total);
+  FOR item IN
+    SELECT * FROM public.verified_monthly_strikes(m, target_month)
+    ORDER BY cycle_date DESC, qualified_at DESC, source_id
+    LIMIT greatest(0, total - p_strikes)
+  LOOP
+    IF item.source_type = 'nightly' THEN
+      INSERT INTO public.strike_moderator_corrections(member_id, cycle_date, action, source_id, actor, reason, details, recorded_at)
+        SELECT m.id, item.cycle_date, 'clear_nightly', n.id, p_actor, p_reason, to_jsonb(n), now_at
+        FROM public.nightly_strike_logs AS n WHERE n.id = item.source_id;
+      DELETE FROM public.nightly_strike_logs WHERE id = item.source_id;
+    ELSE
+      INSERT INTO public.strike_moderator_corrections(member_id, cycle_date, action, source_id, actor, reason, recorded_at)
+        VALUES (m.id, item.cycle_date, 'void_adjustment', item.source_id, p_actor, p_reason, now_at);
+    END IF;
+  END LOOP;
+
+  IF previous_passes <> p_passes THEN
+    UPDATE public.strike_pass_months SET used = p_passes
+      WHERE member_id = m.id AND strike_pass_months.month_start = target_month;
+    INSERT INTO public.strike_moderator_corrections(member_id, cycle_date, action, actor, reason, details, recorded_at)
+      VALUES (m.id, local_day, 'set_passes', p_actor, p_reason,
+        jsonb_build_object('previousPasses', previous_passes, 'passes', p_passes), now_at);
+  END IF;
+  PERFORM public.reconcile_punishments(m, target_month, now_at, p_actor);
+  RETURN public.project_member_strikes(m, target_month);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.record_dated_strike_correction(
+  p_member_id uuid, p_cycle date, p_evidence_key text, p_actor text, p_reason text,
+  p_void_source uuid DEFAULT NULL
+) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  activation timestamptz;
+  m public.members%ROWTYPE;
+  prior public.strike_moderator_corrections%ROWTYPE;
+  source_record record;
+  correction_id uuid;
+  now_at timestamptz;
+  statement_at timestamptz := statement_timestamp();
+  target_month date;
+  action_name text := 'add_strike';
+  snapshot jsonb;
+BEGIN
+  SELECT activated_at INTO STRICT activation FROM public.punishment_rollout WHERE singleton FOR SHARE;
+  SELECT * INTO STRICT m FROM public.members WHERE id = p_member_id FOR NO KEY UPDATE;
+  now_at := clock_timestamp();
+  IF p_cycle IS NULL OR p_cycle < date '2026-11-01'
+    OR p_cycle > (statement_at AT TIME ZONE public.strike_member_zone(CASE WHEN m.pending_effective_at <= statement_at
+      THEN COALESCE(NULLIF(m.pending_timezone, ''), m.timezone) ELSE m.timezone END))::date
+    OR nullif(btrim(p_evidence_key), '') IS NULL OR nullif(btrim(p_actor), '') IS NULL
+    OR nullif(btrim(p_reason), '') IS NULL THEN
+    RAISE SQLSTATE 'PT400' USING MESSAGE = 'A dated strike correction requires a valid date, reference, actor and reason.';
+  END IF;
+  target_month := date_trunc('month', p_cycle::timestamp)::date;
+  SELECT * INTO prior FROM public.strike_moderator_corrections WHERE evidence_key = p_evidence_key;
+  IF FOUND THEN
+    IF (prior.member_id, prior.cycle_date, prior.source_id, prior.actor, prior.reason)
+      IS DISTINCT FROM (p_member_id, p_cycle, p_void_source, p_actor, p_reason) THEN
+      RAISE SQLSTATE 'PT409' USING MESSAGE = 'This evidence reference already records a different correction.';
+    END IF;
+    RETURN prior.id;
+  END IF;
+  IF p_void_source IS NOT NULL THEN
+    SELECT * INTO source_record FROM public.verified_monthly_strikes(m, target_month)
+      WHERE source_id = p_void_source AND cycle_date = p_cycle;
+    IF NOT FOUND THEN RAISE SQLSTATE 'PT400' USING MESSAGE = 'No valid strike matches the correction.'; END IF;
+    IF source_record.source_type = 'nightly' THEN
+      action_name := 'clear_nightly';
+      DELETE FROM public.nightly_strike_logs AS n WHERE n.id = p_void_source RETURNING to_jsonb(n) INTO snapshot;
+    ELSE
+      action_name := 'void_adjustment';
+    END IF;
+  END IF;
+  INSERT INTO public.strike_moderator_corrections(member_id, cycle_date, action, source_id, evidence_key, actor, reason, details, recorded_at)
+    VALUES (m.id, p_cycle, action_name, p_void_source, p_evidence_key, p_actor, p_reason, snapshot, now_at)
+    RETURNING id INTO correction_id;
+  IF activation IS NOT NULL THEN
+    PERFORM public.reconcile_punishments(m, target_month, now_at, p_actor);
+    PERFORM public.project_member_strikes(m, public.punishment_progress_month(m, statement_at));
+  END IF;
+  RETURN correction_id;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.staff_strike_month(m public.members, p_month date)
 RETURNS jsonb LANGUAGE plpgsql STABLE SET search_path = '' AS $$
 DECLARE
@@ -3467,6 +3644,7 @@ DECLARE
   activation timestamptz;
   current_month date;
   cycle_month date := date_trunc('month', p_cycle::timestamp)::date;
+  charge_month date := cycle_month;
   already_recorded boolean;
   legacy_count integer;
   evidence text := 'roster:' || p_request_id;
@@ -3515,10 +3693,22 @@ BEGIN
   END;
 
   -- The legacy dispatcher still uses the compatibility counters. Apply each
-  -- current-month correction once without deriving a balance from incomplete history.
+  -- correction once without deriving a balance from incomplete history.
   IF activation IS NULL AND NOT already_recorded THEN
     current_month := public.punishment_progress_month(target, statement_timestamp());
-    IF cycle_month = current_month THEN
+    IF p_action = 'remove_strike' THEN
+      -- Nightly strikes were charged at issuance. Infer the month from older
+      -- sources using the history's timestamp and timezone when available.
+      SELECT COALESCE((c.details->>'legacy_strike_charge_month')::date,
+        date_trunc('month', COALESCE(h.issued_at, (c.details->>'updated_at')::timestamptz) AT TIME ZONE
+          public.strike_member_zone(COALESCE(NULLIF(h.issuance_timezone, ''), target.timezone)))::date,
+        cycle_month)
+      INTO STRICT charge_month
+      FROM public.strike_moderator_corrections c
+      LEFT JOIN public.nightly_strike_history h ON h.source_id = c.source_id AND h.record_type = 'strike'
+      WHERE c.id = correction_id;
+    END IF;
+    IF charge_month = current_month THEN
       IF target.strike_cycle_month < to_char(current_month, 'YYYY-MM') THEN
         PERFORM public.refresh_member_strike_projection(target.id, statement_timestamp());
         SELECT * INTO target FROM public.members WHERE id = p_member_id;
@@ -3527,11 +3717,12 @@ BEGIN
         legacy_count := greatest(0, greatest(target.strikes_used, target.strikes_count)
           + CASE WHEN p_action = 'add_strike' THEN 1 ELSE -1 END);
         UPDATE public.members SET strikes_used = legacy_count, strikes_count = legacy_count,
-          updated_at = clock_timestamp() WHERE id = target.id RETURNING * INTO target;
+          updated_at = clock_timestamp() WHERE id = target.id;
       END IF;
     END IF;
   END IF;
 
+  SELECT * INTO STRICT target FROM public.members WHERE id = p_member_id;
   RETURN public.staff_strike_month(target, cycle_month)
     || jsonb_build_object('success', true, 'correction_id', correction_id);
 END;
@@ -3599,10 +3790,13 @@ BEGIN
   IF p_type = 'clear' THEN
     DELETE FROM public.nightly_strike_logs WHERE id = nightly.id;
   ELSE
-    INSERT INTO public.nightly_strike_logs (target_member_id, sleep_cycle_date, record_type, reason, created_at, updated_at)
-      VALUES (m.id, p_cycle, p_type, p_reason, p_now, p_now)
+    INSERT INTO public.nightly_strike_logs (target_member_id, sleep_cycle_date, record_type, reason, created_at, updated_at,
+      legacy_strike_charge_month)
+      VALUES (m.id, p_cycle, p_type, p_reason, p_now, p_now,
+        CASE WHEN p_type = 'strike' THEN (p_month || '-01')::date END)
       ON CONFLICT (target_member_id, sleep_cycle_date) DO UPDATE
-      SET record_type = excluded.record_type, reason = excluded.reason, updated_at = excluded.updated_at
+      SET record_type = excluded.record_type, reason = excluded.reason, updated_at = excluded.updated_at,
+        legacy_strike_charge_month = excluded.legacy_strike_charge_month
       RETURNING * INTO nightly;
   END IF;
   UPDATE public.members SET strikes_used = strikes, strikes_count = strikes,

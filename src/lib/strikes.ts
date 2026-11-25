@@ -52,10 +52,10 @@ export function clearInMemoryStrikeStore(): void {
   memoryStore.memberCounts.clear();
 }
 
-/** Omit obsolete voting data from member-facing logs. */
+/** Omit internal data from member-facing logs. */
 export function activeStrikeLog(log?: NightlyStrikeLog | null): ActiveNightlyStrikeLog | null {
   if (!log || log.record_type === 'pending_vote') return null;
-  const { voter_ids: _legacyVoters, record_type, ...active } = log;
+  const { voter_ids: _legacyVoters, legacy_strike_charge_month: _chargeMonth, record_type, ...active } = log;
   return { ...active, record_type };
 }
 

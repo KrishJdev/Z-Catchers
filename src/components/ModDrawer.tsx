@@ -14,7 +14,7 @@ import { ModeratorMetastrikeQueue } from '@/components/ModeratorMetastrikeQueue'
 import { ModeratorStrikeReview } from '@/components/ModeratorStrikeReview';
 import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import { RosterRoleAction, type ModeratorRoleChange } from '@/components/RosterRoleAction';
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { FoxMascot } from './FoxMascot';
 import type { Member, ModerationRosterMember } from '@/lib/db';
 import { pendingScheduleSnapshot } from '@/lib/pendingSchedule';
@@ -105,6 +105,7 @@ export function ModDrawer({
   // Moderator roster data (includes inactive and pending members)
   const [modMembers, setModMembers] = useState<ModerationRosterMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const rosterRequest = useRef(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [strikeReviewMemberId, setStrikeReviewMemberId] = useState<string | null>(null);
   const [roleChangeMemberId, setRoleChangeMemberId] = useState<string | null>(null);
@@ -147,22 +148,32 @@ export function ModDrawer({
   }, []);
 
   // Fetch full moderator roster
-  const fetchModRoster = useCallback(async () => {
+  const fetchModRoster = useCallback(async (background = false) => {
+    const request = ++rosterRequest.current;
     setLoadingMembers(true);
     try {
       const res = await fetch('/api/mod', { cache: 'no-store' });
-      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (request !== rosterRequest.current) return;
+      if (res.status === 401 || res.status === 403) {
+        setRoleChangeMemberId(null);
+        setModMembers([]);
+        onAccessChanged?.();
+      }
       if (!res.ok) throw new Error('Could not load the moderation roster.');
       const data = await res.json();
-      setRoleChangeMemberId(null);
+      if (request !== rosterRequest.current) return;
+      if (!background) setRoleChangeMemberId(null);
       setModMembers(data.members);
     } catch (err) {
+      if (request !== rosterRequest.current) return;
       console.error('Failed to load moderator roster:', err);
       setErrorMessage('Could not load the moderation roster.');
-      setRoleChangeMemberId(null);
-      setModMembers([]);
+      if (!background) {
+        setRoleChangeMemberId(null);
+        setModMembers([]);
+      }
     } finally {
-      setLoadingMembers(false);
+      if (request === rosterRequest.current) setLoadingMembers(false);
     }
   }, [onAccessChanged]);
 
@@ -190,6 +201,7 @@ export function ModDrawer({
       setModMembers([]);
       setEditingMember(null);
     }
+    return () => { rosterRequest.current += 1; };
   }, [isOpen, isModUser, fetchModRoster]);
 
   useEffect(() => {
@@ -1376,12 +1388,8 @@ export function ModDrawer({
                   setStrikeReviewMemberId(null);
                   requestAnimationFrame(() => document.getElementById(`review-strikes-${strikeReviewMember.id}`)?.focus());
                 }}
-                onChanged={({ current_strikes_used, strikes_used, month, current_month }) => {
-                  if (month === current_month) {
-                    const total = current_strikes_used ?? strikes_used;
-                    setModMembers(members => members.map(member => member.id === strikeReviewMember.id
-                      ? { ...member, strikes_used: total, strikes_count: total } : member));
-                  }
+                onChanged={() => {
+                  void fetchModRoster(true);
                   void onRosterChanged();
                 }}
               />

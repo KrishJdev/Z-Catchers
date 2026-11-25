@@ -18,7 +18,6 @@ interface StrikeMonth {
   latest_cycle_date: string;
   verified_strikes: StrikeSource[];
   strikes_used: number;
-  current_strikes_used?: number;
   open_count: number | null;
 }
 
@@ -30,7 +29,7 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
   memberId: string;
   memberName: string;
   onClose: () => void;
-  onChanged: (counts: StrikeMonth) => void;
+  onChanged: () => void;
   onAccessChanged?: () => void;
 }) {
   const headingId = useId();
@@ -131,7 +130,7 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
       setReview(data);
       resetForm();
       setNotice(removal ? 'Strike removed.' : 'Strike added.');
-      onChanged(data);
+      onChanged();
     } catch {
       setUncertain(true);
       setWriteError('The save could not be confirmed. Retry the same correction.');
