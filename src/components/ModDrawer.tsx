@@ -14,7 +14,7 @@ import { ModeratorMetastrikeQueue } from '@/components/ModeratorMetastrikeQueue'
 import { ModeratorStrikeReview } from '@/components/ModeratorStrikeReview';
 import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import { RosterRoleAction, type ModeratorRoleChange } from '@/components/RosterRoleAction';
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { FoxMascot } from './FoxMascot';
 import type { Member, ModerationRosterMember } from '@/lib/db';
 import { pendingScheduleSnapshot } from '@/lib/pendingSchedule';
@@ -105,6 +105,8 @@ export function ModDrawer({
   // Moderator roster data (includes inactive and pending members)
   const [modMembers, setModMembers] = useState<ModerationRosterMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [rosterRefreshFailed, setRosterRefreshFailed] = useState(false);
+  const rosterRequest = useRef(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [strikeReviewMemberId, setStrikeReviewMemberId] = useState<string | null>(null);
   const [roleChangeMemberId, setRoleChangeMemberId] = useState<string | null>(null);
@@ -147,22 +149,34 @@ export function ModDrawer({
   }, []);
 
   // Fetch full moderator roster
-  const fetchModRoster = useCallback(async () => {
+  const fetchModRoster = useCallback(async (background = false) => {
+    const request = ++rosterRequest.current;
+    let accessDenied = false;
     setLoadingMembers(true);
     try {
       const res = await fetch('/api/mod', { cache: 'no-store' });
-      if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if (request !== rosterRequest.current) return;
+      accessDenied = res.status === 401 || res.status === 403;
+      if (accessDenied) onAccessChanged?.();
       if (!res.ok) throw new Error('Could not load the moderation roster.');
       const data = await res.json();
-      setRoleChangeMemberId(null);
+      if (request !== rosterRequest.current) return;
+      if (!background) setRoleChangeMemberId(null);
       setModMembers(data.members);
+      setRosterRefreshFailed(false);
     } catch (err) {
+      if (request !== rosterRequest.current) return;
       console.error('Failed to load moderator roster:', err);
+      if (background && !accessDenied) {
+        setRosterRefreshFailed(true);
+        return;
+      }
+      setRosterRefreshFailed(false);
       setErrorMessage('Could not load the moderation roster.');
       setRoleChangeMemberId(null);
       setModMembers([]);
     } finally {
-      setLoadingMembers(false);
+      if (request === rosterRequest.current) setLoadingMembers(false);
     }
   }, [onAccessChanged]);
 
@@ -190,6 +204,7 @@ export function ModDrawer({
       setModMembers([]);
       setEditingMember(null);
     }
+    return () => { rosterRequest.current += 1; };
   }, [isOpen, isModUser, fetchModRoster]);
 
   useEffect(() => {
@@ -755,6 +770,15 @@ export function ModDrawer({
         </div>
 
         {/* Status Alerts */}
+        {rosterRefreshFailed && (
+          <div className="mt-4 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral">
+            <p role="alert">Could not refresh the roster. The balances shown may be out of date.</p>
+            <button type="button" onClick={() => void fetchModRoster(true)} disabled={loadingMembers}
+              className="mt-2 min-h-[44px] rounded-lg border border-night-border px-3 font-semibold text-cream-primary disabled:opacity-50">
+              Retry roster refresh
+            </button>
+          </div>
+        )}
         {errorMessage && (
           <div role="alert" className="mt-4 flex items-start gap-2.5 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral">
             <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -1376,11 +1400,8 @@ export function ModDrawer({
                   setStrikeReviewMemberId(null);
                   requestAnimationFrame(() => document.getElementById(`review-strikes-${strikeReviewMember.id}`)?.focus());
                 }}
-                onChanged={({ strikes_used, month, current_month }) => {
-                  if (month === current_month) {
-                    setModMembers(members => members.map(member => member.id === strikeReviewMember.id
-                      ? { ...member, strikes_used, strikes_count: strikes_used } : member));
-                  }
+                onChanged={() => {
+                  void fetchModRoster(true);
                   void onRosterChanged();
                 }}
               />
@@ -1506,7 +1527,8 @@ export function ModDrawer({
                                       onClick={() => handleAdjustPasses(member, -1)}
                                       disabled={actionLoadingId === `passes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) <= 0}
                                       className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                      title="Decrement metastrikes"
+                                      aria-label="Decrease Metastrikes used"
+                                      title="Decrease Metastrikes used"
                                     >
                                       -
                                     </button>)}
@@ -1515,7 +1537,8 @@ export function ModDrawer({
                                       onClick={() => handleAdjustPasses(member, 1)}
                                       disabled={actionLoadingId === `passes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) >= 3}
                                       className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                      title="Increment metastrikes"
+                                      aria-label="Increase Metastrikes used"
+                                      title="Increase Metastrikes used"
                                     >
                                       +
                                     </button>)}
@@ -1527,14 +1550,14 @@ export function ModDrawer({
 
                             {member.can_review_strikes && (
                               <button type="button" id={`review-strikes-${member.id}`}
-                                aria-label={`Review strikes for ${member.discord_username}`}
+                                aria-label={`Edit strikes for ${member.discord_username}`}
                                 onClick={() => {
                                   setErrorMessage(null);
                                   setSuccessMessage(null);
                                   setStrikeReviewMemberId(member.id);
                                 }}
                                 className="min-h-[44px] rounded-lg border border-night-border bg-night-elevated px-2 text-xs font-semibold text-cream-primary hover:border-status-amber">
-                                Review strikes
+                                Edit strikes
                               </button>
                             )}
                             {isOwner && canManage(member) && (<button

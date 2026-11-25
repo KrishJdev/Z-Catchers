@@ -4,35 +4,50 @@ import { resolveMemberStrikeCounts, getNightlyStrikeLog, activeStrikeLog } from 
 import { getSleepCycleDate } from '@/lib/sleepEngine';
 import { DateTime } from 'luxon';
 import { getRequestSession, ownsDiscordProfile } from '@/lib/auth';
-import { punishmentResponse } from '@/lib/punishments';
+import { punishmentResponse, UUID_PATTERN } from '@/lib/punishments';
 
 const MONTH_PATTERN = /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/;
 
-/** Monthly private history when a month is supplied, otherwise the current cycle and counters. */
+/** Monthly self or profile history, otherwise the signed-in member’s current cycle and counters. */
 export async function GET(request: Request) {
   try {
     const session = getRequestSession(request);
     if (!session?.discordId) return punishmentResponse({ error: 'Sign in with Discord.' }, 401);
     const { searchParams } = new URL(request.url);
     const memberId = searchParams.get('memberId') ?? session.memberId;
-    if (memberId !== session.memberId) return punishmentResponse({ error: 'Only your own strikes are available here.' }, 403);
-
     const month = searchParams.get('month');
-    if (month !== null) {
-      if (!MONTH_PATTERN.test(month)) {
+    const profileView = searchParams.get('view') === 'profile';
+    if (profileView && !UUID_PATTERN.test(memberId)) {
+      return punishmentResponse({ error: 'Choose a valid member profile.' }, 400);
+    }
+    if (!profileView && memberId !== session.memberId) {
+      return punishmentResponse({ error: 'Only your own strikes are available here.' }, 403);
+    }
+
+    if (profileView || month !== null) {
+      if (!month || !MONTH_PATTERN.test(month)) {
         return punishmentResponse({ error: 'Choose a month in YYYY-MM format.' }, 400);
       }
       if (!isSupabaseConfigured) {
         return punishmentResponse({ error: 'Strike history is currently unavailable.' }, 503);
       }
-      const { data, error } = await supabaseAdmin.rpc('get_member_strike_history', {
-        p_member_id: session.memberId,
-        p_discord_id: session.discordId,
-        p_month: `${month}-01`,
-      });
+      const monthStart = `${month}-01`;
+      const { data, error } = profileView
+        ? await supabaseAdmin.rpc('get_profile_strike_history', {
+          p_viewer_id: session.memberId,
+          p_viewer_discord_id: session.discordId,
+          p_member_id: memberId,
+          p_month: monthStart,
+        })
+        : await supabaseAdmin.rpc('get_member_strike_history', {
+          p_member_id: session.memberId,
+          p_discord_id: session.discordId,
+          p_month: monthStart,
+        });
       if (error?.code === 'PT403') {
         return punishmentResponse({ error: 'Sign in with the Discord account linked to this profile.' }, 403);
       }
+      if (error?.code === 'PT404') return punishmentResponse({ error: 'Member not found.' }, 404);
       if (error || !data) {
         console.error('[strikes] Monthly history read failed', { databaseCode: safeDatabaseErrorCode(error?.code) });
         return punishmentResponse({ error: 'Strike history is currently unavailable.' }, 503);

@@ -18,7 +18,8 @@ interface StrikeMonth {
   latest_cycle_date: string;
   verified_strikes: StrikeSource[];
   strikes_used: number;
-  open_count: number;
+  open_count: number | null;
+  balance_reconciliation_required?: boolean;
 }
 
 const firstMonth = '2026-11';
@@ -29,7 +30,7 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
   memberId: string;
   memberName: string;
   onClose: () => void;
-  onChanged: (counts: { strikes_used: number; month: string; current_month: string }) => void;
+  onChanged: () => void;
   onAccessChanged?: () => void;
 }) {
   const headingId = useId();
@@ -130,7 +131,7 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
       setReview(data);
       resetForm();
       setNotice(removal ? 'Strike removed.' : 'Strike added.');
-      onChanged(data);
+      onChanged();
     } catch {
       setUncertain(true);
       setWriteError('The save could not be confirmed. Retry the same correction.');
@@ -150,7 +151,7 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
       <button autoFocus type="button" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-semibold text-cream-secondary hover:text-cream-primary" onClick={onClose}>
         <ArrowLeft size={16} aria-hidden="true" /> Back to roster
       </button>
-      <h3 id={headingId} className="break-words font-bold text-cream-primary">Review strikes for {memberName}</h3>
+      <h3 id={headingId} className="break-words font-bold text-cream-primary">Edit strikes for {memberName}</h3>
       {review && selectedMonth && (
         <div className="flex items-center justify-between gap-2">
           <button type="button" aria-label="Previous month" className={control} onClick={() => changeMonth(-1)} disabled={loading || locked || review.month === firstMonth}>
@@ -175,7 +176,9 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
       )}
       {review && !loading && !readError && (
         <>
-          <p className="text-sm text-cream-secondary">{review.strikes_used} verified {review.strikes_used === 1 ? 'strike' : 'strikes'} this month · {review.open_count} open {review.open_count === 1 ? 'punishment' : 'punishments'} across all months</p>
+          <p className="text-sm text-cream-secondary">{review.strikes_used} verified {review.strikes_used === 1 ? 'strike' : 'strikes'} this month
+            {review.open_count != null && ` · ${review.open_count} open ${review.open_count === 1 ? 'punishment' : 'punishments'} across all months`}
+          </p>
           {review.verified_strikes.length === 0 ? (
             <p className="text-sm text-cream-muted">No dated strikes this month.</p>
           ) : (
@@ -219,6 +222,9 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
             </label>
             {writeError && <p role="alert" className="break-words text-sm text-status-coral">{writeError}</p>}
             {notice && <p role="status" className="text-sm text-status-sage">{notice}</p>}
+            {notice && review.balance_reconciliation_required && (
+              <p role="alert" className="text-sm text-status-amber">The legacy strike balance needs reconciliation.</p>
+            )}
             <div className="flex flex-wrap gap-2">
               <button type="submit" disabled={saving} className="min-h-[44px] rounded-lg bg-status-amber px-3 text-sm font-bold text-night-bg disabled:opacity-50">
                 {saving ? 'Saving…' : uncertain ? 'Retry save' : removal ? 'Remove strike' : 'Add strike'}

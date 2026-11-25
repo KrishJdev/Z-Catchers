@@ -169,6 +169,8 @@ export function SleepCalendarModal({
   const [strikeHistory, setStrikeHistory] = useState<{
     memberId: string;
     month: string;
+    view: string;
+    viewerId?: string;
     data: StrikeHistoryMonth | null;
   } | null>(null);
   const [strikeHistoryRetry, setStrikeHistoryRetry] = useState(0);
@@ -409,17 +411,19 @@ export function SleepCalendarModal({
   }, [data?.member, initialMember, memberId]);
 
   const isViewer = Boolean(currentUser && resolvedProfile.id && currentUser.id === resolvedProfile.id);
-  const privateCalendar = isOpen && isMySleep && isViewer && activeTab === 'calendar';
+  const calendarHistory = Boolean(isOpen && currentUser && activeTab === 'calendar');
+  const privateCalendar = calendarHistory && isMySleep && isViewer;
+  const historyView = privateCalendar ? 'self' : 'profile';
 
   useEffect(() => {
-    if (!privateCalendar || !activeTargetId) {
+    if (!calendarHistory || !activeTargetId) {
       setStrikeHistory(null);
       return;
     }
     // Roster sync refreshes even when a correction only affects a prior month.
     const controller = new AbortController();
-    const query = { memberId: activeTargetId, month: currentMonth };
-    const params = new URLSearchParams(query);
+    const query = { memberId: activeTargetId, month: currentMonth, view: historyView, viewerId: currentUser?.id };
+    const params = new URLSearchParams({ memberId: query.memberId, month: query.month, view: query.view });
     async function loadHistory() {
       try {
         const response = await fetch(`/api/members/strikes?${params}`, { signal: controller.signal, cache: 'no-store' });
@@ -432,9 +436,10 @@ export function SleepCalendarModal({
     }
     void loadHistory();
     return () => controller.abort();
-  }, [privateCalendar, activeTargetId, currentMonth, initialMember, strikeHistoryRetry, accountabilityRevision]);
+  }, [calendarHistory, currentUser?.id, historyView, activeTargetId, currentMonth, initialMember, strikeHistoryRetry, accountabilityRevision]);
 
-  const historyForView = privateCalendar && strikeHistory?.memberId === activeTargetId &&
+  const historyForView = calendarHistory && strikeHistory?.viewerId === currentUser?.id &&
+    strikeHistory?.view === historyView && strikeHistory?.memberId === activeTargetId &&
     strikeHistory?.month === currentMonth ? strikeHistory : null;
   const visibleStrikeHistory = historyForView?.data;
   const strikeDays = useMemo(() => {
@@ -935,7 +940,7 @@ export function SleepCalendarModal({
               </div>
             )}
 
-            {privateCalendar && (
+            {calendarHistory && (
               <StrikeHistoryList days={strikeDays} loading={!historyForView}
                 failed={historyForView?.data === null} onRetry={() => {
                   setStrikeHistory(null);
@@ -953,7 +958,7 @@ export function SleepCalendarModal({
             )}
 
             {/* Selected Day Inspector Card */}
-            {(selectedDate || privateCalendar) && (
+            {(selectedDate || calendarHistory) && (
               <div ref={dayDetailsRef} tabIndex={-1} aria-labelledby="selected-sleep-date"
                 className="rounded-2xl border border-night-border/90 bg-night-elevated/70 p-3.5 sm:p-4 flex flex-col gap-3">
                 <div className="flex items-center justify-between border-b border-night-border/60 pb-2">
