@@ -361,7 +361,7 @@ Manual push nags require an active member session. Each sender, target, sleep cy
    * **Peer Strike Voting Removed:** Manual peer strike voting has been removed and disabled (`POST /api/members/strikes` returns 403 `PEER_VOTING_DISABLED`). Regular members cannot vote to strike others.
    * **Monthly thresholds:** Every third verified strike earns a separate punishment (3, 6, 9, and so on). The stored local sleep-cycle date determines its month, including a November 30 strike dispatched on December 1.
    * **Metastrikes (Max 3 per month):** Moderator-reviewed passes for unexpected or important events (e.g., family meetings, birthdays, monthly battles).
-   * **Monthly rollover:** Progress toward the next punishment resets on the first day of the member’s local month. All open tasks carry over. The member has three Metastrikes per local month.
+   * **Monthly rollover:** Progress toward the next punishment resets on the first day of the member’s local month. All open tasks carry over. The member has three Metastrikes per local month. An instant replacement uses the allowance for the selected sleep cycle’s month, even when the member applies it after midnight in a new month.
 
 2. **5-Minute Grace Period & 10-Minute Cutoff Logic:**
    * `diffMinutes >= 0 && diffMinutes <= 5`: Status is `BEDTIME_GRACE` (`"Grace Period: Xm left"`).
@@ -376,6 +376,7 @@ Manual push nags require an active member session. Each sender, target, sleep cy
    * The shared card shows **Protected by Metastrike** for an active pass. Request reasons and decision explanations are available in the linked member's private history and to authorized reviewers. Owner submission requires the operator review procedure.
 
 4. **Punishment status and moderation**
+   * At assignment, set a completion deadline that defaults to seven calendar days in the member’s timezone. Staff can edit it. The task stays open when overdue and retains its deadline across months.
    * An earned punishment counts as open immediately. The queue and member task list explain a Metastrike hold when a replacement window or pending request could undo the threshold. Assignment waits for the hold to clear. An affected assigned task retains its instructions while completion is on hold.
    * A moderator assigns a short title and optional instructions, can edit an assigned task, and completes each task individually. Completion lowers the open count by one and moves the task to history.
    * A dated correction or Metastrike replacement cancels any disqualified open threshold. Earning it again reuses its record. Completed tasks stay in history.

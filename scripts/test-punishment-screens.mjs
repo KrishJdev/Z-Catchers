@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
+import { DateTime } from 'luxon';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { BottomNav } from '../src/components/BottomNav.tsx';
 import { Header } from '../src/components/Header.tsx';
@@ -7,7 +8,7 @@ import { MemberCard } from '../src/components/MemberCard.tsx';
 import { EmptyPunishments, PunishmentDetails, PunishmentReadNotice } from '../src/components/PunishmentList.tsx';
 import { PUNISHMENT_ROLLOUT_CLOSED, PUNISHMENT_SERVICE_UNAVAILABLE,
   readPunishmentFailure } from '../src/lib/punishmentAvailability.ts';
-import { computeMemberState } from '../src/lib/sleepEngine.ts';
+import { computeMemberState, parsePunishmentDeadline } from '../src/lib/sleepEngine.ts';
 import { withoutMetastrikeReasons } from '../src/lib/rosterPrivacy.ts';
 import { fetchMetastrikes, metastrikeDate, metastrikeQuotaLabel, metastrikeReasonError } from '../src/lib/metastrikeScreens.ts';
 
@@ -67,6 +68,25 @@ for (const [status, label] of [
   if (status === 'assigned') assert.match(row, /Wind down.*&lt;two lines&gt;/);
   if (status === 'completed') assert.match(row, /2026-12-01T10:00:00Z/);
 }
+assert.equal(parsePunishmentDeadline('2026-12-05T23:30', 'Asia/Kolkata'), '2026-12-05T18:00:00.000Z');
+assert.equal(parsePunishmentDeadline('2027-03-14T02:30', 'America/Los_Angeles'), null);
+assert.equal(parsePunishmentDeadline('2027-11-07T01:30', 'America/Los_Angeles'), '2027-11-07T08:30:00.000Z');
+const dueItem = { status: 'assigned', earned_cycle_date: '2026-11-30', due_at: '2026-12-05T18:00:00Z',
+  member_timezone: 'Asia/Kolkata' };
+const realNow = Date.now;
+const dueMs = DateTime.fromISO(dueItem.due_at).toMillis();
+try {
+  Date.now = () => dueMs - 1;
+  assert.match(render(PunishmentDetails, { item: dueItem }), /Due .*(?:11|23):30/);
+  assert.doesNotMatch(render(PunishmentDetails, { item: dueItem }), /Overdue/);
+  Date.now = () => dueMs;
+  assert.match(render(PunishmentDetails, { item: dueItem }), /Overdue.*(?:11|23):30/);
+  assert.doesNotMatch(render(PunishmentDetails, { item: { ...dueItem, status: 'completed' } }), /Overdue/);
+  assert.match(render(PunishmentDetails, { item: { ...dueItem, due_at: null } }), /No deadline set/);
+} finally {
+  Date.now = realNow;
+}
+
 const legacyReasons = {
   metastrike_reason: 'private top-level reason',
   tonight_strike_log: { record_type: 'metastrike', sleep_cycle_date: '2026-11-30', reason: 'private nightly reason' },

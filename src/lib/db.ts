@@ -140,9 +140,10 @@ export interface NightlyStrikeLog {
   updated_at?: string;
   replacement_until?: string | null;
   legacy_strike_charge_month?: string | null;
+  pass_charged_month?: string | null;
 }
 
-export type ActiveNightlyStrikeLog = Omit<NightlyStrikeLog, 'voter_ids' | 'record_type' | 'legacy_strike_charge_month'> & {
+export type ActiveNightlyStrikeLog = Omit<NightlyStrikeLog, 'voter_ids' | 'record_type' | 'legacy_strike_charge_month' | 'pass_charged_month'> & {
   record_type: Exclude<StrikeRecordType, 'pending_vote'>;
 };
 

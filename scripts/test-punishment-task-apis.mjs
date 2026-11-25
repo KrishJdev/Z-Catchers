@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createServer } from 'node:http';
 import { PGlite } from '@electric-sql/pglite';
 import { DateTime } from 'luxon';
 
@@ -13,7 +12,6 @@ await db.exec(`
   CREATE SCHEMA auth; CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS 'SELECT current_user::text';
 `);
 await db.exec(schema);
-await db.exec(migration);
 await db.exec(readFileSync('supabase/migrations/20261128_punishment_diagnostics.sql', 'utf8'));
 
 const { rows: members } = await db.query(`INSERT INTO public.members
@@ -58,36 +56,36 @@ const rpc = {
     'p_cycle', 'p_source', 'p_reason', 'p_request_id'],
 };
 let failingDependency;
-const server = createServer(async (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  const url = new URL(req.url, 'http://localhost');
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (input, options) => {
+  const request = new Request(input, options);
+  const url = new URL(request.url);
+  assert.equal(url.origin, 'https://supabase-fixture.test');
   if (url.pathname === failingDependency) {
-    return res.writeHead(500).end(JSON.stringify({ code: '57014', message: 'private query details' }));
+    return Response.json({ code: '57014', message: 'private query details' }, { status: 500 });
   }
   if (url.pathname === '/rest/v1/members') {
     const memberId = url.searchParams.get('id')?.slice(3);
     const { rows } = await db.query('SELECT id, discord_id, role, is_active FROM public.members WHERE id = $1', [memberId]);
-    return res.end(JSON.stringify(rows[0] ?? null));
+    return Response.json(rows[0] ?? null);
   }
   const name = url.pathname.split('/').at(-1);
-  if (!rpc[name]) return res.writeHead(404).end('{}');
+  if (!rpc[name]) return Response.json({}, { status: 404 });
   try {
-    let raw = '';
-    for await (const chunk of req) raw += chunk;
-    const body = JSON.parse(raw);
-    const placeholders = rpc[name].map((_, index) => '$' + (index + 1));
+    const body = await request.json();
+    const keys = name === 'moderate_punishment' && 'p_due_at' in body ? [...rpc[name], 'p_due_at'] : rpc[name];
+    const placeholders = keys.map((_, index) => '$' + (index + 1));
     const { rows } = await db.query(`SELECT public.${name}(${placeholders.join(',')}) AS result`,
-      rpc[name].map(key => body[key] ?? null));
-    res.end(JSON.stringify(rows[0].result));
+      keys.map(key => body[key] ?? null));
+    return Response.json(rows[0].result);
   } catch (error) {
     const status = /^PT\d{3}$/.test(error.code) ? Number(error.code.slice(2)) : 500;
-    res.writeHead(status).end(JSON.stringify({ code: error.code, message: error.message }));
+    return Response.json({ code: error.code, message: error.message }, { status });
   }
-});
-await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+};
 
 try {
-  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:' + server.address().port;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://supabase-fixture.test';
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'fake-anon-key';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'fake-service-key';
   process.env.SESSION_SECRET = 'test-session-secret-for-punishment-task-apis';
@@ -185,6 +183,8 @@ try {
   const queue = await expect(get(getMod, dbModCookie));
   assert.deepEqual(queue.items.map(item => item.id), [ready.id]);
   assert.equal(queue.items[0].member_name, 'Member');
+  assert.equal(queue.items[0].member_timezone, 'UTC');
+  assert.equal(queue.items[0].due_at, null);
   assert.deepEqual((await expect(get(getMod, secondModCookie, '?status=pending'))).items.map(item => item.id), [pending.id]);
   const detail = await expect(get(getMod, secondModCookie, '?punishment_id=' + ready.id));
   assert.equal(detail.verified_strikes.length, 6);
@@ -200,16 +200,35 @@ try {
   await expect(post(dbModCookie, { ...assignment, member_id: other.id }), 400);
   await expect(post(dbModCookie, { ...assignment, punishment_id: pending.id }), 409);
   await expect(post(dbModCookie, { ...assignment, title: ' '.repeat(10) }), 400);
-  assert.equal((await expect(post(dbModCookie, assignment))).item.title, 'Wind-down plan');
-  assert.equal((await expect(post(dbModCookie, assignment))).open_count, 2);
+  await expect(post(dbModCookie, { ...assignment, due_at: '2026-12-05T18:00' }), 400);
+  await expect(post(dbModCookie, { ...assignment, due_at: DateTime.utc().minus({ minutes: 1 }).toISO() }), 400);
+  const assigned = await expect(post(dbModCookie, assignment));
+  assert.equal(assigned.item.title, 'Wind-down plan');
+  assert.equal(DateTime.fromISO(assigned.item.due_at).toMillis(),
+    DateTime.fromISO(assigned.item.assigned_at).plus({ days: 7 }).toMillis());
+  const assignmentRetry = await expect(post(dbModCookie, assignment));
+  assert.equal(assignmentRetry.open_count, 2);
+  assert.equal(assignmentRetry.item.due_at, assigned.item.due_at);
 
   const edit = { action: 'edit', punishment_id: ready.id, title: 'Journal', instructions: 'Two lines' };
-  assert.equal((await expect(post(secondModCookie, edit))).item.instructions, 'Two lines');
-  await expect(post(secondModCookie, edit));
+  const overdueAt = DateTime.utc().minus({ minutes: 5 }).startOf('second');
+  await db.query('UPDATE public.punishments SET due_at = $2 WHERE id = $1', [ready.id, overdueAt.toISO()]);
+  const extendedTo = DateTime.utc().plus({ days: 10 }).startOf('second');
+  const extended = await expect(post(secondModCookie, { ...edit, due_at: extendedTo.toISO() }));
+  assert.equal(extended.item.instructions, 'Two lines');
+  assert.equal(DateTime.fromISO(extended.item.due_at).toMillis(), extendedTo.toMillis());
+  assert.equal((await expect(post(secondModCookie, edit))).item.due_at, extended.item.due_at);
+  await expect(post(secondModCookie, { ...edit, due_at: extendedTo.toISO() }));
+  const memberRead = await expect(get(getMember, memberCookie));
+  assert.equal(memberRead.open_items.find(item => item.id === ready.id).due_at, extended.item.due_at);
+  const assignedQueue = await expect(get(getMod, dbModCookie, '?status=assigned'));
+  assert.equal(assignedQueue.items.find(item => item.id === ready.id).due_at, extended.item.due_at);
+  await db.query('UPDATE public.punishments SET due_at = $2 WHERE id = $1', [ready.id, overdueAt.toISO()]);
   const completion = { action: 'complete', punishment_id: ready.id };
   for (let i = 0; i < 2; i += 1) {
     const result = await expect(post(dbModCookie, completion));
     assert.equal(result.item.status, 'completed');
+    assert.equal(DateTime.fromISO(result.item.due_at).toMillis(), overdueAt.toMillis());
     assert.equal(result.open_count, 1);
   }
 
@@ -236,17 +255,20 @@ try {
   assert.equal(restored.item.id, pending.id);
   assert.equal(restored.item.status, 'awaiting_assignment');
   assert.equal(restored.open_count, 1);
-  const { rows: audit } = await db.query(`SELECT action, actor, occurred_at FROM public.punishment_actions
+  const { rows: audit } = await db.query(`SELECT action, actor, occurred_at, details FROM public.punishment_actions
     WHERE punishment_id = $1 AND action IN ('assigned', 'edited', 'completed') ORDER BY id`, [ready.id]);
   assert.deepEqual(audit.map(({ action, actor }) => [action, actor]),
     [['assigned', dbMod.id], ['edited', secondMod.id], ['completed', dbMod.id]]);
   assert.ok(audit.every(row => row.occurred_at));
+  assert.equal(audit[0].details.due_at, assigned.item.due_at);
+  assert.equal(DateTime.fromISO(audit[1].details.previous_due_at).toMillis(), overdueAt.toMillis());
+  assert.equal(audit[1].details.due_at, extended.item.due_at);
 
   await db.exec('SET ROLE authenticated');
   await assert.rejects(db.query('SELECT public.get_member_punishments($1, $2, true)', [member.id, member.discord_id]), /permission denied/);
   await assert.rejects(db.query("SELECT public.get_moderator_punishments(NULL, 'assigned', 0)"), /permission denied/);
   await assert.rejects(db.query("SELECT public.update_punishment($1, 'complete', 'fake')", [ready.id]), /permission denied/);
 } finally {
-  await new Promise(resolve => server.close(resolve));
+  globalThis.fetch = realFetch;
   await db.close();
 }

@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     return punishmentResponse({ error: 'Provide a punishment ID to identify the task and its member.' }, 400);
   }
 
-  const { action, punishment_id, title, instructions, cycle_date, source_id, reason, request_id } = body;
+  const { action, punishment_id, title, instructions, cycle_date, source_id, reason, request_id, due_at } = body;
   const args: Record<string, string | null> = { ...staffIdentity(auth.actor), p_id: punishment_id, p_action: action };
   if (action === 'assign' || action === 'edit') {
     if (typeof title !== 'string' || !title.trim() || title.trim().length > 120 ||
@@ -52,6 +52,14 @@ export async function POST(request: Request) {
     }
     args.p_title = title.trim();
     args.p_instructions = instructions?.trim() || null;
+    if (due_at != null) {
+      if (typeof due_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(due_at) ||
+        !DateTime.fromISO(due_at, { setZone: true }).isValid) {
+        return punishmentResponse({ error: 'Enter a valid completion deadline with a timezone.' }, 400);
+      }
+      // The deadline overload requires all argument names to be present in the RPC call.
+      Object.assign(args, { p_cycle: null, p_source: null, p_reason: null, p_request_id: null, p_due_at: due_at });
+    }
   } else if (action === 'add_strike' || action === 'remove_strike') {
     if (typeof cycle_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(cycle_date) ||
       !DateTime.fromISO(cycle_date, { zone: 'utc' }).isValid ||

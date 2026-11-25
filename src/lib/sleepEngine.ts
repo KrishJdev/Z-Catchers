@@ -1808,6 +1808,15 @@ export function computeMemberState(
   };
 }
 
+/** Interpret a deadline entered as local wall time in the member's timezone. */
+export function parsePunishmentDeadline(value: string, timezone: string): string | null {
+  const inputFormat = "yyyy-MM-dd'T'HH:mm";
+  const local = DateTime.fromISO(value, { zone: toValidLuxonZone(timezone) });
+  if (!local.isValid || local.toFormat(inputFormat) !== value) return null;
+  // Use the earlier instant when a fall-back transition repeats the hour.
+  return DateTime.min(...local.getPossibleOffsets())?.toUTC().toISO() ?? null;
+}
+
 /**
  * Returns the current calendar month in the member's local timezone (format: 'YYYY-MM', e.g. '2026-11').
  */

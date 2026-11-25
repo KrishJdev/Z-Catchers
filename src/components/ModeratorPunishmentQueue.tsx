@@ -1,5 +1,7 @@
 'use client';
 
+import { DateTime } from 'luxon';
+import { parsePunishmentDeadline } from '@/lib/sleepEngine';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   EmptyPunishments, PunishmentDetails, PunishmentReadNotice, punishmentStatus, type Punishment,
@@ -17,6 +19,12 @@ type Task = Punishment & { member_name: string };
 type QueuePage = { items: Task[]; next_offset: number | null };
 type TaskResult = { item: Task; open_count: number };
 type TaskAction = 'assign' | 'edit' | 'complete';
+
+function deadlineInputValue(item: Task) {
+  return item.due_at
+    ? DateTime.fromISO(item.due_at, { zone: item.member_timezone }).toFormat("yyyy-MM-dd'T'HH:mm")
+    : '';
+}
 const endpoint = '/api/mod/punishments';
 const buttonStyle = 'min-h-[44px] rounded-lg border border-night-border bg-night-surface px-3 py-2 text-sm font-semibold text-cream-primary hover:border-status-amber/50 disabled:opacity-50';
 
@@ -123,13 +131,19 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
     setActionError('');
     try {
       const { item, action } = editor;
+      const localDeadline = fields.get('due_at');
+      let dueAt: string | undefined;
+      if (typeof localDeadline === 'string' && localDeadline && localDeadline !== deadlineInputValue(item)) {
+        dueAt = parsePunishmentDeadline(localDeadline, item.member_timezone ?? 'UTC') ?? undefined;
+        if (!dueAt) throw new Error('Choose a date and time that exists in the member’s timezone.');
+      }
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
           punishment_id: item.id,
-          ...(action !== 'complete' && { title: fields.get('title'), instructions: fields.get('instructions') }),
+          ...(action !== 'complete' && { title: fields.get('title'), instructions: fields.get('instructions'), due_at: dueAt }),
         }),
       });
       const data = await response.json();
@@ -201,6 +215,13 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
                             <label className="block text-sm">Instructions (optional)
                               <textarea name="instructions" rows={3} maxLength={2000} defaultValue={item.instructions ?? ''}
                                 className="mt-1 block w-full rounded-lg border border-night-border bg-night-surface p-3" />
+                            </label>
+                            <label className="block text-sm">Completion deadline ({item.member_timezone ?? 'UTC'})
+                              <input type="datetime-local" name="due_at" defaultValue={deadlineInputValue(item)}
+                                className="mt-1 block min-h-[44px] w-full rounded-lg border border-night-border bg-night-surface px-3" />
+                              {editor.action === 'assign' && (
+                                <span className="mt-1 block text-xs text-cream-secondary">Defaults to 7 calendar days after assignment.</span>
+                              )}
                             </label>
                           </>
                         )}

@@ -1196,6 +1196,31 @@ try {
   assert.equal(correctedDuringPromotion.strikes_used, 1);
   console.log('Verified Owner self-correction, Moderator self-denial, reciprocal corrections and a concurrent promotion.');
 
+  sql(readFileSync('supabase/migrations/20261204_punishment_deadlines.sql', 'utf8'));
+  const deadlineMember = raceMember('Deadline Smoke Fox');
+  for (const day of ['11', '12', '13']) {
+    await post('/api/mod', dbModCookie, {
+      ...rosterStrike, cycle_date: '2026-11-' + day, member_id: deadlineMember, request_id: randomUUID(),
+    }, 200, origin);
+  }
+  const deadlineTask = sql(`SELECT id FROM public.punishments WHERE member_id = '${deadlineMember}'`);
+  const dueAt = DateTime.utc().plus({ days: 7 }).startOf('second');
+  const assignedWithDeadline = await post(modTasks, dbModCookie, {
+    action: 'assign', punishment_id: deadlineTask, title: 'Journal check-in', due_at: dueAt.toISO(),
+  }, 200, origin);
+  assert.equal(DateTime.fromISO(assignedWithDeadline.item.due_at).toMillis(), dueAt.toMillis());
+  const extendedDueAt = dueAt.plus({ days: 2 });
+  const extendedDeadline = await post(modTasks, dbModCookie, {
+    action: 'edit', punishment_id: deadlineTask, title: 'Journal check-in', due_at: extendedDueAt.toISO(),
+  }, 200, origin);
+  assert.equal(DateTime.fromISO(extendedDeadline.item.due_at).toMillis(), extendedDueAt.toMillis());
+  const deadlineDone = await post(modTasks, dbModCookie, {
+    action: 'complete', punishment_id: deadlineTask,
+  }, 200, origin);
+  assert.equal(deadlineDone.item.due_at, extendedDeadline.item.due_at);
+  assert.equal(deadlineDone.item.status, 'completed');
+  console.log('Verified assignment, deadline extension and completion through the PostgREST task API.');
+
   const recovery = readFileSync('supabase/recover_moderation_owner.sql', 'utf8')
     .replace('owner_id constant uuid := NULL;', `owner_id constant uuid := '${owner.id}';`)
     .replace('old_discord_id constant text := NULL;', `old_discord_id constant text := '${discordAccounts.owner}';`)

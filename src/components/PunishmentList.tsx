@@ -19,6 +19,8 @@ export interface Punishment {
   status: keyof typeof punishmentStatus;
   earned_cycle_date: string;
   completed_at: string | null;
+  due_at?: string | null;
+  member_timezone?: string;
   title: string | null;
   instructions: string | null;
   metastrike_hold?: boolean;
@@ -40,6 +42,23 @@ export function PunishmentDetails({ item, memberName, children }: {
   memberName?: string;
   children?: ReactNode;
 }) {
+  const [, refreshDeadline] = useState(0);
+  const due = item.due_at ? DateTime.fromISO(item.due_at, { zone: item.member_timezone }) : null;
+  const dueMillis = due?.isValid ? due.toMillis() : null;
+  const overdue = item.status === 'assigned' && dueMillis !== null && dueMillis <= DateTime.now().toMillis();
+
+  useEffect(() => {
+    if (item.status !== 'assigned' || dueMillis === null) return;
+    let timer: ReturnType<typeof setTimeout>;
+    function updateAtDeadline(deadline: number) {
+      const remaining = deadline - DateTime.now().toMillis();
+      if (remaining <= 0) refreshDeadline(value => value + 1);
+      else timer = setTimeout(() => updateAtDeadline(deadline), Math.min(remaining, 2147483647));
+    }
+    updateAtDeadline(dueMillis);
+    return () => clearTimeout(timer);
+  }, [item.status, dueMillis]);
+
   const earned = DateTime.fromISO(item.earned_cycle_date, { zone: 'utc' }).toLocaleString(DateTime.DATE_MED);
   return (
     <li className="space-y-2 rounded-xl border border-night-border bg-night-elevated/65 p-3 [overflow-wrap:anywhere]">
@@ -55,6 +74,12 @@ export function PunishmentDetails({ item, memberName, children }: {
       )}
       {item.title && <p className="text-sm font-semibold">{item.title}</p>}
       {item.instructions && <p className="whitespace-pre-wrap text-sm text-cream-secondary">{item.instructions}</p>}
+      {due?.isValid ? (
+        <p className={overdue ? 'text-sm font-semibold text-status-coral' : 'text-sm text-cream-secondary'}>
+          {overdue ? 'Overdue · due ' : 'Due '}
+          <time dateTime={item.due_at ?? undefined}>{due.toLocaleString(DateTime.DATETIME_MED)} {due.offsetNameShort}</time>
+        </p>
+      ) : item.status === 'assigned' ? <p className="text-sm text-cream-secondary">No deadline set</p> : null}
       {item.completed_at && (
         <p className="text-xs text-cream-secondary">
           Completed <time dateTime={item.completed_at}>{DateTime.fromISO(item.completed_at).toLocaleString(DateTime.DATE_MED)}</time>
