@@ -19,6 +19,7 @@ interface StrikeMonth {
   verified_strikes: StrikeSource[];
   strikes_used: number;
   open_count: number | null;
+  balance_reconciliation_required?: boolean;
 }
 
 const firstMonth = '2026-11';
@@ -221,6 +222,9 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
             </label>
             {writeError && <p role="alert" className="break-words text-sm text-status-coral">{writeError}</p>}
             {notice && <p role="status" className="text-sm text-status-sage">{notice}</p>}
+            {notice && review.balance_reconciliation_required && (
+              <p role="alert" className="text-sm text-status-amber">The legacy strike balance needs reconciliation.</p>
+            )}
             <div className="flex flex-wrap gap-2">
               <button type="submit" disabled={saving} className="min-h-[44px] rounded-lg bg-status-amber px-3 text-sm font-bold text-night-bg disabled:opacity-50">
                 {saving ? 'Saving…' : uncertain ? 'Retry save' : removal ? 'Remove strike' : 'Add strike'}

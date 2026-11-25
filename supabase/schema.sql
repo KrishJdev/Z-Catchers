@@ -3536,8 +3536,6 @@ BEGIN
   SELECT * INTO STRICT m FROM public.members WHERE id = p_member_id FOR NO KEY UPDATE;
   now_at := clock_timestamp();
   IF p_cycle IS NULL OR p_cycle < date '2026-11-01'
-    OR p_cycle > (statement_at AT TIME ZONE public.strike_member_zone(CASE WHEN m.pending_effective_at <= statement_at
-      THEN COALESCE(NULLIF(m.pending_timezone, ''), m.timezone) ELSE m.timezone END))::date
     OR nullif(btrim(p_evidence_key), '') IS NULL OR nullif(btrim(p_actor), '') IS NULL
     OR nullif(btrim(p_reason), '') IS NULL THEN
     RAISE SQLSTATE 'PT400' USING MESSAGE = 'A dated strike correction requires a valid date, reference, actor and reason.';
@@ -3550,6 +3548,10 @@ BEGIN
       RAISE SQLSTATE 'PT409' USING MESSAGE = 'This evidence reference already records a different correction.';
     END IF;
     RETURN prior.id;
+  END IF;
+  IF p_cycle > (statement_at AT TIME ZONE public.strike_member_zone(CASE WHEN m.pending_effective_at <= statement_at
+      THEN COALESCE(NULLIF(m.pending_timezone, ''), m.timezone) ELSE m.timezone END))::date THEN
+    RAISE SQLSTATE 'PT400' USING MESSAGE = 'A dated strike correction requires a valid date, reference, actor and reason.';
   END IF;
   IF p_void_source IS NOT NULL THEN
     SELECT * INTO source_record FROM public.verified_monthly_strikes(m, target_month)
@@ -3567,7 +3569,7 @@ BEGIN
     RETURNING id INTO correction_id;
   IF activation IS NOT NULL THEN
     PERFORM public.reconcile_punishments(m, target_month, now_at, p_actor);
-    PERFORM public.project_member_strikes(m, public.punishment_progress_month(m, statement_at));
+    PERFORM public.project_member_strikes(m, public.punishment_progress_month(m, now_at));
   END IF;
   RETURN correction_id;
 END;
@@ -3644,8 +3646,10 @@ DECLARE
   activation timestamptz;
   current_month date;
   cycle_month date := date_trunc('month', p_cycle::timestamp)::date;
-  charge_month date := cycle_month;
+  charge_month date;
+  correction_action text;
   already_recorded boolean;
+  reconciliation_required boolean := false;
   legacy_count integer;
   evidence text := 'roster:' || p_request_id;
 BEGIN
@@ -3692,39 +3696,51 @@ BEGIN
     RAISE;
   END;
 
+  current_month := public.punishment_progress_month(target, statement_timestamp());
   -- The legacy dispatcher still uses the compatibility counters. Apply each
   -- correction once without deriving a balance from incomplete history.
   IF activation IS NULL AND NOT already_recorded THEN
-    current_month := public.punishment_progress_month(target, statement_timestamp());
     IF p_action = 'remove_strike' THEN
-      -- Nightly strikes were charged at issuance. Infer the month from older
-      -- sources using the history's timestamp and timezone when available.
-      SELECT COALESCE((c.details->>'legacy_strike_charge_month')::date,
-        date_trunc('month', COALESCE(h.issued_at, (c.details->>'updated_at')::timestamptz) AT TIME ZONE
-          public.strike_member_zone(COALESCE(NULLIF(h.issuance_timezone, ''), target.timezone)))::date,
-        cycle_month)
-      INTO STRICT charge_month
+      -- Nightly charges belong to the recorded balance month, even when a
+      -- timezone change temporarily moves the member's local calendar back.
+      SELECT c.action, CASE WHEN c.action = 'clear_nightly' THEN
+        COALESCE((c.details->>'legacy_strike_charge_month')::date,
+          CASE WHEN h.issued_at IS NOT NULL AND NULLIF(h.issuance_timezone, '') IS NOT NULL THEN
+            date_trunc('month', h.issued_at AT TIME ZONE public.strike_member_zone(h.issuance_timezone))::date END)
+        WHEN cycle_month = current_month THEN cycle_month END
+      INTO STRICT correction_action, charge_month
       FROM public.strike_moderator_corrections c
       LEFT JOIN public.nightly_strike_history h ON h.source_id = c.source_id AND h.record_type = 'strike'
       WHERE c.id = correction_id;
-    END IF;
-    IF charge_month = current_month THEN
+      IF correction_action = 'clear_nightly' AND charge_month IS NULL THEN
+        UPDATE public.strike_moderator_corrections SET details = COALESCE(details, '{}'::jsonb)
+          || jsonb_build_object('balance_reconciliation_required', true) WHERE id = correction_id;
+      END IF;
+    ELSIF cycle_month = current_month THEN
+      charge_month := cycle_month;
       IF target.strike_cycle_month < to_char(current_month, 'YYYY-MM') THEN
         PERFORM public.refresh_member_strike_projection(target.id, statement_timestamp());
         SELECT * INTO target FROM public.members WHERE id = p_member_id;
       END IF;
-      IF target.strike_cycle_month = to_char(current_month, 'YYYY-MM') THEN
-        legacy_count := greatest(0, greatest(target.strikes_used, target.strikes_count)
-          + CASE WHEN p_action = 'add_strike' THEN 1 ELSE -1 END);
-        UPDATE public.members SET strikes_used = legacy_count, strikes_count = legacy_count,
-          updated_at = clock_timestamp() WHERE id = target.id;
-      END IF;
     END IF;
+    IF target.strike_cycle_month = to_char(charge_month, 'YYYY-MM') THEN
+      legacy_count := greatest(0, greatest(target.strikes_used, target.strikes_count)
+        + CASE WHEN p_action = 'add_strike' THEN 1 ELSE -1 END);
+      UPDATE public.members SET strikes_used = legacy_count, strikes_count = legacy_count,
+        updated_at = clock_timestamp() WHERE id = target.id RETURNING * INTO target;
+    END IF;
+  ELSIF activation IS NOT NULL AND NOT already_recorded THEN
+    SELECT * INTO STRICT target FROM public.members WHERE id = p_member_id;
   END IF;
 
-  SELECT * INTO STRICT target FROM public.members WHERE id = p_member_id;
-  RETURN public.staff_strike_month(target, cycle_month)
-    || jsonb_build_object('success', true, 'correction_id', correction_id);
+  IF p_action = 'remove_strike' THEN
+    SELECT COALESCE(details @> '{"balance_reconciliation_required":true}'::jsonb, false)
+      INTO STRICT reconciliation_required FROM public.strike_moderator_corrections WHERE id = correction_id;
+  END IF;
+  -- A retry can arrive after a timezone change makes its saved month unavailable.
+  RETURN public.staff_strike_month(target, least(cycle_month, current_month))
+    || jsonb_build_object('success', true, 'correction_id', correction_id,
+      'balance_reconciliation_required', reconciliation_required);
 END;
 $$;
 

@@ -416,7 +416,8 @@ try {
     await assert.rejects(correct('2026-12-01'), { code: 'PT400' });
     await db.query("UPDATE public.members SET pending_effective_at = '2026-12-01T00:15:00Z' WHERE id = $1", [rolloverMember.id]);
     assert.equal((await selectedMonth()).latest_cycle_date, '2026-12-01');
-    const rolled = await correct('2026-12-01');
+    const rolloverRequest = randomUUID();
+    const rolled = await correct('2026-12-01', null, rolloverRequest);
     assert.equal(rolled.current_strikes_used, 1);
     assert.equal(rolled.month, '2026-12');
     const afterRollover = await getMember(rolloverMember.id);
@@ -441,21 +442,46 @@ try {
       FROM public.nightly_strike_logs WHERE id = $1`, [written.log.id]);
     assert.equal(charge.month, '2026-12-01');
     assert.equal('legacy_strike_charge_month' in activeStrikeLog(written.log), false);
-    const { rows: [{ id: earlier }, { id: olderWriter }] } = await db.query(`
+    const { rows: [{ id: earlier }, { id: olderWriter }, { id: backfilled }] } = await db.query(`
       INSERT INTO public.nightly_strike_logs(target_member_id, sleep_cycle_date, record_type, reason, updated_at)
       VALUES ($1, '2026-11-28', 'strike', 'November charge', '2026-11-29T00:05:00Z'),
-        ($1, '2026-11-29', 'strike', 'December charge from an older writer', '2026-12-01T00:20:00Z')
+        ($1, '2026-11-29', 'strike', 'December charge from an older writer', '2026-12-01T00:20:00Z'),
+        ($1, '2026-11-27', 'strike', 'Backfilled charge', '2026-12-01T00:10:00Z')
       RETURNING id`, [rolloverMember.id]);
+    // The history backfill had the timestamp but could not establish an issuance timezone.
+    await db.query('UPDATE public.nightly_strike_history SET issuance_timezone = NULL WHERE source_id = $1', [backfilled]);
     // Simulate the older writer's December charge already in the legacy balance.
     await adjust(3, null);
     assert.equal((await correct('2026-11-28', earlier)).current_strikes_used, 3);
     assert.equal((await correct('2026-11-29', olderWriter)).current_strikes_used, 2);
+    const backfillRequest = randomUUID();
+    const unknown = await correct('2026-11-27', backfilled, backfillRequest);
+    assert.equal(unknown.balance_reconciliation_required, true);
+    assert.equal(unknown.current_strikes_used, 2);
+    assert.deepEqual(await correct('2026-11-27', backfilled, backfillRequest), unknown);
+    const { rows: [{ details }] } = await db.query(`SELECT details FROM public.strike_moderator_corrections
+      WHERE id = $1`, [unknown.correction_id]);
+    assert.equal(details.balance_reconciliation_required, true);
+
+    await db.query(`UPDATE public.members SET timezone = 'UTC', pending_timezone = 'America/Los_Angeles'
+      WHERE id = $1`, [rolloverMember.id]);
+    assert.equal((await selectedMonth()).latest_cycle_date, '2026-11-30');
+    const replay = await correct('2026-12-01', null, rolloverRequest);
+    assert.equal(replay.correction_id, rolled.correction_id);
+    assert.equal(replay.month, '2026-11');
+    assert.equal((await getMember(rolloverMember.id)).strikes_used, 2);
+    await assert.rejects(correct('2026-12-01'), { code: 'PT400' });
+    await assert.rejects(correct('2026-12-02', null, rolloverRequest), { code: 'PT409' });
+
     const removalId = randomUUID();
     const removal = await correct('2026-11-30', written.log.id, removalId);
     assert.equal(removal.month, '2026-11');
-    assert.equal(removal.current_month, '2026-12');
-    assert.equal(removal.current_strikes_used, 1);
+    assert.equal(removal.current_month, '2026-11');
+    assert.equal(removal.balance_reconciliation_required, false);
+    const storedBalance = await getMember(rolloverMember.id);
+    assert.deepEqual([storedBalance.strike_cycle_month, storedBalance.strikes_used, storedBalance.strikes_count], ['2026-12', 1, 1]);
     assert.deepEqual(await correct('2026-11-30', written.log.id, removalId), removal);
+    assert.equal((await getMember(rolloverMember.id)).strikes_used, 1);
     const { rows: [history] } = await db.query(`SELECT cycle_date::text, change_type
       FROM public.nightly_strike_history WHERE source_id = $1`, [written.log.id]);
     assert.deepEqual(history, { cycle_date: '2026-11-30', change_type: 'removed' });

@@ -105,6 +105,7 @@ export function ModDrawer({
   // Moderator roster data (includes inactive and pending members)
   const [modMembers, setModMembers] = useState<ModerationRosterMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [rosterRefreshFailed, setRosterRefreshFailed] = useState(false);
   const rosterRequest = useRef(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [strikeReviewMemberId, setStrikeReviewMemberId] = useState<string | null>(null);
@@ -150,28 +151,30 @@ export function ModDrawer({
   // Fetch full moderator roster
   const fetchModRoster = useCallback(async (background = false) => {
     const request = ++rosterRequest.current;
+    let accessDenied = false;
     setLoadingMembers(true);
     try {
       const res = await fetch('/api/mod', { cache: 'no-store' });
       if (request !== rosterRequest.current) return;
-      if (res.status === 401 || res.status === 403) {
-        setRoleChangeMemberId(null);
-        setModMembers([]);
-        onAccessChanged?.();
-      }
+      accessDenied = res.status === 401 || res.status === 403;
+      if (accessDenied) onAccessChanged?.();
       if (!res.ok) throw new Error('Could not load the moderation roster.');
       const data = await res.json();
       if (request !== rosterRequest.current) return;
       if (!background) setRoleChangeMemberId(null);
       setModMembers(data.members);
+      setRosterRefreshFailed(false);
     } catch (err) {
       if (request !== rosterRequest.current) return;
       console.error('Failed to load moderator roster:', err);
-      setErrorMessage('Could not load the moderation roster.');
-      if (!background) {
-        setRoleChangeMemberId(null);
-        setModMembers([]);
+      if (background && !accessDenied) {
+        setRosterRefreshFailed(true);
+        return;
       }
+      setRosterRefreshFailed(false);
+      setErrorMessage('Could not load the moderation roster.');
+      setRoleChangeMemberId(null);
+      setModMembers([]);
     } finally {
       if (request === rosterRequest.current) setLoadingMembers(false);
     }
@@ -767,6 +770,15 @@ export function ModDrawer({
         </div>
 
         {/* Status Alerts */}
+        {rosterRefreshFailed && (
+          <div className="mt-4 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral">
+            <p role="alert">Could not refresh the roster. The balances shown may be out of date.</p>
+            <button type="button" onClick={() => void fetchModRoster(true)} disabled={loadingMembers}
+              className="mt-2 min-h-[44px] rounded-lg border border-night-border px-3 font-semibold text-cream-primary disabled:opacity-50">
+              Retry roster refresh
+            </button>
+          </div>
+        )}
         {errorMessage && (
           <div role="alert" className="mt-4 flex items-start gap-2.5 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral">
             <AlertTriangle className="h-4 w-4 shrink-0" />
