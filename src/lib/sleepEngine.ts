@@ -1808,13 +1808,39 @@ export function computeMemberState(
   };
 }
 
-/** Interpret a deadline entered as local wall time in the member's timezone. */
-export function parsePunishmentDeadline(value: string, timezone: string): string | null {
-  const inputFormat = "yyyy-MM-dd'T'HH:mm";
+const punishmentDeadlineInputFormat = "yyyy-MM-dd'T'HH:mm";
+
+export function punishmentDeadlineInputValue(dueAt: string | null | undefined, timezone?: string): string {
+  if (!dueAt) return '';
+  const due = DateTime.fromISO(dueAt, { zone: toValidLuxonZone(timezone) });
+  return due.isValid ? due.toFormat(punishmentDeadlineInputFormat) : '';
+}
+
+/** Resolve the future occurrences of a deadline entered in the member's local time. */
+export function getPunishmentDeadlineOptions(value: string, timezone?: string, now = DateTime.now()) {
   const local = DateTime.fromISO(value, { zone: toValidLuxonZone(timezone) });
-  if (!local.isValid || local.toFormat(inputFormat) !== value) return null;
-  // Use the earlier instant when a fall-back transition repeats the hour.
-  return DateTime.min(...local.getPossibleOffsets())?.toUTC().toISO() ?? null;
+  if (!local.isValid || local.toFormat(punishmentDeadlineInputFormat) !== value) return null;
+
+  const occurrences = local.getPossibleOffsets();
+  const future = occurrences.filter(candidate => candidate.toMillis() > now.toMillis())
+    .sort((first, second) => first.toMillis() - second.toMillis())
+    .map(candidate => ({
+      instant: candidate.toUTC().toISO()!,
+      offset: candidate.toFormat("'UTC'ZZ"),
+    }));
+  return { ambiguous: occurrences.length > 1, future };
+}
+
+export function getPunishmentDeadlineState(dueAt: string | null | undefined, timezone?: string, now = DateTime.now()) {
+  if (!dueAt) return null;
+  const due = DateTime.fromISO(dueAt, { zone: toValidLuxonZone(timezone) });
+  if (!due.isValid) return null;
+  const remainingMs = due.toMillis() - now.toMillis();
+  return {
+    label: `${due.toLocaleString(DateTime.DATETIME_MED)} ${due.offsetNameShort}`,
+    remainingMs,
+    overdue: remainingMs <= 0,
+  };
 }
 
 /**

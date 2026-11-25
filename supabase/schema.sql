@@ -3926,15 +3926,31 @@ BEGIN;
 
 ALTER TABLE public.punishments ADD COLUMN IF NOT EXISTS due_at timestamptz;
 
-CREATE OR REPLACE FUNCTION public.punishment_member_zone(m public.members, now_at timestamptz)
+CREATE OR REPLACE FUNCTION public.strike_member_zone(value text, postgres_offset boolean)
 RETURNS text LANGUAGE sql STABLE SET search_path = '' AS $$
+  -- PostgreSQL's POSIX zone names use the opposite sign from member-facing GMT offsets.
+  SELECT CASE WHEN parts IS NOT NULL THEN
+    'GMT' || CASE WHEN (parts[1] = '+') = postgres_offset THEN '-' ELSE '+' END
+      || lpad(parts[2], 2, '0') || ':' || COALESCE(parts[3], '00')
+    ELSE COALESCE((SELECT name FROM pg_timezone_names WHERE name = btrim(value)), 'UTC') END
+  FROM regexp_match(btrim(value), '^(?:GMT|UTC)?([+-])(0?[0-9]|1[0-4])(?::?([0-5][0-9]))?$', 'i') AS offsets(parts);
+$$;
+
+CREATE OR REPLACE FUNCTION public.strike_member_zone(value text)
+RETURNS text LANGUAGE sql STABLE SET search_path = '' AS $$
+  SELECT public.strike_member_zone(value, true);
+$$;
+
+CREATE OR REPLACE FUNCTION public.punishment_member_zone(
+  m public.members, now_at timestamptz, postgres_offset boolean DEFAULT false
+) RETURNS text LANGUAGE sql STABLE SET search_path = '' AS $$
   SELECT public.strike_member_zone(CASE WHEN m.pending_effective_at <= now_at
-    THEN COALESCE(NULLIF(m.pending_timezone, ''), m.timezone) ELSE m.timezone END);
+    THEN COALESCE(NULLIF(m.pending_timezone, ''), m.timezone) ELSE m.timezone END, postgres_offset);
 $$;
 
 CREATE OR REPLACE FUNCTION public.punishment_progress_month(m public.members, now_at timestamptz)
 RETURNS date LANGUAGE sql STABLE SET search_path = '' AS $$
-  SELECT date_trunc('month', now_at AT TIME ZONE public.punishment_member_zone(m, now_at))::date;
+  SELECT date_trunc('month', now_at AT TIME ZONE public.punishment_member_zone(m, now_at, true))::date;
 $$;
 
 CREATE OR REPLACE FUNCTION public.reconcile_punishments(
@@ -4040,7 +4056,7 @@ BEGIN
     RAISE SQLSTATE 'PT400' USING MESSAGE = 'Choose a deadline in the future.';
   END IF;
   IF p_action = 'assign' AND view_item.effective_status = 'awaiting_assignment' THEN
-    member_zone := public.punishment_member_zone(m, now_at);
+    member_zone := public.punishment_member_zone(m, now_at, true);
     due_at_value := COALESCE(p_due_at,
       ((now_at AT TIME ZONE member_zone) + interval '7 days') AT TIME ZONE member_zone);
     UPDATE public.punishments SET status = 'assigned', title = title_value, instructions = instructions_value,
@@ -4224,8 +4240,9 @@ BEGIN
     IF nightly.record_type = 'strike' AND nightly.updated_at >= p_month_start THEN
       strikes := greatest(0, strikes - 1);
     ELSIF nightly.record_type = 'metastrike' THEN
-      pass_month := nightly.pass_charged_month;
-      IF COALESCE(pass_month = current_month, nightly.updated_at >= p_month_start) THEN
+      pass_month := COALESCE(nightly.pass_charged_month, date_trunc('month', COALESCE(nightly.pass_used_on,
+        (nightly.updated_at AT TIME ZONE public.strike_member_zone(m.timezone))::date)::timestamp)::date);
+      IF pass_month = current_month THEN
         passes := greatest(0, passes - 1);
       ELSIF pass_month IS NOT NULL THEN
         historical_passes := public.ensure_strike_pass_month(m, pass_month);
@@ -4294,7 +4311,7 @@ BEGIN
   IF cycle IS NULL THEN RAISE SQLSTATE 'PT400' USING MESSAGE = 'Invalid sleep cycle date.'; END IF;
   SELECT * INTO STRICT m FROM public.members WHERE id = p_member_id FOR NO KEY UPDATE;
   now_at := greatest(p_now, clock_timestamp());
-  local_day := (now_at AT TIME ZONE public.punishment_member_zone(m, now_at))::date;
+  local_day := (now_at AT TIME ZONE public.punishment_member_zone(m, now_at, true))::date;
   current_month := date_trunc('month', local_day::timestamp)::date;
   cycle_month := date_trunc('month', cycle::timestamp)::date;
   SELECT * INTO nightly FROM public.nightly_strike_logs WHERE target_member_id = m.id AND sleep_cycle_date = p_cycle;
@@ -4421,7 +4438,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.punishment_member_zone(public.members,timestamptz),
+REVOKE ALL ON FUNCTION public.punishment_member_zone(public.members,timestamptz,boolean),
   public.manage_punishment_task(uuid,text,text,text,text,timestamptz),
   public.update_punishment(uuid,text,text,text,text,date,uuid,text,uuid,timestamptz)
   FROM PUBLIC, anon, authenticated, service_role;

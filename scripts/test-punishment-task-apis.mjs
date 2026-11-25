@@ -201,6 +201,11 @@ try {
   await expect(post(dbModCookie, { ...assignment, punishment_id: pending.id }), 409);
   await expect(post(dbModCookie, { ...assignment, title: ' '.repeat(10) }), 400);
   await expect(post(dbModCookie, { ...assignment, due_at: '2026-12-05T18:00' }), 400);
+  for (const due_at of ['2099-12-05T18:00+00:00', '2099-12-05T18:00:00.1234Z',
+    '2099-12-05T18:00:00+05:60', '2099-12-05T18:00:00-16:00']) {
+    assert.equal((await expect(post(dbModCookie, { ...assignment, due_at }), 400)).error,
+      'Enter a valid completion deadline with a timezone.');
+  }
   await expect(post(dbModCookie, { ...assignment, due_at: DateTime.utc().minus({ minutes: 1 }).toISO() }), 400);
   const assigned = await expect(post(dbModCookie, assignment));
   assert.equal(assigned.item.title, 'Wind-down plan');
@@ -214,7 +219,7 @@ try {
   const overdueAt = DateTime.utc().minus({ minutes: 5 }).startOf('second');
   await db.query('UPDATE public.punishments SET due_at = $2 WHERE id = $1', [ready.id, overdueAt.toISO()]);
   const extendedTo = DateTime.utc().plus({ days: 10 }).startOf('second');
-  const extended = await expect(post(secondModCookie, { ...edit, due_at: extendedTo.toISO() }));
+  const extended = await expect(post(secondModCookie, { ...edit, due_at: extendedTo.setZone('UTC+05:30').toISO() }));
   assert.equal(extended.item.instructions, 'Two lines');
   assert.equal(DateTime.fromISO(extended.item.due_at).toMillis(), extendedTo.toMillis());
   assert.equal((await expect(post(secondModCookie, edit))).item.due_at, extended.item.due_at);

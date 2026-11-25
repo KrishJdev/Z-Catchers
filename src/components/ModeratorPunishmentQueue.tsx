@@ -1,7 +1,6 @@
 'use client';
 
-import { DateTime } from 'luxon';
-import { parsePunishmentDeadline } from '@/lib/sleepEngine';
+import { getPunishmentDeadlineOptions, punishmentDeadlineInputValue } from '@/lib/sleepEngine';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   EmptyPunishments, PunishmentDetails, PunishmentReadNotice, punishmentStatus, type Punishment,
@@ -20,11 +19,6 @@ type QueuePage = { items: Task[]; next_offset: number | null };
 type TaskResult = { item: Task; open_count: number };
 type TaskAction = 'assign' | 'edit' | 'complete';
 
-function deadlineInputValue(item: Task) {
-  return item.due_at
-    ? DateTime.fromISO(item.due_at, { zone: item.member_timezone }).toFormat("yyyy-MM-dd'T'HH:mm")
-    : '';
-}
 const endpoint = '/api/mod/punishments';
 const buttonStyle = 'min-h-[44px] rounded-lg border border-night-border bg-night-surface px-3 py-2 text-sm font-semibold text-cream-primary hover:border-status-amber/50 disabled:opacity-50';
 
@@ -53,12 +47,17 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
   const [pageRetry, setPageRetry] = useState<{ status: QueueStatus; offset: number } | null>(null);
   const [actionError, setActionError] = useState('');
   const [editor, setEditor] = useState<{ item: Task; action: TaskAction } | null>(null);
+  const [deadlineInput, setDeadlineInput] = useState('');
+  const [deadlineOccurrence, setDeadlineOccurrence] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<TaskResult | null>(null);
   const resultRef = useRef<HTMLParagraphElement>(null);
   const requestRef = useRef<AbortController | null>(null);
   const queueRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<{ id: string; action: TaskAction } | null>(null);
+  const originalDeadlineInput = punishmentDeadlineInputValue(editor?.item.due_at, editor?.item.member_timezone);
+  const deadlineChanged = deadlineInput !== originalDeadlineInput;
+  const deadlineOptions = deadlineInput ? getPunishmentDeadlineOptions(deadlineInput, editor?.item.member_timezone) : null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -131,11 +130,23 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
     setActionError('');
     try {
       const { item, action } = editor;
-      const localDeadline = fields.get('due_at');
       let dueAt: string | undefined;
-      if (typeof localDeadline === 'string' && localDeadline && localDeadline !== deadlineInputValue(item)) {
-        dueAt = parsePunishmentDeadline(localDeadline, item.member_timezone ?? 'UTC') ?? undefined;
-        if (!dueAt) throw new Error('Choose a date and time that exists in the member’s timezone.');
+      if (action !== 'complete' && deadlineInput && (deadlineChanged || deadlineOccurrence)) {
+        const options = getPunishmentDeadlineOptions(deadlineInput, item.member_timezone);
+        if (!options) throw new Error("Choose a date and time that exists in the member's timezone.");
+        if (deadlineOccurrence) {
+          dueAt = options.future.find(option => option.instant === deadlineOccurrence)?.instant;
+          if (!dueAt) {
+            setDeadlineOccurrence('');
+            throw new Error('That occurrence has passed. Choose a future completion deadline.');
+          }
+        } else if (options.future.length === 1) {
+          dueAt = options.future[0].instant;
+        } else {
+          throw new Error(options.future.length === 0
+            ? 'Choose a completion deadline in the future.'
+            : 'Choose a UTC offset for this repeated time.');
+        }
       }
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -168,6 +179,8 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
 
   const startAction = (item: Task, action: TaskAction) => {
     setEditor({ item, action });
+    setDeadlineInput(punishmentDeadlineInputValue(item.due_at, item.member_timezone));
+    setDeadlineOccurrence('');
     setActionError('');
     setResult(null);
   };
@@ -217,12 +230,33 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
                                 className="mt-1 block w-full rounded-lg border border-night-border bg-night-surface p-3" />
                             </label>
                             <label className="block text-sm">Completion deadline ({item.member_timezone ?? 'UTC'})
-                              <input type="datetime-local" name="due_at" defaultValue={deadlineInputValue(item)}
+                              <input type="datetime-local" name="due_at" value={deadlineInput} onChange={event => {
+                                setDeadlineInput(event.target.value);
+                                setDeadlineOccurrence('');
+                              }}
                                 className="mt-1 block min-h-[44px] w-full rounded-lg border border-night-border bg-night-surface px-3" />
                               {editor.action === 'assign' && (
                                 <span className="mt-1 block text-xs text-cream-secondary">Defaults to 7 calendar days after assignment.</span>
                               )}
                             </label>
+                            {deadlineOptions?.ambiguous && deadlineOptions.future.length > 0 && (
+                              deadlineChanged && deadlineOptions.future.length === 1 ? (
+                                <p className="text-xs text-cream-secondary">
+                                  This time repeats. The remaining occurrence is {deadlineOptions.future[0].offset}.
+                                </p>
+                              ) : (
+                                <label className="block text-sm">UTC offset for this repeated time
+                                  <select value={deadlineOccurrence} required={deadlineChanged}
+                                    onChange={event => setDeadlineOccurrence(event.target.value)}
+                                    className="mt-1 block min-h-[44px] w-full rounded-lg border border-night-border bg-night-surface px-3">
+                                    <option value="">{deadlineChanged ? 'Choose an offset' : 'Keep current deadline'}</option>
+                                    {deadlineOptions.future.map(({ instant, offset }) => (
+                                      <option key={instant} value={instant}>{offset}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )
+                            )}
                           </>
                         )}
                         {actionError && <p role="alert" className="text-sm text-status-coral">{actionError}</p>}

@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     args.p_title = title.trim();
     args.p_instructions = instructions?.trim() || null;
     if (due_at != null) {
-      if (typeof due_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(due_at) ||
+      if (typeof due_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-](?:0\d|1[0-5]):[0-5]\d)$/.test(due_at) ||
         !DateTime.fromISO(due_at, { setZone: true }).isValid) {
         return punishmentResponse({ error: 'Enter a valid completion deadline with a timezone.' }, 400);
       }

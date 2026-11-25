@@ -4,6 +4,7 @@ import React, { useEffect, useState, type ReactNode } from 'react';
 import { DateTime } from 'luxon';
 import { FoxMascot } from '@/components/FoxMascot';
 import { readPunishmentFailure, type PunishmentReadFailure } from '@/lib/punishmentAvailability';
+import { getPunishmentDeadlineState } from '@/lib/sleepEngine';
 import type { Member } from '@/lib/db';
 
 export const punishmentStatus = {
@@ -43,21 +44,22 @@ export function PunishmentDetails({ item, memberName, children }: {
   children?: ReactNode;
 }) {
   const [, refreshDeadline] = useState(0);
-  const due = item.due_at ? DateTime.fromISO(item.due_at, { zone: item.member_timezone }) : null;
-  const dueMillis = due?.isValid ? due.toMillis() : null;
-  const overdue = item.status === 'assigned' && dueMillis !== null && dueMillis <= DateTime.now().toMillis();
+  const { due_at: dueAt, member_timezone: timezone, status } = item;
+  const due = getPunishmentDeadlineState(dueAt, timezone);
+  const overdue = status === 'assigned' && due?.overdue;
 
   useEffect(() => {
-    if (item.status !== 'assigned' || dueMillis === null) return;
+    if (status !== 'assigned' || !dueAt) return;
     let timer: ReturnType<typeof setTimeout>;
-    function updateAtDeadline(deadline: number) {
-      const remaining = deadline - DateTime.now().toMillis();
-      if (remaining <= 0) refreshDeadline(value => value + 1);
-      else timer = setTimeout(() => updateAtDeadline(deadline), Math.min(remaining, 2147483647));
+    function updateAtDeadline() {
+      const deadline = getPunishmentDeadlineState(dueAt, timezone);
+      if (!deadline) return;
+      if (deadline.overdue) refreshDeadline(value => value + 1);
+      else timer = setTimeout(updateAtDeadline, Math.min(deadline.remainingMs, 2147483647));
     }
-    updateAtDeadline(dueMillis);
+    updateAtDeadline();
     return () => clearTimeout(timer);
-  }, [item.status, dueMillis]);
+  }, [status, dueAt, timezone]);
 
   const earned = DateTime.fromISO(item.earned_cycle_date, { zone: 'utc' }).toLocaleString(DateTime.DATE_MED);
   return (
@@ -74,10 +76,10 @@ export function PunishmentDetails({ item, memberName, children }: {
       )}
       {item.title && <p className="text-sm font-semibold">{item.title}</p>}
       {item.instructions && <p className="whitespace-pre-wrap text-sm text-cream-secondary">{item.instructions}</p>}
-      {due?.isValid ? (
+      {due ? (
         <p className={overdue ? 'text-sm font-semibold text-status-coral' : 'text-sm text-cream-secondary'}>
           {overdue ? 'Overdue · due ' : 'Due '}
-          <time dateTime={item.due_at ?? undefined}>{due.toLocaleString(DateTime.DATETIME_MED)} {due.offsetNameShort}</time>
+          <time dateTime={dueAt ?? undefined}>{due.label}</time>
         </p>
       ) : item.status === 'assigned' ? <p className="text-sm text-cream-secondary">No deadline set</p> : null}
       {item.completed_at && (

@@ -33,7 +33,7 @@ try {
   const { rows: [inactive, active] } = await db.query(
     "INSERT INTO public.members (discord_username, discord_id, journal_url, bedtime_local, timezone, " +
     "strike_cycle_month, strikes_used, strikes_count, metastrikes_used, metastrikes_count) " +
-    "VALUES ('Inactive Fox', '111', 'https://discord.com/channels/123/456', '23:00', 'Asia/Kolkata', '2099-11', 1, 1, 2, 2), " +
+    "VALUES ('Inactive Fox', '111', 'https://discord.com/channels/123/456', '23:00', 'GMT+05:30', '2099-11', 1, 1, 2, 2), " +
     "('Active Fox', '222', 'https://discord.com/channels/123/456', '23:00', 'Asia/Kolkata', '2099-11', 6, 6, 2, 2) RETURNING id"
   );
   await db.query(
@@ -52,6 +52,20 @@ try {
 
   await db.exec(migration);
   await db.exec(migration);
+  const zones = await result(`SELECT jsonb_build_object(
+    'east', '2099-11-30T18:30Z'::timestamptz AT TIME ZONE public.strike_member_zone('GMT+05:30'),
+    'west', '2099-12-01T03:30Z'::timestamptz AT TIME ZONE public.strike_member_zone('GMT-03:30'),
+    'named', public.strike_member_zone('Asia/Kolkata'),
+    'fallback', public.strike_member_zone('GMT+05:60'),
+    'missing', public.strike_member_zone(NULL)) AS result`);
+  assert.deepEqual(zones, {
+    east: '2099-12-01T00:00:00', west: '2099-12-01T00:00:00',
+    named: 'Asia/Kolkata', fallback: 'UTC', missing: 'UTC',
+  });
+  assert.deepEqual(await result(`SELECT jsonb_build_array(
+    public.punishment_member_zone(m, $3), public.punishment_progress_month(m, $2),
+    public.punishment_progress_month(m, $3)) AS result FROM public.members m WHERE id = $1`,
+  [inactive.id, beforeRollover, rollover]), ['GMT+05:30', november, december]);
   const [oldTask] = await state(active.id);
   assert.equal(oldTask.due_at, null);
   const { rows: [mod] } = await db.query(
@@ -66,7 +80,24 @@ try {
   await write(inactive.id, priorCycle, 'metastrike', 'clear', mod.id);
   assert.equal(await balance(inactive.id, november), 2);
 
+  await db.query(`INSERT INTO public.nightly_strike_logs
+    (target_member_id, sleep_cycle_date, record_type, pass_used_on, pass_charged_month, updated_at) VALUES
+    ($1, '2099-11-27', 'metastrike', '2099-11-28', NULL, $2),
+    ($1, '2099-11-28', 'metastrike', NULL, NULL, $3),
+    ($1, '2099-11-29', 'metastrike', '2099-11-30', '2099-12-01', $2)`,
+  [inactive.id, rollover, beforeRollover]);
+  await db.query('UPDATE public.members SET metastrikes_count = 1, metastrikes_used = 1 WHERE id = $1', [inactive.id]);
+  assert.equal((await write(inactive.id, '2099-11-27', 'metastrike', 'clear', mod.id)).metastrikesUsed, 1);
+  assert.equal(await balance(inactive.id, november), 1);
+  assert.equal((await write(inactive.id, '2099-11-28', 'metastrike', 'clear', mod.id)).metastrikesUsed, 1);
+  assert.equal(await balance(inactive.id, november), 0);
+  assert.equal((await write(inactive.id, '2099-11-29', 'metastrike', 'clear', mod.id)).metastrikesUsed, 0);
+  assert.equal(await balance(inactive.id, november), 0);
+
   await db.exec("UPDATE public.punishment_rollout SET activated_at = '2026-11-01T00:00Z', screens_visible = true");
+  await assert.rejects(db.query(
+    "SELECT public.moderate_punishment($1,'333',NULL,'assign',NULL,NULL,NULL,NULL,NULL,NULL,NULL)", [mod.id]),
+  { code: 'PT404' });
   await db.query('SELECT public.reconcile_punishments(m, $2, $3) FROM public.members m WHERE id = $1',
     [active.id, november, beforeRollover]);
   const deadline = await result(

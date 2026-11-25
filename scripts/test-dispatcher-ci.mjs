@@ -1197,6 +1197,17 @@ try {
   console.log('Verified Owner self-correction, Moderator self-denial, reciprocal corrections and a concurrent promotion.');
 
   sql(readFileSync('supabase/migrations/20261204_punishment_deadlines.sql', 'utf8'));
+  await waitFor(async () => {
+    const { error } = await db.rpc('moderate_punishment', {
+      p_actor_id: modId, p_actor_discord_id: discordAccounts['database-mod'],
+      p_id: null, p_action: 'assign', p_title: null, p_instructions: null,
+      p_cycle: null, p_source: null, p_reason: null, p_request_id: null, p_due_at: null,
+    });
+    if (error?.code === 'PGRST202') return false;
+    // A null ID cannot match a task. PT404 confirms the new overload ran without writing.
+    assert.equal(error?.code, 'PT404', JSON.stringify(error));
+    return true;
+  }, 10_000, () => 'PostgREST did not load the deadline-aware moderate_punishment overload');
   const deadlineMember = raceMember('Deadline Smoke Fox');
   for (const day of ['11', '12', '13']) {
     await post('/api/mod', dbModCookie, {
