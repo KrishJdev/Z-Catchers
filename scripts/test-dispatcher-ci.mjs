@@ -1146,6 +1146,16 @@ try {
 
   sql(readFileSync('supabase/migrations/20261202_roster_strike_permissions.sql', 'utf8'));
   sql(readFileSync('supabase/migrations/20261203_staff_strikes_and_profile_history.sql', 'utf8'));
+  sql("NOTIFY pgrst, 'reload schema'");
+  await waitFor(async () => {
+    const { error } = await db.rpc('get_profile_strike_history', {
+      p_viewer_id: owner.id, p_viewer_discord_id: discordAccounts.owner,
+      p_member_id: owner.id, p_month: '2026-11-01',
+    });
+    if (error?.code === 'PGRST202') return false;
+    assert.equal(error, null);
+    return true;
+  }, 10_000, () => 'PostgREST did not load the shared profile strike history RPC');
   const peerModId = sql(`SELECT id FROM public.members WHERE discord_id = '${discordAccounts['second-mod']}'`);
   const strikeReview = memberId => '/api/mod?view=strike_month&month=2026-11&member_id=' + memberId;
   const rosterStrike = {

@@ -1,6 +1,6 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-26T02:04:52.192+05:30
+> **Last Updated:** 2026-11-26T02:20:39.185+05:30
 > **Active working branch:** `codex/punishment-deadlines` at review fix `795ec59` for [PR #123](https://github.com/KrishJdev/Z-Catchers/pull/123). The implementation is `ecd736e` from `origin/dev` at `24a2e54`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
@@ -8,7 +8,7 @@
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** TypeScript `--noEmit --incremental false` passed. The local `npm run test:unit` run passed 54 of 56 suites. The two loopback suites passed separately using their existing request handlers in memory after Windows refused localhost connections. Windows also refused a Next.js build directory write. The hosted build and disposable PostgREST smoke test are pending. [PR #123 checks](https://github.com/KrishJdev/Z-Catchers/pull/123/checks)
+> **Build Status:** GitHub CI passed TypeScript, the build, and all 56 `npm run test:unit` suites on `e9e1115`. The dispatcher smoke run reached the shared strike-history fixture and exposed a PostgREST schema reload race. The smoke test now requests the reload and waits for that RPC before exercising the history route. Hosted checks on the follow-up are pending. [PR #123 checks](https://github.com/KrishJdev/Z-Catchers/pull/123/checks)
 
 ---
 
@@ -17,6 +17,7 @@
 - Validate deadline offset hours and minutes before calling the RPC. Require an explicit offset when both occurrences of a repeated local time are in the future and use the remaining occurrence when only one is available. Centralize deadline display and timing in the sleep engine.
 - Use fixed GMT offsets consistently for staff and member deadline displays, default deadlines, and progress months. Refund older Metastrike replacements to the recorded charge month, using the pass date and then the legacy timestamp when necessary.
 - Document the accepted deadline format and wait for the deadline-aware RPC in the disposable PostgREST smoke test using a null task ID.
+- The first hosted smoke run hit `PGRST202` in the earlier shared strike-history fixture. Added a schema reload and a read-only RPC readiness check to `scripts/test-dispatcher-ci.mjs` before that fixture.
 - Updated `BACKEND_TZ_PWA_SPEC.md`, `src/app/api/mod/punishments/route.ts`, `src/components/ModeratorPunishmentQueue.tsx`, `src/components/PunishmentList.tsx`, `src/lib/sleepEngine.ts`, `supabase/migrations/20261204_punishment_deadlines.sql`, and `supabase/schema.sql`. Updated `scripts/test-dispatcher-ci.mjs`, `scripts/test-punishment-deadline-rollover.mjs`, `scripts/test-punishment-screens.mjs`, `scripts/test-punishment-task-apis.mjs`, and this handoff.
 
 | Milestone | Status | Next action |
