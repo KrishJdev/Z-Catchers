@@ -34,6 +34,10 @@ await db.exec(reviewMigration);
 const strikePermissionsMigration = readFileSync('supabase/migrations/20261202_roster_strike_permissions.sql', 'utf8');
 assert.ok(schema.includes(strikePermissionsMigration));
 await db.exec(strikePermissionsMigration);
+await db.exec(readFileSync('supabase/migrations/20261130_private_strike_history.sql', 'utf8'));
+const followupMigration = readFileSync('supabase/migrations/20261203_staff_strikes_and_profile_history.sql', 'utf8');
+assert.ok(schema.includes(followupMigration));
+await db.exec(followupMigration);
 assert.equal((await db.query("SELECT actor FROM public.strike_moderator_corrections WHERE reason = 'Historical correction'")).rows[0].actor,
   'master_mod');
 assert.equal((await db.query("SELECT to_regprocedure('public.reserve_moderator_passcode_attempt(text,timestamptz)') AS fn")).rows[0].fn, null);
@@ -46,6 +50,7 @@ process.env.MOD_SECRET_PASSCODE = 'retired-passcode';
 process.env.MOD_DISCORD_IDS = member.discord_id;
 
 const { supabaseAdmin } = await import('../src/lib/db.ts');
+const { activeStrikeLog } = await import('../src/lib/strikes.ts');
 const { getScheduleCooldownEffectiveAt, Settings } = await import('../src/lib/sleepEngine.ts');
 const { createSessionToken } = await import('../src/lib/auth.ts');
 const { pendingScheduleSnapshot } = await import('../src/lib/pendingSchedule.ts');
@@ -346,8 +351,143 @@ try {
   await expect(modRoute, 403, modSession, { ...first, member_id: mod.id });
   await expect(modRoute, 403, memberSession, first);
   await review(ownerSession, randomUUID(), 404);
-  assert.equal((await review(modSession, member.id, 503)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
-  assert.equal((await expect(modRoute, 503, modSession, first)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
+  const liveCycle = (await db.query("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date::text AS cycle")).rows[0].cycle;
+  const liveMonth = liveCycle.slice(0, 7);
+  await db.query(`
+    UPDATE public.members SET strikes_used = 1, strikes_count = 2, strike_cycle_month = $2,
+      metastrikes_used = 1, metastrikes_count = 1 WHERE id = $1
+  `, [member.id, liveMonth]);
+  const inactiveReview = await review(modSession, member.id, 200, liveMonth);
+  assert.equal(inactiveReview.open_count, null);
+  assert.equal(inactiveReview.strikes_used, 0);
+  assert.equal(inactiveReview.current_strikes_used, 2);
+
+  const inactiveAdd = change(liveCycle);
+  const inactiveAdded = await expect(modRoute, 200, modSession, inactiveAdd);
+  assert.equal(inactiveAdded.strikes_used, 1);
+  assert.equal(inactiveAdded.current_strikes_used, 3);
+  assert.equal(inactiveAdded.open_count, null);
+  assert.deepEqual(await expect(modRoute, 200, modSession, inactiveAdd), inactiveAdded);
+  const inactiveRemove = change(liveCycle, { action: 'remove_strike', source_id: inactiveAdded.correction_id });
+  const inactiveRemoved = await expect(modRoute, 200, ownerSession, inactiveRemove);
+  assert.equal(inactiveRemoved.strikes_used, 0);
+  assert.equal(inactiveRemoved.current_strikes_used, 2);
+  assert.deepEqual(await expect(modRoute, 200, ownerSession, inactiveRemove), inactiveRemoved);
+  const inactiveMember = await getMember(member.id);
+  assert.equal(inactiveMember.strikes_used, 2);
+  assert.equal(inactiveMember.strikes_count, 2);
+  assert.equal(inactiveMember.metastrikes_used, 1);
+  assert.equal(inactiveMember.metastrikes_count, 1);
+
+  const { rows: [{ id: inactiveNightly }] } = await db.query(`
+    INSERT INTO public.nightly_strike_logs(target_member_id, sleep_cycle_date, record_type, reason)
+    VALUES ($1, $2, 'strike', 'Legacy nightly evidence') RETURNING id
+  `, [member.id, liveCycle]);
+  assert.equal((await expect(modRoute, 200, modSession, change(liveCycle, {
+    action: 'remove_strike', source_id: inactiveNightly,
+  }))).current_strikes_used, 1);
+  const { rows: [{ result: retryNightly }] } = await db.query(`
+    SELECT public.apply_nightly_strike($1, $2, $3, NULL, 'strike', 'Missed check-in', now(),
+      ($3 || '-01')::date::timestamptz, NULL::timestamptz, NULL::timestamptz, NULL::text, NULL::integer) AS result
+  `, [member.id, liveCycle, liveMonth]);
+  assert.equal(retryNightly.reason, 'moderator_cleared');
+  assert.equal((await db.query('SELECT count(*)::int AS count FROM public.punishments')).rows[0].count, 0);
+  assert.equal((await db.query('SELECT activated_at FROM public.punishment_rollout')).rows[0].activated_at, null);
+  assert.equal((await expect(memberPunishments, 503, memberSession)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
+  await db.query('UPDATE public.members SET metastrikes_used = 0, metastrikes_count = 0 WHERE id = $1', [member.id]);
+
+  // Freeze the disposable PostgreSQL clock at a month boundary where an effective
+  // pending timezone and the stored timezone disagree on the date.
+  const realDateNow = Date.now;
+  Date.now = () => Date.parse('2026-12-01T00:30:00Z');
+  try {
+    const { rows: [rolloverMember] } = await db.query(`
+      INSERT INTO public.members (discord_username, journal_url, bedtime_local, timezone, pending_timezone,
+        pending_effective_at, strike_cycle_month, strikes_used, strikes_count, metastrikes_used, metastrikes_count)
+      VALUES ('Rollover fixture', 'https://discord.com/channels/1/2', '23:00', 'America/Los_Angeles', 'UTC',
+        '2026-12-01T00:45:00Z', '2026-11', 2, 2, 3, 3) RETURNING id`);
+    const target = [owner.id, owner.discord_id, rolloverMember.id];
+    const selectedMonth = async () => (await db.query(`
+      SELECT public.read_moderation_strike_month($1, $2, $3, NULL) AS result`, target)).rows[0].result;
+    const correct = async (cycle, source = null, requestId = randomUUID()) => (await db.query(`
+      SELECT public.moderate_dated_strike($1, $2, $3, $4, $5, $6, 'Rollover test', $7) AS result`,
+    [...target, source ? 'remove_strike' : 'add_strike', cycle, source, requestId])).rows[0].result;
+    assert.equal((await selectedMonth()).latest_cycle_date, '2026-11-30');
+    await assert.rejects(correct('2026-12-01'), { code: 'PT400' });
+    await db.query("UPDATE public.members SET pending_effective_at = '2026-12-01T00:15:00Z' WHERE id = $1", [rolloverMember.id]);
+    assert.equal((await selectedMonth()).latest_cycle_date, '2026-12-01');
+    const rolloverRequest = randomUUID();
+    const rolled = await correct('2026-12-01', null, rolloverRequest);
+    assert.equal(rolled.current_strikes_used, 1);
+    assert.equal(rolled.month, '2026-12');
+    const afterRollover = await getMember(rolloverMember.id);
+    assert.deepEqual([afterRollover.strike_cycle_month, afterRollover.metastrikes_used, afterRollover.metastrikes_count],
+      ['2026-12', 0, 0]);
+
+    await correct('2026-12-01');
+    await correct('2026-12-01');
+    assert.equal((await correct('2026-12-01')).current_strikes_used, 4);
+    const adjust = (strikes, passes) => db.query(`
+      SELECT public.adjust_member_strikes($1, $2, $3, false, $4, 'Rollover test') AS result`,
+    [rolloverMember.id, strikes, passes, owner.id]);
+    assert.deepEqual((await adjust(null, 2)).rows[0].result, { month: '2026-12', strikesUsed: 4, metastrikesUsed: 2 });
+    await assert.rejects(adjust(null, 4), { code: 'PT400' });
+    await assert.rejects(adjust(5, null), { code: 'PT400' });
+    await adjust(1, null);
+
+    const { rows: [{ result: written }] } = await db.query(`
+      SELECT public.apply_legacy_nightly_strike($1, '2026-11-30', '2026-12', NULL, 'strike', 'Missed check-in',
+        '2026-12-01T00:05:00Z', '2026-12-01T00:00:00Z') AS result`, [rolloverMember.id]);
+    const { rows: [charge] } = await db.query(`SELECT legacy_strike_charge_month::text AS month
+      FROM public.nightly_strike_logs WHERE id = $1`, [written.log.id]);
+    assert.equal(charge.month, '2026-12-01');
+    assert.equal('legacy_strike_charge_month' in activeStrikeLog(written.log), false);
+    const { rows: [{ id: earlier }, { id: olderWriter }, { id: backfilled }] } = await db.query(`
+      INSERT INTO public.nightly_strike_logs(target_member_id, sleep_cycle_date, record_type, reason, updated_at)
+      VALUES ($1, '2026-11-28', 'strike', 'November charge', '2026-11-29T00:05:00Z'),
+        ($1, '2026-11-29', 'strike', 'December charge from an older writer', '2026-12-01T00:20:00Z'),
+        ($1, '2026-11-27', 'strike', 'Backfilled charge', '2026-12-01T00:10:00Z')
+      RETURNING id`, [rolloverMember.id]);
+    // The history backfill had the timestamp but could not establish an issuance timezone.
+    await db.query('UPDATE public.nightly_strike_history SET issuance_timezone = NULL WHERE source_id = $1', [backfilled]);
+    // Simulate the older writer's December charge already in the legacy balance.
+    await adjust(3, null);
+    assert.equal((await correct('2026-11-28', earlier)).current_strikes_used, 3);
+    assert.equal((await correct('2026-11-29', olderWriter)).current_strikes_used, 2);
+    const backfillRequest = randomUUID();
+    const unknown = await correct('2026-11-27', backfilled, backfillRequest);
+    assert.equal(unknown.balance_reconciliation_required, true);
+    assert.equal(unknown.current_strikes_used, 2);
+    assert.deepEqual(await correct('2026-11-27', backfilled, backfillRequest), unknown);
+    const { rows: [{ details }] } = await db.query(`SELECT details FROM public.strike_moderator_corrections
+      WHERE id = $1`, [unknown.correction_id]);
+    assert.equal(details.balance_reconciliation_required, true);
+
+    await db.query(`UPDATE public.members SET timezone = 'UTC', pending_timezone = 'America/Los_Angeles'
+      WHERE id = $1`, [rolloverMember.id]);
+    assert.equal((await selectedMonth()).latest_cycle_date, '2026-11-30');
+    const replay = await correct('2026-12-01', null, rolloverRequest);
+    assert.equal(replay.correction_id, rolled.correction_id);
+    assert.equal(replay.month, '2026-11');
+    assert.equal((await getMember(rolloverMember.id)).strikes_used, 2);
+    await assert.rejects(correct('2026-12-01'), { code: 'PT400' });
+    await assert.rejects(correct('2026-12-02', null, rolloverRequest), { code: 'PT409' });
+
+    const removalId = randomUUID();
+    const removal = await correct('2026-11-30', written.log.id, removalId);
+    assert.equal(removal.month, '2026-11');
+    assert.equal(removal.current_month, '2026-11');
+    assert.equal(removal.balance_reconciliation_required, false);
+    const storedBalance = await getMember(rolloverMember.id);
+    assert.deepEqual([storedBalance.strike_cycle_month, storedBalance.strikes_used, storedBalance.strikes_count], ['2026-12', 1, 1]);
+    assert.deepEqual(await correct('2026-11-30', written.log.id, removalId), removal);
+    assert.equal((await getMember(rolloverMember.id)).strikes_used, 1);
+    const { rows: [history] } = await db.query(`SELECT cycle_date::text, change_type
+      FROM public.nightly_strike_history WHERE source_id = $1`, [written.log.id]);
+    assert.deepEqual(history, { cycle_date: '2026-11-30', change_type: 'removed' });
+  } finally {
+    Date.now = realDateNow;
+  }
 
   await db.exec(`UPDATE public.punishment_rollout SET activated_at = clock_timestamp(), screens_visible = true;
     INSERT INTO public.nightly_strike_logs (target_member_id, sleep_cycle_date, record_type, reason, replacement_until)
@@ -381,7 +521,14 @@ try {
   beforeRpc = () => db.query("UPDATE public.members SET role = 'member' WHERE id = $1", [mod.id]);
   await expect(modRoute, 403, modSession, first);
   await db.query("UPDATE public.members SET role = 'moderator' WHERE id = $1", [mod.id]);
+  await db.exec('UPDATE public.punishment_rollout SET screens_visible = false');
+  const addedWhileHidden = await expect(modRoute, 200, modSession, first);
+  assert.equal(addedWhileHidden.open_count, null);
+  assert.equal(addedWhileHidden.strikes_used, 3);
+  assert.equal((await expect(memberPunishments, 503, memberSession)).code, 'PUNISHMENT_ROLLOUT_CLOSED');
+  await db.exec('UPDATE public.punishment_rollout SET screens_visible = true');
   const added = await expect(modRoute, 200, modSession, first);
+  assert.equal(added.correction_id, addedWhileHidden.correction_id);
   assert.equal(added.open_count, 1);
   assert.equal(added.strikes_used, 3);
   assert.deepEqual(await expect(modRoute, 200, modSession, first), added);
@@ -466,6 +613,7 @@ try {
     [owner.id, owner.discord_id, member.id]), { code: '42501' });
   await assert.rejects(db.query("SELECT public.moderate_roster_member($1,$2,$3,'cancel_cooldown')",
     [owner.id, owner.discord_id, member.id]), { code: '42501' });
+
 } finally {
   Settings.now = realNow;
   await db.close();

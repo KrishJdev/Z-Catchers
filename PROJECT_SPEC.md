@@ -404,7 +404,7 @@ Manual push nags require an active member session. Each sender, target, sleep cy
      * **Indigo/Blue:** Checked into bed on time (currently sleeping or wake time pending).
      * **Amber/Purple:** Excused pass or Metastrike used.
      * **Rose/Red:** Late or missed sleep check-in.
-   * **Private strike history:** In My Sleep, a separate marker and monthly list open the dated strike or Metastrike details. A strike stays on its stored sleep-cycle date even if issued after midnight. Details show known local issuance time, source, and whether the strike still counts. Replaced and removed strikes stay in history. Other members' calendars omit these details.
+   * **Strike and Metastrike history:** Signed-in members can open dated strike and Metastrike details in My Sleep or on another active member's calendar. A strike stays on its stored sleep-cycle date even if issued after midnight. Details show available times, source, and status, including replacements and removals. Request reasons and decisions remain private.
    * **3-Pill Monthly Summary Bar:**
      * Average Sleep Duration (e.g., `7h 32m`)
      * Average Bed & Wake Times (e.g., `23:18 → 07:05`, calculated circular across midnight)
