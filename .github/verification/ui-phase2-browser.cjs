@@ -173,7 +173,7 @@ async function openJournal(page, link) {
   await link.click();
   const popup = await popupEvent;
   try {
-    await popup.waitForLoadState('domcontentloaded');
+    await popup.waitForURL(href, { waitUntil: 'domcontentloaded' });
     assert.equal(popup.url(), href);
   } finally { await popup.close(); }
 }
