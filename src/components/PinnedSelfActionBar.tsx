@@ -17,8 +17,8 @@ export interface PinnedSelfActionBarProps {
   isCheckingIn: boolean;
 }
 
-const secondary = 'flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-2 py-2 text-xs font-semibold text-cream-primary disabled:opacity-50';
-const primary = 'flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl bg-status-amber px-3 py-2 text-xs font-bold text-night-bg disabled:opacity-50';
+const secondary = 'flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated px-2 py-2 text-sm font-semibold text-cream-primary hover:bg-night-border focus-visible:ring-2 focus-visible:ring-status-amber disabled:opacity-50';
+const primary = 'flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-status-amber px-3 py-2 text-sm font-bold text-night-bg hover:bg-fox-amber focus-visible:ring-2 focus-visible:ring-cream-primary disabled:opacity-50';
 
 export function PinnedSelfActionBar({ currentUser, onCheckIn, onWakeUp, onCancelInBed, isCheckingIn }: PinnedSelfActionBarProps) {
   const [draft, setDraft] = useState<{ time: string; checkedInAt: string | null } | null>(null);
@@ -42,30 +42,38 @@ export function PinnedSelfActionBar({ currentUser, onCheckIn, onWakeUp, onCancel
 
   const canCheckIn = state.isOverdue || state.bucket === 'WINDING_DOWN' ||
     state.hasLoggedWakeUp || (state.bucket === 'AWAKE' && state.diffMinutes >= -180 && state.diffMinutes < 0);
+  let statusText = state.statusText;
+  if (canLogWake) {
+    statusText = state.isPastWakeTime ? `Past wake time (${state.formattedWakeTime})` : 'Checked in for the night';
+  } else if (state.status === 'OVERDUE_NAG_NOW') {
+    statusText = 'Past bedtime';
+  }
 
   return (
     <div role="region" aria-label="Quick Check-In Bar"
-      className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t border-night-border bg-night-surface/95 px-3 py-2 backdrop-blur-md md:bottom-0">
-      <div className="mx-auto flex max-w-7xl flex-col gap-2 md:flex-row md:items-center md:justify-between md:px-3">
-        <p ref={statusRef} tabIndex={-1} className="text-xs text-cream-secondary">
-          {state.statusText}
-          {!canLogWake && <span className="ml-2 text-cream-primary">Bedtime {state.activeBedtimeLocal}</span>}
+      className="px-3 py-2 md:rounded-2xl md:border md:border-night-border md:p-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5">
+        <p ref={statusRef} tabIndex={-1} className="text-sm leading-snug text-cream-secondary tabular-nums">
+          {statusText}
+          {!canLogWake && <span className="whitespace-nowrap text-cream-primary"> · {state.formattedSleeperTime}</span>}
         </p>
         {canLogWake ? (
-          <div className="grid grid-cols-3 gap-1.5 md:flex md:gap-2">
+          <>
             <button type="button" className={primary} disabled={isCheckingIn} onClick={() => void onWakeUp(currentUser.id, 'button', undefined, undefined, currentUser.in_bed_at ?? null)}>
               <Sun className="h-4 w-4 shrink-0" aria-hidden="true" /> I woke up
             </button>
-            <button type="button" className={secondary} disabled={isCheckingIn} onClick={() => {
-              setWakeError(false);
-              setDraft({ time: state.activeWakeTimeLocal || '07:30', checkedInAt: currentUser.in_bed_at ?? null });
-            }} aria-haspopup="dialog">
-              <Clock className="h-4 w-4 shrink-0" aria-hidden="true" /> Enter wake time
-            </button>
-            <button type="button" className={secondary} disabled={isCheckingIn} onClick={() => void onCancelInBed(currentUser.id)}>
-              <RotateCcw className="h-4 w-4 shrink-0" aria-hidden="true" /> Undo check-in
-            </button>
-          </div>
+            <div className="col-span-2 flex flex-wrap gap-1.5">
+              <button type="button" className={`${secondary} flex-1`} disabled={isCheckingIn} onClick={() => {
+                setWakeError(false);
+                setDraft({ time: state.activeWakeTimeLocal || '07:30', checkedInAt: currentUser.in_bed_at ?? null });
+              }} aria-haspopup="dialog">
+                <Clock className="h-4 w-4 shrink-0" aria-hidden="true" /> Enter wake time
+              </button>
+              <button type="button" className={`${secondary} flex-1`} disabled={isCheckingIn} onClick={() => void onCancelInBed(currentUser.id)}>
+                <RotateCcw className="h-4 w-4 shrink-0" aria-hidden="true" /> Undo check-in
+              </button>
+            </div>
+          </>
         ) : canCheckIn && (
           <button type="button" className={primary} disabled={isCheckingIn} onClick={() => void onCheckIn(currentUser.id)}>
             <BedDouble className="h-4 w-4" aria-hidden="true" />

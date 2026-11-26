@@ -38,12 +38,17 @@ assert(metaModalContent.includes('90dvh'), 'MetastrikeModal uses 90dvh scrollabl
 // 3. Warm Dark Palette Compliance in BottomNav
 console.log('\n--- 3. Warm Dark Palette Compliance in BottomNav ---');
 const bottomNavContent = fs.readFileSync(path.resolve('src/components/BottomNav.tsx'), 'utf8');
+const pageContent = fs.readFileSync(path.resolve('src/app/page.tsx'), 'utf8');
 assert(!bottomNavContent.includes('#12141c') && !bottomNavContent.includes('#262936'), 'BottomNav eliminates cool slate blue hex tokens');
 assert(
-  (bottomNavContent.includes('night-surface') && bottomNavContent.includes('night-border')) ||
-  (bottomNavContent.includes('#1C1714') && bottomNavContent.includes('#332B24')),
-  'BottomNav anchors to Warm Dark espresso surface and border tokens'
+  /ref=\{rosterFooterRef\} className="[^"]*border-night-border bg-night-surface\/95[^"]*max-md:fixed/.test(pageContent),
+  'The shared mobile footer anchors to Warm Dark surface and border tokens'
 );
+assert((pageContent.match(/<PinnedSelfActionBar\b/g) || []).length === 1, 'One check-in instance spans both layouts');
+assert(/ref=\{rosterFooterRef\}[\s\S]*?<PinnedSelfActionBar[\s\S]*?<BottomNav/.test(pageContent),
+  'The phone footer contains both check-in actions and navigation');
+assert(pageContent.includes('new ResizeObserver(measure)') && pageContent.includes("observer.observe(footer, { box: 'border-box' })"),
+  'The footer accounts for changes to the rendered controls and safe-area padding');
 
 // 4. Touch Ergonomics & Double-Tap Latency Elimination
 console.log('\n--- 4. Touch Ergonomics & Double-Tap Latency in globals.css ---');
@@ -52,6 +57,8 @@ assert(cssContent.includes('touch-action: manipulation'), 'globals.css applies t
 assert(cssContent.includes('-webkit-tap-highlight-color: transparent'), 'globals.css eliminates mobile tap highlight flashes');
 assert(cssContent.includes('overscroll-behavior-y: contain'), 'globals.css contains overscroll bounce to avoid white flashes');
 assert(cssContent.includes('user-select: none'), 'globals.css prevents accidental text selection on buttons and nav');
+assert(cssContent.includes('padding-bottom: calc(var(--roster-footer-height') &&
+  cssContent.includes('padding-bottom: var(--safe-area-bottom)'), 'Roster clearance uses the footer measurement with safe-area padding applied inside the footer');
 
 // 5. Interactive Push Notification Actions in Service Worker
 console.log('\n--- 5. Interactive Push Notification Actions in Service Worker ---');
@@ -68,7 +75,6 @@ assert(manifest.shortcuts.some((s) => s.url === '/?action=schedule'), 'Manifest 
 
 // 7. Offline Roster Caching, Connectivity Banner & App Badging API
 console.log('\n--- 7. Offline Roster Caching, Connectivity Banner & App Badging ---');
-const pageContent = fs.readFileSync(path.resolve('src/app/page.tsx'), 'utf8');
 assert(pageContent.includes('zcatchers_cached_roster'), 'page.tsx implements localStorage cached roster snapshot');
 assert(pageContent.includes('isOffline'), 'page.tsx tracks offline network status');
 assert(pageContent.includes('Showing cached Fox Den times'), 'page.tsx renders Warm Dark offline notification banner');

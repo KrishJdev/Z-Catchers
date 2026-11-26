@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Bell, BellOff, Clock, Shield, Moon, UserRound } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import { FoxMascot } from '@/components/FoxMascot';
+import type { MobileNavTab } from '@/components/BottomNav';
 import { DateTime } from 'luxon';
 import { toValidLuxonZone, formatGmtOffset } from '@/lib/timezone';
 
@@ -17,6 +18,7 @@ function DiscordIcon({ className = 'w-4 h-4' }: { className?: string }) {
 
 interface HeaderProps {
   viewerTimezone: string;
+  activeTab?: MobileNavTab;
   isPushEnabled?: boolean;
   onOpenPush?: () => void;
   isSleepShieldActive?: boolean;
@@ -36,6 +38,7 @@ interface HeaderProps {
  */
 export function Header({
   viewerTimezone,
+  activeTab = 'roster',
   isPushEnabled,
   onOpenPush,
   isSleepShieldActive = false,
@@ -67,15 +70,15 @@ export function Header({
 
   return (
     <header className="sticky top-0 z-40 border-b border-night-border bg-night-bg/95 backdrop-blur-md pt-[env(safe-area-inset-top,0px)]">
-      <div className="mx-auto flex items-center justify-between px-4 py-3 sm:px-6 lg:px-8 max-w-7xl">
+      <div className="mx-auto flex min-h-14 max-w-7xl items-center justify-between px-4 py-1.5 sm:px-6 md:py-3 lg:px-8">
         {/* Left side: Fox icon + "Z Catchers" with detected timezone as tiny muted subtitle directly underneath */}
         <div className="flex items-center gap-2.5 shrink-0">
           <FoxMascot state="logo" size={32} className="shrink-0 transition-transform hover:scale-105" />
           <div className="flex flex-col">
-            <span className="whitespace-nowrap font-bold text-lg tracking-tight text-cream-primary">
+            <span className="whitespace-nowrap text-lg font-bold leading-tight tracking-tight text-cream-primary">
               Z Catchers
             </span>
-            <span className="text-xs text-[#A89F91] leading-tight">
+            <span className="text-xs leading-tight text-cream-secondary">
               {timezoneDisplayName}
             </span>
           </div>
@@ -108,7 +111,8 @@ export function Header({
               type="button"
               onClick={onOpenMod}
               aria-haspopup="dialog"
-              className="hidden items-center gap-1.5 rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary h-11 min-h-[44px] whitespace-nowrap md:inline-flex"
+              aria-expanded={activeTab === 'mod'}
+              className="hidden h-11 min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-xl border border-night-border bg-night-surface px-3 text-xs font-medium text-cream-secondary hover:bg-night-elevated hover:text-cream-primary focus-visible:ring-2 focus-visible:ring-status-amber aria-expanded:border-status-amber/40 aria-expanded:text-status-amber md:inline-flex"
             >
               <Shield className="h-3.5 w-3.5 text-cream-muted" />
               <span>Mod Panel</span>
@@ -117,8 +121,8 @@ export function Header({
 
           {currentUser ? (
             <>
-              <button type="button" onClick={onOpenMySleep} aria-haspopup="dialog"
-                className="hidden min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-xl border border-night-border bg-night-surface px-3 text-xs font-semibold text-cream-primary md:inline-flex">
+              <button type="button" onClick={onOpenMySleep} aria-haspopup="dialog" aria-expanded={activeTab === 'sleep'}
+                className="hidden min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-xl border border-night-border bg-night-surface px-3 text-xs font-semibold text-cream-primary hover:bg-night-elevated focus-visible:ring-2 focus-visible:ring-status-amber aria-expanded:border-status-amber/40 aria-expanded:text-status-amber md:inline-flex">
                 <Moon className="h-4 w-4 text-status-amber" aria-hidden="true" />
                 My Sleep
               </button>
