@@ -53,6 +53,7 @@ async function fixture(browser, origin, width) {
     hasTouch: width < 768, timezoneId: 'Asia/Kolkata', serviceWorkers: 'block', reducedMotion: 'reduce' });
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
+  page.on('pageerror', error => console.error('Browser page error:', error));
   await page.clock.install({ time: new Date(now) });
   await context.addInitScript(() => {
     localStorage.setItem('zcatchers_unified_onboarding_dismissed_at', String(Date.now()));
@@ -86,11 +87,25 @@ async function fixture(browser, origin, width) {
     }
     if (url.pathname === '/api/members/sleep-history') {
       const target = profiles.find(member => member.id === url.searchParams.get('memberId')) || self;
-      return respond({ member: { ...target, name: target.discord_username }, logs: [] });
+      return respond({
+        member: { ...target, name: target.discord_username, current_streak: target.streak_days || 0 },
+        month: url.searchParams.get('month'),
+        logs: [],
+        summary: { totalLoggedNights: 0, avgDurationMinutes: null, avgBedtime: null, avgWakeTime: null, onTimePercentage: 0 },
+      });
     }
     if (url.pathname === '/api/members/punishments') {
       punishmentReads++;
-      return respond({ current_month: '2026-11', tasks: [] });
+      return respond({
+        month: '2026-11', strikes_used: 6, strikes_toward_next: 0, strikes_per_punishment: 3,
+        metastrikes_used: 0, open_count: 2, history: [],
+        open_items: [
+          { id: 'fixture-1', status: 'assigned', earned_cycle_date: '2026-11-12', completed_at: null,
+            title: 'Private fixture task', instructions: 'Fixture instructions' },
+          { id: 'fixture-2', status: 'awaiting_assignment', earned_cycle_date: '2026-11-15', completed_at: null,
+            title: null, instructions: null },
+        ],
+      });
     }
     if (url.pathname.startsWith('/api/')) return respond({});
     return route.continue();
@@ -214,7 +229,7 @@ async function verifyControls(browser, origin) {
     await ownDetails.getByRole('button', { name: 'Punishments (2 open)' }).tap();
     const sleep = page.getByRole('dialog', { name: 'My Sleep' });
     assert.equal(await sleep.getByRole('button', { name: 'Punishments', exact: true }).getAttribute('aria-pressed'), 'true');
-    await page.waitForTimeout(120);
+    await sleep.getByText('Private fixture task', { exact: true }).waitFor();
     assert(run.punishmentReads() > 0);
     await page.keyboard.press('Escape');
     await sleep.waitFor({ state: 'hidden' });
@@ -248,6 +263,7 @@ async function verifyControls(browser, origin) {
     assert.equal(nags.length, 1);
     await page.keyboard.press('Escape');
     await details.waitFor({ state: 'hidden' });
+    console.log('Passed touch, keyboard focus, profile navigation, private punishments, and nag actions.');
 
     for (const width of [360, 768, 1024, 1440, 1600]) {
       await page.setViewportSize({ width, height: 844 });
@@ -282,6 +298,7 @@ async function verifyControls(browser, origin) {
       try { await verifyLayout(page, width); }
       finally { await context.close(); }
     }
+    console.log('All seven viewport layouts passed.');
     await verifyControls(browser, after);
     console.log('Responsive roster, journal assist and retries, profile navigation, star toggle, Details focus, Sleep Shield and private punishments passed.');
   } finally { await browser.close(); }
