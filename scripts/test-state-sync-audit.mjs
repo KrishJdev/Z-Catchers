@@ -694,22 +694,11 @@ testAssert(
   'Pinned bar provides check-in, wake now, manual wake time, and undo'
 );
 
-// 4.3 MemberCard: Viewer self-actions on compact card bottom row
+/* 4.3 The shared check-in area carries sleep actions. The roster card keeps the journal link. */
+const compactCardMarkup = memberCardSource.slice(memberCardSource.indexOf('  return (\n    <>'), memberCardSource.indexOf('{isDetailsOpen && ('));
 testAssert(
-  memberCardSource.includes("☀️ I'm Awake") || memberCardSource.includes("☀️ I&apos;m Awake"),
-  'MemberCard renders "I\'m Awake" button on compact card bottom row for viewer'
-);
-testAssert(
-  memberCardSource.includes("🛏️ I'm in Bed (Late)"),
-  'MemberCard renders "I\'m in Bed (Late)" on compact card for overdue viewer'
-);
-testAssert(
-  memberCardSource.includes("🛏️ Early Check-In"),
-  'MemberCard renders "Early Check-In" on compact card for early check-in viewer'
-);
-testAssert(
-  memberCardSource.includes("🛏️ I'm in Bed"),
-  'MemberCard renders "I\'m in Bed" on compact card for winding down viewer'
+  !/handle(CheckIn|WakeUp|CancelInBed)Click/.test(compactCardMarkup) && compactCardMarkup.includes("journalLink('min-w-0 self-stretch')"),
+  'The compact card shows its journal without duplicating the shared check-in actions'
 );
 
 // 4.4 MemberCard: Peer journal links preserved for other members
