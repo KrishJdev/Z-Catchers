@@ -27,7 +27,11 @@ assert(bottomNavContent.includes("id: 'mod'") && bottomNavContent.includes("labe
 assert(bottomNavContent.includes('isModerator ?') && bottomNavContent.includes('grid-cols-3') && bottomNavContent.includes('grid-cols-2'), 'Dynamic 2 vs 3 column layout for moderator status');
 assert(bottomNavContent.includes('navigator.vibrate?.(10)'), 'Haptic feedback on tab tap');
 assert(bottomNavContent.includes('min-h-[44px] min-w-[44px]'), 'BottomNav tabs enforce >= 44x44px touch targets');
-assert(bottomNavContent.includes('env(safe-area-inset-bottom)'), 'BottomNav respects safe-area-inset-bottom');
+assert(bottomNavContent.includes('md:hidden') && !bottomNavContent.includes('bottom-0') &&
+  !bottomNavContent.includes('safe-area-inset-bottom'), 'BottomNav participates in the shared phone footer');
+assert(bottomNavContent.includes("aria-current={activeTab === id ? 'page' : undefined}"), 'BottomNav identifies the active destination');
+assert(headerContent.includes("aria-expanded={activeTab === 'sleep'}") &&
+  headerContent.includes("aria-expanded={activeTab === 'mod'}"), 'Desktop command bar identifies the open destination');
 
 // 2. Viewport & Safe-Area Enforcements (src/app/layout.tsx & globals.css)
 console.log('\n--- 2. Viewport & Safe-Area Enforcements ---');

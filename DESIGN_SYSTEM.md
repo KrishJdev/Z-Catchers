@@ -95,9 +95,9 @@ The mascot changes pose and expression depending on community activity and the v
 | Context / State | Mascot Pose & Motif | Visual Placement & Trigger |
 | :--- | :--- | :--- |
 | **Brand / Header** | Cozy fox profile with warm crescent glow | Sticky header on mobile and desktop command bar |
-| **Winding Down / Awake** | Cozy fox yawning or holding a warm glowing lantern | Hero banner when members are in wind-down window or community is active |
-| **Bedtime Hit (Nag Now)** | Alert fox ringing a tiny brass bell or peeking over card edge | Urgent alert banner prompting: *"It's bedtime for your friends! Ring the bell in their journal."* |
-| **Sleeping / Sleep Shield** | Curled-up sleeping fox wrapped in fluffy tail with subtle floating `"Zzz"` | Viewer's personal Sleep Shield active banner, or empty status bucket state: *"Every fox in this den is fast asleep."* |
+| **Winding Down** | Fox holding a warm glowing lantern | Small mascot next to the Roster heading when friends are winding down |
+| **Overdue** | Alert fox ringing a tiny brass bell | Small mascot next to the Roster heading when friends are past bedtime |
+| **Quiet den** | Curled-up sleeping fox with floating `"Zzz"` | Quiet roster summary or the Sleeping empty state |
 
 ### 3.3 PWA Manifest & Notification Assets
 * **PWA App Icon (`public/icons/icon-512x512.png` & `public/icons/icon.svg`):**
@@ -115,27 +115,9 @@ The mascot changes pose and expression depending on community activity and the v
 On mobile screens, Z Catchers operates as a high-density, thumb-accessible PWA:
 * **Container:** Single-column vertical flow with padding `px-4 py-3`, max width constrained to screen bounds.
 * **Header:** Compact 56px sticky bar showing the Fox logo, detected local timezone, notification settings bell, and signed-in profile avatar.
-* **Status Buckets:** Collapsible accordion sections with status count pills and full-width `MemberCard` components.
-* **Bottom Navigation:** Fixed bottom bar (`h-16`, `border-t border-night-border`, `bg-night-surface/95 backdrop-blur-md`) with touch targets of at least 44 px and iOS `env(safe-area-inset-bottom)` spacing. The Mod entry appears only for effective moderators. The pinned roster actions sit immediately above the navigation.
-
-```
-+------------------------------------------+
-| 🦊 Z Catchers        [Viewing: IST +5:30]| <- Sticky Top Header (56px)
-+------------------------------------------+
-| 🔔 Enable Push Alerts to nag friends [X] | <- Conditional PWA / Push Banner
-+------------------------------------------+
-| 🦊 [Nag Alert: 1 friend needs sleep! ]   | <- Contextual Fox Banner
-+------------------------------------------+
-| ▼ 🚨 NAG NOW (BEDTIME HIT)           (1) | <- Priority Bucket (Accordion)
-| +--------------------------------------+ |
-| | MemberCard (Single Column)           | |
-| +--------------------------------------+ |
-| ▼ 🕯️ WINDING DOWN SOON               (2) |
-|   ...                                    |
-+------------------------------------------+
-|   [ 🏠 Roster ]  [ 🌙 My Sleep ] [ 🛡️ Mod ] | <- Sticky Bottom Nav (64px)
-+------------------------------------------+
-```
+* **Roster intro:** Pair a 32 px Sleepy Fox with the Roster heading and one line of community status. Count friends within the selected All or Starred view. Give the compact segmented filter 44 px targets and put it immediately above the four sections. The selected filter and each section's disclosure state persist for the browser session.
+* **Status Buckets:** Show Overdue, Winding Down, Awake, and Sleeping in order. Use plain tabular counts and 44 px disclosure rows above full-width `MemberCard` components. Actionable sections open by default, and Awake and Sleeping start folded.
+* **Shared Footer:** Use one fixed, blurred espresso surface for the check-in strip and 64 px navigation row. Show a compact personal status and use filled amber for the primary action. Manual wake time and undo sit on a wrapping row below it. The footer applies bottom safe-area padding once. Reserve its measured height plus the roster's bottom gap so the last card's controls can scroll into view. The Mod entry appears only for effective moderators.
 
 ### 4.2 Desktop & Tablet Website View (≥ 768px / 1024px+)
 On wider viewports, Z Catchers transforms into a spacious, multi-column community dashboard:
@@ -147,35 +129,12 @@ On wider viewports, Z Catchers transforms into a spacious, multi-column communit
     * **My Sleep** opens the calendar, timetable, and punishments. Signed-in profile calendars and My Sleep use a rust lightning bolt for strike history and an amber shield for Metastrike-only days, alongside the sleep-status dot. The selected month's history lists dates newest first and opens the day inspector with the issuance time, timezone, source and counting status. Give strike history its own retry control so members can still browse sleep logs when the history service is unavailable.
     * **Mod Panel** opens the moderator drawer for effective moderators.
     * The bell opens Notification settings and reflects this device’s push status. The adjacent avatar opens Profile, with Edit profile, Sleep schedule, and Sign out.
-* **Bottom Nav Hidden:** Sticky mobile bottom bar is completely hidden (`hidden md:hidden`) on desktop.
+* **Check-in panel:** At 768 px and up, place the same check-in instance next to the roster intro in a bordered panel. Hide the mobile navigation and let the page scroll naturally. An open manual wake draft stays mounted as the layout changes.
 * **Status Buckets & Multi-Column Member Grid:**
   * Status sections expand across the full container width.
   * Member cards render inside a responsive CSS Grid:
     `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4`
   * Empty buckets render a peaceful den state: a curled sleeping fox with the message *"Every fox in this den is fast asleep."*
-
-```
-+---------------------------------------------------------------------------------------------------------+
-| 🦊 Z Catchers   |  🕒 11:30 PM (Asia/Kolkata)  •  [ 🌙 Shield: Active ]  |  [My Sleep] [Mod] [🔔] [Profile]| <- Command Bar
-+---------------------------------------------------------------------------------------------------------+
-| 🦊 Contextual Hero Banner: "Cozy Den • 2 friends winding down, 1 past bedtime"                         |
-+---------------------------------------------------------------------------------------------------------+
-| ▼ 🚨 NAG NOW (BEDTIME HIT) (2)                                                                          |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-| | MemberCard #1      | | MemberCard #2      | | (CSS Grid 4-col)   | |                    |             |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-|                                                                                                         |
-| ▼ 🕯️ WINDING DOWN SOON (3)                                                                             |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-| | MemberCard #3      | | MemberCard #4      | | MemberCard #5      | |                    |             |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-|                                                                                                         |
-| ▼ ☀️ AWAKE (8)                                                                                          |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-| | MemberCard #6      | | MemberCard #7      | | MemberCard #8      | | MemberCard #9      |             |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-+---------------------------------------------------------------------------------------------------------+
-```
 
 ---
 
