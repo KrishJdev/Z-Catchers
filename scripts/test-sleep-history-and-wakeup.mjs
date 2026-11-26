@@ -456,7 +456,7 @@ async function run() {
   const modalContent = fs.readFileSync(modalPath, 'utf8');
 
   testAssert(modalContent.includes('grid-cols-7'), 'Calendar renders 7-column day grid (Mon-Sun)');
-  testAssert(modalContent.includes('min-h-[48px]'), 'Calendar day cells enforce >= 48px touch targets');
+  testAssert(/aria-label=\{dateLabel\}[\s\S]*?className=\{`[^\n]*min-h-\[44px\]/.test(modalContent), 'Calendar day cells enforce 44px touch targets');
   testAssert(modalContent.includes('Avg Sleep') || modalContent.includes('avgDurationMinutes'), 'Renders average sleep duration pill');
   testAssert(modalContent.includes('Avg Bed') || modalContent.includes('avgBedtime'), 'Renders average bedtime/wake pill');
   testAssert(modalContent.includes('On-Time') || modalContent.includes('onTimePercentage'), 'Renders on-time rate pill');

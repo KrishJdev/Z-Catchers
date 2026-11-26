@@ -770,7 +770,7 @@ export function SleepCalendarModal({
 
                     {selectedLog?.wake_source && (
                       <span className="rounded-full bg-night-surface border border-night-border px-2 py-0.5 text-[10px] font-semibold text-cream-secondary">
-                        {selectedLog.wake_source === 'button' ? 'Instant ☀️' : 'Manual ✍️'}
+                        {selectedLog.wake_source === 'button' ? 'Instant wake' : 'Manual wake'}
                       </span>
                     )}
                   </div>

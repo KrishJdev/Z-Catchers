@@ -36,12 +36,8 @@ assert.match(modDrawerContent, /min-h-\[60px\] w-full items-center/);
 assert.match(modDrawerContent, /className="block truncate text-sm font-semibold"/);
 assert.match(modDrawerContent, /grid grid-cols-4[\s\S]*?moderationTabs.map[\s\S]*?min-h-\[44px\]/);
 
-// 7. Profile opens the full schedule editor with a 44px target.
-assert(
-  myScheduleModalContent.includes("openView('schedule')") &&
-  myScheduleModalContent.includes('block min-h-[44px] w-full'),
-  'Profile rows meet the minimum touch target'
-);
+// 7. Account settings opens the full schedule editor with a 44px target.
+assert.match(myScheduleModalContent, /onClick=\{\(\) => openView\('schedule'\)\}\s+className="[^"]*min-h-\[44px\][^"]*w-full/);
 assert(
   myScheduleModalContent.includes('min-h-[44px]') &&
   myScheduleModalContent.includes('Cancel Shift'),
