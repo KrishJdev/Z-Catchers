@@ -203,7 +203,8 @@ export function SleepCalendarModal({
   const { localNow, today, month: localMonth } = getMemberCalendarDate(calendarTimezone, now);
   const [monthChoice, setMonthChoice] = useState<{ memberId: string | null; month: string } | null>(null);
   const chosenMonth = monthChoice?.memberId === activeTargetId ? monthChoice.month : undefined;
-  const currentMonth = chosenMonth ?? localMonth;
+  const loadedDefaultMonth = !liveMember?.timezone && apiMember ? data?.month : undefined;
+  const currentMonth = chosenMonth ?? loadedDefaultMonth ?? localMonth;
   // The endpoint uses the target's timezone when a profile opens without roster data.
   const requestMonth = chosenMonth ?? (liveMember?.timezone ? localMonth : undefined);
 
@@ -689,7 +690,7 @@ export function SleepCalendarModal({
                   <div className="flex flex-wrap items-center justify-between gap-x-3 rounded-xl border border-status-coral/40 bg-status-coral/10 px-3 py-2">
                     <p role="alert" className="text-sm text-status-coral [overflow-wrap:anywhere]">{error}</p>
                     {activeTargetId && (
-                      <button type="button" onClick={() => void fetchHistory(activeTargetId, requestMonth)}
+                      <button type="button" onClick={() => void fetchHistory(activeTargetId, calendarTimezone ? currentMonth : requestMonth)}
                         className="min-h-[44px] text-sm font-semibold text-status-amber underline">
                         Retry sleep logs
                       </button>
