@@ -34,6 +34,7 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
   onAccessChanged?: () => void;
 }) {
   const headingId = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
   const [month, setMonth] = useState('');
   const [review, setReview] = useState<StrikeMonth | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -47,6 +48,10 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
   const [writeError, setWriteError] = useState('');
   const [notice, setNotice] = useState('');
   const draft = useRef<{ payload: string; id: string } | null>(null);
+
+  useEffect(() => {
+    heading.current?.focus();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -147,11 +152,12 @@ export function ModeratorStrikeReview({ memberId, memberName, onClose, onChanged
     : review?.latest_cycle_date;
 
   return (
-    <section className="mt-4 space-y-4 rounded-2xl border border-night-border bg-night-elevated p-3 sm:p-4" aria-labelledby={headingId}>
-      <button autoFocus type="button" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-semibold text-cream-secondary hover:text-cream-primary" onClick={onClose}>
-        <ArrowLeft size={16} aria-hidden="true" /> Back to roster
+    <section className="space-y-4 border-t border-night-border pt-3" aria-labelledby={headingId}>
+      <button type="button" className="inline-flex min-h-[44px] items-center gap-2 text-sm font-semibold text-cream-secondary hover:text-cream-primary" onClick={onClose}>
+        <ArrowLeft size={16} aria-hidden="true" /> Back to member
       </button>
-      <h3 id={headingId} className="break-words font-bold text-cream-primary">Edit strikes for {memberName}</h3>
+      <h4 id={headingId} tabIndex={-1} ref={heading}
+        className="break-words font-semibold text-cream-primary">Edit strikes for {memberName}</h4>
       {review && selectedMonth && (
         <div className="flex items-center justify-between gap-2">
           <button type="button" aria-label="Previous month" className={control} onClick={() => changeMonth(-1)} disabled={loading || locked || review.month === firstMonth}>

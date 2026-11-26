@@ -28,56 +28,13 @@ assert.equal([...visibleCard.matchAll(/<(?:button|a)\b[\s\S]*?min-h-\[44px\] min
   'Profile, star, journal and Details have at least a 44px touch area');
 assert.match(visibleCard, /whitespace-nowrap text-base font-bold tabular-nums/, 'Converted bedtime stays on one line');
 
-// 1. ModDrawer: Approve Now button must have whitespace-nowrap and no duplicate lightning emoji
-assert(
-  !modDrawerContent.includes('<span>⚡ Approve Now</span>'),
-  'ModDrawer should not have duplicate ⚡ emoji next to Zap icon in Approve Now button'
-);
-assert(
-  modDrawerContent.includes('<span>Approve Now</span>'),
-  'ModDrawer must have clean <span>Approve Now</span>'
-);
-assert(
-  modDrawerContent.includes('whitespace-nowrap shrink-0') &&
-  modDrawerContent.includes('min-h-[40px] flex items-center justify-center gap-1.5 rounded-xl bg-status-sage px-4 py-2 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50 whitespace-nowrap shrink-0 shadow-sm'),
-  'Approve Now button must include whitespace-nowrap, shrink-0, and min-h-[40px] to prevent multi-line vertical wrapping'
-);
-
-// 2. ModDrawer: Reject button must have whitespace-nowrap and shrink-0
-assert(
-  modDrawerContent.includes('min-h-[40px] rounded-xl border border-night-border bg-night-bg px-3.5 py-2 text-xs font-semibold text-cream-secondary transition-colors hover:border-status-coral/40 hover:text-status-coral disabled:opacity-50 whitespace-nowrap shrink-0'),
-  'Reject button must have whitespace-nowrap and shrink-0'
-);
-
-// 3. ModDrawer: Card layout must use sm:items-start and min-w-0 flex-1
-assert(
-  modDrawerContent.includes('sm:items-start sm:justify-between'),
-  'ModDrawer pending approval cards must use sm:items-start for consistent top alignment'
-);
-assert(
-  modDrawerContent.includes('flex items-start gap-3 min-w-0 flex-1'),
-  'ModDrawer pending approval cards must have min-w-0 flex-1 to prevent content overflow'
-);
-
-// 4. ModDrawer: 7-day routine diff chips must have whitespace-nowrap and tabular-nums
-assert(
-  modDrawerContent.includes('flex flex-wrap gap-1.5 text-xs') &&
-  modDrawerContent.includes('whitespace-nowrap') &&
-  (modDrawerContent.includes('tabular-nums line-through') || modDrawerContent.includes('line-through tabular-nums')),
-  '7-Day routine schedule diff chips must be a flex-wrap container with tabular-nums and whitespace-nowrap'
-);
-
-// 5. ModDrawer: Tab bar must have normalized pill badges on Full Roster
-assert(
-  modDrawerContent.includes('Roster</span>\n                <span\n                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold'),
-  'ModDrawer Full Roster tab must feature a normalized count pill badge'
-);
-
-// 6. ModDrawer: Full Roster member item actions must have shrink-0
-assert(
-  modDrawerContent.includes('self-end sm:self-auto shrink-0'),
-  'ModDrawer Full Roster action buttons wrapper must have shrink-0'
-);
+// The drawer actions share 44px controls and can wrap as a group on narrow screens.
+assert.match(modDrawerContent, /const secondaryButton = 'inline-flex min-h-\[44px\]/);
+assert.match(modDrawerContent, /const primaryButton = 'inline-flex min-h-\[44px\]/);
+assert.match(modDrawerContent, /flex flex-wrap gap-2[\s\S]*?>[\s\S]*?'Reject'[\s\S]*?'Approve Now'/);
+assert.match(modDrawerContent, /min-h-\[60px\] w-full items-center/);
+assert.match(modDrawerContent, /className="block truncate text-sm font-semibold"/);
+assert.match(modDrawerContent, /grid grid-cols-4[\s\S]*?moderationTabs.map[\s\S]*?min-h-\[44px\]/);
 
 // 7. Profile opens the full schedule editor with a 44px target.
 assert(
@@ -106,16 +63,7 @@ assert(
   modDrawerContent.includes('min-h-[44px] items-center justify-center gap-2 rounded-xl border border-status-sage/40 bg-status-sage/15 px-3.5 text-xs font-bold text-status-sage transition-colors hover:bg-status-sage/25 disabled:opacity-50 whitespace-nowrap shadow-sm'),
   'Webhook digest button must have min-h-[44px] and whitespace-nowrap'
 );
-assert(
-  modDrawerContent.includes('min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary'),
-  'ModDrawer strike adjusters must have min-h-[44px] min-w-[44px]'
-);
-assert(
-  modDrawerContent.includes('grid grid-cols-2') && modDrawerContent.includes('sm:grid-cols-4') &&
-  modDrawerContent.includes('font-semibold transition-all min-h-[44px]') &&
-  modDrawerContent.includes('min-h-[44px] rounded-lg px-1 py-2 font-semibold'),
-  'All four moderator tabs meet the minimum touch height on narrow screens'
-);
+assert.match(modDrawerContent, /className=\{secondaryButton \+ ' min-w-\[44px\]'\}/);
 
 // 11. SleepCalendarModal: Edit Schedule button normalized with min-h-[44px] and whitespace-nowrap shrink-0
 const sleepCalendarModalPath = path.resolve('src/components/SleepCalendarModal.tsx');

@@ -6,6 +6,7 @@ import {
   EmptyPunishments, PunishmentDetails, PunishmentReadNotice, punishmentStatus, type Punishment,
 } from '@/components/PunishmentList';
 import { readPunishmentFailure, type PunishmentReadFailure } from '@/lib/punishmentAvailability';
+import { queueNotice } from './ModeratorQueueState';
 
 const sections = [
   { status: 'awaiting_assignment', title: 'Needs assignment' },
@@ -192,14 +193,14 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
   const emptyQueue = sections.every(({ status }) =>
     pages[status]?.items.length === 0 && pages[status]?.next_offset === null);
   return (
-    <div ref={queueRef} className="mt-4 space-y-5">
+    <div ref={queueRef} className="space-y-4">
       {result && !queueFailure && (
         <p tabIndex={-1} ref={resultRef} role="status" className="rounded-xl border border-status-sage/40 bg-status-sage/10 p-3 text-sm [overflow-wrap:anywhere]">
           {result.item.member_name} · {result.item.title} · {punishmentStatus[result.item.status]} · {result.open_count} open
         </p>
       )}
       {actionError && !editor && <p role="alert" className="text-sm text-status-coral">{actionError}</p>}
-      {loading && <p role="status" className="text-sm text-cream-secondary">Loading punishments…</p>}
+      {loading && <p role="status" className={queueNotice}>Loading punishments…</p>}
       {!loading && queueFailure && <PunishmentReadNotice failure={queueFailure} onRetry={refreshQueue} />}
       {!loading && !queueFailure && (
         <button type="button" onClick={refreshQueue} disabled={busy || !!editor} className={buttonStyle}>Refresh queue</button>
@@ -210,7 +211,7 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
         if (!page) return null;
         return (
           <section key={status} className="space-y-2">
-            <h3 className="font-semibold">{title}</h3>
+            <h4 className="text-sm font-semibold">{title}</h4>
             {page.items.length === 0 ? <p className="text-sm text-cream-secondary">No items.</p> : (
               <ul className="space-y-2">
                 {page.items.map(item => (
