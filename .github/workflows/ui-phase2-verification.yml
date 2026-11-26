@@ -1,0 +1,68 @@
+name: Phase 2 member card verification
+on:
+  push:
+    branches: [codex/ui-2-member-cards-preview]
+permissions:
+  contents: read
+jobs:
+  verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key
+      SESSION_SECRET: ci-test-session-secret-at-least-32-characters-long
+      PIN_SALT: ci-test-pin-salt-for-verification
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+      - run: npm run test:unit
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key
+      SESSION_SECRET: ci-test-session-secret-at-least-32-characters-long
+      PIN_SALT: ci-test-pin-salt-for-verification
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/browser" playwright@1.56.1
+          "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify member cards
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/before" 42d2adcb36eda981482a8eccbfd43edf65b1409e
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/before/node_modules"
+          PHASE2_BASELINE="$RUNNER_TEMP/before" \
+            PHASE2_PLAYWRIGHT="$RUNNER_TEMP/browser/node_modules/playwright" \
+            node .github/verification/ui-phase2-browser.cjs
+      - name: Before and after screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-2-member-cards
+          path: phase2-screenshots/*.png
+          retention-days: 30
