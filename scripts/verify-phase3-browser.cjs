@@ -82,7 +82,7 @@ async function fixture(browser, url, width, role = 'owner', previous = false) {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
   const entry = page.getByRole('button', { name: width < 768 ? 'Mod' : 'Mod Panel', exact: true });
   if (role === 'member') {
-    await page.getByRole('button', { name: "View Rowan's profile", exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Open profile', exact: true }).waitFor();
     assert.equal(await entry.count(), 0);
     return { context };
   }
@@ -149,6 +149,11 @@ async function check(browser, url, width) {
       await page.setViewportSize({ width: 390, height: 470 });
       await dialog.getByRole('button', { name: 'Save & Apply Immediately' }).scrollIntoViewIfNeeded();
       assert(await header.isVisible());
+      await dialog.getByPlaceholder('e.g. @marcus_ldn').fill('updated-den-handle');
+      await dialog.getByRole('button', { name: 'Save & Apply Immediately' }).click();
+      await dialog.getByText('Fixture saved', { exact: true }).waitFor();
+      assert.equal(writes.find(write => write.action === 'edit_schedule').discord_handle, 'updated-den-handle');
+      await dialog.getByRole('button', { name: /^Edit schedule/ }).click();
       target.role = 'owner';
       await page.evaluate(() => window.dispatchEvent(new Event('focus')));
       await dialog.getByRole('button', { name: 'Close edit form' }).waitFor({ state: 'hidden' });
@@ -164,7 +169,7 @@ async function check(browser, url, width) {
       await dialog.getByRole('button', { name: 'Retry roster refresh' }).click();
       await dialog.getByRole('button', { name: 'Approve Now' }).click();
       await dialog.getByText('Fixture schedule approved', { exact: true }).waitFor();
-      assert.equal(writes[1].expected_pending.pending_weekly_schedule.fri.wake_time, '08:00');
+      assert.equal(writes.find(write => write.action === 'approve_cooldown').expected_pending.pending_weekly_schedule.fri.wake_time, '08:00');
       for (const [tab, empty] of [['Punishments', 'No punishments in the queue.'], ['Metastrikes', 'No pending requests.']]) {
         flags.queueFailure = true;
         await header.getByRole('button', { name: tab }).click();
