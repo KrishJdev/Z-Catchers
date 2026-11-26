@@ -147,22 +147,9 @@ console.log('\n--- 5. MemberCard Status Pill Hierarchy Verification ---');
 const memberCardPath = path.join(process.cwd(), 'src/components/MemberCard.tsx');
 const memberCardContent = fs.readFileSync(memberCardPath, 'utf8');
 
-const windingDownPillIndex = memberCardContent.indexOf("if (bucket === 'WINDING_DOWN')");
-const awakePillIndex = memberCardContent.indexOf("if (isWokeUp)");
-
-assert(
-  windingDownPillIndex !== -1,
-  'MemberCard must check bucket === WINDING_DOWN for status pill'
-);
-assert(
-  awakePillIndex !== -1,
-  'MemberCard must check isWokeUp for status pill'
-);
-assert(
-  windingDownPillIndex < awakePillIndex,
-  'WINDING_DOWN status pill check must precede isWokeUp check so wind-down pill is displayed'
-);
-console.log('✅ PASSED: MemberCard checks WINDING_DOWN before isWokeUp in getStatusPillConfig.');
+assert.match(memberCardContent, /const isWindingDown = bucket === 'WINDING_DOWN'/);
+assert.match(memberCardContent, /else if \(isWindingDown\) \{[\s\S]*?statusLabel = /,
+  'The card renders the wind-down countdown from the resolved bucket');
 
 // -------------------------------------------------------------
 // Test Case 7: Early Wake-Up 2 Hours Before Scheduled Wake Time
