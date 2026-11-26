@@ -252,7 +252,7 @@ async function verify(browser, origin, width) {
     await page.keyboard.press('Escape');
 
     await page.getByRole('button', { name: width < 768 ? 'Mod' : 'Mod Panel', exact: true }).click();
-    await page.getByRole('button', { name: 'Roster', exact: true }).click();
+    await page.getByRole('navigation', { name: 'Moderation views' }).getByRole('button', { name: 'Roster', exact: true }).click();
     await page.getByRole('searchbox', { name: 'Search roster' }).waitFor();
     await page.keyboard.press('Escape');
     console.log('Phase 4 responsive and interaction checks passed at ' + width + ' px');
@@ -265,7 +265,12 @@ async function main() {
   const browser = await chromium.launch({ executablePath: process.env.PHASE4_BROWSER || undefined });
   try {
     await Promise.all([captureBaseline(browser, before, 390), captureBaseline(browser, before, 1440)]);
-    for (const width of [360, 390, 430, 768, 1024, 1440]) await verify(browser, after, width);
+    const widths = [360, 390, 430, 768, 1024, 1440];
+    const results = await Promise.allSettled(widths.map(width => verify(browser, after, width)));
+    for (const [index, result] of results.entries()) {
+      if (result.status === 'rejected') console.error('Phase 4 verification failed at ' + widths[index] + ' px', result.reason);
+    }
+    if (results.some(result => result.status === 'rejected')) throw new Error('One or more browser widths failed');
   } finally { await browser.close(); }
 }
 
