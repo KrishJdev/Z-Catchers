@@ -175,7 +175,10 @@ async function verify(browser, origin, width) {
     const grid = await profile.getByRole('region', { name: 'Sleep calendar' }).boundingBox();
     const detail = await inspector.boundingBox();
     if (width >= 1024) assert(detail.x >= grid.x + grid.width && Math.abs(detail.y - grid.y) < 2);
-    else assert(detail.y >= grid.y + grid.height && detail.y - grid.y <= 14);
+    else {
+      const gap = detail.y - (grid.y + grid.height);
+      assert(gap >= 0 && gap <= 14, 'Inspector gap at ' + width + ' px was ' + gap);
+    }
     assert(await profile.evaluate(element => element.scrollWidth <= element.clientWidth));
     await profile.getByRole('button', { name: 'Schedule', exact: true }).click();
     await profile.getByRole('heading', { name: 'Weekly schedule', exact: true }).waitFor();
