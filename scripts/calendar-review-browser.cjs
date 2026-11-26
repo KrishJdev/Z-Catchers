@@ -31,6 +31,7 @@ async function setup(browser, width = 390, isMobile = true) {
   });
   const page = await context.newPage();
   page.setDefaultTimeout(12000);
+  page.on('pageerror', error => console.error('Calendar fixture page error:', error.message));
   await page.clock.setFixedTime(testTime);
   const state = { reads: [], writes: [], wake: '07:00', failHistory: false };
   await context.route('**/*', async route => {
@@ -51,6 +52,9 @@ async function setup(browser, width = 390, isMobile = true) {
         cycle_date: month + '-01', record_type: 'strike', source_type: 'moderator',
         status: 'counted', counts: true, issued_at: month + '-02T00:00:00Z',
       }] });
+    }
+    if (url.pathname === '/api/members/strikes/metastrike/requests') {
+      return response({ items: [], quota: { month: url.searchParams.get('month'), used: 0, reserved: 0, remaining: 3 } });
     }
     if (url.pathname === '/api/members/wake-up') {
       const payload = route.request().postDataJSON();
@@ -151,7 +155,17 @@ async function focusAndWake(browser) {
     assert.equal(state.writes[1].cycleDate, '2026-11-30');
     assert.equal(state.reads.at(-1).month, '2026-12');
     assert.equal(await inspector(dialog).getByRole('status').count(), 0);
-    console.log('Delayed inspector focus, refresh-only retry, and navigation during a save passed');
+    state.historyGate = { ...deferred(), month: '2026-11' };
+    const november = page.waitForResponse(res => res.url().includes('/api/members/sleep-history?') && res.url().includes('month=2026-11'));
+    await dialog.getByRole('button', { name: 'Previous month' }).click();
+    await dialog.getByRole('region', { name: 'Strike history' }).getByRole('button', { name: /Nov 1.*Strike counts/ }).click();
+    await dialog.getByRole('button', { name: 'Schedule', exact: true }).click();
+    state.historyGate.release();
+    await november;
+    await dialog.getByRole('button', { name: 'Calendar', exact: true }).click();
+    await inspector(dialog).waitFor();
+    assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'selected-sleep-night');
+    console.log('Delayed inspector focus, cancellation on tab switch, refresh-only retry, and navigation during a save passed');
   } finally { await context.close(); }
 }
 
