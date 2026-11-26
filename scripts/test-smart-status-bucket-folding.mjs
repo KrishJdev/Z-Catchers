@@ -2,6 +2,9 @@ import assert from 'assert';
 import fs from 'fs';
 import path from 'path';
 import { DateTime } from 'luxon';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { StatusBucket } from '../src/components/StatusBucket.tsx';
 import { computeMemberState } from '../src/lib/sleepEngine.ts';
 
 console.log('▶ Test Suite: Smart Status Bucket Folding by Default (Issue #64 / Jira ZC-30)');
@@ -71,12 +74,16 @@ assert(
   'Chevron icon must toggle rotation classes between collapsed and expanded states'
 );
 
-// Clean member count pill phrasing ("fox" / "foxes")
-assert(
-  statusBucketSource.includes("count === 1 ? 'fox' : 'foxes'") ||
-    statusBucketSource.includes('foxes'),
-  'Count pill must format member count with fox / foxes terminology'
-);
+const renderBucket = (count, props = {}) => renderToStaticMarkup(createElement(StatusBucket, {
+  id: 'overdue-past-bedtime', title: 'Overdue', count, ...props,
+}, 'Member card'));
+assert.match(renderBucket(1), /aria-expanded="true" aria-controls="bucket-content-overdue-past-bedtime"/);
+assert.match(renderBucket(1), />1<span class="sr-only"> fox<\/span>/);
+assert.match(renderBucket(2), />2<span class="sr-only"> foxes<\/span>/);
+assert.match(renderBucket(2), /Member card/);
+assert.doesNotMatch(renderBucket(2, { defaultExpanded: false }), /Member card/);
+assert.equal(renderBucket(0), '');
+assert.match(renderBucket(0, { showEmptyState: true }), /Every fox in this den is fast asleep/);
 
 // Accessibility attributes (aria-expanded, aria-controls)
 assert(
@@ -109,9 +116,11 @@ assert(
   'StatusBucket must restore expansion state before paint via layout effect'
 );
 assert(
-  statusBucketSource.includes('isRestoredRef'),
-  'StatusBucket must include a restoration guard to prevent un-restored default state from overwriting saved override'
+  !/useIsomorphicLayoutEffect\(\(\) => \{[^}]*saveBucketExpansion/.test(statusBucketSource),
+  'Restoring a disclosure must never write the default over the saved override'
 );
+assert.match(statusBucketSource, /const handleToggle = \(\) => \{[^}]*saveBucketExpansion\(bucketKey, nextExpanded\)/,
+  'The click must save the disclosure before a reload can interrupt rendering');
 assert(
   !statusBucketSource.match(/setIsExpanded\([^)]*sessionStorage/),
   'setIsExpanded updater must remain pure without inline sessionStorage writes'
@@ -229,7 +238,7 @@ assert(fs.existsSync(pagePath), 'page.tsx must exist');
 const pageSource = fs.readFileSync(pagePath, 'utf8');
 
 // 1. Actionable Buckets: Overdue / Past Bedtime & Winding Down must be defaultExpanded={true}
-const nagNowBlock = pageSource.match(/title="(?:Overdue \/ Past Bedtime|Nag Now)"[\s\S]*?defaultExpanded=\{([a-z]+)\}/);
+const nagNowBlock = pageSource.match(/id="overdue-past-bedtime"\s+title="Overdue"[\s\S]*?defaultExpanded=\{([a-z]+)\}/);
 assert(nagNowBlock, 'Overdue / Past Bedtime status bucket must specify defaultExpanded');
 assert.strictEqual(
   nagNowBlock[1],
@@ -279,6 +288,14 @@ assert(
   pageSource.includes('count={categorized.sleeping.length}'),
   'Sleeping bucket must receive accurate categorized.sleeping count'
 );
+assert.deepEqual([...pageSource.matchAll(/<StatusBucket\s+id="([^"]+)"/g)].map(match => match[1]),
+  ['overdue-past-bedtime', 'winding-down', 'awake', 'sleeping']);
+assert.match(pageSource, /for \(const member of displayedMembers\)/);
+assert.match(pageSource, /const overdueFriends = categorized\.overdue\.filter/);
+assert.match(pageSource, /const windingDownFriends = categorized\.windingDown\.filter/);
+assert.match(pageSource, /aria-label="Filter roster"[\s\S]*aria-pressed=\{buddyFilter === filter\}/);
+assert.match(pageSource, /sessionStorage\.getItem\(STORAGE_KEY_ROSTER_FILTER\)/);
+assert.match(pageSource, /selectRosterFilter\('all'\)[\s\S]*Show All Members/);
 console.log('  ✅ Actionable buckets expanded, passive buckets folded by default, and counts wired.\n');
 
 // ---------------------------------------------------------------------------

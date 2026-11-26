@@ -4,7 +4,7 @@ import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import { MemberPunishmentList } from '@/components/PunishmentList';
 import { MemberMetastrikeHistory } from '@/components/MemberMetastrikeHistory';
 import { StrikeDayDetails, StrikeHistoryList, type StrikeHistoryEntry, type StrikeHistoryMonth } from '@/components/StrikeHistory';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X,
   ChevronLeft,
@@ -16,25 +16,22 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
-  Calendar as CalendarIcon,
   Star,
   ExternalLink,
   Shield,
   Zap,
   Moon,
-  Check,
   Edit3,
 } from 'lucide-react';
 import { DateTime } from 'luxon';
+import { computeMemberState, getMemberCalendarDate, isOverdueBucket, type SleepBucket } from '@/lib/sleepEngine';
 import { FoxMascot } from './FoxMascot';
 import type { Member, SleepLog, WeeklySchedule } from '@/lib/db';
 import {
   formatGmtOffset,
-  toValidLuxonZone,
   DayKey,
   DAY_KEYS,
   WEEKDAY_TO_DAY_KEY,
-  resolveActiveSleepCycleWindow,
 } from '@/lib/timezone';
 
 const DAY_LABELS: Record<DayKey, { short: string; full: string }> = {
@@ -59,7 +56,6 @@ interface SleepHistoryData {
   member: {
     id: string;
     name: string;
-    discord_handle?: string | null;
     avatar: string | null;
     timezone: string;
     bedtime: string;
@@ -69,9 +65,8 @@ interface SleepHistoryData {
     weekend_bedtime_local?: string | null;
     weekend_wake_time_local?: string | null;
     journal_url?: string;
-    role?: string;
-    is_in_bed?: boolean;
-    is_woke_up?: boolean;
+    active_day_key?: DayKey;
+    sleep_bucket?: SleepBucket;
     strikes_used?: number;
     strikes_count?: number;
     metastrikes_used?: number;
@@ -98,6 +93,21 @@ export interface SleepCalendarModalProps {
   onMetastrikeChanged?: () => Promise<void>;
   onRequestMetastrike?: (cycle?: string) => void;
 }
+
+const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
+
+const SLEEP_DAY_STYLE: Record<SleepLog['status'], { label: string; dot: string }> = {
+  on_time: { label: 'On-time check-in', dot: 'bg-status-sage' },
+  late: { label: 'Late check-in', dot: 'bg-status-coral' },
+  missed: { label: 'Missed check-in', dot: 'bg-status-coral' },
+  metastrike: { label: 'Metastrike applied', dot: 'bg-status-slumber' },
+};
+
+const PROFILE_TABS = [
+  { key: 'calendar', label: 'Calendar' },
+  { key: 'timetable', label: 'Schedule' },
+  { key: 'punishments', label: 'Punishments' },
+] as const;
 
 export const WEEKDAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -174,7 +184,8 @@ export function SleepCalendarModal({
     data: StrikeHistoryMonth | null;
   } | null>(null);
   const [strikeHistoryRetry, setStrikeHistoryRetry] = useState(0);
-  const dayDetailsRef = useRef<HTMLDivElement>(null);
+  const dayDetailsRef = useRef<HTMLElement>(null);
+  const [focusRequest, setFocusRequest] = useState<{ memberId: string | null; date: string } | null>(null);
 
   // The existing roster sync delivers current totals to an open My Sleep panel.
   const punishmentSnapshot = [
@@ -182,12 +193,20 @@ export function SleepCalendarModal({
     initialMember?.metastrikes_used, initialMember?.open_punishment_count,
   ].join(':');
 
-  // Active month in "YYYY-MM" format
-  const [currentMonth, setCurrentMonth] = useState<string>(() => {
-    const now = DateTime.now();
-    const local = now.setZone(toValidLuxonZone((initialMember ?? currentUser)?.timezone));
-    return (isMySleep && local.isValid ? local : now).toFormat('yyyy-MM');
-  });
+  const activeTargetId = memberId || initialMember?.id || null;
+  const isViewer = Boolean(activeTargetId && currentUser?.id === activeTargetId);
+  const rosterMember = initialMember?.id === activeTargetId ? initialMember : null;
+  const liveMember = rosterMember ?? (isViewer ? currentUser : null);
+  const apiMember = data?.member?.id === activeTargetId ? data.member : null;
+  const calendarTimezone = liveMember?.timezone ?? apiMember?.timezone;
+  const now = DateTime.utc();
+  const { localNow, today, month: localMonth } = getMemberCalendarDate(calendarTimezone, now);
+  const [monthChoice, setMonthChoice] = useState<{ memberId: string | null; month: string } | null>(null);
+  const chosenMonth = monthChoice?.memberId === activeTargetId ? monthChoice.month : undefined;
+  const loadedDefaultMonth = !liveMember?.timezone && apiMember ? data?.month : undefined;
+  const currentMonth = chosenMonth ?? loadedDefaultMonth ?? localMonth;
+  // The endpoint uses the target's timezone when a profile opens without roster data.
+  const requestMonth = chosenMonth ?? (liveMember?.timezone ? localMonth : undefined);
 
   const requestSeqRef = useRef(0);
 
@@ -221,18 +240,16 @@ export function SleepCalendarModal({
 
   // Fetch sleep history from API
   const fetchHistory = useCallback(
-    async (mId: string, monthStr: string, background = false) => {
+    async (mId: string, monthStr?: string, background = false) => {
       const requestId = ++requestSeqRef.current;
       if (!background) {
         setLoading(true);
         setError(null);
-        setData(null);
       }
       try {
-        const res = await fetch(
-          `/api/members/sleep-history?memberId=${encodeURIComponent(mId)}&month=${encodeURIComponent(monthStr)}`,
-          { cache: 'no-store' },
-        );
+        const params = new URLSearchParams({ memberId: mId });
+        if (monthStr) params.set('month', monthStr);
+        const res = await fetch(`/api/members/sleep-history?${params}`, { cache: 'no-store' });
         const json = await res.json();
         if (requestSeqRef.current !== requestId) {
           return;
@@ -243,7 +260,7 @@ export function SleepCalendarModal({
         setData(json);
         setError(null);
       } catch (err: unknown) {
-        if (!background && requestSeqRef.current === requestId) {
+        if (requestSeqRef.current === requestId) {
           const message = err instanceof Error ? err.message : 'Unknown error';
           setError(message);
         }
@@ -256,7 +273,6 @@ export function SleepCalendarModal({
     []
   );
 
-  const activeTargetId = memberId || initialMember?.id || null;
   const initialFingerprint = initialMember
     ? `${initialMember.id}_${initialMember.strikes_used}_${initialMember.strikes_count}_${initialMember.metastrikes_used}_${initialMember.metastrikes_count}_${initialMember.strike_cycle_month}`
     : null;
@@ -266,21 +282,23 @@ export function SleepCalendarModal({
   const prevAccountabilityRef = useRef(accountabilityRevision);
   const prevTargetIdRef = useRef<string | null>(null);
   const prevFingerprintRef = useRef<string | null>(null);
-  const prevMonthRef = useRef<string>(currentMonth);
+  const prevMonthRef = useRef(requestMonth);
   const prevIsOpenRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!isOpen || !activeTargetId) {
+      requestSeqRef.current += 1;
       prevTargetIdRef.current = null;
       prevFingerprintRef.current = null;
       prevIsOpenRef.current = isOpen;
+      setMonthChoice(null);
       return;
     }
 
     const justOpened = !prevIsOpenRef.current && isOpen;
     const idChanged = prevTargetIdRef.current !== activeTargetId;
     const fingerprintChanged = prevFingerprintRef.current !== initialFingerprint;
-    const monthChanged = prevMonthRef.current !== currentMonth;
+    const monthChanged = prevMonthRef.current !== requestMonth;
 
     const accountabilityChanged = prevRosterMemberRef.current !== privateRosterMember ||
       prevAccountabilityRef.current !== accountabilityRevision;
@@ -291,22 +309,23 @@ export function SleepCalendarModal({
     if (justOpened || idChanged || fingerprintChanged || monthChanged) {
       prevTargetIdRef.current = activeTargetId;
       prevFingerprintRef.current = initialFingerprint;
-      prevMonthRef.current = currentMonth;
-      setData(null);
-      fetchHistory(activeTargetId, currentMonth);
+      prevMonthRef.current = requestMonth;
+      if (justOpened || idChanged) setSelectedDate(null);
+      fetchHistory(activeTargetId, requestMonth);
     } else if (privateRosterMember && accountabilityChanged) {
       // A past-cycle approval can change the calendar without changing current-month counters.
-      fetchHistory(activeTargetId, currentMonth, true);
+      fetchHistory(activeTargetId, requestMonth, true);
     }
-  }, [isOpen, activeTargetId, initialFingerprint, currentMonth, fetchHistory, privateRosterMember, accountabilityRevision]);
+  }, [isOpen, activeTargetId, initialFingerprint, requestMonth, fetchHistory, privateRosterMember, accountabilityRevision]);
 
   // Set default selected date when data changes or month loads
   useEffect(() => {
-    if (data?.month === currentMonth || error) {
+    if ((apiMember && data?.month === currentMonth) || error) {
+      const latestLogDate = apiMember && data?.month === currentMonth ? data.logs.at(-1)?.cycle_date : null;
       setSelectedDate(previous => previous?.startsWith(`${currentMonth}-`) ? previous
-        : data?.logs.at(-1)?.cycle_date ?? `${currentMonth}-01`);
+        : latestLogDate ?? `${currentMonth}-01`);
     }
-  }, [data, currentMonth, error]);
+  }, [apiMember, data, currentMonth, error]);
 
   useEffect(() => {
     setIsEditingWakeTime(false);
@@ -315,25 +334,17 @@ export function SleepCalendarModal({
   }, [activeTargetId, currentMonth]);
 
   // Navigation handlers
-  const handlePrevMonth = () => {
+  const navigateMonth = (direction: -1 | 1) => {
     triggerHaptic(10);
-    const dt = DateTime.fromISO(`${currentMonth}-01`);
-    setCurrentMonth(dt.minus({ months: 1 }).toFormat('yyyy-MM'));
-  };
-
-  const handleNextMonth = () => {
-    triggerHaptic(10);
-    const dt = DateTime.fromISO(`${currentMonth}-01`);
-    setCurrentMonth(dt.plus({ months: 1 }).toFormat('yyyy-MM'));
+    const month = DateTime.fromISO(`${currentMonth}-01`, { zone: 'utc' }).plus({ months: direction }).toFormat('yyyy-MM');
+    setMonthChoice({ memberId: activeTargetId, month });
   };
 
   // Resolved Member profile info (merged from direct prop and API)
   const resolvedProfile = useMemo(() => {
-    const apiMember = data?.member;
-    const base = initialMember;
-    const id = memberId || base?.id || apiMember?.id || '';
+    const base = liveMember;
+    const id = activeTargetId ?? '';
     const name = base?.discord_username || apiMember?.name || 'Member';
-    const handle = base?.discord_handle || apiMember?.discord_handle || (name ? `@${name.toLowerCase()}` : '');
     const avatar = base?.avatar_url || apiMember?.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(name)}`;
     const timezone = base?.timezone || apiMember?.timezone || 'GMT+00:00';
     const bedtime = base?.bedtime_local || apiMember?.bedtime || '23:00';
@@ -358,38 +369,10 @@ export function SleepCalendarModal({
       : 0;
     const weeklySchedule = base?.weekly_schedule || apiMember?.weekly_schedule || null;
     const journalUrl = base?.journal_url || apiMember?.journal_url || '';
-    const role = base?.role || apiMember?.role || 'member';
-    const isInBed = Boolean(base?.is_in_bed || apiMember?.is_in_bed);
-    const isWokeUp = Boolean(base?.is_woke_up || apiMember?.is_woke_up);
-
-    // Current time in member's timezone using luxon
-    const memberZone = toValidLuxonZone(timezone);
-    const memberNow = DateTime.utc().setZone(memberZone);
-    const currentLocalTimeFormatted = memberNow.toFormat('hh:mm a');
-    
-    // Resolve active cycle dayKey consistently with the sleep engine
-    const effectiveMember: any = base || apiMember || { timezone };
-    let currentDayKey: DayKey;
-    if (
-      apiMember &&
-      (apiMember as any).active_day_key &&
-      (['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as DayKey[]).includes((apiMember as any).active_day_key)
-    ) {
-      currentDayKey = (apiMember as any).active_day_key;
-    } else {
-      try {
-        const activeWindow = resolveActiveSleepCycleWindow(effectiveMember, DateTime.utc(), isInBed);
-        currentDayKey = activeWindow.dayKey;
-      } catch {
-        const todayWeekdayNumber = memberNow.weekday; // 1 = Mon ... 7 = Sun
-        currentDayKey = (['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as DayKey[])[todayWeekdayNumber - 1] || 'mon';
-      }
-    }
 
     return {
       id,
       name,
-      handle,
       avatar,
       timezone,
       bedtime,
@@ -402,15 +385,9 @@ export function SleepCalendarModal({
       strikeCountsUnavailable: !apiMember && Boolean(base?.strike_counts_unavailable),
       weeklySchedule,
       journalUrl,
-      role,
-      isInBed,
-      isWokeUp,
-      currentLocalTimeFormatted,
-      currentDayKey,
     };
-  }, [data?.member, initialMember, memberId]);
+  }, [apiMember, liveMember, activeTargetId]);
 
-  const isViewer = Boolean(currentUser && resolvedProfile.id && currentUser.id === resolvedProfile.id);
   const calendarHistory = Boolean(isOpen && currentUser && activeTab === 'calendar');
   const privateCalendar = calendarHistory && isMySleep && isViewer;
   const historyView = privateCalendar ? 'self' : 'profile';
@@ -454,24 +431,36 @@ export function SleepCalendarModal({
   const displayedDate = selectedDate?.startsWith(`${currentMonth}-`) ? selectedDate : `${currentMonth}-01`;
   const selectedStrikeEntries = strikeDays.get(displayedDate);
 
+  useLayoutEffect(() => {
+    if (!focusRequest) return;
+    const sameSelection = focusRequest.memberId === activeTargetId && focusRequest.date === displayedDate;
+    if (!isOpen || activeTab !== 'calendar' || !sameSelection) {
+      setFocusRequest(null);
+    } else if (dayDetailsRef.current) {
+      dayDetailsRef.current.focus();
+      setFocusRequest(null);
+    }
+  }, [focusRequest, isOpen, activeTab, activeTargetId, displayedDate, loading]);
+
   const selectDay = (date: string) => {
     triggerHaptic(10);
     setSelectedDate(date);
     setIsEditingWakeTime(false);
     setEditError(null);
     setEditSuccess(null);
+    setFocusRequest({ memberId: activeTargetId, date });
   };
 
   // Map of logs keyed on cycle_date
   const logsMap = useMemo(() => {
     const map = new Map<string, SleepLog>();
-    if (data?.logs) {
+    if (apiMember && data?.month === currentMonth) {
       for (const log of data.logs) {
         map.set(log.cycle_date, log);
       }
     }
     return map;
-  }, [data?.logs]);
+  }, [apiMember, data, currentMonth]);
 
   // Calendar cells generation for 7-column grid
   const calendarCells = useMemo(() => {
@@ -508,8 +497,8 @@ export function SleepCalendarModal({
 
   // Selected log details
   const selectedLog = useMemo(() => {
-    return data?.month === currentMonth ? logsMap.get(displayedDate) ?? null : null;
-  }, [data?.month, currentMonth, displayedDate, logsMap]);
+    return error ? null : logsMap.get(displayedDate) ?? null;
+  }, [error, displayedDate, logsMap]);
 
   // Check if selected date is eligible for self-edit
   const isEligibleForSelfEdit = useMemo(() => {
@@ -521,6 +510,11 @@ export function SleepCalendarModal({
     const diffDays = now.startOf('day').diff(targetDt.startOf('day'), 'days').days;
     return diffDays >= 0 && diffDays <= 7;
   }, [currentUser, resolvedProfile.id, selectedDate, displayedDate]);
+
+  const visibleCalendarRef = useRef({ isOpen, memberId: activeTargetId, month: currentMonth, date: displayedDate });
+  useLayoutEffect(() => {
+    visibleCalendarRef.current = { isOpen, memberId: activeTargetId, month: currentMonth, date: displayedDate };
+  }, [isOpen, activeTargetId, currentMonth, displayedDate]);
 
   // Submit manual wake-up time for selected date
   const handleSaveWakeTime = async (e: React.FormEvent) => {
@@ -549,23 +543,27 @@ export function SleepCalendarModal({
         throw new Error(json.error || 'Failed to update wake time');
       }
 
-      setEditSuccess(
-        json.formatted_duration
-          ? `Logged! Sleep duration: ${json.formatted_duration}.`
-          : 'Wake-up time updated successfully!'
-      );
-      setIsEditingWakeTime(false);
-      setEditWakeTime('');
-
-      if (memberId) {
-        await fetchHistory(memberId, currentMonth);
+      const view = visibleCalendarRef.current;
+      if (view.isOpen && view.memberId === currentUser.id) {
+        if (view.date === selectedDate) {
+          setEditSuccess(
+            json.formatted_duration
+              ? `Logged! Sleep duration: ${json.formatted_duration}.`
+              : 'Wake-up time updated successfully!'
+          );
+          setIsEditingWakeTime(false);
+          setEditWakeTime('');
+        }
+        await fetchHistory(view.memberId, view.month, true);
       }
       if (onWakeUpUpdated) {
         await onWakeUpUpdated();
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      setEditError(message);
+      const view = visibleCalendarRef.current;
+      if (view.isOpen && view.memberId === currentUser.id && view.date === selectedDate) {
+        setEditError(err instanceof Error ? err.message : 'Unknown error');
+      }
     } finally {
       setEditSubmitting(false);
     }
@@ -573,543 +571,373 @@ export function SleepCalendarModal({
 
   if (!isOpen) return null;
 
+  const timezone = formatGmtOffset(resolvedProfile.timezone);
+  const state = liveMember ? computeMemberState(liveMember, resolvedProfile.timezone, now) : null;
+  const bucket = state?.bucket ?? apiMember?.sleep_bucket;
+  const sleepStatus = bucket === 'SLEEPING' ? 'Sleeping'
+    : bucket === 'WINDING_DOWN' ? 'Winding down'
+      : isOverdueBucket(bucket) ? 'Overdue'
+        : bucket === 'AWAKE' ? 'Awake' : 'Status unavailable';
+  const currentDayKey = apiMember?.active_day_key ?? state?.dayKey ?? WEEKDAY_TO_DAY_KEY[localNow.weekday];
   const monthTitle = DateTime.fromISO(`${currentMonth}-01`).toFormat('MMMM yyyy');
+  const monthSummary = !loading && !error && apiMember && data?.month === currentMonth ? data.summary : null;
 
   return (
     <ResponsiveDialog labelledBy="sleep-calendar-title" onClose={onClose}
-      className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-2xl md:p-6 lg:max-w-3xl">
-        {/* Mobile Drag Indicator */}
-        <div className="flex justify-center sm:hidden -mt-1 -mb-1">
-          <div className="w-12 h-1.5 rounded-full bg-cream-muted/30" />
-        </div>
-
-        {/* Profile Header Section */}
-        <div className="flex flex-col gap-3.5 border-b border-night-border/70 pb-4">
-          <div className="flex items-start justify-between gap-3">
-            {/* Avatar & Member Info */}
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="relative w-12 h-12 rounded-full shrink-0 flex items-center justify-center">
-                <img
-                  src={resolvedProfile.avatar}
-                  alt={resolvedProfile.name}
-                  className="w-12 h-12 rounded-full object-cover border-2 border-night-border bg-night-elevated"
-                />
-                {resolvedProfile.isInBed && (
-                  <span
-                    className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-status-amber text-night-bg shadow font-bold"
-                    title="Checked into bed"
-                  >
-                    <Check className="h-2.5 w-2.5 stroke-[3]" />
+      className="px-1 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] max-[349px]:[scrollbar-width:none] min-[350px]:px-2 min-[390px]:px-3 sm:px-5 md:max-w-2xl md:p-6 lg:max-w-5xl">
+        <header className="border-b border-night-border pb-3">
+          <div className="flex items-start gap-3">
+            {isMySleep ? (
+              <FoxMascot state="lantern" size={40} className="shrink-0" />
+            ) : (
+              <img src={resolvedProfile.avatar} alt=""
+                className="h-10 w-10 shrink-0 rounded-full bg-night-elevated object-cover" />
+            )}
+            <div className="min-w-0 flex-1 self-center">
+              <h2 id="sleep-calendar-title" className="text-lg font-bold leading-tight [overflow-wrap:anywhere]">
+                {isMySleep ? 'My Sleep' : resolvedProfile.name}
+              </h2>
+              {!isMySleep && (
+                <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-sm text-cream-secondary">
+                  <span className={sleepStatus === 'Overdue' ? 'font-semibold text-status-coral'
+                    : sleepStatus === 'Winding down' ? 'font-semibold text-status-amber' : 'font-semibold text-cream-primary'}>
+                    {sleepStatus}
                   </span>
-                )}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h2 id="sleep-calendar-title" className="text-lg font-bold text-cream-primary [overflow-wrap:anywhere]">
-                    {isMySleep ? 'My Sleep' : resolvedProfile.name}
-                  </h2>
-
-                  {isViewer && (
-                    <span className="rounded bg-status-amber/20 border border-status-amber/40 px-1.5 py-0.5 text-[9px] font-bold text-status-amber shrink-0">
-                      YOU
-                    </span>
-                  )}
-
-                  {(resolvedProfile.role === 'moderator') && (
-                    <span className="rounded bg-night-elevated border border-night-border px-1.5 py-0.5 text-[9px] font-medium text-cream-secondary shrink-0">
-                      MOD
-                    </span>
-                  )}
-
-                  {/* Accountability Star Button */}
-                  {onToggleStar && resolvedProfile.id && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic(10);
-                        onToggleStar(resolvedProfile.id);
-                      }}
-                      className={`min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg transition-colors shrink-0 ${
-                        isStarred
-                          ? 'text-status-amber hover:text-status-amber/80'
-                          : 'text-cream-secondary/40 hover:text-cream-secondary'
-                      }`}
-                      title={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
-                      aria-label={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
-                    >
-                      <Star className={`h-4 w-4 ${isStarred ? 'fill-status-amber' : ''}`} />
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-cream-secondary mt-0.5 flex-wrap">
-                  <span className="font-mono text-cream-muted">{resolvedProfile.handle}</span>
-                  <span>•</span>
-                  <span>{formatGmtOffset(resolvedProfile.timezone)}</span>
-                  <span>•</span>
-                  <span className="text-status-amber font-mono font-medium">
-                    {resolvedProfile.currentLocalTimeFormatted} local
-                  </span>
-                </div>
-              </div>
+                  {calendarTimezone && <span className="tabular-nums">{localNow.toFormat('h:mm a')} local · {timezone}</span>}
+                </p>
+              )}
             </div>
+            <button type="button" onClick={onClose}
+              className="grid min-h-[44px] min-w-[44px] shrink-0 place-items-center rounded-xl text-cream-secondary hover:bg-night-elevated hover:text-cream-primary"
+              aria-label={isMySleep ? 'Close My Sleep' : 'Close member profile'}>
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </div>
 
-            {/* Close Button & Journal Link */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              {resolvedProfile.journalUrl && (
-                <a
-                  href={resolvedProfile.journalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 rounded-xl border border-night-border bg-night-elevated px-2.5 py-2 text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 transition-colors min-h-[44px]"
-                  title="Open Discord accountability journal thread"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Journal</span>
+          {isMySleep ? (
+            <section aria-labelledby="tonight-title" className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl bg-night-elevated px-3 py-2">
+              <h3 id="tonight-title" className="text-sm font-semibold">Tonight</h3>
+              <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums">
+                <div className="flex flex-wrap items-baseline gap-x-1.5">
+                  <dt className="text-cream-secondary">Bedtime</dt>
+                  <dd className="font-semibold">{format12Hour(state?.activeBedtimeLocal ?? resolvedProfile.bedtime)}</dd>
+                </div>
+                <div className="flex flex-wrap items-baseline gap-x-1.5">
+                  <dt className="text-cream-secondary">Wake</dt>
+                  <dd className="font-semibold">{format12Hour(state?.activeWakeTimeLocal ?? resolvedProfile.wakeTime)}</dd>
+                </div>
+              </dl>
+            </section>
+          ) : (
+            <div className="mt-1 flex flex-wrap items-center gap-x-2">
+              {DISCORD_JOURNAL_REGEX.test(resolvedProfile.journalUrl) && (
+                <a href={resolvedProfile.journalUrl} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 text-sm font-semibold text-status-amber hover:bg-night-elevated">
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" /> Open journal
                 </a>
               )}
-
-              <button
-                type="button"
-                onClick={() => {
+              {onToggleStar && resolvedProfile.id && (
+                <button type="button" onClick={() => {
                   triggerHaptic(10);
-                  onClose();
+                  onToggleStar(resolvedProfile.id);
+                }} aria-label="Star member" aria-pressed={isStarred}
+                  className={`grid min-h-[44px] min-w-[44px] place-items-center rounded-lg hover:bg-night-elevated ${isStarred ? 'text-status-amber' : 'text-cream-secondary'}`}>
+                  <Star className={`h-4 w-4 ${isStarred ? 'fill-current' : ''}`} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
+
+          <div role="group" aria-label={isMySleep ? 'My Sleep views' : 'Profile views'}
+            className="mt-2 flex gap-1 rounded-xl bg-night-elevated p-1">
+            {PROFILE_TABS.filter(tab => tab.key !== 'punishments' || (isMySleep && isViewer)).map(tab => (
+              <button key={tab.key} type="button" aria-pressed={activeTab === tab.key}
+                aria-controls="sleep-view-panel" onClick={() => {
+                  triggerHaptic(10);
+                  setActiveTab(tab.key);
                 }}
-                className="flex items-center justify-center rounded-xl p-2 text-cream-secondary hover:text-cream-primary hover:bg-night-elevated transition-colors min-h-[44px] min-w-[44px]"
-                aria-label={isMySleep ? 'Close My Sleep' : 'Close member sleep history'}
-              >
-                <X className="h-5 w-5" />
+                className={`min-h-[44px] min-w-0 flex-1 rounded-lg px-1.5 text-sm font-semibold [overflow-wrap:anywhere] ${activeTab === tab.key
+                  ? 'bg-status-amber text-night-bg' : 'text-cream-secondary hover:text-cream-primary'}`}>
+                {tab.label}
               </button>
-            </div>
-          </div>
-
-          {/* Quick Metrics Bar: Streaks, Strikes, Status */}
-          <div className="flex items-center justify-between rounded-xl border border-night-border bg-night-elevated/60 px-3 py-2 text-xs flex-wrap gap-2">
-            {/* Streak Pill */}
-            <div className="flex items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full border border-status-amber/40 bg-status-amber/15 px-2.5 py-0.5 text-xs font-bold text-status-amber">
-                <Flame className="h-3.5 w-3.5 fill-status-amber text-status-amber" />
-                <span>{resolvedProfile.streak}d streak</span>
-              </span>
-            </div>
-
-            {/* Strikes & Meta Indicators */}
-            {!isMySleep && (resolvedProfile.strikeCountsUnavailable ? (
-              <span className="text-[11px] text-cream-secondary">Strike and pass counts unavailable</span>
-            ) : (
-              <div className="flex items-center gap-3 text-[11px]">
-                <span className="flex items-center gap-1 font-semibold text-status-coral">
-                  <Zap className="h-3 w-3 fill-status-coral text-status-coral" />
-                  <span>Monthly strikes {resolvedProfile.strikesUsed}</span>
-                </span>
-                <span className="flex items-center gap-1 font-semibold text-status-amber">
-                  <Shield className="h-3 w-3 fill-status-amber/20 text-status-amber" />
-                  <span>Meta: {resolvedProfile.metastrikesUsed}/3</span>
-                </span>
-              </div>
             ))}
           </div>
+        </header>
 
-          {/* Profile Section Tabs */}
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-night-elevated border border-night-border/80">
-            <button
-              type="button"
-              aria-pressed={activeTab === 'calendar'}
-              onClick={() => {
-                triggerHaptic(10);
-                setActiveTab('calendar');
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all min-h-[44px] ${
-                activeTab === 'calendar'
-                  ? 'bg-status-amber text-night-bg shadow-sm'
-                  : 'text-cream-secondary hover:text-cream-primary'
-              }`}
-            >
-              <CalendarIcon className="h-4 w-4" />
-              <span>Calendar & Streak</span>
-            </button>
-
-            <button
-              type="button"
-              aria-pressed={activeTab === 'timetable'}
-              onClick={() => {
-                triggerHaptic(10);
-                setActiveTab('timetable');
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-bold transition-all min-h-[44px] ${
-                activeTab === 'timetable'
-                  ? 'bg-status-amber text-night-bg shadow-sm'
-                  : 'text-cream-secondary hover:text-cream-primary'
-              }`}
-            >
-              <Clock className="h-4 w-4" />
-              <span>{isMySleep ? 'Timetable' : 'Weekly Timetable'}</span>
-            </button>
-            {isMySleep && isViewer && (
-              <button type="button" aria-pressed={activeTab === 'punishments'} onClick={() => setActiveTab('punishments')}
-                className={`min-h-[44px] flex-1 rounded-lg px-2 text-xs font-bold ${activeTab === 'punishments' ? 'bg-status-amber text-night-bg shadow-sm' : 'text-cream-secondary hover:text-cream-primary'}`}>
-                Punishments
-              </button>
-            )}
-          </div>
-        </div>
-
+        <div id="sleep-view-panel">
         {activeTab === 'punishments' && isMySleep && isViewer && memberId && (
           <div className="mt-4"><MemberPunishmentList key={punishmentSnapshot} memberId={memberId}
             rosterMember={initialMember} accountabilityRevision={accountabilityRevision} /></div>
         )}
 
-        {/* Tab 1: Calendar Streak View */}
         {activeTab === 'calendar' && (
-          <div className="mt-4 flex flex-col gap-4 animate-in fade-in duration-150">
-            {privateCalendar && onRequestMetastrike && (
-              <button type="button" onClick={() => onRequestMetastrike(selectedDate ?? undefined)}
-                className="inline-flex min-h-[44px] items-center gap-2 self-start rounded-lg border border-status-amber/40 bg-night-elevated px-3 text-sm font-semibold text-status-amber">
-                <Shield className="h-4 w-4" aria-hidden="true" /> Request Metastrike
-              </button>
-            )}
-            {/* Month Switcher Bar */}
-            <div className="flex items-center justify-between rounded-xl bg-night-elevated/70 border border-night-border/60 px-3 py-2">
-              <button
-                type="button"
-                onClick={handlePrevMonth}
-                className="inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-cream-secondary hover:text-cream-primary hover:bg-night-surface transition-colors min-h-[44px]"
-                title="Previous month"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                <span className="hidden sm:inline">Prev</span>
-              </button>
-
-              <div className="flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4 text-status-amber" />
-                <span className="text-sm font-bold text-cream-primary tracking-wide">
-                  {monthTitle}
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleNextMonth}
-                className="inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-cream-secondary hover:text-cream-primary hover:bg-night-surface transition-colors min-h-[44px]"
-                title="Next month"
-              >
-                <span className="hidden sm:inline">Next</span>
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* 3-Pill Monthly Summary Strip */}
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-xl border border-night-border/80 bg-night-elevated/50 p-2.5 flex flex-col justify-center">
-                <span className="text-[10px] uppercase font-semibold text-cream-secondary tracking-wider">
-                  Avg Sleep
-                </span>
-                <span className="text-sm sm:text-base font-bold text-cream-primary mt-0.5">
-                  {data?.summary.avgDurationMinutes
-                    ? `${Math.floor(data.summary.avgDurationMinutes / 60)}h ${data.summary.avgDurationMinutes % 60}m`
-                    : '--'}
-                </span>
-              </div>
-
-              <div className="rounded-xl border border-night-border/80 bg-night-elevated/50 p-2.5 flex flex-col justify-center">
-                <span className="text-[10px] uppercase font-semibold text-cream-secondary tracking-wider">
-                  Avg Bed → Wake
-                </span>
-                <span className="text-xs sm:text-sm font-bold text-cream-primary mt-0.5 tabular-nums">
-                  {data?.summary.avgBedtime && data?.summary.avgWakeTime
-                    ? `${data.summary.avgBedtime} → ${data.summary.avgWakeTime}`
-                    : '--'}
-                </span>
-              </div>
-
-              <div className="rounded-xl border border-night-border/80 bg-night-elevated/50 p-2.5 flex flex-col justify-center">
-                <span className="text-[10px] uppercase font-semibold text-cream-secondary tracking-wider">
-                  On-Time Rate
-                </span>
-                <span className="text-sm sm:text-base font-bold text-status-amber mt-0.5">
-                  {data ? `${data.summary.onTimePercentage}%` : '--'}
-                </span>
-              </div>
-            </div>
-
-            {/* Error / Loading notices */}
-            {loading && (
-              <div className="py-8 text-center text-xs text-cream-secondary">
-                Loading sleep logs for {monthTitle}...
-              </div>
-            )}
-
-            {error && (
-              <div className="rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* 7-Column Monthly Calendar Grid (Mon–Sun) */}
-            {!loading && !error && (
-              <div className="flex flex-col gap-1.5">
-                {/* Weekday Labels */}
-                <div className="grid grid-cols-7 gap-1 text-center">
-                  {WEEKDAY_HEADERS.map((day) => (
-                    <span key={day} className="text-[11px] font-semibold text-cream-muted uppercase tracking-wider py-1">
-                      {day}
-                    </span>
-                  ))}
+          <div className="mt-2 space-y-4">
+            <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+              <section aria-label="Sleep calendar" className="min-w-0">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <button type="button" aria-label="Previous month" onClick={() => navigateMonth(-1)}
+                    className="grid min-h-[44px] min-w-[44px] place-items-center rounded-lg text-cream-secondary hover:bg-night-elevated hover:text-cream-primary">
+                    <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                  </button>
+                  <h3 aria-live="polite" className="text-center text-sm font-bold">{monthTitle}</h3>
+                  <button type="button" aria-label="Next month" onClick={() => navigateMonth(1)}
+                    className="grid min-h-[44px] min-w-[44px] place-items-center rounded-lg text-cream-secondary hover:bg-night-elevated hover:text-cream-primary">
+                    <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                  </button>
                 </div>
-
-                {/* Day Cells Grid */}
-                <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
-                  {calendarCells.map((cell, idx) => {
-                    if (cell.type === 'padding' || !cell.dateStr || !cell.dayNumber) {
-                      return (
-                        <div
-                          key={`padding-${idx}`}
-                          className="min-h-[48px] rounded-xl border border-transparent bg-transparent"
-                        />
-                      );
-                    }
-
-                    const date = cell.dateStr;
-                    const isSelected = displayedDate === date;
-                    const log = cell.log;
-                    const strikeEntries = strikeDays.get(date);
-                    const hasStrike = strikeEntries?.some(entry => entry.record_type === 'strike');
-
-                    let cellBadgeClass = 'bg-night-elevated/40 border-night-border/50 text-cream-secondary';
-                    let indicatorDotClass = 'bg-cream-muted/40';
-
-                    if (log) {
-                      if (log.status === 'on_time') {
-                        if (log.woke_up_local_time) {
-                          cellBadgeClass = 'border-emerald-500/40 bg-emerald-950/25 text-emerald-200';
-                          indicatorDotClass = 'bg-emerald-400';
-                        } else {
-                          cellBadgeClass = 'border-status-slumber/40 bg-status-slumber/15 text-status-slumber';
-                          indicatorDotClass = 'bg-status-slumber';
-                        }
-                      } else if (log.status === 'metastrike') {
-                        cellBadgeClass = 'border-status-slumber/40 bg-status-slumber/20 text-status-slumber';
-                        indicatorDotClass = 'bg-status-slumber';
-                      } else if (log.status === 'late' || log.status === 'missed') {
-                        cellBadgeClass = 'border-status-coral/40 bg-status-coral/15 text-status-coral';
-                        indicatorDotClass = 'bg-status-coral';
-                      }
-                    }
-
-                    return (
-                      <button
-                        key={cell.dateStr}
-                        type="button"
-                        aria-pressed={isSelected}
-                        aria-label={`${DateTime.fromISO(date).toFormat('LLLL d')}${strikeEntries ? hasStrike ? ', strike history' : ', Metastrike history' : ''}`}
-                        onClick={() => selectDay(date)}
-                        className={`min-h-[48px] rounded-xl border p-1 sm:p-1.5 flex flex-col justify-between items-center transition-all cursor-pointer relative ${cellBadgeClass} ${
-                          isSelected ? 'ring-2 ring-status-amber border-status-amber scale-[1.02] shadow-md' : 'hover:border-cream-secondary/40'
-                        }`}
-                      >
-                        <span className="text-xs font-bold tabular-nums">
-                          {cell.dayNumber}
-                        </span>
-
-                        <div aria-hidden="true" className="flex items-center justify-center gap-1 w-full my-0.5">
-                          <span className={`h-1.5 w-1.5 rounded-full ${indicatorDotClass}`} />
-                          {strikeEntries && (hasStrike
-                            ? <Zap className="h-3.5 w-3.5 shrink-0 text-fox-rust" />
-                            : <Shield className="h-3.5 w-3.5 shrink-0 text-status-amber" />)}
-                        </div>
-
-                        {log?.duration_minutes ? (
-                          <span className="hidden sm:inline text-[9px] font-medium opacity-80 tabular-nums">
-                            {Math.floor(log.duration_minutes / 60)}h{log.duration_minutes % 60 ? `${log.duration_minutes % 60}m` : ''}
-                          </span>
-                        ) : (
-                          <span className="hidden sm:inline text-[9px] text-cream-muted">--</span>
-                        )}
+                {loading && <p role="status" className="py-6 text-center text-sm text-cream-secondary">Loading sleep logs…</p>}
+                {error && (
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 rounded-xl border border-status-coral/40 bg-status-coral/10 px-3 py-2">
+                    <p role="alert" className="text-sm text-status-coral [overflow-wrap:anywhere]">{error}</p>
+                    {activeTargetId && (
+                      <button type="button" onClick={() => void fetchHistory(activeTargetId, calendarTimezone ? currentMonth : requestMonth)}
+                        className="min-h-[44px] text-sm font-semibold text-status-amber underline">
+                        Retry sleep logs
                       </button>
-                    );
-                  })}
-                </div>
-                {strikeDays.size > 0 && (
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1 text-[11px] text-cream-secondary">
-                    <span className="inline-flex items-center gap-1"><Zap aria-hidden="true" className="h-3.5 w-3.5 text-fox-rust" /> Strike history</span>
-                    <span className="inline-flex items-center gap-1"><Shield aria-hidden="true" className="h-3.5 w-3.5 text-status-amber" /> Metastrike only</span>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
+
+                {!loading && !error && (
+                  <>
+                    <div className="mb-1 grid grid-cols-7 text-center min-[350px]:gap-x-0.5 sm:gap-1">
+                      {WEEKDAY_HEADERS.map(day => (
+                        <span key={day} className="py-0.5 text-xs font-medium text-cream-secondary">{day}</span>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-y-0.5 min-[350px]:gap-x-0.5 sm:gap-1">
+                      {calendarCells.map((cell, index) => {
+                        const date = cell.dateStr;
+                        if (!date) return <div key={`padding-${index}`} aria-hidden="true" />;
+
+                        const isSelected = displayedDate === date;
+                        const isToday = today === date;
+                        const log = cell.log;
+                        const sleep = log ? SLEEP_DAY_STYLE[log.status] : null;
+                        const strikeEntries = strikeDays.get(date);
+                        const hasStrike = strikeEntries?.some(entry => entry.record_type === 'strike');
+                        const hasPass = strikeEntries?.some(entry => entry.record_type === 'metastrike');
+                        const dateLabel = [
+                          DateTime.fromISO(date).toFormat('LLLL d'),
+                          sleep?.label ?? 'No sleep activity recorded',
+                          log?.woke_up_local_time ? 'Wake logged' : null,
+                          hasStrike ? 'Strike history' : null,
+                          hasPass ? 'Metastrike history' : null,
+                        ].filter(Boolean).join(', ');
+
+                        return (
+                          <button key={date} type="button" aria-pressed={isSelected}
+                            aria-current={isToday ? 'date' : undefined} aria-controls="selected-sleep-night"
+                            aria-label={dateLabel} onClick={() => selectDay(date)}
+                            className={`relative flex min-h-[44px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border px-0.5 text-sm font-semibold tabular-nums ${isSelected
+                              ? 'border-status-amber bg-status-amber/15 text-cream-primary'
+                              : 'border-transparent bg-night-elevated/70 text-cream-secondary hover:border-night-border hover:text-cream-primary'}`}>
+                            <span className={isToday ? 'rounded-full bg-cream-primary px-1.5 text-night-bg' : ''}>
+                              {cell.dayNumber}
+                            </span>
+                            <span aria-hidden="true" className="flex h-3.5 items-center gap-0.5">
+                              {sleep && <span className={`h-1.5 w-1.5 rounded-full ${sleep.dot}`} />}
+                              {hasStrike && <Zap className="h-3 w-3 text-fox-rust" />}
+                              {hasPass && <Shield className="h-3 w-3 text-status-amber" />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </section>
+
+              {/* Selected Day Inspector Card */}
+              {!loading && (
+                <section id="selected-sleep-night" ref={dayDetailsRef} tabIndex={-1} aria-labelledby="selected-sleep-date"
+                  className="flex min-w-0 flex-col gap-3 rounded-xl bg-night-elevated p-3 focus-visible:outline-2 focus-visible:outline-status-amber lg:col-start-2 lg:row-start-1 lg:row-span-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-night-border pb-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-status-amber" />
+                      <h3 id="selected-sleep-date" className="text-sm font-bold text-cream-primary">
+                        {DateTime.fromISO(displayedDate).toFormat('cccc, LLLL d, yyyy')}
+                      </h3>
+                    </div>
+
+                    {selectedLog?.wake_source && (
+                      <span className="rounded-full bg-night-surface border border-night-border px-2 py-0.5 text-[10px] font-semibold text-cream-secondary">
+                        {selectedLog.wake_source === 'button' ? 'Instant wake' : 'Manual wake'}
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedLog ? (
+                    <div className="space-y-2">
+                      <p className="text-sm text-cream-secondary">{SLEEP_DAY_STYLE[selectedLog.status]?.label}</p>
+                      <dl className="grid grid-cols-2 gap-x-2 gap-y-3 text-sm tabular-nums">
+                        <div>
+                          <dt className="text-xs font-semibold text-cream-secondary">Checked in</dt>
+                          <dd className="font-bold">{selectedLog.in_bed_local_time || '—'}</dd>
+                          <dd className="text-xs text-cream-secondary">Target {selectedLog.target_bedtime || resolvedProfile.bedtime}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs font-semibold text-cream-secondary">Woke up</dt>
+                          <dd className="font-bold">{selectedLog.woke_up_local_time || '—'}</dd>
+                          <dd className="text-xs text-cream-secondary">Target {selectedLog.target_wake_time || resolvedProfile.wakeTime}</dd>
+                        </div>
+                        <div className="col-span-2">
+                          <dt className="text-xs font-semibold text-cream-secondary">Sleep duration</dt>
+                          <dd className="font-bold text-status-amber">
+                            {selectedLog.duration_minutes != null
+                              ? `${Math.floor(selectedLog.duration_minutes / 60)}h ${selectedLog.duration_minutes % 60}m`
+                              : '—'}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-cream-secondary">
+                      {error ? 'Sleep logs are unavailable for this night.' : 'No sleep activity recorded for this night.'}
+                    </p>
+                  )}
+
+                  {selectedStrikeEntries && visibleStrikeHistory && (
+                    <StrikeDayDetails entries={selectedStrikeEntries} timezone={visibleStrikeHistory.timezone} />
+                  )}
+
+                  {/* Self-Edit Action for Current User */}
+                  {isEligibleForSelfEdit && (
+                    <div className="mt-1 pt-2 border-t border-night-border/50">
+                      {!isEditingWakeTime ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic(10);
+                            setEditWakeTime(selectedLog?.woke_up_local_time || '07:30');
+                            setIsEditingWakeTime(true);
+                            setEditError(null);
+                            setEditSuccess(null);
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all min-h-[44px] whitespace-nowrap shrink-0"
+                        >
+                          <Sun className="h-3.5 w-3.5" />
+                          <span>{selectedLog?.woke_up_local_time ? 'Edit Wake-Up Time' : 'Log Wake-Up Time'}</span>
+                        </button>
+                      ) : (
+                        <form onSubmit={handleSaveWakeTime} className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <label htmlFor="manual-wake-input" className="text-xs font-semibold text-cream-secondary">
+                              Enter wake time:
+                            </label>
+                            <input
+                              id="manual-wake-input"
+                              type="time"
+                              value={editWakeTime}
+                              onChange={(e) => setEditWakeTime(e.target.value)}
+                              required
+                              className="rounded-lg border border-night-border bg-night-surface px-2.5 py-1.5 text-sm text-cream-primary font-mono focus:border-status-amber focus:outline-none min-h-[44px]"
+                            />
+                            <button
+                              type="submit"
+                              disabled={editSubmitting}
+                              className="rounded-lg bg-status-amber px-3.5 py-1.5 text-xs font-bold text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all min-h-[44px] whitespace-nowrap shrink-0"
+                            >
+                              {editSubmitting ? 'Saving...' : 'Save Wake Time'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsEditingWakeTime(false);
+                                setEditError(null);
+                              }}
+                              className="rounded-lg border border-night-border bg-night-surface px-3 py-1.5 text-xs font-medium text-cream-secondary hover:text-cream-primary min-h-[44px] whitespace-nowrap shrink-0"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+
+                          {editError && (
+                            <p role="alert" className="text-sm text-status-coral flex items-center gap-1">
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              <span>{editError}</span>
+                            </p>
+                          )}
+                        </form>
+                      )}
+
+                      {editSuccess && (
+                        <p role="status" className="text-sm text-status-sage mt-2 flex items-center gap-1">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span>{editSuccess}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {privateCalendar && onRequestMetastrike && (
+                    <button type="button" onClick={() => onRequestMetastrike(selectedDate === displayedDate ? selectedDate : undefined)}
+                      className="inline-flex min-h-[44px] items-center gap-2 self-start rounded-lg border border-status-amber/40 px-3 text-sm font-semibold text-status-amber hover:bg-night-surface">
+                      <Shield className="h-4 w-4 shrink-0" aria-hidden="true" /> Request Metastrike
+                    </button>
+                  )}
+                </section>
+              )}
+
+              {monthSummary && (
+                <section aria-label="Monthly sleep summary" className="space-y-2 border-y border-night-border py-2 lg:col-start-1 lg:row-start-2">
+                  {strikeDays.size > 0 && (
+                    <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-cream-secondary">
+                      <span className="inline-flex items-center gap-1"><Zap className="h-3.5 w-3.5 text-fox-rust" aria-hidden="true" /> Strike history</span>
+                      <span className="inline-flex items-center gap-1"><Shield className="h-3.5 w-3.5 text-status-amber" aria-hidden="true" /> Metastrike history</span>
+                    </p>
+                  )}
+                  <dl className="grid grid-cols-3 gap-x-2 text-sm tabular-nums">
+                    <div>
+                      <dt className="text-xs text-cream-secondary">Avg. sleep</dt>
+                      <dd className="font-semibold">{monthSummary.avgDurationMinutes !== null
+                        ? `${Math.floor(monthSummary.avgDurationMinutes / 60)}h ${monthSummary.avgDurationMinutes % 60}m` : '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-cream-secondary">Avg. bed / wake</dt>
+                      <dd className="font-semibold">{monthSummary.avgBedtime && monthSummary.avgWakeTime
+                        ? `${monthSummary.avgBedtime} / ${monthSummary.avgWakeTime}` : '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-cream-secondary">On time</dt>
+                      <dd className="font-semibold">{monthSummary.totalLoggedNights ? `${monthSummary.onTimePercentage}%` : '—'}</dd>
+                    </div>
+                  </dl>
+                  <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-cream-secondary">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Flame className="h-3.5 w-3.5 text-status-amber" aria-hidden="true" /> {resolvedProfile.streak}-day streak
+                    </span>
+                    {!isMySleep && (resolvedProfile.strikeCountsUnavailable
+                      ? <span>Strike and pass counts unavailable</span>
+                      : <><span>Monthly strikes {resolvedProfile.strikesUsed}</span><span>Metastrikes {resolvedProfile.metastrikesUsed}/3</span></>)}
+                  </p>
+                </section>
+              )}
+            </div>
 
             {calendarHistory && (
-              <StrikeHistoryList days={strikeDays} loading={!historyForView}
+              <StrikeHistoryList days={strikeDays} selectedDate={displayedDate} loading={!historyForView}
                 failed={historyForView?.data === null} onRetry={() => {
                   setStrikeHistory(null);
                   setStrikeHistoryRetry(value => value + 1);
-                }}
-                onSelectDay={date => {
-                  selectDay(date);
-                  dayDetailsRef.current?.focus();
-                }} />
+                }} onSelectDay={selectDay} />
             )}
-
             {privateCalendar && (
               <MemberMetastrikeHistory key={`${activeTargetId}:${currentMonth}`} month={currentMonth}
                 member={initialMember} refreshVersion={accountabilityRevision} onChanged={onMetastrikeChanged} />
-            )}
-
-            {/* Selected Day Inspector Card */}
-            {(selectedDate || calendarHistory) && (
-              <div ref={dayDetailsRef} tabIndex={-1} aria-labelledby="selected-sleep-date"
-                className="rounded-2xl border border-night-border/90 bg-night-elevated/70 p-3.5 sm:p-4 flex flex-col gap-3">
-                <div className="flex items-center justify-between border-b border-night-border/60 pb-2">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-status-amber" />
-                    <h3 id="selected-sleep-date" className="text-xs sm:text-sm font-bold text-cream-primary">
-                      {DateTime.fromISO(displayedDate).toFormat('cccc, LLLL d, yyyy')}
-                    </h3>
-                  </div>
-
-                  {selectedLog?.wake_source && (
-                    <span className="rounded-full bg-night-surface border border-night-border px-2 py-0.5 text-[10px] font-semibold text-cream-secondary">
-                      {selectedLog.wake_source === 'button' ? 'Instant ☀️' : 'Manual ✍️'}
-                    </span>
-                  )}
-                </div>
-
-                {selectedLog ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[10px] uppercase font-semibold text-cream-muted">
-                        Slept At
-                      </span>
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-sm font-bold text-cream-primary tabular-nums">
-                          {selectedLog.in_bed_local_time || '--:--'}
-                        </span>
-                        <span className="text-xs text-cream-muted">
-                          (Target: {selectedLog.target_bedtime || resolvedProfile.bedtime || '--:--'})
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[10px] uppercase font-semibold text-cream-muted">
-                        Woke Up At
-                      </span>
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-sm font-bold text-cream-primary tabular-nums">
-                          {selectedLog.woke_up_local_time || '--:--'}
-                        </span>
-                        <span className="text-xs text-cream-muted">
-                          (Target: {selectedLog.target_wake_time || resolvedProfile.wakeTime || '--:--'})
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[10px] uppercase font-semibold text-cream-muted">
-                        Total Sleep Duration
-                      </span>
-                      <span className="text-sm font-bold text-status-amber tabular-nums">
-                        {selectedLog.duration_minutes
-                          ? `${Math.floor(selectedLog.duration_minutes / 60)}h ${selectedLog.duration_minutes % 60}m`
-                          : 'Not completed'}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="py-2 text-xs text-cream-muted italic">
-                    No sleep activity recorded for this night.
-                  </div>
-                )}
-
-                {selectedStrikeEntries && visibleStrikeHistory && (
-                  <StrikeDayDetails entries={selectedStrikeEntries} timezone={visibleStrikeHistory.timezone} />
-                )}
-
-                {/* Self-Edit Action for Current User */}
-                {isEligibleForSelfEdit && (
-                  <div className="mt-1 pt-2 border-t border-night-border/50">
-                    {!isEditingWakeTime ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          triggerHaptic(10);
-                          setEditWakeTime(selectedLog?.woke_up_local_time || '07:30');
-                          setIsEditingWakeTime(true);
-                          setEditError(null);
-                          setEditSuccess(null);
-                        }}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 px-3 py-2 text-xs font-semibold text-status-amber hover:bg-status-amber/25 active:scale-95 transition-all min-h-[44px] whitespace-nowrap shrink-0"
-                      >
-                        <Sun className="h-3.5 w-3.5" />
-                        <span>{selectedLog?.woke_up_local_time ? 'Edit Wake-Up Time' : 'Log Wake-Up Time'}</span>
-                      </button>
-                    ) : (
-                      <form onSubmit={handleSaveWakeTime} className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <label htmlFor="manual-wake-input" className="text-xs font-semibold text-cream-secondary">
-                            Enter wake time:
-                          </label>
-                          <input
-                            id="manual-wake-input"
-                            type="time"
-                            value={editWakeTime}
-                            onChange={(e) => setEditWakeTime(e.target.value)}
-                            required
-                            className="rounded-lg border border-night-border bg-night-surface px-2.5 py-1.5 text-sm text-cream-primary font-mono focus:border-status-amber focus:outline-none min-h-[44px]"
-                          />
-                          <button
-                            type="submit"
-                            disabled={editSubmitting}
-                            className="rounded-lg bg-status-amber px-3.5 py-1.5 text-xs font-bold text-night-bg hover:bg-status-amber/90 active:scale-95 transition-all min-h-[44px] whitespace-nowrap shrink-0"
-                          >
-                            {editSubmitting ? 'Saving...' : 'Save Wake Time'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsEditingWakeTime(false);
-                              setEditError(null);
-                            }}
-                            className="rounded-lg border border-night-border bg-night-surface px-3 py-1.5 text-xs font-medium text-cream-secondary hover:text-cream-primary min-h-[44px] whitespace-nowrap shrink-0"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-
-                        {editError && (
-                          <p className="text-xs text-status-coral flex items-center gap-1">
-                            <AlertCircle className="h-3.5 w-3.5" />
-                            <span>{editError}</span>
-                          </p>
-                        )}
-                      </form>
-                    )}
-
-                    {editSuccess && (
-                      <p className="text-xs text-emerald-400 mt-2 flex items-center gap-1">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        <span>{editSuccess}</span>
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
             )}
           </div>
         )}
 
         {/* Tab 2: Weekly Timetable View */}
         {activeTab === 'timetable' && (
-          <div className="mt-4 flex flex-col gap-4 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between">
-              <div>
+          <div className="mt-4 flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
                 <h3 className="text-sm font-bold text-cream-primary">
-                  7-Day Sleep & Wake Timetable
+                  Weekly schedule
                 </h3>
                 <p className="text-xs text-cream-secondary mt-0.5">
-                  Scheduled bedtimes and wake targets in {resolvedProfile.name}&apos;s local timezone ({formatGmtOffset(resolvedProfile.timezone)}).
+                  Times shown in {resolvedProfile.timezone} ({timezone}).
                 </p>
               </div>
 
@@ -1129,9 +957,9 @@ export function SleepCalendarModal({
             </div>
 
             {/* 7-Day Timetable Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-7 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-7">
               {DAY_KEYS.map((k) => {
-                const isToday = resolvedProfile.currentDayKey === k;
+                const isToday = currentDayKey === k;
                 const isWeekend = k === 'fri' || k === 'sat';
                 const daySched = resolvedProfile.weeklySchedule?.[k] || {
                   bedtime: isWeekend && resolvedProfile.weekendBedtime ? resolvedProfile.weekendBedtime : resolvedProfile.bedtime,
@@ -1205,39 +1033,9 @@ export function SleepCalendarModal({
               })}
             </div>
 
-            {/* Schedule Highlights Summary Card */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-1">
-              <div className="rounded-xl border border-night-border bg-night-elevated/40 p-3">
-                <span className="text-[10px] uppercase font-semibold text-cream-secondary block">
-                  Regular Bedtime
-                </span>
-                <span className="text-sm font-bold text-cream-primary mt-1 block tabular-nums">
-                  {format12Hour(resolvedProfile.bedtime)} ({resolvedProfile.bedtime})
-                </span>
-              </div>
-
-              <div className="rounded-xl border border-night-border bg-night-elevated/40 p-3">
-                <span className="text-[10px] uppercase font-semibold text-cream-secondary block">
-                  Weekend Bedtime
-                </span>
-                <span className="text-sm font-bold text-cream-primary mt-1 block tabular-nums">
-                  {resolvedProfile.weekendBedtime
-                    ? `${format12Hour(resolvedProfile.weekendBedtime)} (${resolvedProfile.weekendBedtime})`
-                    : 'Same as weekday'}
-                </span>
-              </div>
-
-              <div className="rounded-xl border border-night-border bg-night-elevated/40 p-3">
-                <span className="text-[10px] uppercase font-semibold text-cream-secondary block">
-                  Target Wake-Up
-                </span>
-                <span className="text-sm font-bold text-cream-primary mt-1 block tabular-nums">
-                  {format12Hour(resolvedProfile.wakeTime)} ({resolvedProfile.wakeTime})
-                </span>
-              </div>
-            </div>
           </div>
         )}
+        </div>
     </ResponsiveDialog>
   );
 }

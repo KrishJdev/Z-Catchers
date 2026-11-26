@@ -1,323 +1,93 @@
 #!/usr/bin/env node
-/**
- * Test Suite: Compact Member Cards with Progressive Disclosure (GitHub Issue #63, Jira ZC-29)
- *
- * Verifies that:
- * 1. Default MemberCard view is compact and restricted to primary identifiers:
- *    - Avatar, Username, Status Badge, and Viewer-Local Time
- * 2. Default card height drops by at least 40% on mobile screens (measured in CSS pixels)
- * 3. Discord journal deep links remain directly accessible on the compact primary card view
- * 4. Touch targets meet or exceed 44x44px for touch ergonomics
- * 5. Progressive disclosure bottom sheet modal cleanly reveals secondary actions:
- *    - Full schedule details and timezone metadata row
- *    - Monthly Strikes & Metastrikes accountability bar
- *    - Trigger for SleepCalendarModal.tsx
- *    - Trigger for MetastrikeModal.tsx
- *    - Nag Assist counter ("👥 Nagged!") and Nag Notification buttons
- * 6. Responsive bounds strictly enforce zero horizontal overflow (max-w-full overflow-hidden)
- * 7. Warm Dark design system token adherence
- */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { DateTime } from 'luxon';
+import { MemberCard } from '../src/components/MemberCard.tsx';
+import { computeMemberState } from '../src/lib/sleepEngine.ts';
 
-import fs from 'fs';
-import path from 'path';
-import assert from 'assert';
+const viewerTimezone = 'Asia/Kolkata';
+const member = {
+  id: 'tokyo-fox',
+  discord_username: 'A Very Long Roster Display Name for a Tokyo Fox',
+  timezone: 'Asia/Tokyo',
+  bedtime_local: '03:30',
+  wake_time_local: '11:00',
+  journal_url: 'https://canary.discord.com/channels/123/456/789',
+  role: 'moderator',
+  streak_days: 10,
+  open_punishment_count: 2,
+  pending_bedtime_local: '04:00',
+  pending_timezone: 'Asia/Tokyo',
+  pending_effective_at: '2026-11-28T18:30:00Z',
+};
 
-console.log('🧪 Starting Compact Member Cards & Progressive Disclosure Test Suite (Issue #63 / ZC-29)...\n');
-
-const memberCardPath = path.resolve('src/components/MemberCard.tsx');
-assert(fs.existsSync(memberCardPath), 'src/components/MemberCard.tsx must exist');
-const memberCardContent = fs.readFileSync(memberCardPath, 'utf8');
-
-// -------------------------------------------------------------
-// 1. Component Export & Primary Identifiers Verification
-// -------------------------------------------------------------
-console.log('--- 1. Compact Primary Card View & Identifiers ---');
-
-assert(
-  memberCardContent.includes('export function MemberCard('),
-  'MemberCard component must be exported as a named function component'
-);
-
-// Primary Identifiers: Avatar, Username, Status Badge, Viewer-Local Time
-assert(
-  memberCardContent.includes('avatarSrc') &&
-  memberCardContent.includes('fallbackAvatarUrl'),
-  'MemberCard must render member avatar with fallback resilience'
-);
-
-assert(
-  memberCardContent.includes('member.discord_username'),
-  'MemberCard must render member Discord username'
-);
-
-assert(
-  memberCardContent.includes('formattedViewerTime'),
-  'MemberCard must render viewer-local time computed via timezone engine'
-);
-
-assert(
-  memberCardContent.includes('statusPillConfig.className') &&
-  memberCardContent.includes('statusPillConfig.label'),
-  'MemberCard must render real-time status badge pill'
-);
-
-console.log('✅ PASSED: Compact primary card renders essential identifiers: Avatar, Username, Status Badge, Viewer Time.');
-
-// -------------------------------------------------------------
-// 2. Direct Discord Journal Deep Link & Compact Disclosure Trigger
-// -------------------------------------------------------------
-console.log('\n--- 2. Direct Discord Journal Link & Disclosure Trigger ---');
-
-assert(
-  memberCardContent.includes('href={member.journal_url}') &&
-  memberCardContent.includes('target="_blank"') &&
-  memberCardContent.includes('rel="noopener noreferrer"'),
-  'Discord journal deep links must remain directly accessible on the compact primary card'
-);
-
-assert(
-  memberCardContent.includes('aria-expanded={isDetailsOpen}') &&
-  memberCardContent.includes('aria-controls={`member-details-${member.id}`}') &&
-  memberCardContent.includes('aria-haspopup="dialog"'),
-  'Compact disclosure trigger button must implement accessible ARIA attributes'
-);
-
-assert(
-  memberCardContent.includes('setIsDetailsOpen(true)'),
-  'Tapping the card or disclosure trigger must expand the bottom sheet modal'
-);
-
-console.log('✅ PASSED: Discord journal deep link is directly accessible and disclosure trigger is accessible.');
-
-// -------------------------------------------------------------
-// 3. Default Mobile Card Height Reduction (>= 40% Drop)
-// -------------------------------------------------------------
-console.log('\n--- 3. Mobile Card Height Reduction (>= 40% Drop) ---');
-
-// Minimum header height implied by:
-// - Name control touch target: 44px
-// - Identity-stack gap (gap-1): 4px
-// - Sub-header badge row (streaks, role, grace): 22px
-// Total minimum header zone = 44 + 4 + 22 = 70px
-const MIN_HEADER_HEIGHT = 70;
-
-function measureCardLayout({ paddingY, headerHeight, gaps, rows }) {
-  const contentHeight = rows.reduce((sum, h) => sum + h, 0);
-  const totalGaps = gaps.reduce((sum, g) => sum + g, 0);
-  return paddingY + headerHeight + totalGaps + contentHeight;
+function renderCard(instant, overrides = {}, props = {}) {
+  const target = { ...member, ...overrides };
+  const state = computeMemberState(target, viewerTimezone, DateTime.fromISO(instant));
+  return renderToStaticMarkup(createElement(MemberCard, {
+    member: target,
+    currentMemberId: 'viewer',
+    state,
+    onToggleStar() {},
+    onOpenProfile() {},
+    onOpenPunishments() {},
+    ...props,
+  }));
 }
 
-// Rendered mobile card fixtures across status buckets
-const mobileFixtures = [
-  {
-    bucket: 'NAG_NOW',
-    name: 'Bedtime Hit / Nag Now (Active Nags)',
-    previous: {
-      paddingY: 32, // p-4 (16px * 2)
-      headerHeight: MIN_HEADER_HEIGHT,
-      gaps: [12, 12, 10, 8], // gap-3, gap-3, gap-2.5, gap-2
-      rows: [32, 30, 44, 44], // Schedule (32px), Strikes (30px), Journal (44px), Nag Notif (44px)
-    },
-    compact: {
-      paddingY: 20, // p-2.5 (10px * 2 on mobile)
-      headerHeight: MIN_HEADER_HEIGHT,
-      gaps: [8], // gap-2
-      rows: [44], // Compact Action & Disclosure Row (44px)
-    },
-    targetReduction: 40,
-    required: true,
-  },
-  {
-    bucket: 'WINDING_DOWN',
-    name: 'Winding Down (Upcoming Bedtime)',
-    previous: {
-      paddingY: 32,
-      headerHeight: MIN_HEADER_HEIGHT,
-      gaps: [12, 12, 10, 8],
-      rows: [32, 30, 44, 44],
-    },
-    compact: {
-      paddingY: 20,
-      headerHeight: MIN_HEADER_HEIGHT,
-      gaps: [8],
-      rows: [44],
-    },
-    targetReduction: 40,
-    required: true,
-  },
-  {
-    bucket: 'AWAKE',
-    name: 'Awake (Daytime Minimal)',
-    previous: {
-      paddingY: 32,
-      headerHeight: MIN_HEADER_HEIGHT,
-      gaps: [12, 12, 10], // gap-3, gap-3, gap-2.5
-      rows: [32, 30, 44], // Schedule (32px), Strikes (30px), Journal link (44px)
-    },
-    compact: {
-      paddingY: 20,
-      headerHeight: MIN_HEADER_HEIGHT,
-      gaps: [8],
-      rows: [44],
-    },
-    targetReduction: 40,
-    required: false, // Evaluated with conditional report
-  },
+const distinctStates = [
+  ['2026-11-26T18:45:00Z', {}, '15m overdue', 'Nag in Journal', /\bbg-status-coral\b/],
+  ['2026-11-26T18:32:00Z', {}, '3m grace', 'Nag in Journal', /\bbg-status-coral\b/],
+  ['2026-11-26T18:15:00Z', { is_woke_up: true }, 'In 15m', 'Say Goodnight', /\bborder-status-amber\/50\b/],
+  ['2026-11-26T17:00:00Z', {}, 'Awake', 'Journal', /\bbg-night-elevated\b/],
+  ['2026-11-26T19:30:00Z', { is_in_bed: true, in_bed_at: '2026-11-26T18:20:00Z' }, 'In bed', 'Quiet Note', /\bbg-night-elevated\b/],
 ];
 
-for (const fixture of mobileFixtures) {
-  const prevHeight = measureCardLayout(fixture.previous);
-  const compactHeight = measureCardLayout(fixture.compact);
-  const reduction = ((prevHeight - compactHeight) / prevHeight) * 100;
-  const meetsTarget = reduction >= fixture.targetReduction;
-
-  console.log(
-    `  - ${fixture.name}: Previous = ${prevHeight}px -> Compact = ${compactHeight}px (${reduction.toFixed(1)}% reduction)`
-  );
-
-  if (fixture.bucket === 'AWAKE') {
-    if (meetsTarget) {
-      console.log(`    ✅ Awake case meets 40% reduction on mobile layout (${reduction.toFixed(1)}% >= 40%)`);
-    } else {
-      console.log(`    ⚠️ Awake case does not meet 40% reduction (${reduction.toFixed(1)}% < 40%) due to minimal previous baseline`);
-    }
-  }
-
-  if (fixture.required) {
-    assert(
-      meetsTarget,
-      `${fixture.name} height reduction must be at least ${fixture.targetReduction}% (got ${reduction.toFixed(1)}%)`
-    );
-  }
+for (const [instant, overrides, status, action, style] of distinctStates) {
+  const markup = renderCard(instant, overrides);
+  assert.ok(markup.includes('>' + status + '<'), status);
+  const links = [...markup.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/g)].map(match => match[0]);
+  assert.equal(links.length, 1);
+  assert.ok(links[0].includes('>' + action + '<'), action);
+  assert.match(links[0], style);
+  assert.ok(links[0].includes('href="' + member.journal_url + '"'));
+  assert.match(links[0], /target="_blank" rel="noopener noreferrer"/);
+  const profileButtons = [...markup.matchAll(/<button\b[^>]*aria-label="View [^"]*profile[^"]*"[^>]*>[\s\S]*?<\/button>/g)];
+  assert.equal(profileButtons.length, 1);
+  assert.match(profileButtons[0][0], /<img\b[^>]*alt=""/);
+  assert.ok(profileButtons[0][0].includes(member.discord_username));
+  assert.match(markup, />12:00 AM<\/span><span[^>]*>your time<\/span>/);
+  assert.match(markup, /aria-pressed="false"/);
+  assert.match(markup, /aria-expanded="false" aria-haspopup="dialog" aria-label="Details for [^"]+"[^>]*>Details<\/button>/);
+  assert.doesNotMatch(markup, /Monthly strikes|Moderator<|days on track|Schedule shifting|Local schedule|Punishments|03:30|3:30 AM/);
 }
 
-// Also verify sm-breakpoint fixture (p-3.5 = 28px, gap-2.5 = 10px -> 152px)
-const awakeFixture = mobileFixtures.find((f) => f.bucket === 'AWAKE');
-const prevAwakeBaseline = measureCardLayout(awakeFixture.previous);
-const smCompactAwakeHeight = 28 + MIN_HEADER_HEIGHT + 10 + 44; // 152px
-const smAwakeReduction = ((prevAwakeBaseline - smCompactAwakeHeight) / prevAwakeBaseline) * 100;
-if (smAwakeReduction < 40) {
-  console.log(`  - Note: On sm tablet/desktop baseline (152px), Awake card reports ${smAwakeReduction.toFixed(1)}% reduction (< 40% target)`);
-}
+const self = renderCard('2026-11-26T18:45:00Z', {}, { currentMemberId: member.id, isStarred: true });
+assert.match(self, />You<\/span>/);
+assert.match(self, />Journal<\/span>/);
+assert.match(self, /aria-pressed="true"/);
+assert.doesNotMatch(self, /Punishments|Nag in Journal|I.m in Bed|I Woke Up|Early Check-In/);
 
-console.log('✅ PASSED: Default card height drops by 41.3% to 51.7% on mobile screens (exceeding 40% criterion).');
+const selfSleeping = renderCard('2026-11-26T19:30:00Z', { is_in_bed: true, in_bed_at: '2026-11-26T18:20:00Z' }, {
+  currentMemberId: member.id,
+});
+assert.match(selfSleeping, />Quiet Note<\/span>/);
 
-// -------------------------------------------------------------
-// 4. Progressive Disclosure Bottom Sheet Modal Architecture
-// -------------------------------------------------------------
-console.log('\n--- 4. Progressive Disclosure Bottom Sheet Modal ---');
+const source = readFileSync(new URL('../src/components/MemberCard.tsx', import.meta.url), 'utf8');
+const details = source.slice(source.indexOf('{isDetailsOpen && ('));
+assert.match(details, /role="dialog"[\s\S]*aria-modal="true"/);
+assert.match(details, /Local schedule: \{formattedSleeperTime\}[\s\S]*state\.formattedWakeTime[\s\S]*formatGmtOffset\(member\.timezone\)/);
+assert.match(details, /\{roleLabel[\s\S]*streakMilestone\?\.badgeLabel[\s\S]*pendingNotice/);
+assert.match(details, /Monthly strikes \{strikesUsed\}[\s\S]*sheet-meta-/);
+assert.match(details, /isViewer && typeof member\.open_punishment_count === 'number' && onOpenPunishments[\s\S]*Punishments <span/);
+assert.match(details, /Sleep Calendar[\s\S]*onOpenMetastrike && isViewer[\s\S]*Request Metastrike/);
+assert.match(details, /localNagCount[\s\S]*nagged tonight/);
+assert.match(details, /handleSendNagNotif[\s\S]*formatNagCooldown/);
+assert.match(source, /onClick=\{recordsJournalAssist \? handleNagJournalClick : undefined\}/);
+assert.match(source, /recordsJournalAssist = !isViewer && !isSleeping && \(isNagNow \|\| isWindingDown\)/);
+assert.match(source, /Nagged! Reopen Journal[\s\S]*Noted! Reopen Journal/);
+assert.match(source, /const detailsTrigger = detailsTriggerRef.current;[\s\S]*e.key === 'Escape'[\s\S]*last.focus\(\)[\s\S]*first.focus\(\)[\s\S]*detailsTrigger\?\.focus\(\{ preventScroll: true \}\)/);
+console.log('Passed member card states, converted bedtime and Details regression checks.');
 
-// Dialog structure
-assert(
-  memberCardContent.includes('role="dialog"') &&
-  memberCardContent.includes('aria-modal="true"') &&
-  memberCardContent.includes('id={`member-details-${member.id}`}'),
-  'Progressive disclosure bottom sheet must render as an accessible modal dialog'
-);
-
-// Full schedule details & timezone metadata row disclosed in sheet
-assert(
-  memberCardContent.includes('formattedSleeperTime') &&
-  memberCardContent.includes('state.formattedWakeTime') &&
-  memberCardContent.includes('formatGmtOffset(member.timezone)'),
-  'Bottom sheet must disclose full schedule details and timezone metadata row'
-);
-
-// Monthly Strikes & Metastrikes accountability bar disclosed in sheet
-assert(
-  memberCardContent.includes('strikesUsed') &&
-  memberCardContent.includes('metastrikesUsed') &&
-  memberCardContent.includes('Monthly strikes {strikesUsed}') &&
-  memberCardContent.includes('key={`sheet-meta-${member.id}-${pip}`}'),
-  'Bottom sheet must disclose Monthly Strikes & Metastrikes monthly total and Metastrike status pips'
-);
-
-// SleepCalendarModal.tsx trigger
-assert(
-  memberCardContent.includes('onOpenSleepCalendar') &&
-  memberCardContent.includes('Sleep Calendar'),
-  'Bottom sheet must provide a direct trigger for SleepCalendarModal.tsx'
-);
-
-// MetastrikeModal.tsx trigger
-assert(
-  memberCardContent.includes('onOpenMetastrike') &&
-  (memberCardContent.includes('Metastrike') || memberCardContent.includes('Excused Pass')),
-  'Bottom sheet must provide a direct trigger for MetastrikeModal.tsx'
-);
-
-// Nag Assist ("👥 Nagged!") counter and actions
-assert(
-  memberCardContent.includes('localNagCount') &&
-  memberCardContent.includes('hasNagged') &&
-  (memberCardContent.includes('nagged tonight') || memberCardContent.includes('checked in tonight')),
-  'Bottom sheet must disclose live Nag Assist counter'
-);
-
-// Nag Notification button with 15-minute cooldown countdown
-assert(
-  memberCardContent.includes('handleSendNagNotif') &&
-  memberCardContent.includes('nagCooldownSeconds') &&
-  memberCardContent.includes('formatNagCooldown'),
-  'Bottom sheet must disclose Nag Notification button with live countdown timer'
-);
-
-console.log('✅ PASSED: Progressive disclosure bottom sheet reveals schedule, strikes, calendar/metastrike triggers, and nag actions.');
-
-// -------------------------------------------------------------
-// 5. Ergonomics, Touch Targets & Overflow Boundaries
-// -------------------------------------------------------------
-console.log('\n--- 5. Mobile Ergonomics, Touch Targets & Overflow Protection ---');
-
-assert(
-  memberCardContent.includes('min-h-[44px] min-w-[44px]'),
-  'Interactive buttons and links must enforce >= 44x44px touch targets'
-);
-
-assert(
-  memberCardContent.includes('w-full max-w-full overflow-hidden'),
-  'Root card container must strictly enforce max-w-full overflow-hidden to prevent 375px horizontal spill'
-);
-
-// Warm Dark aesthetic
-assert(
-  memberCardContent.includes('bg-night-surface') &&
-  memberCardContent.includes('border-night-border') &&
-  memberCardContent.includes('text-cream-primary'),
-  'MemberCard and bottom sheet must strictly adhere to Warm Dark aesthetic tokens'
-);
-
-// Keyboard accessibility & Focus Management
-assert(
-  memberCardContent.includes("e.key === 'Escape'") &&
-  memberCardContent.includes('setIsDetailsOpen(false)'),
-  'Bottom sheet modal must close when pressing the Escape key'
-);
-
-// Focus management: initial focus, keyboard trap, and restoration
-assert(
-  memberCardContent.includes('sheetDialogRef = useRef') &&
-  memberCardContent.includes('previousFocusRef = useRef') &&
-  memberCardContent.includes('ref={sheetDialogRef}'),
-  'Bottom sheet modal must maintain dialog and previous focus refs'
-);
-
-assert(
-  memberCardContent.includes('previousFocusRef.current = document.activeElement') &&
-  memberCardContent.includes('firstFocusable') &&
-  memberCardContent.includes('previousFocusRef.current?.focus()'),
-  'Bottom sheet must move focus into modal on open and restore focus to trigger on close'
-);
-
-assert(
-  memberCardContent.includes("e.key === 'Tab'") &&
-  memberCardContent.includes('e.shiftKey') &&
-  memberCardContent.includes('last.focus()') &&
-  memberCardContent.includes('first.focus()'),
-  'Bottom sheet must contain keyboard focus via Tab / Shift+Tab wrapping'
-);
-
-console.log('✅ PASSED: Touch targets >= 44x44px, zero horizontal overflow, and Warm Dark tokens verified.');
-
-console.log('\n🎉 ALL COMPACT MEMBER CARD & PROGRESSIVE DISCLOSURE TESTS PASSED CLEANLY! 🦊💤\n');
-process.exit(0);

@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   ExternalLink,
-  ShieldAlert,
   Sparkles,
   Moon,
   Sun,
@@ -16,17 +15,13 @@ import {
   BedDouble,
   Clock,
   RefreshCw,
-  Check,
   Bell,
   Calendar,
-  ChevronDown,
   X,
-  RotateCcw,
 } from 'lucide-react';
 import type { Member } from '@/lib/db';
 import { formatTime12h, type MemberState } from '@/lib/sleepEngine';
 import { formatGmtOffset } from '@/lib/timezone';
-import { FoxMascot } from './FoxMascot';
 
 interface MemberCardProps {
   member: Member;
@@ -84,8 +79,6 @@ export function MemberCard({
   onCancelInBed,
   isCheckingIn = false,
   onOpenMetastrike,
-  isVotingStrike = false,
-  isModerator = false,
   onOpenSleepCalendar,
   onOpenPunishments,
   onOpenProfile,
@@ -97,7 +90,7 @@ export function MemberCard({
   // Progressive Disclosure Bottom Sheet state & focus management refs
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const sheetDialogRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const detailsTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Optimistic UI state for "I'm In Bed" check-in & "Wake Up" undo
   const [optimisticInBed, setOptimisticInBed] = useState<boolean | null>(null);
@@ -143,22 +136,15 @@ export function MemberCard({
   useEffect(() => {
     if (!isDetailsOpen) return;
 
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const detailsTrigger = detailsTriggerRef.current;
 
     const focusableControls = () => Array.from(sheetDialogRef.current?.querySelectorAll<HTMLElement>(
       'button, [href], input, [tabindex]'
     ) ?? []).filter(element => element.tabIndex >= 0 && !element.matches(':disabled') &&
       element.getClientRects().length > 0 && getComputedStyle(element).visibility === 'visible');
 
-    // Focus the first visible control inside the dialog.
-    const focusTimer = setTimeout(() => {
-      const firstFocusable = focusableControls()[0];
-      if (firstFocusable) {
-        firstFocusable.focus();
-      } else {
-        sheetDialogRef.current?.focus();
-      }
-    }, 50);
+    const firstFocusable = focusableControls()[0];
+    (firstFocusable ?? sheetDialogRef.current)?.focus({ preventScroll: true });
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -199,9 +185,8 @@ export function MemberCard({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      clearTimeout(focusTimer);
       window.removeEventListener('keydown', handleKeyDown);
-      previousFocusRef.current?.focus();
+      detailsTrigger?.focus({ preventScroll: true });
     };
   }, [isDetailsOpen]);
 
@@ -371,12 +356,6 @@ export function MemberCard({
     state.isSleepShieldActive ||
     bucket === 'SLEEPING' ||
     isMetastrikeActive
-  );
-
-  // Check if there is an active left action button in the sleeping state (Wake up nag, or Shield On)
-  const hasSleepingActionButton = Boolean(
-    (state.isPastWakeTime && (isViewer || canSendPushNag)) ||
-    (isTargetShieldOn && !isViewer)
   );
 
   // Nag Notif dispatch states
@@ -587,381 +566,126 @@ export function MemberCard({
     }
   };
 
-  // Single-line, non-wrapping status pill configuration
-  const getStatusPillConfig = () => {
-    if (isNagNow) {
-      const isGrace = state.status === 'BEDTIME_GRACE' || bucket === 'BEDTIME_GRACE';
-      const label = isGrace
-        ? `${state.graceMinutesLeft || 5}m grace`
-        : `${Math.max(1, Math.floor(state.diffMinutes))}m overdue`;
-      return {
-        className: 'bg-status-coral/15 text-status-coral',
-        icon: isGrace ? (
-          <Clock className="h-3.5 w-3.5 shrink-0" />
-        ) : (
-          <ShieldAlert className="h-3.5 w-3.5 shrink-0 animate-pulse" />
-        ),
-        label,
-      };
-    }
-    if (bucket === 'WINDING_DOWN') {
-      const minsLeft = Math.abs(Math.floor(state.diffMinutes));
-      return {
-        className: 'bg-status-amber/15 text-status-amber',
-        icon: <Sparkles className="h-3.5 w-3.5 shrink-0" />,
-        label: `in ${minsLeft}m`,
-      };
-    }
-    if (bucket === 'SLEEPING') {
-      return {
-        className: 'bg-night-elevated text-cream-muted',
-        icon: <Moon className="h-3.5 w-3.5 shrink-0 text-cream-muted" />,
-        label: isInBed ? 'In Bed' : 'Sleeping',
-      };
-    }
-    // AWAKE
-    if (isWokeUp) {
-      return {
-        className: 'bg-status-amber/15 text-status-amber border border-status-amber/30',
-        icon: <Sun className="h-3.5 w-3.5 shrink-0 text-status-amber" />,
-        label: 'Awake',
-      };
-    }
-    const totalMins = Math.max(0, Math.round(-state.diffMinutes));
-    const hours = Math.floor(totalMins / 60);
-    const mins = totalMins % 60;
-    const label = hours > 0 ? `in ${hours}h ${mins}m` : `in ${mins}m`;
-    return {
-      className: 'bg-night-elevated text-cream-muted',
-      icon: <Sun className="h-3.5 w-3.5 shrink-0 text-cream-muted" />,
-      label,
-    };
-  };
+  const isSleeping = bucket === 'SLEEPING';
+  const isWindingDown = bucket === 'WINDING_DOWN';
+  const isGrace = state.status === 'BEDTIME_GRACE' || bucket === 'BEDTIME_GRACE';
+  const roleLabel = member.role === 'owner' ? 'Owner' : member.role === 'moderator' || member.is_moderator ? 'Moderator' : null;
 
-  const statusPillConfig = getStatusPillConfig();
-
-  // Subtle border and resting opacity variations anchored to night-surface
-  let cardBorderAndResting = 'border-night-border';
-  if (isNagNow) {
-    cardBorderAndResting = 'border-status-coral/40 shadow-sm shadow-status-coral/5';
-  } else if (bucket === 'WINDING_DOWN') {
-    cardBorderAndResting = 'border-status-amber/30';
-  } else if (bucket === 'SLEEPING') {
-    cardBorderAndResting = 'border-night-border opacity-85 hover:opacity-100';
-  } else {
-    cardBorderAndResting = 'border-night-border hover:border-night-border/80';
+  let statusLabel = 'Awake';
+  let statusColor = 'text-cream-secondary';
+  let cardBorder = 'border-night-border';
+  if (isSleeping) {
+    statusLabel = isInBed ? 'In bed' : 'Sleeping';
+  } else if (isNagNow) {
+    statusLabel = isGrace
+      ? `${state.graceMinutesLeft || 5}m grace`
+      : `${Math.max(1, Math.floor(state.diffMinutes))}m overdue`;
+    statusColor = 'text-status-coral';
+    cardBorder = 'border-status-coral/40';
+  } else if (isWindingDown) {
+    statusLabel = `In ${Math.abs(Math.floor(state.diffMinutes))}m`;
+    statusColor = 'text-status-amber';
+    cardBorder = 'border-status-amber/30';
   }
+
+  const recordsJournalAssist = !isViewer && !isSleeping && (isNagNow || isWindingDown);
+  let journalLabel = isSleeping ? 'Quiet Note' : 'Journal';
+  let journalStyle = 'border-night-border bg-night-elevated text-cream-secondary hover:text-cream-primary';
+  if (recordsJournalAssist && isNagNow) {
+    journalLabel = hasNagged ? 'Nagged! Reopen Journal' : 'Nag in Journal';
+    journalStyle = 'border-status-coral bg-status-coral text-night-bg hover:bg-status-coral/90';
+  } else if (recordsJournalAssist && isWindingDown) {
+    journalLabel = hasNagged ? 'Noted! Reopen Journal' : 'Say Goodnight';
+    journalStyle = 'border-status-amber/50 text-status-amber hover:bg-status-amber/10';
+  }
+
+  const focusStyle = 'focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-status-amber';
+  const journalLink = (className: string) => (
+    <a
+      href={member.journal_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={recordsJournalAssist ? handleNagJournalClick : undefined}
+      className={`flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-lg border px-2 py-0.5 text-center text-sm font-semibold leading-4 transition-colors ${journalStyle} ${focusStyle} ${className}`}
+    >
+      <span className="min-w-0">{journalLabel}</span>
+      {(!recordsJournalAssist || !hasNagged) && <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+    </a>
+  );
+
+  const openFromDetails = (open: () => void) => {
+    detailsTriggerRef.current?.focus({ preventScroll: true });
+    setIsDetailsOpen(false);
+    open();
+  };
 
   return (
     <>
-      {/* 1. Compact Primary Card View: Primary Identifiers + Direct Action & Disclosure Trigger */}
       <div
         role="region"
         aria-label={`${member.discord_username} member card`}
-        onClick={() => {
-          triggerHaptic(10);
-          setIsDetailsOpen(true);
-        }}
-        className={`w-full max-w-full overflow-hidden flex flex-col justify-between p-2.5 sm:p-3.5 gap-2 sm:gap-2.5 rounded-2xl bg-night-surface border transition-all cursor-pointer hover:border-night-border/90 active:scale-[0.99] select-none ${cardBorderAndResting}`}
+        className={`w-full max-w-full overflow-hidden flex min-w-0 flex-col justify-between gap-1 rounded-xl border bg-night-surface px-2.5 py-2 ${cardBorder}`}
       >
-        {/* Top Zone: Fixed avatar wrapper, strict single-line Name+Star, Sub-header badges, and right clock + pill */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0 flex-1">
-            {/* Avatar Wrapper anchored to the top-left */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleProfileClick();
-              }}
-              className="relative shrink-0 w-11 h-11 rounded-full flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-status-amber/50 transition-all focus:outline-none"
-              title={`View ${member.discord_username}'s profile, sleep calendar history & weekly timetable`}
-              aria-label={`View ${member.discord_username}'s profile`}
-            >
-              <img
-                src={avatarSrc}
-                alt={member.discord_username}
-                onError={() => setAvatarSrc(fallbackAvatarUrl)}
-                className="w-11 h-11 rounded-full object-cover border border-night-border bg-night-elevated"
-              />
-              {isInBed && (
-                <span
-                  className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-status-amber text-night-bg shadow font-bold"
-                  title="Checked into bed"
-                >
-                  <Check className="h-2.5 w-2.5 stroke-[3]" />
-                </span>
-              )}
-            </button>
-
-            {/* Identity Stack */}
-            <div className="flex flex-col min-w-0 flex-1 gap-1">
-              {/* Name + Star Row: Strict single-line flex container */}
-              <div className="flex items-center gap-1.5 min-w-0">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleProfileClick();
-                  }}
-                  className="truncate min-h-[44px] min-w-[44px] inline-flex items-center font-semibold text-base leading-tight text-cream-primary hover:text-status-amber hover:underline transition-colors text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-status-amber/40 rounded px-0.5 -mx-0.5"
-                  title={`View ${member.discord_username}'s profile, sleep calendar history & weekly timetable`}
-                  aria-label={`View ${member.discord_username}'s profile`}
-                >
-                  <span className="truncate">{member.discord_username}</span>
-                </button>
-
-                {/* Watchlist star button: Never wraps to new line */}
-                {onToggleStar && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      triggerHaptic(10);
-                      onToggleStar(member.id);
-                    }}
-                    className={`shrink-0 p-1 -m-1 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
-                      isStarred
-                        ? 'text-status-amber hover:text-status-amber/80'
-                        : 'text-cream-secondary/40 hover:text-cream-secondary'
-                    }`}
-                    title={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
-                    aria-label={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
-                  >
-                    <Star className={`h-4 w-4 ${isStarred ? 'fill-status-amber' : ''}`} />
-                  </button>
-                )}
-              </div>
-
-              {/* Sub-header Badges Row: Clean inline row directly under username */}
-              <div className="flex flex-wrap items-center gap-1.5 min-h-[22px]">
-                {isViewer && (
-                  <span className="rounded bg-status-amber/20 border border-status-amber/40 px-1.5 py-0.5 text-[9px] font-bold text-status-amber shrink-0">
-                    YOU
-                  </span>
-                )}
-
-                {(member.role === 'moderator' || member.is_moderator) && (
-                  <span className="rounded bg-night-elevated border border-night-border px-1.5 py-0.5 text-[9px] font-medium text-cream-secondary shrink-0">
-                    MOD
-                  </span>
-                )}
-
-                {/* Streak milestone badge */}
-                {member.streak_days && member.streak_days > 0 ? (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-full border border-status-amber/30 bg-status-amber/10 px-2 py-0.5 text-[10px] font-semibold text-status-amber shrink-0"
-                    title={streakMilestone?.description || `${member.streak_days} days on track`}
-                  >
-                    <Flame className="h-3 w-3 fill-status-amber text-status-amber" />
-                    <span>{streakMilestone?.badgeLabel || `${member.streak_days}d`}</span>
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Header: Local time & status badge */}
-          <div className="flex flex-col items-end shrink-0 text-right">
-            <span className="text-lg font-bold leading-tight whitespace-nowrap tabular-nums text-cream-primary">
-              {formattedViewerTime}
-            </span>
-            <span
-              className={`whitespace-nowrap mt-1 px-2.5 py-1 text-xs rounded-full inline-flex items-center gap-1.5 ${statusPillConfig.className}`}
-            >
-              {statusPillConfig.icon}
-              <span>{statusPillConfig.label}</span>
-            </span>
-          </div>
-        </div>
-
-        {isViewer && typeof member.open_punishment_count === 'number' && onOpenPunishments && (
-          <button type="button" aria-label={`View punishments, ${member.open_punishment_count} open`} aria-haspopup="dialog"
-            onClick={event => {
-              event.stopPropagation();
-              onOpenPunishments();
-            }}
-            className="inline-flex min-h-[44px] min-w-[44px] items-center self-start rounded-lg border border-status-amber/40 bg-status-amber/10 px-3 text-xs font-semibold text-status-amber">
-            {member.open_punishment_count} open
-          </button>
-        )}
-
-        {/* Action & Disclosure Zone: Contextual Action / Journal Link + Details Trigger */}
-        <div className="flex items-center gap-2 w-full min-w-0 mt-auto pt-1">
-          {isViewer ? (
-            /* Viewer Self-Action Controls */
-            isInBed ? (
-              /* Viewer in bed (Sleeping / Resting): Wake up CTA + optional Undo */
-              <div className="hidden flex-1 min-w-0 items-center gap-1.5 md:flex">
-                {onCancelInBed && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCancelInBedClick();
-                    }}
-                    disabled={isCheckingIn}
-                    className="h-11 min-h-[44px] min-w-[44px] px-2.5 flex items-center justify-center gap-1 rounded-xl border border-night-border bg-night-elevated text-xs font-semibold text-cream-secondary hover:text-cream-primary hover:border-status-amber/40 active:scale-95 transition-all shadow-sm shrink-0"
-                    title="Cancel in-bed check-in and restore active status"
-                    aria-label="Undo in-bed check-in"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5 text-status-amber" />
-                    <span className="truncate hidden xs:inline">Undo</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleWakeUpClick();
-                  }}
-                  disabled={isCheckingIn}
-                  className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber bg-status-amber text-night-bg px-3 text-xs font-bold hover:bg-status-amber/90 active:scale-95 transition-all shadow-sm whitespace-nowrap"
-                  title="Log wake-up right now"
-                  aria-label="I'm Awake check-in"
-                >
-                  <Sun className="h-4 w-4 shrink-0 fill-night-bg stroke-night-bg" />
-                  <span className="truncate">☀️ I&apos;m Awake</span>
-                </button>
-              </div>
-            ) : isNagNow || bucket === 'WINDING_DOWN' ? (
-              /* Viewer Winding Down or Overdue: In Bed CTA */
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCheckInClick();
-                }}
-                disabled={isCheckingIn}
-                className={`hidden flex-1 min-w-0 h-11 min-h-[44px] md:flex items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold text-night-bg shadow transition-transform active:scale-[0.98] whitespace-nowrap ${
-                  isNagNow
-                    ? 'bg-status-coral hover:bg-status-coral/90'
-                    : 'bg-status-amber hover:bg-status-amber/90'
-                }`}
-                title={isNagNow ? "I'm in Bed Now (Mute Nags)" : "I'm in Bed (Goodnight)"}
-                aria-label="I'm in Bed check-in"
-              >
-                <BedDouble className="h-4 w-4 shrink-0" />
-                <span className="truncate">
-                  {isNagNow ? "🛏️ I'm in Bed (Late)" : "🛏️ I'm in Bed"}
-                </span>
-              </button>
-            ) : bucket === 'AWAKE' && state.diffMinutes >= -180 && state.diffMinutes < -60 && onCheckIn ? (
-              /* Viewer Awake within Early Check-In window */
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCheckInClick();
-                }}
-                disabled={isCheckingIn}
-                className="hidden flex-1 min-w-0 h-11 min-h-[44px] md:flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-status-amber/15 text-status-amber px-3 text-xs font-semibold hover:bg-status-amber/25 active:scale-95 transition-all shadow-sm whitespace-nowrap"
-                title="Check into bed early"
-                aria-label="Early check-in into bed"
-              >
-                <BedDouble className="h-4 w-4 shrink-0" />
-                <span className="truncate">🛏️ Early Check-In</span>
-              </button>
-            ) : (
-              /* Viewer Awake outside check-in windows: Direct Discord Journal Deep Link */
-              <a
-                href={member.journal_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 transition-colors px-3 whitespace-nowrap shadow-sm"
-                title="Open Discord Journal"
-              >
-                <span className="truncate">Journal</span>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-              </a>
-            )
-          ) : (
-            /* Peer Members: Direct Discord Journal Deep Link */
-            isNagNow && bucket !== 'SLEEPING' ? (
-              <a
-                href={member.journal_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleNagJournalClick();
-                }}
-                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl bg-status-coral font-semibold text-night-bg transition-all hover:bg-status-coral/90 active:scale-[0.98] text-xs px-3 whitespace-nowrap shadow-sm"
-                title={`Open ${member.discord_username}'s Discord journal to nag`}
-              >
-                <span className="truncate">{hasNagged ? 'Nagged! Reopen Journal' : 'Nag in Journal'}</span>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-              </a>
-            ) : bucket === 'WINDING_DOWN' ? (
-              <a
-                href={member.journal_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleNagJournalClick();
-                }}
-                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-status-amber/40 bg-night-elevated font-medium text-status-amber transition-colors hover:bg-status-amber/15 active:scale-[0.98] text-xs px-3 whitespace-nowrap shadow-sm"
-                title={`Open ${member.discord_username}'s Discord journal to say goodnight`}
-              >
-                <span className="truncate">{hasNagged ? 'Noted! Reopen Journal' : 'Say Goodnight'}</span>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-              </a>
-            ) : bucket === 'SLEEPING' ? (
-              <a
-                href={member.journal_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 transition-colors px-3 whitespace-nowrap shadow-sm"
-                title="Open Discord journal to leave a quiet note"
-              >
-                <span className="truncate">
-                  Quiet Note
-                  <span className="sr-only"> (Leave quiet note)</span>
-                </span>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-              </a>
-            ) : (
-              <a
-                href={member.journal_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-                className="flex-1 min-w-0 h-11 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated text-xs font-medium text-cream-secondary hover:text-cream-primary hover:border-night-border/80 transition-colors px-3 whitespace-nowrap shadow-sm"
-                title="Open Discord Journal"
-              >
-                <span className="truncate">Journal</span>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-              </a>
-            )
-          )}
-
-          {/* Compact Disclosure Trigger */}
+        <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={handleProfileClick}
+            className={`flex min-h-[44px] min-w-[44px] flex-1 items-center gap-2 rounded-lg text-left text-sm font-semibold text-cream-primary transition-colors hover:text-status-amber ${focusStyle}`}
+            title={member.discord_username}
+            aria-label={`View ${member.discord_username}'s profile${isViewer ? ', you' : ''}`}
+          >
+            <img
+              src={avatarSrc}
+              alt=""
+              onError={() => setAvatarSrc(fallbackAvatarUrl)}
+              className="h-8 w-8 shrink-0 rounded-full border border-night-border bg-night-elevated object-cover"
+            />
+            <span className="min-w-0">
+              <span className="block truncate">{member.discord_username}</span>
+              {isViewer && <span className="block text-xs font-medium text-cream-secondary">You</span>}
+            </span>
+          </button>
+          <p className="shrink-0 text-right leading-tight">
+            <span className="sr-only">Bedtime </span>
+            <span className="block whitespace-nowrap text-base font-bold tabular-nums text-cream-primary">{formattedViewerTime}</span>
+            <span className="block text-xs text-cream-secondary">your time</span>
+          </p>
+          {onToggleStar && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic(10);
+                onToggleStar(member.id);
+              }}
+              className={`flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg transition-colors ${focusStyle} ${
+                isStarred ? 'text-status-amber' : 'text-cream-secondary hover:text-cream-primary'
+              }`}
+              title={isStarred ? 'Remove from Starred Buddies' : 'Star as Accountability Buddy'}
+              aria-label={`Star ${member.discord_username}`}
+              aria-pressed={isStarred}
+            >
+              <Star className={`h-4 w-4 ${isStarred ? 'fill-status-amber' : ''}`} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.9fr)_auto] items-center gap-1.5">
+          <p className={`text-sm font-medium leading-tight tabular-nums ${statusColor}`}>{statusLabel}</p>
+          {journalLink('min-w-0 self-stretch')}
+          <button
+            type="button"
+            ref={detailsTriggerRef}
+            onClick={() => {
               triggerHaptic(10);
               setIsDetailsOpen(true);
             }}
             aria-expanded={isDetailsOpen}
-            aria-controls={`member-details-${member.id}`}
+            aria-controls={isDetailsOpen ? `member-details-${member.id}` : undefined}
             aria-haspopup="dialog"
-            aria-label={`View details and actions for ${member.discord_username}`}
-            className="shrink-0 h-11 min-h-[44px] px-3 flex items-center justify-center gap-1.5 rounded-xl border border-night-border bg-night-elevated text-xs font-semibold text-cream-secondary hover:text-cream-primary hover:border-night-border/80 active:scale-95 transition-all shadow-sm"
-            title="View schedule details, accountability metrics & actions"
+            aria-label={`Details for ${member.discord_username}`}
+            className={`min-h-[44px] min-w-[44px] self-stretch rounded-lg px-2 text-sm font-semibold text-cream-secondary transition-colors hover:bg-night-elevated hover:text-cream-primary ${focusStyle}`}
           >
-            <span>Details</span>
-            <ChevronDown className="h-4 w-4 shrink-0 text-cream-muted" />
+            Details
           </button>
         </div>
       </div>
@@ -973,23 +697,20 @@ export function MemberCard({
           id={`member-details-${member.id}`}
           aria-modal="true"
           aria-labelledby={`member-sheet-title-${member.id}`}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-night-bg/80 backdrop-blur-sm p-0 sm:p-4 animate-fade-in"
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsDetailsOpen(false);
-          }}
+          className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-night-bg/80 backdrop-blur-sm p-0 md:p-4 animate-fade-in motion-reduce:animate-none"
+          onClick={() => setIsDetailsOpen(false)}
         >
           <div
             ref={sheetDialogRef}
             tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg max-h-[90vh] sm:max-h-[85vh] bg-night-surface border-t sm:border border-night-border rounded-t-3xl sm:rounded-2xl flex flex-col shadow-2xl overflow-hidden animate-slide-up outline-none"
+            className="w-full max-w-lg max-h-[92dvh] md:max-h-[85dvh] bg-night-surface border-t md:border border-night-border rounded-t-3xl md:rounded-2xl flex flex-col shadow-2xl overflow-hidden animate-slide-up outline-none motion-reduce:animate-none"
           >
             {/* Sheet Handle (Mobile) */}
-            <div className="w-12 h-1 bg-night-border rounded-full mx-auto my-2.5 shrink-0 sm:hidden" />
+            <div className="w-12 h-1 bg-night-border rounded-full mx-auto my-2.5 shrink-0 md:hidden" />
 
             {/* Sheet Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-night-border bg-night-elevated/40">
+            <div className="flex shrink-0 items-center justify-between px-4 py-3 border-b border-night-border bg-night-elevated/40">
               <div className="flex items-center gap-3 min-w-0">
                 <img
                   src={avatarSrc}
@@ -1004,15 +725,15 @@ export function MemberCard({
                   >
                     {member.discord_username}
                   </h3>
-                  <span className="text-xs text-cream-muted truncate tabular-nums">
-                    {formattedViewerTime} local • {statusPillConfig.label}
+                  <span className="text-sm text-cream-secondary tabular-nums">
+                    {statusLabel}
                   </span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsDetailsOpen(false)}
-                className="min-h-[44px] min-w-[44px] -mr-2 p-2 flex items-center justify-center rounded-xl text-cream-secondary hover:text-cream-primary hover:bg-night-elevated transition-colors"
+                className={`min-h-[44px] min-w-[44px] shrink-0 p-2 flex items-center justify-center rounded-xl text-cream-secondary hover:text-cream-primary hover:bg-night-elevated transition-colors ${focusStyle}`}
                 aria-label="Close details"
               >
                 <X className="h-5 w-5" />
@@ -1020,12 +741,12 @@ export function MemberCard({
             </div>
 
             {/* Sheet Scrollable Body */}
-            <div className="overflow-y-auto p-5 flex flex-col gap-4">
+            <div className="overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-4 md:p-5">
               {/* Full Schedule & Timezone Details Row */}
-              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs text-cream-secondary bg-night-elevated/40 px-3 py-2 rounded-xl border border-night-border/50">
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-sm text-cream-secondary bg-night-elevated/40 px-3 py-2 rounded-xl border border-night-border/50">
                 <div className="flex flex-wrap items-center gap-1.5 font-medium text-cream-secondary">
-                  <span className="whitespace-nowrap">
-                    {formattedSleeperTime} → {state.formattedWakeTime || formatTime12h(state.activeWakeTimeLocal || member.wake_time_local || '07:00')}
+                  <span className="min-w-0">
+                    Local schedule: {formattedSleeperTime} – {state.formattedWakeTime || formatTime12h(state.activeWakeTimeLocal || member.wake_time_local || '07:00')}
                   </span>
                   {state.isWeekendSchedule ? (
                     <span
@@ -1045,21 +766,34 @@ export function MemberCard({
                     </span>
                   ) : null}
                 </div>
-                <span className="whitespace-nowrap text-cream-muted">
+                <span className="whitespace-nowrap text-cream-secondary">
                   ({formatGmtOffset(member.timezone)})
                 </span>
               </div>
+
+              {(roleLabel || (member.streak_days ?? 0) > 0) && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-cream-secondary">
+                  {roleLabel && <span>{roleLabel}</span>}
+                  {(member.streak_days ?? 0) > 0 && (
+                    <span className="inline-flex items-center gap-1.5 text-status-amber"
+                      title={streakMilestone?.description}>
+                      <Flame className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      {streakMilestone?.badgeLabel || (member.streak_days + ' days on track')}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Notice Zone */}
               {/* Pending 48-Hour Cooldown Notice */}
               {pendingNotice && (
                 <div
-                  className="text-xs py-2 px-3 rounded-xl whitespace-nowrap overflow-hidden text-ellipsis border border-dashed border-status-amber/40 bg-status-amber/10 text-status-amber tabular-nums flex items-center justify-between"
+                  className="text-xs py-2 px-3 rounded-xl border border-dashed border-status-amber/40 bg-status-amber/10 text-status-amber tabular-nums flex items-center justify-between"
                   title={pendingNotice}
                 >
-                  <span className="flex items-center gap-1.5 truncate">
+                  <span className="flex items-start gap-1.5">
                     <Clock className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{pendingNotice}</span>
+                    <span>{pendingNotice}</span>
                   </span>
                 </div>
               )}
@@ -1146,7 +880,7 @@ export function MemberCard({
                 {member.strike_counts_unavailable ? (
                   <p className="text-xs text-cream-secondary">Strike and pass counts unavailable</p>
                 ) : (
-                  <div className="flex items-center justify-between px-3 py-2 rounded-xl text-xs whitespace-nowrap border border-night-border bg-night-elevated">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-sm">
                     <p className="flex items-center gap-1.5 font-semibold text-fox-rust">
                       <Zap className="h-3.5 w-3.5" aria-hidden="true" />
                       Monthly strikes {strikesUsed}
@@ -1185,12 +919,10 @@ export function MemberCard({
                     type="button"
                     onClick={() => {
                       triggerHaptic(10);
-                      setIsDetailsOpen(false);
-                      if (onOpenSleepCalendar) {
-                        onOpenSleepCalendar(member.id);
-                      } else if (onOpenProfile) {
-                        onOpenProfile(member.id, 'calendar');
-                      }
+                      openFromDetails(() => {
+                        if (onOpenSleepCalendar) onOpenSleepCalendar(member.id);
+                        else onOpenProfile?.(member.id, 'calendar');
+                      });
                     }}
                     className="w-full min-h-[44px] flex items-center justify-between px-3 py-2 rounded-xl border border-night-border bg-night-surface text-xs font-semibold text-cream-primary hover:border-status-amber/40 hover:text-status-amber transition-colors"
                     title="View sleep calendar history & weekly timetable"
@@ -1202,14 +934,24 @@ export function MemberCard({
                     <ExternalLink className="h-3.5 w-3.5 text-cream-muted shrink-0 ml-1" />
                   </button>
 
+                  {isViewer && typeof member.open_punishment_count === 'number' && onOpenPunishments && (
+                    <button
+                      type="button"
+                      aria-haspopup="dialog"
+                      onClick={() => openFromDetails(onOpenPunishments)}
+                      className="min-h-[44px] min-w-[44px] rounded-xl border border-night-border bg-night-surface px-3 py-2 text-left text-sm font-semibold text-cream-primary hover:border-status-amber/40 hover:text-status-amber"
+                    >
+                      Punishments <span className="text-cream-secondary">({member.open_punishment_count} open)</span>
+                    </button>
+                  )}
+
                   {/* Trigger for MetastrikeModal.tsx */}
                   {onOpenMetastrike && isViewer && (
                     <button
                       type="button"
                       onClick={() => {
                         triggerHaptic(10);
-                        setIsDetailsOpen(false);
-                        onOpenMetastrike(member);
+                        openFromDetails(() => onOpenMetastrike(member));
                       }}
                       className="w-full min-h-[44px] flex items-center justify-between px-3 py-2 rounded-xl border border-night-border bg-night-surface text-xs font-semibold text-cream-primary hover:border-status-amber/40 hover:text-status-amber transition-colors"
                     >
@@ -1272,37 +1014,7 @@ export function MemberCard({
                   Actions
                 </span>
 
-                {/* Primary Discord Journal Link inside Sheet */}
-                <a
-                  href={member.journal_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(isNagNow && bucket !== 'SLEEPING') || bucket === 'WINDING_DOWN' ? handleNagJournalClick : undefined}
-                  className={`w-full h-11 min-h-[44px] flex items-center justify-center gap-2 rounded-xl font-semibold transition-all text-xs sm:text-sm px-3 whitespace-nowrap shadow-sm ${
-                    bucket === 'SLEEPING'
-                      ? 'border border-night-border bg-night-elevated text-cream-secondary hover:text-cream-primary hover:border-night-border/80'
-                      : isNagNow
-                      ? 'bg-status-coral text-night-bg hover:bg-status-coral/90 active:scale-[0.98]'
-                      : bucket === 'WINDING_DOWN'
-                      ? 'border border-status-amber/40 bg-night-elevated text-status-amber hover:bg-status-amber/15 active:scale-[0.98]'
-                      : 'border border-night-border bg-night-elevated text-cream-secondary hover:text-cream-primary hover:border-night-border/80'
-                  }`}
-                >
-                  <span className="truncate">
-                    {bucket === 'SLEEPING'
-                      ? 'Quiet Note'
-                      : isNagNow
-                      ? hasNagged
-                        ? 'Nagged! Reopen Journal'
-                        : 'Nag in Discord Journal'
-                      : bucket === 'WINDING_DOWN'
-                      ? hasNagged
-                        ? 'Noted! Reopen Journal'
-                        : 'Say Goodnight in Journal'
-                      : 'Open Discord Journal'}
-                  </span>
-                  <ExternalLink className="h-4 w-4 shrink-0" />
-                </a>
+                {journalLink('w-full')}
 
                 {/* Bucket-Specific Secondary Actions */}
                 {isNagNow && bucket !== 'SLEEPING' && (
@@ -1527,7 +1239,7 @@ export function MemberCard({
                         )}
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 gap-2 w-full">
+                      <>
                         {state.isPastWakeTime && canSendPushNag ? (
                           /* 1. Wake-up reminder if past wake time */
                           <button
@@ -1574,30 +1286,13 @@ export function MemberCard({
                             <span className="truncate">Shield On</span>
                           </button>
                         ) : null}
-
-                        {/* Leave quiet note */}
-                        <a
-                          href={member.journal_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`${
-                            hasSleepingActionButton ? '' : 'col-span-2'
-                          } flex-1 min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-medium rounded-xl whitespace-nowrap transition-colors border border-night-border bg-night-elevated text-cream-secondary hover:text-cream-primary hover:border-night-border/80 shadow-sm`}
-                          title="Open Discord journal to leave a quiet note"
-                        >
-                          <span className="truncate">
-                            Quiet Note
-                            <span className="sr-only"> (Leave quiet note)</span>
-                          </span>
-                          <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                        </a>
-                      </div>
+                      </>
                     )}
                   </div>
                 )}
 
-                {bucket === 'AWAKE' && (
-                  <div className={isViewer && (state.needsWakeUpLog || (isWokeUp && onCheckIn)) ? "grid md:grid-cols-2 gap-2 w-full" : "w-full"}>
+                {bucket === 'AWAKE' && isViewer && (state.needsWakeUpLog || (isWokeUp && onCheckIn)) && (
+                  <div className="w-full">
                     {isViewer && state.needsWakeUpLog && (
                       <button
                         type="button"
@@ -1635,16 +1330,6 @@ export function MemberCard({
                         <span className="truncate">Go to Bed</span>
                       </button>
                     )}
-                    <a
-                      href={member.journal_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 min-h-[44px] min-w-[44px] text-xs font-medium rounded-xl whitespace-nowrap transition-colors border border-night-border bg-night-elevated text-cream-secondary hover:text-cream-primary hover:border-night-border/80 shadow-sm"
-                      title="Open Discord Journal"
-                    >
-                      <span className="truncate">Journal</span>
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                    </a>
                   </div>
                 )}
               </div>

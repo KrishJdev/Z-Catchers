@@ -1,6 +1,11 @@
 import assert from 'assert';
 import fs from 'fs';
 import path from 'path';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { DateTime } from 'luxon';
+import { SleepCalendarModal } from '../src/components/SleepCalendarModal.tsx';
+import { getMemberCalendarDate } from '../src/lib/sleepEngine.ts';
 
 console.log('🧪 Starting Member Profile Modal, Weekly Timetable & Text Overflow Verification...\n');
 
@@ -35,8 +40,8 @@ assert(
   'MemberCard supports onOpenProfile prop'
 );
 assert(
-  memberCardContent.includes('aria-label={`View ${member.discord_username}\'s profile`}'),
-  'MemberCard provides accessible profile trigger on avatar or name'
+  memberCardContent.includes('aria-label={`View ${member.discord_username}\'s profile'),
+  'MemberCard provides an accessible shared avatar and name trigger'
 );
 assert(
   memberCardContent.includes('min-h-[44px] min-w-[44px]') && memberCardContent.includes('handleProfileClick'),
@@ -79,7 +84,7 @@ assert(
   'Modal resolves and displays member name'
 );
 assert(
-  modalContent.includes('resolvedProfile.currentLocalTimeFormatted'),
+  modalContent.includes("localNow.toFormat('h:mm a')"),
   'Modal displays live local time in member timezone'
 );
 assert(
@@ -101,13 +106,13 @@ assert(
   'Modal implements Weekly Timetable tab view'
 );
 assert(
-  modalContent.includes('Weekly Timetable'),
-  'Modal provides tab button for Weekly Timetable'
+  modalContent.includes("key: 'timetable', label: 'Schedule'"),
+  'Schedule opens the existing timetable view'
 );
 
 // C. Weekly Timetable Content
 assert(
-  modalContent.includes('7-Day Sleep & Wake Timetable'),
+  modalContent.includes('Weekly schedule'),
   'Timetable section header is rendered'
 );
 assert(
@@ -137,6 +142,48 @@ assert(
   'Calendar modal refreshes history when reopened or identities change'
 );
 console.log('✅ PASSED: SleepCalendarModal provides full member profile, weekly timetable, and streak calendar.');
+
+const member = {
+  id: 'fox', discord_username: 'A long name in Kolkata', timezone: 'Asia/Kolkata',
+  bedtime_local: '23:00', wake_time_local: '07:00',
+  journal_url: 'https://discord.com/channels/123/456/789',
+  weekly_schedule: { mon: { bedtime: '21:45', wake_time: '06:15' } },
+};
+const profileMarkup = (props = {}) => renderToStaticMarkup(createElement(SleepCalendarModal, {
+  isOpen: true, member, memberId: member.id, onClose: () => {}, onToggleStar: () => {},
+  ...props,
+}));
+const previousNow = Date.now;
+try {
+  const currentTime = DateTime.fromISO('2026-11-30T18:45:00Z').toMillis();
+  Date.now = () => currentTime;
+  const boundary = DateTime.fromMillis(currentTime, { zone: 'utc' });
+  const utcDate = getMemberCalendarDate('UTC', boundary);
+  const kolkataDate = getMemberCalendarDate('GMT+05:30', boundary);
+  assert.deepEqual([utcDate.month, utcDate.today], ['2026-11', '2026-11-30']);
+  assert.deepEqual([kolkataDate.month, kolkataDate.today], ['2026-12', '2026-12-01']);
+  const peer = profileMarkup({ isStarred: true });
+  assert.match(peer, /Overdue.*12:15 AM local/);
+  assert.match(peer, /href="https:\/\/discord\.com\/channels\/123\/456\/789".*Open journal/);
+  assert.match(peer, /aria-label="Star member" aria-pressed="true"/);
+  assert.match(peer, /aria-current="date"[^>]*aria-label="December 1, No sleep activity recorded"/);
+  assert.doesNotMatch(peer, />Punishments<|Request Metastrike|Edit Wake-Up Time/);
+  assert.doesNotMatch(profileMarkup({ member: { ...member, journal_url: 'https://example.com/channels/123/456' } }), /Open journal/);
+  const byId = profileMarkup({ member: null, memberId: 'peer', currentUser: member });
+  assert.match(byId, />Status unavailable</);
+  assert.match(byId, />November 2026</);
+  assert.doesNotMatch(byId, /12:15 AM local|>Awake</);
+  assert.match(profileMarkup({ member: null, currentUser: member, isMySleep: true }), />December 2026</);
+  const personal = profileMarkup({ isMySleep: true, currentUser: member, onRequestMetastrike: () => {} });
+  assert.match(personal, />Tonight<.*9:45 PM.*6:15 AM/);
+  assert.match(personal, /aria-pressed="true"[^>]*>Calendar<.*>Schedule<.*>Punishments</);
+  const calendarIndex = personal.indexOf('aria-label="Sleep calendar"');
+  const inspectorIndex = personal.indexOf('id="selected-sleep-night"');
+  assert.ok(calendarIndex >= 0 && inspectorIndex > calendarIndex);
+  assert.match(profileMarkup({ isMySleep: true, currentUser: member, initialTab: 'punishments' }), /Loading punishments/);
+} finally {
+  Date.now = previousNow;
+}
 
 // 3. Verify Page Integration
 console.log('\n--- 3. Page.tsx Integration ---');

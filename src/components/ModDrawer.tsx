@@ -17,13 +17,16 @@ import { RosterRoleAction, type ModeratorRoleChange } from '@/components/RosterR
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { FoxMascot } from './FoxMascot';
 import type { Member, ModerationRosterMember } from '@/lib/db';
+import { getScheduleForDay } from '@/lib/sleepEngine';
+import { ModeratorScheduleComparison } from './ModeratorScheduleComparison';
+import { queueNotice } from './ModeratorQueueState';
 import { pendingScheduleSnapshot } from '@/lib/pendingSchedule';
 import { isDemoSeedMember } from '@/lib/demoSeed';
 import { DateTime } from 'luxon';
 import {
   X,
   Shield,
-  Clock,
+  ArrowLeft,
   ExternalLink,
   AlertTriangle,
   CheckCircle2,
@@ -37,17 +40,15 @@ import {
   Power,
   Edit2,
   ChevronRight,
-  ShieldAlert,
   Radio,
   Send,
-  Sun,
 } from 'lucide-react';
 
 const DISCORD_JOURNAL_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/channels\/\d+\/\d+(\/\d+)?$/;
 const DISCORD_WEBHOOK_REGEX = /^https:\/\/(ptb\.|canary\.)?discord\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+$/;
 const TIME_FORMAT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone, DayKey, DailySchedule, WeeklySchedule, DAY_KEYS } from '@/lib/timezone';
+import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, toValidLuxonZone, DayKey, DailySchedule, WeeklySchedule, DAY_KEYS } from '@/lib/timezone';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
 
 const DAY_LABELS: Record<DayKey, { short: string; full: string }> = {
@@ -59,6 +60,25 @@ const DAY_LABELS: Record<DayKey, { short: string; full: string }> = {
   sat: { short: 'Sat', full: 'Saturday' },
   sun: { short: 'Sun', full: 'Sunday' },
 };
+
+const moderationTabs = [
+  ['pending', 'Approvals'],
+  ['roster', 'Roster'],
+  ['punishments', 'Punishments'],
+  ['metastrikes', 'Metastrikes'],
+] as const;
+const secondaryButton = 'inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-night-border px-3 py-1.5 text-sm font-semibold text-cream-primary hover:bg-night-elevated focus-visible:outline focus-visible:outline-status-amber disabled:opacity-50';
+const primaryButton = 'inline-flex min-h-[44px] items-center justify-center rounded-lg bg-status-amber px-3 py-1.5 text-sm font-bold text-night-bg focus-visible:outline focus-visible:outline-status-amber disabled:opacity-50';
+type MemberAction = 'active' | 'clear' | 'wake';
+
+const memberRoleLabel = (member: Member) => member.role === 'owner' ? 'Owner' : member.role === 'moderator' ? 'Moderator' : 'Member';
+const strikeTotal = (member: Member) => Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0);
+const passTotal = (member: Member) => Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0);
+
+function RosterAvatar({ member }: { member: Member }) {
+  return <img src={member.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(member.discord_username)}`}
+    alt="" className="h-9 w-9 shrink-0 rounded-full bg-night-elevated object-cover" />;
+}
 
 interface ModDrawerProps {
   isOpen: boolean;
@@ -104,12 +124,20 @@ export function ModDrawer({
 
   // Moderator roster data (includes inactive and pending members)
   const [modMembers, setModMembers] = useState<ModerationRosterMember[]>([]);
+  const [rosterStatus, setRosterStatus] = useState<'loading' | 'ready' | 'error' | 'denied'>('loading');
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{ action: MemberAction; member: Member } | null>(null);
+  const contentPane = useRef<HTMLDivElement>(null);
+  const detailPane = useRef<HTMLElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const rosterTrigger = useRef<HTMLButtonElement>(null);
+  const rosterScroll = useRef(0);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [rosterRefreshFailed, setRosterRefreshFailed] = useState(false);
   const rosterRequest = useRef(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [strikeReviewMemberId, setStrikeReviewMemberId] = useState<string | null>(null);
-  const [roleChangeMemberId, setRoleChangeMemberId] = useState<string | null>(null);
+  const [roleChangeTarget, setRoleChangeTarget] = useState<Member | null>(null);
   const [savingRoleChange, setSavingRoleChange] = useState(false);
 
   // Editing member state
@@ -132,13 +160,17 @@ export function ModDrawer({
 
   const isModUser = Boolean(currentUser?.is_moderator);
 
-  const isOwner = isModUser && currentUser?.role === 'owner';
+  const actorRole = currentUser?.role;
+  const isOwner = isModUser && actorRole === 'owner';
   const actorId = currentUser?.id;
   const canManage = useCallback((member: Member) => isModUser && member.id !== actorId &&
     (member.role === 'member' || (isOwner && member.role === 'moderator')), [isModUser, actorId, isOwner]);
-  const strikeReviewMember = isModUser
-    ? modMembers.find(member => member.id === strikeReviewMemberId && member.can_review_strikes)
-    : undefined;
+  const selectedMember = modMembers.find(member => member.id === selectedMemberId);
+  const strikeReviewMember = isModUser && selectedMember?.id === strikeReviewMemberId && selectedMember.can_review_strikes
+    ? selectedMember : undefined;
+  const activeEditor = selectedMember && editingMember?.id === selectedMember.id &&
+    editingMember.role === selectedMember.role && canManage(selectedMember) && !rosterRefreshFailed
+    ? editingMember : null;
 
   useEffect(() => {
     try {
@@ -161,8 +193,15 @@ export function ModDrawer({
       if (!res.ok) throw new Error('Could not load the moderation roster.');
       const data = await res.json();
       if (request !== rosterRequest.current) return;
-      if (!background) setRoleChangeMemberId(null);
-      setModMembers(data.members);
+      const roster: ModerationRosterMember[] = data.members;
+      const actor = roster.find(member => member.id === actorId);
+      if (!actor?.is_active || actor.role !== actorRole) {
+        accessDenied = true;
+        onAccessChanged?.();
+        throw new Error('Moderation access changed.');
+      }
+      setModMembers(roster);
+      setRosterStatus('ready');
       setRosterRefreshFailed(false);
     } catch (err) {
       if (request !== rosterRequest.current) return;
@@ -172,13 +211,17 @@ export function ModDrawer({
         return;
       }
       setRosterRefreshFailed(false);
-      setErrorMessage('Could not load the moderation roster.');
-      setRoleChangeMemberId(null);
+      setRosterStatus(accessDenied ? 'denied' : 'error');
       setModMembers([]);
     } finally {
       if (request === rosterRequest.current) setLoadingMembers(false);
     }
-  }, [onAccessChanged]);
+  }, [actorId, actorRole, onAccessChanged]);
+
+  const handleDrawerAccessChanged = useCallback(() => {
+    onAccessChanged?.();
+    void fetchModRoster(true);
+  }, [onAccessChanged, fetchModRoster]);
 
   const fetchWebhookStatus = useCallback(async () => {
     try {
@@ -195,26 +238,75 @@ export function ModDrawer({
   }, [onAccessChanged]);
 
   useEffect(() => {
-    if (isOpen && isModUser) {
-      setErrorMessage(null);
-      setSuccessMessage(null);
-      void fetchModRoster();
-    }
-    if (!isModUser) {
-      setModMembers([]);
-      setEditingMember(null);
-    }
+    setSelectedMemberId(null);
+    setEditingMember(null);
+    setRoleChangeTarget(null);
+    setStrikeReviewMemberId(null);
+    setConfirmation(null);
+    setModMembers([]);
+    setRosterStatus('loading');
+    setRosterRefreshFailed(false);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    if (isOpen && isModUser) void fetchModRoster();
     return () => { rosterRequest.current += 1; };
   }, [isOpen, isModUser, fetchModRoster]);
 
   useEffect(() => {
-    if (!isOpen || !isOwner || activeTab !== 'roster') setRoleChangeMemberId(null);
-    if (!isOpen || activeTab !== 'roster' || !strikeReviewMember) setStrikeReviewMemberId(null);
+    if (!isOpen || !isModUser) return;
+    // Return from another app or browser tab with current actor and target permissions.
+    const refreshOnFocus = () => {
+      if (document.visibilityState === 'visible') void fetchModRoster(true);
+    };
+    window.addEventListener('focus', refreshOnFocus);
+    return () => window.removeEventListener('focus', refreshOnFocus);
+  }, [isOpen, isModUser, fetchModRoster]);
+
+  useEffect(() => {
+    if (!isOpen || rosterStatus === 'denied') return;
+    const viewport = window.visualViewport;
+    const dialog = contentPane.current?.closest('dialog');
+    if (!viewport || !dialog) return;
+    const syncViewport = () => {
+      dialog.style.setProperty('--mod-viewport-height', `${viewport.height}px`);
+      dialog.style.setProperty('--mod-viewport-bottom', `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`);
+    };
+    syncViewport();
+    viewport.addEventListener('resize', syncViewport);
+    viewport.addEventListener('scroll', syncViewport);
+    return () => {
+      viewport.removeEventListener('resize', syncViewport);
+      viewport.removeEventListener('scroll', syncViewport);
+    };
+  }, [isOpen, rosterStatus]);
+
+  useEffect(() => {
     if (!isOwner && activeTab === 'webhook') setActiveTab('pending');
-    setEditingMember(member => member && canManage(member) ? member : null);
-  }, [isOpen, isOwner, activeTab, canManage, strikeReviewMember]);
+    if (selectedMemberId && !selectedMember) {
+      setSelectedMemberId(null);
+      requestAnimationFrame(() => searchInput.current?.focus());
+    }
+    if (editingMember && !activeEditor) {
+      setEditingMember(null);
+      if (selectedMember) requestAnimationFrame(() => document.getElementById('mod-member-heading')?.focus());
+    }
+    if (strikeReviewMemberId && (!strikeReviewMember || rosterRefreshFailed)) {
+      setStrikeReviewMemberId(null);
+      if (selectedMember) requestAnimationFrame(() => document.getElementById('mod-member-heading')?.focus());
+    }
+    if (roleChangeTarget && (!isOwner || !selectedMember || !canManage(selectedMember) || rosterRefreshFailed ||
+      selectedMember.role !== roleChangeTarget.role || selectedMember.is_active !== roleChangeTarget.is_active ||
+      selectedMember.discord_id !== roleChangeTarget.discord_id)) setRoleChangeTarget(null);
+    if (confirmation && (!selectedMember || !canManage(selectedMember) || rosterRefreshFailed ||
+      selectedMember.role !== confirmation.member.role || selectedMember.is_active !== confirmation.member.is_active ||
+      selectedMember.is_in_bed !== confirmation.member.is_in_bed ||
+      selectedMember.last_notified_cycle_date !== confirmation.member.last_notified_cycle_date ||
+      selectedMember.last_wake_cycle_date !== confirmation.member.last_wake_cycle_date)) setConfirmation(null);
+  }, [isOwner, activeTab, selectedMemberId, selectedMember, editingMember, activeEditor, strikeReviewMemberId,
+    strikeReviewMember, roleChangeTarget, canManage, rosterRefreshFailed, confirmation]);
 
   const handleModeratorRoleChange = async (change: ModeratorRoleChange, member: Member) => {
+    setRoleChangeTarget(null);
     setSavingRoleChange(true);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -227,7 +319,7 @@ export function ModDrawer({
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
       const data = await res.json();
       if (!res.ok) {
-        if ([401, 403, 404, 409].includes(res.status)) await fetchModRoster();
+        if ([401, 403, 404, 409].includes(res.status)) await fetchModRoster(true);
         setErrorMessage(data.error || 'Could not change moderator access.');
         return;
       }
@@ -235,12 +327,12 @@ export function ModDrawer({
       setSuccessMessage(change.new_role === 'moderator'
         ? `${member.discord_username} is now a moderator.`
         : `Removed moderator access for ${member.discord_username}.`);
-      await fetchModRoster();
+      await fetchModRoster(true);
       await onRosterChanged();
     } catch {
       setErrorMessage('Could not confirm the role change. Refresh the roster before trying again.');
-      setRoleChangeMemberId(null);
-      await fetchModRoster();
+      setRoleChangeTarget(null);
+      await fetchModRoster(true);
     } finally {
       setSavingRoleChange(false);
     }
@@ -273,7 +365,7 @@ export function ModDrawer({
 
       const data = await res.json();
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
-      if (res.status === 409) await fetchModRoster();
+      if ([403, 404, 409].includes(res.status)) await fetchModRoster(true);
       if (!res.ok) {
         setWebhookStatusMessage({
           type: 'error',
@@ -321,7 +413,7 @@ export function ModDrawer({
 
       const data = await res.json();
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
-      if (res.status === 409) await fetchModRoster();
+      if ([403, 404, 409].includes(res.status)) await fetchModRoster(true);
       if (!res.ok) {
         setWebhookStatusMessage({
           type: 'error',
@@ -381,14 +473,14 @@ export function ModDrawer({
 
       const data = await res.json();
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
-      if (res.status === 409) await fetchModRoster();
+      if ([403, 404, 409].includes(res.status)) await fetchModRoster(true);
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to approve schedule change.');
         return;
       }
 
       setSuccessMessage(data.message || 'Schedule approved immediately!');
-      await fetchModRoster();
+      await fetchModRoster(true);
       await onRosterChanged();
     } catch {
       setErrorMessage('Network error approving change.');
@@ -418,14 +510,14 @@ export function ModDrawer({
 
       const data = await res.json();
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
-      if (res.status === 409) await fetchModRoster();
+      if ([403, 404, 409].includes(res.status)) await fetchModRoster(true);
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to cancel schedule change.');
         return;
       }
 
       setSuccessMessage('Pending change was rejected and cancelled.');
-      await fetchModRoster();
+      await fetchModRoster(true);
       await onRosterChanged();
     } catch {
       setErrorMessage('Network error cancelling change.');
@@ -487,7 +579,8 @@ export function ModDrawer({
   // Action: Save Immediate Member Edit (Bypass 48h)
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingMember) return;
+    if (!activeEditor || actionLoadingId) return;
+    const editingMember = activeEditor;
 
     if (!DISCORD_JOURNAL_REGEX.test(editJournalUrl.trim())) {
       setErrorMessage('Invalid Discord Journal URL. Format: https://discord.com/channels/{guild}/{thread}');
@@ -565,9 +658,10 @@ export function ModDrawer({
 
       const data = await res.json();
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
+      if ([403, 404].includes(res.status)) await fetchModRoster(true);
       if (res.status === 409) {
-        setEditingMember(null);
-        await fetchModRoster();
+        setEditingMember(current => current === editingMember ? null : current);
+        await fetchModRoster(true);
         setErrorMessage('The profile changed. Review the refreshed schedule before editing again.');
         return;
       }
@@ -577,8 +671,9 @@ export function ModDrawer({
       }
 
       setSuccessMessage(data.message || 'Member schedule updated immediately with zero cooldown!');
-      setEditingMember(null);
-      await fetchModRoster();
+      setEditingMember(current => current === editingMember ? null : current);
+      focusControl(`edit-schedule-${editingMember.id}`);
+      await fetchModRoster(true);
       await onRosterChanged();
     } catch {
       setErrorMessage('Network error saving edit.');
@@ -604,14 +699,14 @@ export function ModDrawer({
 
       const data = await res.json();
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
-      if (res.status === 409) await fetchModRoster();
+      if ([403, 404, 409].includes(res.status)) await fetchModRoster(true);
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to adjust the Metastrike balance.');
         return;
       }
 
       setSuccessMessage(`Metastrikes used by ${member.discord_username}: ${data.metastrikes_used}/3`);
-      await fetchModRoster();
+      await fetchModRoster(true);
       await onRosterChanged();
       setTimeout(() => setSuccessMessage(null), 3500);
     } catch {
@@ -637,14 +732,14 @@ export function ModDrawer({
 
       const data = await res.json();
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
-      if (res.status === 409) await fetchModRoster();
+      if ([403, 404, 409].includes(res.status)) await fetchModRoster(true);
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to clear the Metastrike.');
         return;
       }
 
       setSuccessMessage(data.message);
-      await fetchModRoster();
+      await fetchModRoster(true);
       await onRosterChanged();
       setTimeout(() => setSuccessMessage(null), 3500);
     } catch {
@@ -674,14 +769,14 @@ export function ModDrawer({
 
       const data = await res.json();
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
-      if (res.status === 409) await fetchModRoster();
+      if ([403, 404, 409].includes(res.status)) await fetchModRoster(true);
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to change member status.');
         return;
       }
 
       setSuccessMessage(data.message);
-      await fetchModRoster();
+      await fetchModRoster(true);
       await onRosterChanged();
     } catch {
       setErrorMessage('Network error updating member status.');
@@ -717,12 +812,12 @@ export function ModDrawer({
       });
       const data = await res.json();
       if (res.status === 401 || res.status === 403) onAccessChanged?.();
-      if (res.status === 409) await fetchModRoster();
+      if ([403, 404, 409].includes(res.status)) await fetchModRoster(true);
       if (!res.ok) {
         setErrorMessage(data.error || 'Failed to purge demo profiles.');
       } else {
         setSuccessMessage(data.message || 'Purged demo profiles successfully.');
-        await fetchModRoster();
+        await fetchModRoster(true);
         await onRosterChanged();
       }
     } catch {
@@ -732,1078 +827,928 @@ export function ModDrawer({
     }
   };
 
-  if (!isOpen || !isModUser) return null;
+  function focusControl(id: string, startOfDetail = false) {
+    requestAnimationFrame(() => {
+      if (startOfDetail) {
+        if (detailPane.current) detailPane.current.scrollTop = 0;
+        if (contentPane.current) contentPane.current.scrollTop = 0;
+      }
+      document.getElementById(id)?.focus({ preventScroll: startOfDetail });
+    });
+  }
+
+  function clearMemberForms() {
+    setEditingMember(null);
+    setStrikeReviewMemberId(null);
+    setRoleChangeTarget(null);
+    setConfirmation(null);
+  }
+
+  function changeTab(tab: typeof activeTab) {
+    if (tab === activeTab) return;
+    clearMemberForms();
+    setSelectedMemberId(null);
+    setActiveTab(tab);
+    if (contentPane.current) contentPane.current.scrollTop = 0;
+  }
+
+  function openMember(member: ModerationRosterMember, trigger: HTMLButtonElement) {
+    if (selectedMemberId === member.id) return;
+    if (!selectedMemberId) rosterScroll.current = contentPane.current?.scrollTop ?? 0;
+    rosterTrigger.current = trigger;
+    clearMemberForms();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setSelectedMemberId(member.id);
+    focusControl('mod-member-heading', true);
+  }
+
+  function backToRoster() {
+    clearMemberForms();
+    setSelectedMemberId(null);
+    requestAnimationFrame(() => {
+      if (contentPane.current) contentPane.current.scrollTop = rosterScroll.current;
+      const trigger = rosterTrigger.current;
+      (trigger?.isConnected ? trigger : searchInput.current)?.focus({ preventScroll: true });
+    });
+  }
+
+  function refreshRoster() {
+    return fetchModRoster(rosterStatus === 'ready');
+  }
+
+  async function handleUndoSleep(member: Member) {
+    setActionLoadingId(`wake_${member.id}`);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const res = await fetch('/api/members/in-bed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: member.id, action: 'cancel' }),
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) handleDrawerAccessChanged();
+        if (res.status === 409 || res.status === 404) await fetchModRoster(true);
+        const data = await res.json().catch(() => ({}));
+        setErrorMessage(data.error || 'Failed to reset sleep status.');
+        return;
+      }
+      setSuccessMessage(`Reset sleep status for ${member.discord_username} to Awake.`);
+      await fetchModRoster(true);
+      await onRosterChanged();
+    } catch {
+      setErrorMessage('Network error resetting sleep status.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  function renderMemberTools(member: ModerationRosterMember) {
+    const allowed = !rosterRefreshFailed && canManage(member);
+    const canManageAccount = isOwner && allowed;
+    const busy = Boolean(actionLoadingId) || savingRoleChange;
+    const presentTime = (bedtime: string, wake: string) => (
+      <span className="tabular-nums">{bedtime} bedtime · {wake} wake</span>
+    );
+    const confirmAction = (action: MemberAction, label: string, prompt: string, run: () => Promise<void>) => {
+      const confirming = confirmation?.action === action && confirmation.member.role === member.role && confirmation.member.is_active === member.is_active;
+      const id = `mod-member-confirm-${action}`;
+      return (
+        <div className="space-y-2">
+          <button type="button" id={`${id}-trigger`} aria-expanded={confirming} aria-controls={confirming ? id : undefined}
+            disabled={busy} className={secondaryButton + ' !text-status-coral'}
+            onClick={() => {
+              setRoleChangeTarget(null);
+              setConfirmation(confirming ? null : { action, member });
+              if (!confirming) focusControl(`${id}-cancel`);
+            }}>
+            {label}
+          </button>
+          {confirming && (
+            <div id={id} className="rounded-lg border border-night-border bg-night-bg p-3 text-sm">
+              <p className="break-words">{prompt} <strong>{member.discord_username}</strong>?</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" className={primaryButton + ' !bg-status-coral'} disabled={busy} onClick={() => {
+                  setConfirmation(null);
+                  focusControl('mod-member-heading');
+                  void run();
+                }}>Confirm</button>
+                <button type="button" id={`${id}-cancel`} className={secondaryButton} onClick={() => {
+                  setConfirmation(null);
+                  focusControl(`${id}-trigger`);
+                }}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    return (
+      <>
+        <section aria-labelledby="mod-member-schedule" className="space-y-2 border-t border-night-border pt-3">
+          <h4 id="mod-member-schedule" className="font-semibold">Schedule</h4>
+          <p className="break-words text-sm text-cream-secondary">
+            {member.weekly_schedule ? 'Weekly schedule' : presentTime(member.bedtime_local, member.wake_time_local)} · {member.timezone}
+          </p>
+          {member.weekly_schedule && (
+            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm text-cream-secondary">
+              {DAY_KEYS.map((day, index) => {
+                const { bedtime, wake_time } = getScheduleForDay(member, DateTime.utc(2020, 1, 6).plus({ days: index }));
+                return (
+                  <React.Fragment key={day}>
+                    <dt>{DAY_LABELS[day].short}</dt>
+                    <dd>{presentTime(bedtime, wake_time)}</dd>
+                  </React.Fragment>
+                );
+              })}
+            </dl>
+          )}
+          {!member.weekly_schedule && (member.weekend_bedtime_local || member.weekend_wake_time_local) && (
+            <p className="text-sm text-cream-secondary">
+              Fri, Sat · {presentTime(member.weekend_bedtime_local || member.bedtime_local, member.weekend_wake_time_local || member.wake_time_local)}
+            </p>
+          )}
+          {member.pending_effective_at && <p className="text-sm text-status-amber">Schedule change pending</p>}
+          <div className="flex flex-wrap gap-2">
+            {allowed && (
+              <button type="button" id={`edit-schedule-${member.id}`} aria-label={`Edit schedule for ${member.discord_username}`}
+                className={secondaryButton} disabled={busy} onClick={() => {
+                  setConfirmation(null);
+                  setRoleChangeTarget(null);
+                  startEditMember(member);
+                  focusControl('mod-schedule-editor-heading', true);
+                }}>
+                <Edit2 className="h-4 w-4" aria-hidden="true" /> Edit schedule
+              </button>
+            )}
+            {DISCORD_JOURNAL_REGEX.test(member.journal_url) && (
+              <a href={member.journal_url} target="_blank" rel="noopener noreferrer" className={secondaryButton}
+                aria-label={`Open Discord Journal Thread for ${member.discord_username}`}>
+                Open journal <ExternalLink className="h-4 w-4" aria-hidden="true" />
+              </a>
+            )}
+          </div>
+          {allowed && member.is_active && (member.is_in_bed || (member.last_notified_stage === 'IN_BED_EARLY' &&
+            member.last_notified_cycle_date !== member.last_wake_cycle_date)) &&
+            confirmAction('wake', 'Wake Up / Undo Sleep', 'Undo the sleep check-in for', () => handleUndoSleep(member))}
+        </section>
+
+        {(member.can_review_strikes || canManageAccount) && (
+          <section aria-labelledby="mod-member-accountability" className="space-y-2 border-t border-night-border pt-3">
+            <h4 id="mod-member-accountability" className="font-semibold">Accountability</h4>
+            {member.strike_counts_unavailable ? (
+              <p className="text-sm text-cream-secondary">Strike and pass counts unavailable</p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-cream-secondary">
+                <p>Strikes <strong className="tabular-nums text-cream-primary">{strikeTotal(member)}</strong></p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>Metastrikes <strong className="tabular-nums text-cream-primary">{passTotal(member)}/3</strong></span>
+                  {canManageAccount && (
+                    <div className="flex gap-1">
+                      <button type="button" aria-label="Decrease Metastrikes used" disabled={busy || passTotal(member) <= 0}
+                        className={secondaryButton + ' min-w-[44px]'} onClick={() => void handleAdjustPasses(member, -1)}>−</button>
+                      <button type="button" aria-label="Increase Metastrikes used" disabled={busy || passTotal(member) >= 3}
+                        className={secondaryButton + ' min-w-[44px]'} onClick={() => void handleAdjustPasses(member, 1)}>+</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {member.can_review_strikes && !rosterRefreshFailed && (
+              <button type="button" id={`review-strikes-${member.id}`} aria-label={`Edit strikes for ${member.discord_username}`}
+                className={secondaryButton} disabled={busy} onClick={() => {
+                  setErrorMessage(null);
+                  setSuccessMessage(null);
+                  setConfirmation(null);
+                  setRoleChangeTarget(null);
+                  setStrikeReviewMemberId(member.id);
+                }}>Edit strikes</button>
+            )}
+            {canManageAccount && confirmAction('clear', 'Clear tonight’s Metastrike', 'Clear tonight’s Metastrike for', () => handleClearMetastrikeLog(member))}
+          </section>
+        )}
+
+        <section aria-labelledby="mod-member-access" className="space-y-2 border-t border-night-border pt-3">
+          <h4 id="mod-member-access" className="font-semibold">Account access</h4>
+          <p className="break-words text-sm text-cream-secondary">
+            {member.discord_id ? 'Discord linked' : 'Discord not linked'}{member.discord_handle && ` · @${member.discord_handle}`}
+          </p>
+          {canManageAccount && (
+            <>
+              <RosterRoleAction member={member} isOwner busy={busy}
+                confirming={roleChangeTarget?.id === member.id && roleChangeTarget.role === member.role &&
+                  roleChangeTarget.is_active === member.is_active && roleChangeTarget.discord_id === member.discord_id}
+                onToggle={() => {
+                  setConfirmation(null);
+                  setRoleChangeTarget(target => target?.id === member.id ? null : member);
+                }}
+                onConfirm={change => { focusControl('mod-member-heading'); void handleModeratorRoleChange(change, member); }} />
+              {confirmAction('active', member.is_active ? 'Deactivate member' : 'Reactivate member',
+                member.is_active ? 'Deactivate' : 'Reactivate', () => handleToggleActive(member))}
+            </>
+          )}
+        </section>
+      </>
+    );
+  }
+
+  if (!isOpen || !isModUser || rosterStatus === 'denied') return null;
+
+  const scheduleEditor = activeEditor && (
+    <div className="border-t border-night-border pt-3">
+      <div className="flex items-center justify-between border-b border-night-border pb-3">
+        <div className="flex items-center gap-2">
+          <Edit2 className="h-4 w-4 text-status-amber" />
+          <h4 id="mod-schedule-editor-heading" tabIndex={-1} className="break-words text-sm font-bold text-cream-primary">
+            Edit schedule
+          </h4>
+        </div>
+        <button
+          type="button"
+          onClick={() => { setEditingMember(null); focusControl(`edit-schedule-${activeEditor.id}`); }}
+          title="Close edit form"
+          aria-label="Close edit form"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded p-1 text-cream-muted hover:text-cream-primary"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <p className="mt-2 text-xs text-status-amber">
+        Changes apply immediately and resolve any pending schedule request.
+      </p>
+
+      <form onSubmit={handleSaveEdit} className="mt-4 space-y-3">
+        {/* Mode Switcher: Quick Weekday/Weekend vs 7-Day Variable */}
+        <div className="flex rounded-xl bg-night-surface p-1 border border-night-border">
+          <button
+            type="button"
+            onClick={() => setEditScheduleMode('quick')}
+            className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-all min-h-[44px] ${
+              editScheduleMode === 'quick'
+                ? 'bg-status-amber text-night-bg shadow'
+                : 'text-cream-muted hover:text-cream-secondary'
+            }`}
+          >
+            Quick Hours
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditScheduleMode('7day')}
+            className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-all min-h-[44px] ${
+              editScheduleMode === '7day'
+                ? 'bg-status-amber text-night-bg shadow'
+                : 'text-cream-muted hover:text-cream-secondary'
+            }`}
+          >
+            7-Day Variable Routine
+          </button>
+        </div>
+
+        {editScheduleMode === 'quick' ? (
+          <>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-[11px] font-semibold text-cream-muted">
+                  Bedtime (24h HH:mm)
+                </label>
+                <input
+                  type="time"
+                  value={editBedtime}
+                  onChange={(e) => setEditBedtime(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-cream-muted">
+                  Wake Time (24h HH:mm)
+                </label>
+                <input
+                  type="time"
+                  value={editWakeTime}
+                  onChange={(e) => setEditWakeTime(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Weekend Hours Grid */}
+            <div className="rounded-xl border border-night-border/70 bg-night-surface/50 p-2.5 space-y-2">
+              <span className="text-[11px] font-bold text-cream-secondary flex items-center gap-1.5">
+                <span>🌙</span>
+                <span>Weekend Hours (Friday &amp; Saturday Nights - Optional)</span>
+              </span>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-[10px] font-medium text-cream-muted">
+                    Weekend Bedtime (24h)
+                  </label>
+                  <input
+                    type="time"
+                    value={editWeekendBedtime}
+                    onChange={(e) => setEditWeekendBedtime(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-cream-muted">
+                    Weekend Wake Time (24h)
+                  </label>
+                  <input
+                    type="time"
+                    value={editWeekendWakeTime}
+                    onChange={(e) => setEditWeekendWakeTime(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          /* 7-Day Variable Schedule Editor */
+          <div className="rounded-xl border border-night-border/70 bg-night-surface/50 p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-cream-secondary flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-status-amber" />
+                <span>7-Day Custom Sleep Routine</span>
+              </span>
+              <span className="text-[10px] text-cream-muted">
+                Tap any day to customize
+              </span>
+            </div>
+
+            {/* 7-day selector pills */}
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+              {DAY_KEYS.map((day) => {
+                const isSelected = editSelectedDay === day;
+                const schedule = editWeeklySchedule?.[day];
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setEditSelectedDay(day)}
+                    className={`flex flex-col items-center justify-center rounded-xl p-1 text-center transition-all min-h-[44px] ${
+                      isSelected
+                        ? 'bg-status-amber text-night-bg font-bold shadow'
+                        : 'bg-night-bg border border-night-border text-cream-secondary hover:border-status-amber/40'
+                    }`}
+                  >
+                    <span className="text-[10px] uppercase font-semibold">
+                      {DAY_LABELS[day].short}
+                    </span>
+                    <span className="text-[9px] tabular-nums mt-0.5 opacity-90">
+                      {schedule?.bedtime || '--:--'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Active Day Inputs */}
+            {editWeeklySchedule && (
+              <div className="rounded-lg border border-night-border bg-night-bg p-2.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-cream-primary">
+                    {DAY_LABELS[editSelectedDay].full} Night
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!editWeeklySchedule) return;
+                        const src = editWeeklySchedule[editSelectedDay];
+                        setEditWeeklySchedule((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                mon: { ...src },
+                                tue: { ...src },
+                                wed: { ...src },
+                                thu: { ...src },
+                                sun: { ...src },
+                              }
+                            : prev
+                        );
+                      }}
+                      className="rounded px-1.5 py-0.5 text-[9px] font-medium text-cream-muted bg-night-surface hover:text-status-amber border border-night-border min-h-[44px]"
+                    >
+                      Copy to Weekdays
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!editWeeklySchedule) return;
+                        const src = editWeeklySchedule[editSelectedDay];
+                        setEditWeeklySchedule((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                mon: { ...src },
+                                tue: { ...src },
+                                wed: { ...src },
+                                thu: { ...src },
+                                fri: { ...src },
+                                sat: { ...src },
+                                sun: { ...src },
+                              }
+                            : prev
+                        );
+                      }}
+                      className="rounded px-1.5 py-0.5 text-[9px] font-medium text-cream-muted bg-night-surface hover:text-status-amber border border-night-border min-h-[44px]"
+                    >
+                      Apply All 7 Days
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-medium text-cream-muted">
+                      Bedtime (24h)
+                    </label>
+                    <input
+                      type="time"
+                      value={editWeeklySchedule[editSelectedDay]?.bedtime || '23:00'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditWeeklySchedule((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                [editSelectedDay]: {
+                                  ...prev[editSelectedDay],
+                                  bedtime: val,
+                                },
+                              }
+                            : prev
+                        );
+                      }}
+                      className="mt-1 w-full rounded-lg border border-night-border bg-night-surface px-2.5 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-cream-muted">
+                      Wake Time (24h)
+                    </label>
+                    <input
+                      type="time"
+                      value={editWeeklySchedule[editSelectedDay]?.wake_time || '07:00'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditWeeklySchedule((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                [editSelectedDay]: {
+                                  ...prev[editSelectedDay],
+                                  wake_time: val,
+                                },
+                              }
+                            : prev
+                        );
+                      }}
+                      className="mt-1 w-full rounded-lg border border-night-border bg-night-surface px-2.5 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 7-Day Compact Summary Preview */}
+            <div className="rounded-lg border border-night-border/50 bg-night-bg/60 p-2 text-[10px] text-cream-muted">
+              <span className="font-semibold text-cream-secondary block mb-1">
+                7-Day Routine Summary:
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 tabular-nums">
+                {DAY_KEYS.map((k) => (
+                  <span key={`preview-${k}`} className="truncate">
+                    <strong className="text-cream-primary">{DAY_LABELS[k].short}:</strong>{' '}
+                    {editWeeklySchedule?.[k]?.bedtime || '--'} -{' '}
+                    {editWeeklySchedule?.[k]?.wake_time || '--'}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div>
+          <label className="text-[11px] font-semibold text-cream-muted">
+            Timezone (GMT Offset)
+          </label>
+          <TimezoneSelect
+            value={editTimezone}
+            onChange={setEditTimezone}
+            selectClassName="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label className="text-[11px] font-semibold text-cream-muted">
+            Discord Journal Thread URL
+          </label>
+          <input
+            type="url"
+            value={editJournalUrl}
+            onChange={(e) => setEditJournalUrl(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="text-[11px] font-semibold text-cream-muted">
+            Discord Handle / User ID
+          </label>
+          <input
+            type="text"
+            value={editHandle}
+            onChange={(e) => setEditHandle(e.target.value)}
+            placeholder="e.g. @marcus_ldn"
+            className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={() => { setEditingMember(null); focusControl(`edit-schedule-${activeEditor.id}`); }}
+            className="min-h-[44px] rounded-xl border border-night-border bg-night-bg px-4 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary whitespace-nowrap transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={Boolean(actionLoadingId)}
+            className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl bg-status-amber px-4 py-2 text-xs font-bold text-night-bg hover:opacity-95 disabled:opacity-50 whitespace-nowrap shadow-sm transition-opacity"
+          >
+            {actionLoadingId === 'save-edit' ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <Zap className="h-3.5 w-3.5 fill-current" />
+                <span>Save & Apply Immediately</span>
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 
   return (
     <ResponsiveDialog labelledBy="mod-panel-title" onClose={onClose}
-      className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-2xl md:p-6 lg:max-w-3xl">
-        {/* Mobile drag handle indicator */}
-        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-night-border md:hidden shrink-0" />
-
-        {/* Modal Top Header */}
-        <div className="flex items-center justify-between border-b border-night-border pb-4">
-          <div className="flex items-center gap-3">
-            <FoxMascot state="logo" size={32} />
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 id="mod-panel-title" className="text-base font-bold text-cream-primary sm:text-lg">
-                  Mod Panel
-                </h2>
-                <span className="rounded-md bg-status-coral/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-status-coral">
-                  {isOwner ? 'Owner' : 'Moderator'}
-                </span>
+      className="!overflow-hidden bottom-[var(--mod-viewport-bottom,0px)] md:max-w-3xl xl:max-w-5xl">
+      <div className="flex h-[min(92dvh,var(--mod-viewport-height,92dvh))] min-h-0 flex-col md:h-[min(50rem,90dvh)]">
+        <header className="shrink-0 border-b border-night-border px-3 pb-2 pt-2 sm:px-5">
+          <div className="mx-auto mb-1 h-1.5 w-12 rounded-full bg-night-border md:hidden" aria-hidden="true" />
+          <div className="flex flex-wrap items-center justify-between gap-x-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="shrink-0"><FoxMascot state="logo" size={28} /></span>
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                <h2 id="mod-panel-title" className="text-base font-bold sm:text-lg">Mod Panel</h2>
+                <span className="text-xs font-semibold text-status-coral">{isOwner ? 'Owner' : 'Moderator'}</span>
               </div>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              title="Close moderator panel"
-              aria-label="Close moderator panel"
-              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 text-cream-muted transition-colors hover:bg-night-elevated hover:text-cream-primary"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Status Alerts */}
-        {rosterRefreshFailed && (
-          <div className="mt-4 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral">
-            <p role="alert">Could not refresh the roster. The balances shown may be out of date.</p>
-            <button type="button" onClick={() => void fetchModRoster(true)} disabled={loadingMembers}
-              className="mt-2 min-h-[44px] rounded-lg border border-night-border px-3 font-semibold text-cream-primary disabled:opacity-50">
-              Retry roster refresh
-            </button>
-          </div>
-        )}
-        {errorMessage && (
-          <div role="alert" className="mt-4 flex items-start gap-2.5 rounded-xl border border-status-coral/40 bg-status-coral/10 p-3 text-xs text-status-coral">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            <p className="flex-1">{errorMessage}</p>
-          </div>
-        )}
-
-        {successMessage && (
-          <div role="status" className="mt-4 flex items-start gap-2.5 rounded-xl border border-status-sage/40 bg-status-sage/10 p-3 text-xs text-status-sage">
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <p className="flex-1">{successMessage}</p>
-          </div>
-        )}
-
-          <div className="mt-4 flex flex-col">
-            {/* Tab Navigation Pill Bar */}
-            <div className="grid grid-cols-2 gap-1 rounded-xl border border-night-border bg-night-elevated p-1 text-xs sm:grid-cols-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('pending');
-                  setEditingMember(null);
-                }}
-                aria-pressed={activeTab === 'pending'}
-                className={`flex min-w-0 flex-wrap items-center justify-center gap-1 rounded-lg px-1 py-2 font-semibold transition-all min-h-[44px] ${
-                  activeTab === 'pending'
-                    ? 'bg-status-amber text-night-bg shadow-sm'
-                    : 'text-cream-muted hover:text-cream-primary'
-                }`}
-              >
-                <span>Approvals</span>
-                {pendingMembers.length > 0 && (
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                      activeTab === 'pending'
-                        ? 'bg-night-bg text-status-amber'
-                        : 'bg-status-coral text-cream-primary'
-                    }`}
-                  >
-                    {pendingMembers.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('roster');
-                  setEditingMember(null);
-                }}
-                aria-pressed={activeTab === 'roster'}
-                className={`flex min-w-0 flex-wrap items-center justify-center gap-1 rounded-lg px-1 py-2 font-semibold transition-all min-h-[44px] ${
-                  activeTab === 'roster'
-                    ? 'bg-status-amber text-night-bg shadow-sm'
-                    : 'text-cream-muted hover:text-cream-primary'
-                }`}
-              >
-                <span>Roster</span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                    activeTab === 'roster'
-                      ? 'bg-night-bg text-status-amber'
-                      : 'bg-night-surface border border-night-border text-cream-muted'
-                  }`}
-                >
-                  {modMembers.length}
-                </span>
-              </button>
-
-
-              <button type="button" aria-pressed={activeTab === 'punishments'} onClick={() => {
-                setActiveTab('punishments');
-                setEditingMember(null);
-              }} className={`min-h-[44px] rounded-lg px-1 py-2 font-semibold ${activeTab === 'punishments' ? 'bg-status-amber text-night-bg shadow-sm' : 'text-cream-secondary hover:text-cream-primary'}`}>
-                Punishments
-              </button>
-              <button type="button" aria-pressed={activeTab === 'metastrikes'} onClick={() => {
-                setActiveTab('metastrikes');
-                setEditingMember(null);
-              }} className={`min-h-[44px] rounded-lg px-1 py-2 font-semibold ${activeTab === 'metastrikes' ? 'bg-status-amber text-night-bg shadow-sm' : 'text-cream-secondary hover:text-cream-primary'}`}>
-                Metastrikes
+            <div className="flex items-center">
+              {isOwner && (
+                <button type="button" aria-pressed={activeTab === 'webhook'} onClick={() => {
+                  changeTab('webhook');
+                  void fetchWebhookStatus();
+                }} className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-status-amber hover:bg-night-elevated focus-visible:outline focus-visible:outline-status-amber aria-pressed:bg-night-elevated">
+                  <Radio className="h-3.5 w-3.5" aria-hidden="true" /> Advanced
+                </button>
+              )}
+              <button type="button" onClick={onClose} aria-label="Close moderator panel" autoFocus
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-cream-secondary hover:bg-night-elevated focus-visible:outline focus-visible:outline-status-amber">
+                <X className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
-            {isOwner && <button type="button" aria-pressed={activeTab === 'webhook'} onClick={() => {
-              setActiveTab('webhook');
-              setEditingMember(null);
-              void fetchWebhookStatus();
-            }} className="flex min-h-[44px] items-center gap-2 self-start rounded-lg px-2 text-xs font-semibold text-status-amber">
-              <Radio className="h-3.5 w-3.5" aria-hidden="true" /> Advanced
-            </button>}
-
-            {activeTab === 'punishments' && (
-              <ModeratorPunishmentQueue onTaskChanged={onRosterChanged} onAccessChanged={onAccessChanged} />
-            )}
-            {activeTab === 'metastrikes' && (
-              <ModeratorMetastrikeQueue key={actorId} onReviewed={() => void onMetastrikeReviewed()} onAccessChanged={onAccessChanged} />
-            )}
-
-            {/* Sub-View: Inline Member Editor */}
-            {editingMember && (
-              <div className="mt-4 rounded-2xl border border-status-amber/40 bg-night-elevated p-4">
-                <div className="flex items-center justify-between border-b border-night-border pb-3">
-                  <div className="flex items-center gap-2">
-                    <Edit2 className="h-4 w-4 text-status-amber" />
-                    <h4 className="text-sm font-bold text-cream-primary">
-                      Instant Edit: {editingMember.discord_username}
-                    </h4>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setEditingMember(null)}
-                    title="Close edit form"
-                    aria-label="Close edit form"
-                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded p-1 text-cream-muted hover:text-cream-primary"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <p className="mt-2 text-xs text-status-amber">
-                  ⚡ Moderator edits bypass the 48-hour cooldown and take effect immediately. Any pending cooldown request will be resolved.
-                </p>
-
-                <form onSubmit={handleSaveEdit} className="mt-4 space-y-3">
-                  {/* Mode Switcher: Quick Weekday/Weekend vs 7-Day Variable */}
-                  <div className="flex rounded-xl bg-night-surface p-1 border border-night-border">
-                    <button
-                      type="button"
-                      onClick={() => setEditScheduleMode('quick')}
-                      className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-all min-h-[44px] ${
-                        editScheduleMode === 'quick'
-                          ? 'bg-status-amber text-night-bg shadow'
-                          : 'text-cream-muted hover:text-cream-secondary'
-                      }`}
-                    >
-                      Quick Hours
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditScheduleMode('7day')}
-                      className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-all min-h-[44px] ${
-                        editScheduleMode === '7day'
-                          ? 'bg-status-amber text-night-bg shadow'
-                          : 'text-cream-muted hover:text-cream-secondary'
-                      }`}
-                    >
-                      7-Day Variable Routine
-                    </button>
-                  </div>
-
-                  {editScheduleMode === 'quick' ? (
-                    <>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="text-[11px] font-semibold text-cream-muted">
-                            Bedtime (24h HH:mm)
-                          </label>
-                          <input
-                            type="time"
-                            value={editBedtime}
-                            onChange={(e) => setEditBedtime(e.target.value)}
-                            className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-semibold text-cream-muted">
-                            Wake Time (24h HH:mm)
-                          </label>
-                          <input
-                            type="time"
-                            value={editWakeTime}
-                            onChange={(e) => setEditWakeTime(e.target.value)}
-                            className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Weekend Hours Grid */}
-                      <div className="rounded-xl border border-night-border/70 bg-night-surface/50 p-2.5 space-y-2">
-                        <span className="text-[11px] font-bold text-cream-secondary flex items-center gap-1.5">
-                          <span>🌙</span>
-                          <span>Weekend Hours (Friday &amp; Saturday Nights - Optional)</span>
-                        </span>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <div>
-                            <label className="text-[10px] font-medium text-cream-muted">
-                              Weekend Bedtime (24h)
-                            </label>
-                            <input
-                              type="time"
-                              value={editWeekendBedtime}
-                              onChange={(e) => setEditWeekendBedtime(e.target.value)}
-                              className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-medium text-cream-muted">
-                              Weekend Wake Time (24h)
-                            </label>
-                            <input
-                              type="time"
-                              value={editWeekendWakeTime}
-                              onChange={(e) => setEditWeekendWakeTime(e.target.value)}
-                              className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    /* 7-Day Variable Schedule Editor */
-                    <div className="rounded-xl border border-night-border/70 bg-night-surface/50 p-3 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-cream-secondary flex items-center gap-1.5">
-                          <Calendar className="h-3.5 w-3.5 text-status-amber" />
-                          <span>7-Day Custom Sleep Routine</span>
-                        </span>
-                        <span className="text-[10px] text-cream-muted">
-                          Tap any day to customize
-                        </span>
-                      </div>
-
-                      {/* 7-day selector pills */}
-                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-                        {DAY_KEYS.map((day) => {
-                          const isSelected = editSelectedDay === day;
-                          const schedule = editWeeklySchedule?.[day];
-                          return (
-                            <button
-                              key={day}
-                              type="button"
-                              onClick={() => setEditSelectedDay(day)}
-                              className={`flex flex-col items-center justify-center rounded-xl p-1 text-center transition-all min-h-[44px] ${
-                                isSelected
-                                  ? 'bg-status-amber text-night-bg font-bold shadow'
-                                  : 'bg-night-bg border border-night-border text-cream-secondary hover:border-status-amber/40'
-                              }`}
-                            >
-                              <span className="text-[10px] uppercase font-semibold">
-                                {DAY_LABELS[day].short}
-                              </span>
-                              <span className="text-[9px] tabular-nums mt-0.5 opacity-90">
-                                {schedule?.bedtime || '--:--'}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Active Day Inputs */}
-                      {editWeeklySchedule && (
-                        <div className="rounded-lg border border-night-border bg-night-bg p-2.5 space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-cream-primary">
-                              {DAY_LABELS[editSelectedDay].full} Night
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!editWeeklySchedule) return;
-                                  const src = editWeeklySchedule[editSelectedDay];
-                                  setEditWeeklySchedule((prev) =>
-                                    prev
-                                      ? {
-                                          ...prev,
-                                          mon: { ...src },
-                                          tue: { ...src },
-                                          wed: { ...src },
-                                          thu: { ...src },
-                                          sun: { ...src },
-                                        }
-                                      : prev
-                                  );
-                                }}
-                                className="rounded px-1.5 py-0.5 text-[9px] font-medium text-cream-muted bg-night-surface hover:text-status-amber border border-night-border min-h-[44px]"
-                              >
-                                Copy to Weekdays
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!editWeeklySchedule) return;
-                                  const src = editWeeklySchedule[editSelectedDay];
-                                  setEditWeeklySchedule((prev) =>
-                                    prev
-                                      ? {
-                                          ...prev,
-                                          mon: { ...src },
-                                          tue: { ...src },
-                                          wed: { ...src },
-                                          thu: { ...src },
-                                          fri: { ...src },
-                                          sat: { ...src },
-                                          sun: { ...src },
-                                        }
-                                      : prev
-                                  );
-                                }}
-                                className="rounded px-1.5 py-0.5 text-[9px] font-medium text-cream-muted bg-night-surface hover:text-status-amber border border-night-border min-h-[44px]"
-                              >
-                                Apply All 7 Days
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-[10px] font-medium text-cream-muted">
-                                Bedtime (24h)
-                              </label>
-                              <input
-                                type="time"
-                                value={editWeeklySchedule[editSelectedDay]?.bedtime || '23:00'}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setEditWeeklySchedule((prev) =>
-                                    prev
-                                      ? {
-                                          ...prev,
-                                          [editSelectedDay]: {
-                                            ...prev[editSelectedDay],
-                                            bedtime: val,
-                                          },
-                                        }
-                                      : prev
-                                  );
-                                }}
-                                className="mt-1 w-full rounded-lg border border-night-border bg-night-surface px-2.5 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[10px] font-medium text-cream-muted">
-                                Wake Time (24h)
-                              </label>
-                              <input
-                                type="time"
-                                value={editWeeklySchedule[editSelectedDay]?.wake_time || '07:00'}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setEditWeeklySchedule((prev) =>
-                                    prev
-                                      ? {
-                                          ...prev,
-                                          [editSelectedDay]: {
-                                            ...prev[editSelectedDay],
-                                            wake_time: val,
-                                          },
-                                        }
-                                      : prev
-                                  );
-                                }}
-                                className="mt-1 w-full rounded-lg border border-night-border bg-night-surface px-2.5 py-1.5 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 7-Day Compact Summary Preview */}
-                      <div className="rounded-lg border border-night-border/50 bg-night-bg/60 p-2 text-[10px] text-cream-muted">
-                        <span className="font-semibold text-cream-secondary block mb-1">
-                          7-Day Routine Summary:
-                        </span>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 tabular-nums">
-                          {DAY_KEYS.map((k) => (
-                            <span key={`preview-${k}`} className="truncate">
-                              <strong className="text-cream-primary">{DAY_LABELS[k].short}:</strong>{' '}
-                              {editWeeklySchedule?.[k]?.bedtime || '--'} -{' '}
-                              {editWeeklySchedule?.[k]?.wake_time || '--'}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      Timezone (GMT Offset)
-                    </label>
-                    <TimezoneSelect
-                      value={editTimezone}
-                      onChange={setEditTimezone}
-                      selectClassName="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-sm text-cream-primary focus:border-status-amber focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      Discord Journal Thread URL
-                    </label>
-                    <input
-                      type="url"
-                      value={editJournalUrl}
-                      onChange={(e) => setEditJournalUrl(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      Discord Handle / User ID
-                    </label>
-                    <input
-                      type="text"
-                      value={editHandle}
-                      onChange={(e) => setEditHandle(e.target.value)}
-                      placeholder="e.g. @marcus_ldn"
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs text-cream-primary focus:border-status-amber focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingMember(null)}
-                      className="min-h-[44px] rounded-xl border border-night-border bg-night-bg px-4 py-2 text-xs font-semibold text-cream-secondary hover:text-cream-primary whitespace-nowrap transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={actionLoadingId === 'save-edit'}
-                      className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl bg-status-amber px-4 py-2 text-xs font-bold text-night-bg hover:opacity-95 disabled:opacity-50 whitespace-nowrap shadow-sm transition-opacity"
-                    >
-                      {actionLoadingId === 'save-edit' ? (
-                        <>
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                          <span>Saving...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Zap className="h-3.5 w-3.5 fill-current" />
-                          <span>Save & Apply Immediately</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            {activeTab === 'pending' && !editingMember && (
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-cream-muted">
-                    Active 48-Hour Cooldown Queue ({pendingMembers.length})
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => fetchModRoster()}
-                    disabled={loadingMembers}
-                    className="flex items-center gap-1 text-xs text-status-amber hover:underline"
-                  >
-                    <RefreshCw className={`h-3 w-3 ${loadingMembers ? 'animate-spin' : ''}`} />
-                    <span>Refresh</span>
-                  </button>
-                </div>
-
-                {pendingMembers.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center rounded-2xl border border-night-border bg-night-elevated/40 py-10 text-center">
-                    <FoxMascot state="sleeping" size={54} />
-                    <p className="mt-3 text-sm font-semibold text-cream-primary">
-                      The Cooldown Queue is Quiet
-                    </p>
-                    <p className="mt-1 max-w-sm text-xs text-cream-muted">
-                      No members are currently waiting in the 48-hour accountability cooldown queue. All schedules are locked and active.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {pendingMembers.map((member) => {
-                      const effectiveAt = member.pending_effective_at
-                        ? DateTime.fromISO(member.pending_effective_at, { zone: 'utc' })
-                        : null;
-                      const now = DateTime.utc();
-                      const hoursLeft = effectiveAt
-                        ? Math.max(0, Math.floor(effectiveAt.diff(now, 'hours').hours))
-                        : 0;
-                      const minsLeft = effectiveAt
-                        ? Math.max(0, Math.floor(effectiveAt.diff(now, 'minutes').minutes % 60))
-                        : 0;
-
-                      return (
-                        <div
-                          key={member.id}
-                          className="flex flex-col gap-3 rounded-2xl border border-night-border bg-night-elevated p-4 sm:flex-row sm:items-start sm:justify-between"
-                        >
-                          <div className="flex items-start gap-3 min-w-0 flex-1">
-                            <img
-                              src={member.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${member.discord_username}`}
-                              alt={member.discord_username}
-                              className="h-10 w-10 shrink-0 rounded-xl border border-night-border bg-night-surface"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-cream-primary">
-                                  {member.discord_username}
-                                </span>
-                                {member.discord_handle && (
-                                  <span className="text-xs text-cream-muted font-mono">
-                                    {member.discord_handle}
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                                <span className="text-cream-muted">
-                                  Current: <strong className="text-cream-secondary font-semibold">{member.bedtime_local}</strong> ({formatGmtOffset(member.timezone)})
-                                  {member.weekend_bedtime_local && <span> | Weekend: <strong className="text-cream-secondary font-semibold">{member.weekend_bedtime_local}</strong></span>}
-                                </span>
-                                <span className="text-cream-muted">→</span>
-                                <span className="text-status-amber">
-                                  Requested: <strong className="font-semibold">{member.pending_bedtime_local || member.bedtime_local}</strong> ({formatGmtOffset(member.pending_timezone || member.timezone)})
-                                  {member.pending_weekend_bedtime_local && <span> | Weekend: <strong className="font-semibold">{member.pending_weekend_bedtime_local}</strong></span>}
-                                </span>
-                                {member.pending_weekly_schedule && (() => {
-                                  const changedDays = DAY_KEYS.filter((d) => {
-                                    const p = member.pending_weekly_schedule?.[d];
-                                    if (!p) return false;
-                                    const isWeekend = d === 'fri' || d === 'sat';
-                                    const curBed = member.weekly_schedule?.[d]?.bedtime || (isWeekend && member.weekend_bedtime_local) || member.bedtime_local;
-                                    const curWake = member.weekly_schedule?.[d]?.wake_time || (isWeekend && member.weekend_wake_time_local) || member.wake_time_local;
-                                    return p.bedtime !== curBed || p.wake_time !== curWake;
-                                  });
-                                  return (
-                                    <>
-                                      <span className="inline-flex items-center gap-1 rounded bg-status-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-status-amber border border-status-amber/30 shrink-0" title="Includes custom 7-day routine">
-                                        <Calendar className="h-2.5 w-2.5" />
-                                        <span>7-Day Routine</span>
-                                      </span>
-                                      {changedDays.length > 0 && (
-                                        <div className="w-full mt-2 pt-2 border-t border-night-border/40 flex flex-wrap gap-1.5 text-xs">
-                                          {changedDays.map((d) => {
-                                            const p = member.pending_weekly_schedule![d];
-                                            const isWeekend = d === 'fri' || d === 'sat';
-                                            const curBed = member.weekly_schedule?.[d]?.bedtime || (isWeekend && member.weekend_bedtime_local) || member.bedtime_local;
-                                            const curWake = member.weekly_schedule?.[d]?.wake_time || (isWeekend && member.weekend_wake_time_local) || member.wake_time_local;
-                                            return (
-                                              <div
-                                                key={`p-chg-${d}`}
-                                                className="inline-flex items-center gap-1.5 rounded-lg bg-night-surface/80 px-2 py-1 text-xs border border-night-border/60 whitespace-nowrap"
-                                              >
-                                                <span className="font-semibold text-cream-primary">{DAY_LABELS[d].short}:</span>
-                                                <span className="text-cream-muted line-through tabular-nums">{curBed}–{curWake}</span>
-                                                <span className="text-cream-muted">→</span>
-                                                <span className="text-status-amber font-semibold tabular-nums">{p.bedtime}–{p.wake_time}</span>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      )}
-                                    </>
-                                  );
-                                })()}
-                              </div>
-
-                              <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cream-muted">
-                                <Clock className="h-3 w-3 text-status-amber shrink-0" />
-                                <span>
-                                  Automatic promotion in{' '}
-                                  <strong className="text-cream-primary">
-                                    {hoursLeft}h {minsLeft}m
-                                  </strong>
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 pt-1 sm:pt-0">
-                            <button
-                              type="button"
-                              onClick={() => handleCancelCooldown(member)}
-                              disabled={actionLoadingId === `cancel-${member.id}`}
-                              className="min-h-[40px] rounded-xl border border-night-border bg-night-bg px-3.5 py-2 text-xs font-semibold text-cream-secondary transition-colors hover:border-status-coral/40 hover:text-status-coral disabled:opacity-50 whitespace-nowrap shrink-0"
-                            >
-                              {actionLoadingId === `cancel-${member.id}` ? 'Cancelling...' : 'Reject'}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleApproveCooldown(member)}
-                              disabled={actionLoadingId === `approve-${member.id}`}
-                              className="min-h-[40px] flex items-center justify-center gap-1.5 rounded-xl bg-status-sage px-4 py-2 text-xs font-bold text-night-bg transition-opacity hover:opacity-95 disabled:opacity-50 whitespace-nowrap shrink-0 shadow-sm"
-                            >
-                              {actionLoadingId === `approve-${member.id}` ? (
-                                <>
-                                  <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
-                                  <span>Approving...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Zap className="h-3.5 w-3.5 fill-current shrink-0" />
-                                  <span>Approve Now</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+          </div>
+          <nav aria-label="Moderation views" className="mt-1 grid grid-cols-4 gap-0.5 rounded-lg bg-night-bg p-0.5 text-[10px] min-[360px]:text-[11px] sm:gap-1 sm:p-1 sm:text-sm">
+            {moderationTabs.map(([tab, label]) => (
+              <button type="button" key={tab} aria-pressed={activeTab === tab} onClick={() => changeTab(tab)}
+                className="flex min-h-[44px] min-w-0 flex-wrap items-center justify-center gap-x-1 rounded-md px-0.5 font-semibold text-cream-secondary hover:text-cream-primary focus-visible:outline focus-visible:outline-status-amber aria-pressed:bg-status-amber aria-pressed:text-night-bg">
+                {label}
+                {tab === 'pending' && pendingMembers.length > 0 && (
+                  <span className="rounded-full bg-night-surface px-1.5 py-0.5 text-[10px] text-status-amber">{pendingMembers.length}</span>
                 )}
+              </button>
+            ))}
+          </nav>
+        </header>
+
+        {(rosterStatus === 'error' || rosterRefreshFailed || errorMessage || successMessage) && (
+          <div className="shrink-0 space-y-1 border-b border-night-border px-3 py-1.5 sm:px-5">
+            {(rosterStatus === 'error' || rosterRefreshFailed) && (
+              <div className="flex flex-wrap items-center gap-x-2 text-sm text-status-coral">
+                <p role="alert">{rosterRefreshFailed ? 'Could not refresh the roster. The balances shown may be out of date.' : 'Could not load the moderation roster.'}</p>
+                <button type="button" onClick={() => void refreshRoster()} disabled={loadingMembers}
+                  className={secondaryButton}>Retry roster refresh</button>
               </div>
             )}
+            {errorMessage && <p role="alert" className="break-words text-sm text-status-coral">{errorMessage}</p>}
+            {successMessage && <p role="status" className="break-words text-sm text-status-sage">{successMessage}</p>}
+          </div>
+        )}
 
-            {/* TAB 2: FULL ROSTER MANAGEMENT */}
-            {activeTab === 'roster' && !editingMember && strikeReviewMember && (
-              <ModeratorStrikeReview
-                key={strikeReviewMember.id}
-                memberId={strikeReviewMember.id}
-                memberName={strikeReviewMember.discord_username}
-                onAccessChanged={onAccessChanged}
-                onClose={() => {
-                  setStrikeReviewMemberId(null);
-                  requestAnimationFrame(() => document.getElementById(`review-strikes-${strikeReviewMember.id}`)?.focus());
-                }}
-                onChanged={() => {
-                  void fetchModRoster(true);
-                  void onRosterChanged();
-                }}
-              />
-            )}
-            {activeTab === 'roster' && !editingMember && !strikeReviewMember && (
-              <div className="mt-4 space-y-3">
-                {/* Pre-seeded demo profiles banner */}
+        <div ref={contentPane}
+          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 md:pb-4 ${activeTab === 'roster' ? 'xl:overflow-hidden' : ''}`}>
+          {activeTab === 'punishments' && (
+            <section aria-labelledby="mod-punishments-heading" className="space-y-3">
+              <h3 id="mod-punishments-heading" className="text-base font-bold">Punishment queue</h3>
+              <ModeratorPunishmentQueue onTaskChanged={onRosterChanged} onAccessChanged={handleDrawerAccessChanged} />
+            </section>
+          )}
+          {activeTab === 'metastrikes' && (
+            <section aria-labelledby="mod-metastrikes-heading" className="space-y-3">
+              <h3 id="mod-metastrikes-heading" className="text-base font-bold">Metastrike queue</h3>
+              <ModeratorMetastrikeQueue key={actorId} onReviewed={() => void onMetastrikeReviewed()} onAccessChanged={handleDrawerAccessChanged} />
+            </section>
+          )}
+          {activeTab === 'pending' && (
+            <section aria-labelledby="mod-approvals-heading" className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 id="mod-approvals-heading" className="text-base font-bold">Schedule approvals</h3>
+                <button type="button" onClick={() => void refreshRoster()} disabled={loadingMembers || Boolean(actionLoadingId)}
+                  className={secondaryButton}>
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Refresh
+                </button>
+              </div>
+              {loadingMembers && rosterStatus === 'loading' && <p role="status" className={queueNotice}>Loading schedule approvals…</p>}
+              {rosterStatus === 'ready' && pendingMembers.length === 0 && (
+                <div className={queueNotice + ' flex items-center gap-3'}>
+                  <FoxMascot state="sleeping" size={36} />
+                  <p>No pending schedule changes.</p>
+                </div>
+              )}
+              <ul className="space-y-3">
+                {pendingMembers.map(member => {
+                  const effectiveAt = DateTime.fromISO(member.pending_effective_at!, { zone: 'utc' });
+                  return (
+                    <li key={member.id} className="space-y-3 rounded-xl border border-night-border bg-night-elevated p-3 sm:p-4">
+                      <div className="flex items-center gap-3">
+                        <RosterAvatar member={member} />
+                        <h4 className="min-w-0 break-words font-semibold">{member.discord_username}</h4>
+                      </div>
+                      <ModeratorScheduleComparison member={member} />
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-night-border pt-2">
+                        {effectiveAt.isValid && (
+                          <p className="min-w-0 text-sm text-cream-secondary">
+                            Takes effect <time dateTime={member.pending_effective_at!}>
+                              {effectiveAt.setZone(toValidLuxonZone(viewerTimezone)).toFormat('d LLL, t')}
+                            </time> <span className="break-words">({viewerTimezone})</span>
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <button type="button" onClick={() => void handleCancelCooldown(member)}
+                            disabled={Boolean(actionLoadingId) || rosterRefreshFailed} className={secondaryButton + ' hover:text-status-coral'}>
+                            {actionLoadingId === `cancel-${member.id}` ? 'Rejecting…' : 'Reject'}
+                          </button>
+                          <button type="button" onClick={() => void handleApproveCooldown(member)}
+                            disabled={Boolean(actionLoadingId) || rosterRefreshFailed} className={primaryButton}>
+                            {actionLoadingId === `approve-${member.id}` ? 'Approving…' : 'Approve Now'}
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+          {activeTab === 'roster' && (
+            <div className="min-w-0 xl:grid xl:h-full xl:grid-cols-[18rem_minmax(0,1fr)] xl:divide-x xl:divide-night-border">
+              <section aria-labelledby="mod-roster-heading"
+                className={`${selectedMember ? 'hidden xl:block' : ''} min-w-0 space-y-3 xl:overflow-y-auto xl:overscroll-contain xl:pr-4`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 id="mod-roster-heading" className="text-base font-bold">Roster</h3>
+                  <button type="button" onClick={() => void refreshRoster()} disabled={loadingMembers || Boolean(actionLoadingId)}
+                    className={secondaryButton}>Refresh roster</button>
+                </div>
                 {isOwner && hasDemoMembers && (
-                  <div className="flex items-center justify-between rounded-xl border border-status-amber/40 bg-status-amber/10 p-3 text-xs text-status-amber">
-                    <div>
-                      <span className="font-bold">Pre-seeded demo profiles detected</span>
-                      <p className="text-[11px] opacity-80 mt-0.5">
-                        Clean the den so only your friends&apos; real profiles appear.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handlePurgeDemoMembers}
-                      disabled={actionLoadingId === 'purge_demo'}
-                      className="min-h-[44px] shrink-0 rounded-lg bg-status-amber px-3 py-1.5 text-xs font-bold text-night-bg hover:bg-status-amber/90 transition-all disabled:opacity-50"
-                    >
-                      {actionLoadingId === 'purge_demo' ? 'Purging...' : 'Purge Demo Profiles'}
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-night-border p-3 text-sm">
+                    <p className="text-cream-secondary">Demo profiles are still on the roster.</p>
+                    <button type="button" onClick={() => void handlePurgeDemoMembers()}
+                      disabled={Boolean(actionLoadingId)} className={secondaryButton}>
+                      {actionLoadingId === 'purge_demo' ? 'Purging…' : 'Purge Demo Profiles'}
                     </button>
                   </div>
                 )}
-
-                {/* Search Bar */}
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-cream-muted" aria-hidden="true" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    aria-label="Search roster"
-                    placeholder="Search by username, handle, or timezone..."
-                    className="min-h-[44px] w-full rounded-xl border border-night-border bg-night-bg pl-9 pr-4 py-2 text-xs text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
-                  />
+                  <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-cream-secondary" aria-hidden="true" />
+                  <input type="search" ref={searchInput} value={searchQuery} onChange={event => setSearchQuery(event.target.value)}
+                    aria-label="Search roster" placeholder="Name, handle, or timezone"
+                    className="min-h-[44px] w-full rounded-lg border border-night-border bg-night-bg py-2 pl-9 pr-3 text-base placeholder:text-cream-muted focus-visible:outline focus-visible:outline-status-amber" />
                 </div>
-
-                <div className="space-y-2">
-                  {filteredRoster.map((member) => (
-                    <div
-                      key={member.id}
-                      className={`flex flex-col gap-3 rounded-2xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
-                        member.is_active
-                          ? 'border-night-border bg-night-elevated'
-                          : 'border-night-border/40 bg-night-surface/60 opacity-60'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <img
-                          src={member.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${member.discord_username}`}
-                          alt={member.discord_username}
-                          className="h-9 w-9 shrink-0 rounded-xl border border-night-border bg-night-surface"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-cream-primary text-sm">
-                              {member.discord_username}
-                            </span>
-                            {member.role !== 'member' && (
-                              <span className="rounded bg-status-amber/20 px-1.5 py-0.5 text-[9px] font-bold text-status-amber">
-                                {member.role === 'owner' ? 'Owner' : 'Moderator'}
-                              </span>
+                {loadingMembers && rosterStatus === 'loading' && <p role="status" className={queueNotice}>Loading members…</p>}
+                {rosterStatus === 'ready' && filteredRoster.length === 0 && (
+                  <p className={queueNotice}>{searchQuery.trim() ? 'No members matched your search.' : 'No members on the roster.'}</p>
+                )}
+                <ul className="divide-y divide-night-border">
+                  {filteredRoster.map(member => (
+                    <li key={member.id}>
+                      <button type="button" id={`mod-roster-member-${member.id}`} aria-controls={selectedMember?.id === member.id ? 'mod-member-detail' : undefined}
+                        aria-current={selectedMember?.id === member.id ? 'true' : undefined}
+                        onClick={event => openMember(member, event.currentTarget)}
+                        className="flex min-h-[60px] w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-night-elevated focus-visible:outline focus-visible:outline-status-amber aria-[current=true]:bg-night-elevated">
+                        <RosterAvatar member={member} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold" title={member.discord_username}>{member.discord_username}</span>
+                          <span className="flex flex-wrap gap-x-2 text-xs text-cream-secondary">
+                            <span>{memberRoleLabel(member)}{!member.is_active && ' · Inactive'}</span>
+                            {member.can_review_strikes && !member.strike_counts_unavailable && (
+                              <span className="tabular-nums">{strikeTotal(member)} {strikeTotal(member) === 1 ? 'strike' : 'strikes'}</span>
                             )}
-                            <span
-                              className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
-                                member.is_active
-                                  ? 'bg-status-sage/20 text-status-sage'
-                                  : 'bg-night-border text-cream-muted'
-                              }`}
-                            >
-                              {member.is_active ? 'ACTIVE' : 'DEACTIVATED'}
-                            </span>
-                          </div>
-
-                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-cream-muted">
-                            <span>Bedtime: <strong className="text-cream-secondary">{member.bedtime_local}</strong></span>
-                            {member.weekend_bedtime_local && (
-                              <span className="rounded bg-status-amber/15 border border-status-amber/30 px-1.5 py-0.2 text-[10px] font-semibold text-status-amber">
-                                🌙 Fri/Sat: {member.weekend_bedtime_local}
-                              </span>
-                            )}
-                            <span>•</span>
-                            <span>{formatGmtOffset(member.timezone)}</span>
-                            <span>•</span>
-                            <span className={member.discord_id ? 'text-status-sage' : 'text-status-amber'}>
-                              {(member.discord_id ? 'Linked Discord' : 'Discord not linked')}
-                            </span>
-                          </div>
-
-                          <RosterRoleAction
-                            member={member}
-                            isOwner={isOwner && canManage(member)}
-                            confirming={roleChangeMemberId === member.id}
-                            busy={savingRoleChange}
-                            onToggle={() => setRoleChangeMemberId(selected => selected === member.id ? null : member.id)}
-                            onConfirm={change => void handleModeratorRoleChange(change, member)}
-                          />
-
-                          {/* Strike progress and Metastrike balance */}
-                          <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl border border-night-border/70 bg-night-bg/50 px-2.5 py-1.5 text-[11px]">
-                            {member.strike_counts_unavailable ? (
-                              <span className="text-cream-secondary">Strike and pass counts unavailable</span>
-                            ) : (
-                              <>
-                                <span className="flex items-center gap-1 font-semibold text-fox-rust">
-                                  <Zap className="h-3 w-3 fill-fox-rust" aria-hidden="true" />
-                                  <span>Strikes</span>
-                                  <strong className="tabular-nums">{Math.max(member.strikes_used ?? 0, member.strikes_count ?? 0)}</strong>
-                                </span>
-
-                                {/* Metastrikes Adjuster */}
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-semibold text-fox-amber flex items-center gap-1">
-                                    <Shield className="h-3 w-3 fill-fox-amber/20 text-fox-amber" />
-                                    <span>Metastrikes</span>
-                                    <strong className="tabular-nums font-bold">{Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0)}/3</strong>
-                                  </span>
-                                  <div className="flex items-center gap-0.5 ml-1">
-                                    {isOwner && canManage(member) && (<button
-                                      type="button"
-                                      onClick={() => handleAdjustPasses(member, -1)}
-                                      disabled={actionLoadingId === `passes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) <= 0}
-                                      className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                      aria-label="Decrease Metastrikes used"
-                                      title="Decrease Metastrikes used"
-                                    >
-                                      -
-                                    </button>)}
-                                    {isOwner && canManage(member) && (<button
-                                      type="button"
-                                      onClick={() => handleAdjustPasses(member, 1)}
-                                      disabled={actionLoadingId === `passes_${member.id}` || Math.max(member.metastrikes_used ?? 0, member.metastrikes_count ?? 0) >= 3}
-                                      className="min-h-[44px] min-w-[44px] rounded-md bg-night-elevated text-xs font-bold text-cream-secondary hover:text-cream-primary disabled:opacity-30 border border-night-border flex items-center justify-center transition-colors"
-                                      aria-label="Increase Metastrikes used"
-                                      title="Increase Metastrikes used"
-                                    >
-                                      +
-                                    </button>)}
-                                  </div>
-                                </div>
-
-                              </>
-                            )}
-
-                            {member.can_review_strikes && (
-                              <button type="button" id={`review-strikes-${member.id}`}
-                                aria-label={`Edit strikes for ${member.discord_username}`}
-                                onClick={() => {
-                                  setErrorMessage(null);
-                                  setSuccessMessage(null);
-                                  setStrikeReviewMemberId(member.id);
-                                }}
-                                className="min-h-[44px] rounded-lg border border-night-border bg-night-elevated px-2 text-xs font-semibold text-cream-primary hover:border-status-amber">
-                                Edit strikes
-                              </button>
-                            )}
-                            {isOwner && canManage(member) && (<button
-                              type="button"
-                              onClick={() => handleClearMetastrikeLog(member)}
-                              disabled={actionLoadingId === `clear_${member.id}`}
-                              className="min-h-[44px] text-[10px] text-cream-muted hover:text-fox-rust underline transition-colors"
-                            >
-                              Clear tonight&apos;s Metastrike
-                            </button>)}
-
-                            {canManage(member) && member.is_active && (member.is_in_bed || (member.last_notified_stage === 'IN_BED_EARLY' &&
-                              member.last_notified_cycle_date !== member.last_wake_cycle_date)) && (
-                              <>
-                                <span className="text-cream-muted">•</span>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    setActionLoadingId(`wake_${member.id}`);
-                                    try {
-                                      const res = await fetch('/api/members/in-bed', {
-                                        method: 'POST',
-                                        headers: {
-                                          'Content-Type': 'application/json',
-                                        },
-                                        body: JSON.stringify({ memberId: member.id, action: 'cancel' }),
-                                      });
-                                      if (res.ok) {
-                                        setSuccessMessage(`Reset sleep status for ${member.discord_username} to Awake.`);
-                                        await fetchModRoster();
-                                        await onRosterChanged();
-                                      } else {
-                                        if (res.status === 401 || res.status === 403) onAccessChanged?.();
-                                        const d = await res.json().catch(() => ({}));
-                                        setErrorMessage(d.error || 'Failed to reset sleep status.');
-                                      }
-                                    } catch {
-                                      setErrorMessage('Network error resetting sleep status.');
-                                    } finally {
-                                      setActionLoadingId(null);
-                                    }
-                                  }}
-                                  disabled={actionLoadingId === `wake_${member.id}`}
-                                  className="min-h-[44px] text-[10px] text-status-amber hover:underline transition-colors flex items-center gap-1"
-                                  title="Wake up member and cancel in-bed check-in"
-                                >
-                                  <Sun className="h-3 w-3 text-status-amber" />
-                                  <span>Wake Up / Undo Sleep</span>
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Member Actions */}
-                      <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
-                        <a
-                          href={member.journal_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Open Discord Journal Thread"
-                          aria-label={`Open Discord Journal Thread for ${member.discord_username}`}
-                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 text-cream-muted transition-colors hover:bg-night-border hover:text-cream-primary"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-
-
-                        {canManage(member) && (<button
-                          type="button"
-                          onClick={() => startEditMember(member)}
-                          title="Edit member schedule immediately"
-                          aria-label={`Edit schedule for ${member.discord_username}`}
-                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 text-cream-muted transition-colors hover:bg-night-border hover:text-cream-primary"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </button>)}
-
-                        {isOwner && canManage(member) && (<button
-                          type="button"
-                          onClick={() => handleToggleActive(member)}
-                          disabled={actionLoadingId === `toggle-${member.id}`}
-                          title={member.is_active ? 'Deactivate member' : 'Reactivate member'}
-                          aria-label={`${member.is_active ? 'Deactivate' : 'Reactivate'} member ${member.discord_username}`}
-                          className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 transition-colors ${
-                            member.is_active
-                              ? 'text-cream-muted hover:bg-night-border hover:text-status-coral'
-                              : 'text-status-sage hover:bg-night-border'
-                          }`}
-                        >
-                          <Power className="h-4 w-4" />
-                        </button>)}
-                      </div>
-                    </div>
+                          </span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-cream-secondary" aria-hidden="true" />
+                      </button>
+                    </li>
                   ))}
+                </ul>
+              </section>
 
-                  {filteredRoster.length === 0 && (
-                    <div className="p-6 text-center text-xs text-cream-muted">
-                      No members matched your search.
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* TAB 3: ADD NEW MEMBER */}
-            {isOwner && activeTab === 'webhook' && !editingMember && (
-              <div className="mt-4 space-y-4">
-                <div className="rounded-2xl border border-night-border bg-night-elevated p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="rounded-xl border border-status-amber/30 bg-night-surface p-2.5">
-                      <Radio className="h-6 w-6 text-status-amber" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-bold text-cream-primary">
-                        Automated Discord Channel Webhooks
+              {selectedMember ? (
+                <section id="mod-member-detail" aria-labelledby="mod-member-heading" ref={detailPane}
+                  className="min-w-0 space-y-4 xl:overflow-y-auto xl:overscroll-contain xl:pl-5">
+                  <button type="button" className={secondaryButton + ' xl:hidden'} onClick={backToRoster}>
+                    <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to roster
+                  </button>
+                  <div className="flex items-center gap-3">
+                    <RosterAvatar member={selectedMember} />
+                    <div className="min-w-0">
+                      <h3 id="mod-member-heading" tabIndex={-1} className="break-words text-lg font-bold focus-visible:outline-status-amber">
+                        {selectedMember.discord_username}
                       </h3>
-                      <p className="mt-1 text-xs text-cream-muted leading-relaxed">
-                        Broadcasts automated bedtime alerts into your server announcement channel when a member hits their bedtime (and hasn&apos;t checked in early). Also generates morning wake-up slumber digests celebrating active sleep streaks.
+                      <p className="text-sm text-cream-secondary">
+                        {memberRoleLabel(selectedMember)} · {selectedMember.is_active ? 'Active' : 'Inactive'}
                       </p>
                     </div>
                   </div>
+                  {activeEditor ? scheduleEditor : strikeReviewMember && !rosterRefreshFailed ? (
+                    <ModeratorStrikeReview key={`${actorRole}-${strikeReviewMember.id}-${strikeReviewMember.role}`}
+                      memberId={strikeReviewMember.id} memberName={strikeReviewMember.discord_username}
+                      onAccessChanged={handleDrawerAccessChanged}
+                      onClose={() => {
+                        setStrikeReviewMemberId(null);
+                        focusControl(`review-strikes-${strikeReviewMember.id}`);
+                      }}
+                      onChanged={() => { void fetchModRoster(true); void onRosterChanged(); }}
+                    />
+                  ) : renderMemberTools(selectedMember)}
+                </section>
+              ) : (
+                <p className="hidden px-5 py-4 text-sm text-cream-secondary xl:block">Select a member to review their schedule and account.</p>
+              )}
+            </div>
+          )}
+          {isOwner && activeTab === 'webhook' && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-night-border bg-night-elevated p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl border border-status-amber/30 bg-night-surface p-2.5">
+                    <Radio className="h-6 w-6 text-status-amber" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-sm font-bold text-cream-primary">
+                      Automated Discord Channel Webhooks
+                    </h3>
+                    <p className="mt-1 text-xs text-cream-muted leading-relaxed">
+                      Broadcasts automated bedtime alerts into your server announcement channel when a member hits their bedtime (and hasn&apos;t checked in early). Also generates morning wake-up slumber digests celebrating active sleep streaks.
+                    </p>
+                  </div>
+                </div>
 
-                  {/* Webhook Configuration Status */}
-                  <div className="mt-4 rounded-xl border border-night-border/80 bg-night-surface p-3.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-cream-secondary">
-                        Server Environment Integration:
+                {/* Webhook Configuration Status */}
+                <div className="mt-4 rounded-xl border border-night-border/80 bg-night-surface p-3.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-cream-secondary">
+                      Server Environment Integration:
+                    </span>
+                    {webhookConfigured ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-status-sage/40 bg-status-sage/15 px-2.5 py-0.5 font-bold text-status-sage">
+                        <CheckCircle2 className="h-3 w-3" />
+                        <span>Connected</span>
                       </span>
-                      {webhookConfigured ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-status-sage/40 bg-status-sage/15 px-2.5 py-0.5 font-bold text-status-sage">
-                          <CheckCircle2 className="h-3 w-3" />
-                          <span>Connected</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-night-border bg-night-elevated px-2.5 py-0.5 font-medium text-cream-muted">
-                          <span>Not in Env (Optional override below)</span>
-                        </span>
-                      )}
-                    </div>
-                    {maskedWebhookUrl && (
-                      <p className="mt-2 font-mono text-[11px] text-cream-muted break-all">
-                        {maskedWebhookUrl}
-                      </p>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-night-border bg-night-elevated px-2.5 py-0.5 font-medium text-cream-muted">
+                        <span>Not in Env (Optional override below)</span>
+                      </span>
                     )}
                   </div>
-                </div>
-
-                {/* Test & Trigger Controls */}
-                <div className="rounded-2xl border border-night-border bg-night-elevated p-4 space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-cream-muted">
-                    Test Webhook Delivery
-                  </h4>
-
-                  <div>
-                    <label className="text-[11px] font-semibold text-cream-muted">
-                      Custom Webhook URL Override (Optional)
-                    </label>
-                    <input
-                      type="url"
-                      placeholder={
-                        maskedWebhookUrl
-                          ? 'Using server env webhook (or paste custom URL here)'
-                          : 'https://discord.com/api/webhooks/...'
-                      }
-                      value={webhookUrlInput}
-                      onChange={(e) => setWebhookUrlInput(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs font-mono text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
-                    />
-                    <p className="mt-1 text-[10px] text-cream-muted">
-                      Must match format: <code className="text-status-amber">https://discord.com/api/webhooks/ID/TOKEN</code>
+                  {maskedWebhookUrl && (
+                    <p className="mt-2 font-mono text-[11px] text-cream-muted break-all">
+                      {maskedWebhookUrl}
                     </p>
-                  </div>
-
-                  {webhookStatusMessage && (
-                    <div
-                      className={`flex items-start gap-2 rounded-xl border p-3 text-xs ${
-                        webhookStatusMessage.type === 'success'
-                          ? 'border-status-sage/40 bg-status-sage/10 text-status-sage'
-                          : 'border-status-coral/40 bg-status-coral/10 text-status-coral'
-                      }`}
-                    >
-                      {webhookStatusMessage.type === 'success' ? (
-                        <CheckCircle2 className="h-4 w-4 shrink-0" />
-                      ) : (
-                        <AlertTriangle className="h-4 w-4 shrink-0" />
-                      )}
-                      <span>{webhookStatusMessage.text}</span>
-                    </div>
                   )}
-
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={handleSendTestWebhook}
-                      disabled={testingWebhook || sendingDigest}
-                      className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-status-amber px-3.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-90 disabled:opacity-50 whitespace-nowrap shadow-sm"
-                    >
-                      {testingWebhook ? (
-                        <>
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                          <span>Dispatching Test...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Send className="h-3.5 w-3.5" />
-                          <span>Send Test Bedtime Embed</span>
-                        </>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleSendMorningDigest}
-                      disabled={testingWebhook || sendingDigest}
-                      className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-status-sage/40 bg-status-sage/15 px-3.5 text-xs font-bold text-status-sage transition-colors hover:bg-status-sage/25 disabled:opacity-50 whitespace-nowrap shadow-sm"
-                    >
-                      {sendingDigest ? (
-                        <>
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                          <span>Broadcasting Digest...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-3.5 w-3.5" />
-                          <span>Post Morning Digest Now</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Guardrails note */}
-                <div className="rounded-xl border border-status-amber/20 bg-status-amber/5 p-3 text-xs text-cream-secondary space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-status-amber">
-                    <Shield className="h-3.5 w-3.5" />
-                    <span>Sleep Shield & Anti-Spam Guarantee</span>
-                  </div>
-                  <p className="text-[11px] text-cream-muted leading-relaxed">
-                    Bedtime embeds are only dispatched for sleepers who have not checked into bed early. Personal push alerts remain strictly muted during the 8-hour sleep window.
-                  </p>
                 </div>
               </div>
-            )}
-          </div>
+
+              {/* Test & Trigger Controls */}
+              <div className="rounded-2xl border border-night-border bg-night-elevated p-4 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-cream-muted">
+                  Test Webhook Delivery
+                </h4>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-cream-muted">
+                    Custom Webhook URL Override (Optional)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder={
+                      maskedWebhookUrl
+                        ? 'Using server env webhook (or paste custom URL here)'
+                        : 'https://discord.com/api/webhooks/...'
+                    }
+                    value={webhookUrlInput}
+                    onChange={(e) => setWebhookUrlInput(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-night-border bg-night-bg px-3 py-2 text-xs font-mono text-cream-primary placeholder:text-cream-muted focus:border-status-amber focus:outline-none"
+                  />
+                  <p className="mt-1 text-[10px] text-cream-muted">
+                    Must match format: <code className="text-status-amber">https://discord.com/api/webhooks/ID/TOKEN</code>
+                  </p>
+                </div>
+
+                {webhookStatusMessage && (
+                  <div
+                    className={`flex items-start gap-2 rounded-xl border p-3 text-xs ${
+                      webhookStatusMessage.type === 'success'
+                        ? 'border-status-sage/40 bg-status-sage/10 text-status-sage'
+                        : 'border-status-coral/40 bg-status-coral/10 text-status-coral'
+                    }`}
+                  >
+                    {webhookStatusMessage.type === 'success' ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                    )}
+                    <span>{webhookStatusMessage.text}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleSendTestWebhook}
+                    disabled={testingWebhook || sendingDigest}
+                    className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-status-amber px-3.5 text-xs font-bold text-night-bg transition-opacity hover:opacity-90 disabled:opacity-50 whitespace-nowrap shadow-sm"
+                  >
+                    {testingWebhook ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Dispatching Test...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-3.5 w-3.5" />
+                        <span>Send Test Bedtime Embed</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSendMorningDigest}
+                    disabled={testingWebhook || sendingDigest}
+                    className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-status-sage/40 bg-status-sage/15 px-3.5 text-xs font-bold text-status-sage transition-colors hover:bg-status-sage/25 disabled:opacity-50 whitespace-nowrap shadow-sm"
+                  >
+                    {sendingDigest ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Broadcasting Digest...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Post Morning Digest Now</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Guardrails note */}
+              <div className="rounded-xl border border-status-amber/20 bg-status-amber/5 p-3 text-xs text-cream-secondary space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-status-amber">
+                  <Shield className="h-3.5 w-3.5" />
+                  <span>Sleep Shield & Anti-Spam Guarantee</span>
+                </div>
+                <p className="text-[11px] text-cream-muted leading-relaxed">
+                  Bedtime embeds are only dispatched for sleepers who have not checked into bed early. Personal push alerts remain strictly muted during the 8-hour sleep window.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </ResponsiveDialog>
   );
 }

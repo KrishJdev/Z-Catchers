@@ -95,9 +95,9 @@ The mascot changes pose and expression depending on community activity and the v
 | Context / State | Mascot Pose & Motif | Visual Placement & Trigger |
 | :--- | :--- | :--- |
 | **Brand / Header** | Cozy fox profile with warm crescent glow | Sticky header on mobile and desktop command bar |
-| **Winding Down / Awake** | Cozy fox yawning or holding a warm glowing lantern | Hero banner when members are in wind-down window or community is active |
-| **Bedtime Hit (Nag Now)** | Alert fox ringing a tiny brass bell or peeking over card edge | Urgent alert banner prompting: *"It's bedtime for your friends! Ring the bell in their journal."* |
-| **Sleeping / Sleep Shield** | Curled-up sleeping fox wrapped in fluffy tail with subtle floating `"Zzz"` | Viewer's personal Sleep Shield active banner, or empty status bucket state: *"Every fox in this den is fast asleep."* |
+| **Winding Down** | Fox holding a warm glowing lantern | Small mascot next to the Roster heading when friends are winding down |
+| **Overdue** | Alert fox ringing a tiny brass bell | Small mascot next to the Roster heading when friends are past bedtime |
+| **Quiet den** | Curled-up sleeping fox with floating `"Zzz"` | Quiet roster summary or the Sleeping empty state |
 
 ### 3.3 PWA Manifest & Notification Assets
 * **PWA App Icon (`public/icons/icon-512x512.png` & `public/icons/icon.svg`):**
@@ -115,27 +115,9 @@ The mascot changes pose and expression depending on community activity and the v
 On mobile screens, Z Catchers operates as a high-density, thumb-accessible PWA:
 * **Container:** Single-column vertical flow with padding `px-4 py-3`, max width constrained to screen bounds.
 * **Header:** Compact 56px sticky bar showing the Fox logo, detected local timezone, notification settings bell, and signed-in profile avatar.
-* **Status Buckets:** Collapsible accordion sections with status count pills and full-width `MemberCard` components.
-* **Bottom Navigation:** Fixed bottom bar (`h-16`, `border-t border-night-border`, `bg-night-surface/95 backdrop-blur-md`) with touch targets of at least 44 px and iOS `env(safe-area-inset-bottom)` spacing. The Mod entry appears only for effective moderators. The pinned roster actions sit immediately above the navigation.
-
-```
-+------------------------------------------+
-| 🦊 Z Catchers        [Viewing: IST +5:30]| <- Sticky Top Header (56px)
-+------------------------------------------+
-| 🔔 Enable Push Alerts to nag friends [X] | <- Conditional PWA / Push Banner
-+------------------------------------------+
-| 🦊 [Nag Alert: 1 friend needs sleep! ]   | <- Contextual Fox Banner
-+------------------------------------------+
-| ▼ 🚨 NAG NOW (BEDTIME HIT)           (1) | <- Priority Bucket (Accordion)
-| +--------------------------------------+ |
-| | MemberCard (Single Column)           | |
-| +--------------------------------------+ |
-| ▼ 🕯️ WINDING DOWN SOON               (2) |
-|   ...                                    |
-+------------------------------------------+
-|   [ 🏠 Roster ]  [ 🌙 My Sleep ] [ 🛡️ Mod ] | <- Sticky Bottom Nav (64px)
-+------------------------------------------+
-```
+* **Roster intro:** Pair a 32 px Sleepy Fox with the Roster heading and one line of community status. Count friends within the selected All or Starred view. Give the compact segmented filter 44 px targets and put it immediately above the four sections. The selected filter and each section's disclosure state persist for the browser session.
+* **Status Buckets:** Show Overdue, Winding Down, Awake, and Sleeping in order. Use plain tabular counts and 44 px disclosure rows above full-width `MemberCard` components. Actionable sections open by default, and Awake and Sleeping start folded.
+* **Shared Footer:** Use one fixed, blurred espresso surface for the check-in strip and 64 px navigation row. Show a compact personal status and use filled amber for the primary action. Manual wake time and undo sit on a wrapping row below it. The footer applies bottom safe-area padding once. Reserve its measured height plus the roster's bottom gap so the last card's controls can scroll into view. The Mod entry appears only for effective moderators.
 
 ### 4.2 Desktop & Tablet Website View (≥ 768px / 1024px+)
 On wider viewports, Z Catchers transforms into a spacious, multi-column community dashboard:
@@ -144,98 +126,39 @@ On wider viewports, Z Catchers transforms into a spacious, multi-column communit
   * Left: Fox mascot SVG logo + "Z Catchers" brand wordmark.
   * Center: Live local digital clock (`tabular-nums`) with viewer's timezone string and a read-only Sleep Shield status.
   * Right: Desktop quick-action navigation buttons:
-    * **My Sleep** opens the calendar, timetable, and punishments. Signed-in profile calendars and My Sleep use a rust lightning bolt for strike history and an amber shield for Metastrike-only days, alongside the sleep-status dot. The selected month's history lists dates newest first and opens the day inspector with the issuance time, timezone, source and counting status. Give strike history its own retry control so members can still browse sleep logs when the history service is unavailable.
+    * **My Sleep** opens the Tonight summary and the Calendar, Schedule, and Punishments views.
     * **Mod Panel** opens the moderator drawer for effective moderators.
-    * The bell opens Notification settings and reflects this device’s push status. The adjacent avatar opens Profile, with Edit profile, Sleep schedule, and Sign out.
-* **Bottom Nav Hidden:** Sticky mobile bottom bar is completely hidden (`hidden md:hidden`) on desktop.
+    * The bell opens Notification settings and reflects this device’s push status. The adjacent avatar opens Account settings, with Edit profile, Sleep schedule, and Sign out.
+* **Check-in panel:** At 768 px and up, place the same check-in instance next to the roster intro in a bordered panel. Hide the mobile navigation and let the page scroll naturally. An open manual wake draft stays mounted as the layout changes.
 * **Status Buckets & Multi-Column Member Grid:**
   * Status sections expand across the full container width.
   * Member cards render inside a responsive CSS Grid:
-    `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4`
+    `grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4`
   * Empty buckets render a peaceful den state: a curled sleeping fox with the message *"Every fox in this den is fast asleep."*
-
-```
-+---------------------------------------------------------------------------------------------------------+
-| 🦊 Z Catchers   |  🕒 11:30 PM (Asia/Kolkata)  •  [ 🌙 Shield: Active ]  |  [My Sleep] [Mod] [🔔] [Profile]| <- Command Bar
-+---------------------------------------------------------------------------------------------------------+
-| 🦊 Contextual Hero Banner: "Cozy Den • 2 friends winding down, 1 past bedtime"                         |
-+---------------------------------------------------------------------------------------------------------+
-| ▼ 🚨 NAG NOW (BEDTIME HIT) (2)                                                                          |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-| | MemberCard #1      | | MemberCard #2      | | (CSS Grid 4-col)   | |                    |             |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-|                                                                                                         |
-| ▼ 🕯️ WINDING DOWN SOON (3)                                                                             |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-| | MemberCard #3      | | MemberCard #4      | | MemberCard #5      | |                    |             |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-|                                                                                                         |
-| ▼ ☀️ AWAKE (8)                                                                                          |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-| | MemberCard #6      | | MemberCard #7      | | MemberCard #8      | | MemberCard #9      |             |
-| +--------------------+ +--------------------+ +--------------------+ +--------------------+             |
-+---------------------------------------------------------------------------------------------------------+
-```
 
 ---
 
-## 5. Exact Component States (`MemberCard.tsx`)
+## 5. Roster member cards
 
-The `MemberCard` component adapts gracefully to both single-column mobile lists and multi-column desktop grids:
+Use two aligned rows in the existing mobile list and responsive desktop grid. The first row holds one profile button containing the avatar and display name, the converted bedtime labeled **your time**, and a separate star toggle. Truncate long display names while keeping the whole name available to assistive technology. Show **You** beneath the viewer's name. The second row aligns the status, journal link, and labeled **Details** button across the grid. Set times and countdowns in tabular numerals.
 
-### State 1: `BEDTIME_NOW` (0 to 60 mins past bedtime — Urgent Nag State)
-* **Card Container:** `bg-night-surface border-2 border-status-coral/80 rounded-2xl p-4 shadow-lg shadow-status-coral/10 flex flex-col justify-between`
-* **Status Pill:** `bg-status-coral/20 text-status-coral border border-status-coral/40 px-2.5 py-0.5 rounded-full text-xs font-semibold animate-pulse`
-  * Text: `"🚨 Bedtime hit 14m ago"`
-* **Action Button:** Full-width primary button (`w-full min-h-[44px] bg-status-coral hover:bg-status-coral/90 text-night-bg font-semibold rounded-xl flex items-center justify-center gap-2 mt-3`)
-  * Label: `"Nag in Discord Journal ↗"`
+| Roster state | Status | Journal action |
+| --- | --- | --- |
+| Overdue | Coral minutes overdue or time left in grace | Filled coral **Nag in Journal** |
+| Winding Down | Warm countdown | Outlined amber **Say Goodnight** |
+| Awake | Cream secondary **Awake** on a neutral surface | **Journal** |
+| Sleeping | Cream secondary **Sleeping** or **In bed** on a neutral surface | **Quiet Note** |
+| Your card | Same state and time with a quiet **You** label | **Journal**, or **Quiet Note** while sleeping |
 
-### State 2: `WINDING_DOWN` (1 to 60 mins before bedtime)
-* **Card Container:** `bg-night-surface border border-status-amber/60 rounded-2xl p-4 flex flex-col justify-between`
-* **Status Pill:** `bg-status-amber/15 text-status-amber border border-status-amber/30 px-2.5 py-0.5 rounded-full text-xs font-medium`
-  * Text: `"🕯️ Bedtime in 28m"`
-* **Action Button:** Secondary warm button (`w-full min-h-[44px] bg-night-elevated hover:bg-status-amber/20 text-status-amber border border-status-amber/40 font-medium rounded-xl flex items-center justify-center gap-2 mt-3`)
-  * Label: `"Say Goodnight in Journal ↗"`
+Keep the existing journal reopen labels after a recorded assist. Allow the text to wrap at narrow card widths. Use targets of at least 44 × 44 px and visible keyboard focus. The shared check-in area carries the primary sleep action at every width.
 
-### State 3: `AWAKE` (More than 60 mins before bedtime)
-* **Card Container:** `bg-night-surface border border-night-border rounded-2xl p-4 flex flex-col justify-between`
-* **Status Pill:** `text-cream-secondary text-xs tabular-nums`
-  * Text: `"☀️ in 6h 15m"`
-* **Action Button:** Compact link button (`min-h-[40px] px-3 bg-night-elevated text-cream-secondary hover:text-cream-primary rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 mt-3`)
-  * Label: `"Journal ↗"`
+### Member details
 
-### State 4: `SLEEPING` (1 to 8 hours past bedtime — Sleep Shield Active)
-* **Card Container:** `bg-night-surface/60 border border-night-border/60 rounded-2xl p-4 opacity-60 transition-opacity hover:opacity-90 flex flex-col justify-between`
-* **Status Pill:** `bg-status-slumber/15 text-status-slumber border border-status-slumber/30 px-2.5 py-0.5 rounded-full text-xs`
-  * Text: `"🌙 Catching Z's • Shield Active"`
-* **Action Button:** Subtle muted link (`text-cream-muted hover:text-cream-secondary text-xs flex items-center justify-center gap-1 mt-3`)
-  * Label: `"Leave quiet note in Journal ↗"`
+Open the existing bottom sheet on phones and use a centered dialog on desktop. Keep the close control visible while the body scrolls within a dynamic viewport height. Restore focus to **Details** on close. Show the member's local bedtime, wake time, and timezone together. Place any pending schedule, streak, role, accountability information, assist count, and secondary controls below according to their existing visibility rules.
 
-### State 5: Pending 48-Hour Cooldown Sub-Banner
-Whenever `member.pending_effective_at` is in the future, render a dashed sub-banner inside the card above the action button:
-* **Banner Style:** `mt-2.5 px-3 py-1.5 rounded-lg bg-status-amber/10 border border-dashed border-status-amber/40 text-xs text-status-amber flex items-center justify-between tabular-nums`
-* **Text:** `"⏳ Schedule shifting to [Pending Viewer Time] in 34h 12m"`
+Show **Punishments** and its open count only in the viewer's own Details when the data is available. My Sleep also links to the authenticated task list. Show monthly strike and Metastrike balances in Details using rust and amber. In My Sleep, show three punishment progress segments with a separate label such as **1 of 3 toward your next punishment**.
 
-### 5.6 Accountability Row & Indicator Pips (`MemberCard.tsx`)
-Every `MemberCard` includes a compact, warm dark accountability row positioned directly below the sleep schedule information:
-
-* **Monthly strikes:** Show the current month’s total in Warm Dark rust (`#E07A5F` / `fox-rust`). In My Sleep, show three progress segments with a separate label such as “1 of 3 toward your next punishment.” Every three eligible strikes earns a punishment and starts a new set of segments.
-* **Metastrikes Indicator (`🛡️ Meta: X/3`):**
-  * Color token: Warm gold / amber (`#F4A261` / `fox-amber` / `border-fox-amber/40 text-fox-amber`).
-  * Visual Pips: 3 horizontal mini-shield dots ($6\text{px} \times 6\text{px}$). Filled dots render in golden amber (`bg-fox-amber shadow-[0_0_6px_rgba(244,162,97,0.4)]`), unfilled dots render in subtle border tone (`bg-night-border`).
-  * Counter text: `🛡️ Meta: 2/3` (cream text with amber accent).
-* **Staff strike review:** The roster opens a member's review inside the Mod Panel. Use labeled month navigation and list verified sleep-cycle dates, source type and recorded reason. A dated correction takes a reason, and removal selects a specific source. Keep Metastrike balance controls in the roster. Maintain 44 px touch targets in the mobile sheet.
-* **Open punishments:** The signed-in member’s own card shows the open count as a link to the authenticated task list.
-
-### 5.7 Action Bar Secondary Pill Variants
-Next to the primary `"Nag in Discord Journal ↗"` button, contextual secondary pills adapt based on bedtime proximity and strike states:
-
-| Pill Variant | Condition | Visual Styling & Label |
-| :--- | :--- | :--- |
-| **Grace Period** | Bedtime hit, within 0–5 minutes | `⏳ Grace: Xm left` (subtle amber border, voting locked) |
-| **Strike Issued** | The dispatcher recorded a nightly strike | `Strike Issued` (dark coral `#D96B52/20`) |
-| **Metastrike Active** | The current cycle is protected | `Protected by Metastrike` (warm amber `#F4A261`) |
-| **Request Metastrike** | Member's own card or My Sleep | `Request Metastrike` (warm amber secondary action) |
+Keep **Grace**, **Strike Issued**, **Protected by Metastrike**, and any eligible nag controls in Details. The viewer can request a Metastrike from Details or My Sleep when available. Staff strike review stays in the Mod Panel with its existing target permissions.
 
 ---
 
@@ -246,6 +169,8 @@ Next to the primary `"Nag in Discord Journal ↗"` button, contextual secondary 
 * **Desktop View (≥ 768px):** Centered dialog modal (`fixed inset-0 z-50 flex items-center justify-center p-4 bg-night-bg/80 backdrop-blur-md` with inner dialog `w-full max-w-lg bg-night-surface border border-night-border rounded-2xl p-6 shadow-2xl`).
 
 ### 6.2 48-Hour Cooldown Warning Callout (Inside `MyScheduleModal`)
+
+The **Account settings** sheet starts with the account avatar, display name, and Discord handle when available. Use full-width rows for **Edit profile** and **Sleep schedule**, with the effective date of a pending change beside the schedule. Use coral for **Sign out**.
 When a user edits their existing bedtime or timezone, display a clear callout box above the Save button:
 * **Style:** `bg-status-amber/10 border border-status-amber/30 rounded-xl p-3 text-xs text-cream-secondary leading-relaxed`
 * **Copy:** `"🛡️ Accountability Cooldown: Changing your bedtime or timezone takes 48 hours to take effect so nobody can dodge their bedtime at the last minute. Updating your Discord Journal link is instant."`
@@ -256,7 +181,13 @@ The same callout applies to every role. Show immediate edits and early approval 
 
 Show the Mod entry for signed-in Owners and Moderators based on current server permissions. Open the Warm Dark desktop dialog or mobile sheet directly, with the **Owner** or **Moderator** badge, **Close**, the Sleepy Fox and touch targets of at least 44 px.
 
-In **Roster**, give the Owner **Make moderator** and **Remove moderator** on eligible rows. Confirm the account and change before saving, then refresh the row. Gate other actions by the server’s capabilities and refresh those capabilities on role-related errors.
+Keep **Approvals**, **Roster**, **Punishments**, and **Metastrikes** in the persistent drawer header. Place **Advanced** alongside Close for the Owner. On phones, use a single content scroller and size the sheet to the visible viewport when the keyboard opens.
+
+In **Roster**, use compact searchable rows with an avatar, name, role, and available strike summary. At 1280 px and wider, show the list and member details side by side. At narrower widths, open the detail as a separate view inside the drawer and restore the roster's search, scroll, and keyboard focus on return.
+
+Group detail controls under **Schedule**, **Accountability**, and **Account access**. Show the member's name in confirmations for role changes and destructive actions. Keep write controls behind their existing permissions and close an editor if its target disappears or its permission is revoked.
+
+In **Approvals**, pair the current and requested bedtime and wake time with their local timezones and show the effective date. Compare the scheduled nights that change and wrap the two labeled columns when space is tight. Give Punishments and Metastrikes matching queue headings, spacing, and read states.
 
 Show **Edit strikes** according to the roster row's `can_review_strikes` capability. The Owner sees it on every profile, including their own. A Moderator sees it on every other profile.
 
@@ -274,3 +205,10 @@ Use a centered Warm Dark dialog on desktop and a scrollable bottom sheet with sa
 In My Sleep, show the calendar month's requests with a text status, private reason and any decision explanation. Offer withdrawal on pending requests. Shared views use **Protected by Metastrike**.
 
 In the Mod Panel, show pending count, oldest requests first and recent decisions. Show the member, cycle, reason, submission time, applicable strike and monthly quota in each pending row. Confirm approval and require an explanation for decline. Show the hold in the member and staff task lists, where it pauses assignment or completion.
+
+### 6.5 Member profiles and My Sleep
+
+- A member profile starts with the avatar, display name, current roster status, and local clock. Keep **Open journal** visible on phones and give the star control a 44 px touch target with a pressed state. Use **Calendar** and **Schedule** view labels.
+- My Sleep begins with **Tonight** and the active cycle's resolved bedtime and wake time. Add **Punishments** to the view switcher. Put the private Metastrike request beside the selected night and the recorded and request histories below the calendar. Keep monthly progress, open punishments, and completed history in distinct sections. Display supplied deadlines on assigned tasks.
+- Place the month switcher above the weekday headings. Outline the selected day in amber, highlight the local current date with a filled numeral, and use a dot for sleep status with a rust lightning bolt for strikes and an amber shield for Metastrikes. Include the sleep and ledger status in the date button's accessible label.
+- Place selected-night details immediately after the grid on phones and beside the grid from 1024 px. Date selection brings focus to the details. Keep monthly statistics beneath the grid and use readable secondary text for recorded and target times. Keep the issuance time, timezone, source, and counting status in the selected night's strike details. Give strike history its own retry control.

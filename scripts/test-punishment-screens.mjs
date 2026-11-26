@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
+import { DateTime } from 'luxon';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { BottomNav } from '../src/components/BottomNav.tsx';
 import { Header } from '../src/components/Header.tsx';
@@ -7,7 +8,8 @@ import { MemberCard } from '../src/components/MemberCard.tsx';
 import { EmptyPunishments, PunishmentDetails, PunishmentReadNotice } from '../src/components/PunishmentList.tsx';
 import { PUNISHMENT_ROLLOUT_CLOSED, PUNISHMENT_SERVICE_UNAVAILABLE,
   readPunishmentFailure } from '../src/lib/punishmentAvailability.ts';
-import { computeMemberState } from '../src/lib/sleepEngine.ts';
+import { computeMemberState, getPunishmentDeadlineOptions, getPunishmentDeadlineState,
+  punishmentDeadlineInputValue } from '../src/lib/sleepEngine.ts';
 import { withoutMetastrikeReasons } from '../src/lib/rosterPrivacy.ts';
 import { fetchMetastrikes, metastrikeDate, metastrikeQuotaLabel, metastrikeReasonError } from '../src/lib/metastrikeScreens.ts';
 
@@ -36,7 +38,7 @@ for (const role of ['member', 'moderator']) {
   });
   assert.match(header, /Mod Panel/);
   assert.match(header, /aria-label="Notification settings\. Push notifications on for this device"/);
-  assert.match(header, /aria-label="Open profile"/);
+  assert.match(header, /aria-label="Open account settings"/);
   assert.match(header, /role="status"[^>]*>.*Sleep Shield active<\/span>/);
 }
 
@@ -47,9 +49,9 @@ const card = (currentMemberId, count) => render(MemberCard, {
   state,
   onOpenPunishments: () => {},
 });
-assert.match(card(member.id, 0), /View punishments, 0 open/);
-assert.doesNotMatch(card(member.id, null), /View punishments/);
-assert.doesNotMatch(card('other', 2), /View punishments/);
+assert.doesNotMatch(card(member.id, 0), /Punishments/);
+assert.doesNotMatch(card(member.id, null), /Punishments/);
+assert.doesNotMatch(card('other', 2), /Punishments/);
 
 for (const [status, label] of [
   ['pending', 'Pending'], ['awaiting_assignment', 'Awaiting assignment'],
@@ -67,6 +69,38 @@ for (const [status, label] of [
   if (status === 'assigned') assert.match(row, /Wind down.*&lt;two lines&gt;/);
   if (status === 'completed') assert.match(row, /2026-12-01T10:00:00Z/);
 }
+const optionsAt = (input, zone, now) => getPunishmentDeadlineOptions(input, zone, DateTime.fromISO(now));
+for (const zone of ['Asia/Kolkata', 'GMT+05:30']) {
+  assert.deepEqual(optionsAt('2026-12-05T23:30', zone, '2026-12-01T00:00Z'), {
+    ambiguous: false, future: [{ instant: '2026-12-05T18:00:00.000Z', offset: 'UTC+05:30' }],
+  });
+  assert.equal(punishmentDeadlineInputValue('2026-12-05T18:00:00Z', zone), '2026-12-05T23:30');
+}
+assert.equal(optionsAt('2027-03-14T02:30', 'America/Los_Angeles', '2027-03-10T00:00Z'), null);
+const repeatedHour = now => optionsAt('2027-11-07T01:30', 'America/Los_Angeles', now);
+const first = { instant: '2027-11-07T08:30:00.000Z', offset: 'UTC-07:00' };
+const second = { instant: '2027-11-07T09:30:00.000Z', offset: 'UTC-08:00' };
+assert.deepEqual(repeatedHour('2027-11-07T08:00Z'), { ambiguous: true, future: [first, second] });
+assert.deepEqual(repeatedHour('2027-11-07T09:00Z'), { ambiguous: true, future: [second] });
+assert.deepEqual(repeatedHour('2027-11-07T09:30Z'), { ambiguous: true, future: [] });
+const dueItem = { status: 'assigned', earned_cycle_date: '2026-11-30', due_at: '2026-12-05T18:00:00Z',
+  member_timezone: 'Asia/Kolkata' };
+const realNow = Date.now;
+const dueMs = DateTime.fromISO(dueItem.due_at).toMillis();
+try {
+  Date.now = () => dueMs - 1;
+  assert.equal(getPunishmentDeadlineState(dueItem.due_at, 'GMT+05:30').remainingMs, 1);
+  assert.match(render(PunishmentDetails, { item: dueItem }), /Due .*(?:11|23):30/);
+  assert.match(render(PunishmentDetails, { item: { ...dueItem, member_timezone: 'GMT+05:30' } }), /Due .*(?:11|23):30/);
+  assert.doesNotMatch(render(PunishmentDetails, { item: dueItem }), /Overdue/);
+  Date.now = () => dueMs;
+  assert.match(render(PunishmentDetails, { item: dueItem }), /Overdue.*(?:11|23):30/);
+  assert.doesNotMatch(render(PunishmentDetails, { item: { ...dueItem, status: 'completed' } }), /Overdue/);
+  assert.match(render(PunishmentDetails, { item: { ...dueItem, due_at: null } }), /No deadline set/);
+} finally {
+  Date.now = realNow;
+}
+
 const legacyReasons = {
   metastrike_reason: 'private top-level reason',
   tonight_strike_log: { record_type: 'metastrike', sleep_cycle_date: '2026-11-30', reason: 'private nightly reason' },

@@ -1,16 +1,75 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-25T16:32:18.698+05:30
-> **Active working branch:** `codex/roster-edits-shared-calendars` from `origin/dev` at `8825238`. Implementation `890323d` and review fixes `c46b664` and `c63c890` are in [PR #121](https://github.com/KrishJdev/Z-Catchers/pull/121).
+> **Last Updated:** 2026-11-26T13:14:45.567Z
+> **Active working branch:** `codex/ui-3-moderator-drawer` from `dev` at `40335db`. Verified implementation commit `01bd78a4255e814fb2556e13c7eea8be8fee8376`. [PR #126](https://github.com/KrishJdev/Z-Catchers/pull/126) targets `dev`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
-> **Build Status:** `npx tsc --noEmit --incremental false`, `npm run build`, the PostgreSQL moderation suite, and Edge fixtures at 390px and 1440px passed on `c63c890`. All 55 `npm run test:unit` suites and the Supabase smoke test passed on the preceding hosted head `fcfd787`. The local Windows run stalled in the November cutover suite. [PR #121 checks](https://github.com/KrishJdev/Z-Catchers/pull/121/checks)
+> **Phase 3 build status:** `npx tsc --noEmit`, `npm run build`, and all 56 `npm run test:unit` suites passed in [hosted CI](https://github.com/KrishJdev/Z-Catchers/actions/runs/45826268313/job/139931099005). The [dispatcher integration](https://github.com/KrishJdev/Z-Catchers/actions/runs/45826268250/job/139931098953) also passed.
+> **Phase 2 build status:** `npx tsc --noEmit`, `npm run test:unit` (56 suites), and `npm run build` passed in [hosted verification](https://github.com/KrishJdev/Z-Catchers/actions/runs/45821428341/job/139914385187). The [seeded Chromium run](https://github.com/KrishJdev/Z-Catchers/actions/runs/45822195353/job/139917029268) passed.
+> **Prior build status:** GitHub CI passed TypeScript, the build, and all 56 `npm run test:unit` suites on `e9e1115`. The dispatcher smoke run reached the shared strike-history fixture and exposed a PostgREST schema reload race. The smoke test now requests the reload and waits for that RPC before exercising the history route. Hosted checks on the follow-up are pending. [PR #123 checks](https://github.com/KrishJdev/Z-Catchers/pull/123/checks)
 
 ---
+
+## November 26 - UI/UX Phase 3 moderator drawer
+
+- Added compact searchable roster rows and a dedicated member detail screen inside the phone sheet. Returning restores the search, list scroll, and focus. The roster and member detail share the dialog at 1280 px and wider.
+- Grouped the existing schedule, journal, dated strike, pass, and account operations into three member sections. Kept the permission checks, added contextual confirmation for destructive actions, and close open editors when the target or permission is lost.
+- Added a current-versus-requested comparison of the affected nights. It includes bedtime, wake time, local timezones, and the effective date. Kept the four views in the header and matched the Punishment and Metastrike queue layouts.
+- Updated `src/components/ModDrawer.tsx`, `ModeratorStrikeReview.tsx`, `RosterRoleAction.tsx`, `ModeratorPunishmentQueue.tsx`, and `ModeratorMetastrikeQueue.tsx`. Added `src/components/ModeratorScheduleComparison.tsx` and `ModeratorQueueState.tsx`. Extended `scripts/test-moderation-drawer.mjs` and `test-ui-normalization-and-button-wrapping.mjs`, and updated `DESIGN_SYSTEM.md` and `HANDOFF.md`.
+- Chromium passed at 360, 390, 430, 768, 1024, and 1440 px. Fixtures covered Member, Moderator, and Owner access, self and staff targets, roster focus and scroll restoration, schedule save, dated strike correction, role changes with an editor open, custom approval, queue read retries, Advanced, and Escape. The 390 px drawer displayed at least three member rows at once. [Browser run](https://github.com/KrishJdev/Z-Catchers/actions/runs/45826914773/job/139933321033) · [390 px and 1440 px screenshots](https://github.com/KrishJdev/Z-Catchers/actions/runs/45826914773/artifacts/15120796937)
+
+| Milestone | Status | Next action |
+| --- | --- | --- |
+| Phase 3 moderator drawer implementation and browser verification | DONE | Review [PR #126](https://github.com/KrishJdev/Z-Catchers/pull/126). |
+| Installed iOS and Android PWA checks | TODO | Verify the native keyboard, safe areas, resume, and sheet close behavior on installed devices before release. |
+| Phase 4 Profiles and My Sleep | TODO | After Phase 3 merges, branch `codex/ui-4-profiles-my-sleep` from current `dev`. Follow the Phase 4 plan for the identity header, Calendar and Schedule tabs, and My Sleep entry points. Start with `src/components/SleepCalendarModal.tsx`, `MyScheduleModal.tsx`, `StrikeHistory.tsx`, and `PunishmentList.tsx`. |
+
+## November 26 - UI/UX Phase 2 member cards
+
+- Consolidated the avatar and display name into one profile target. Each card shows the converted bedtime, status, star, labeled Details button, and state-specific journal action. The shared check-in panel carries the primary sleep actions across phone and desktop sizes.
+- Moved role, streak, member-local schedule, pending changes, accountability information, and secondary controls into Details. The signed-in viewer's own Details opens their private Punishments tab when the open count is available. Details restores focus after dismissing the sheet by keyboard, backdrop, or close button.
+- Updated `src/components/MemberCard.tsx`, `DESIGN_SYSTEM.md`, and `HANDOFF.md`. Updated `scripts/test-compact-member-cards.mjs`, `scripts/test-member-profile-and-overflow-fix.mjs`, `scripts/test-punishment-screens.mjs`, `scripts/test-state-sync-audit.mjs`, `scripts/test-ui-normalization-and-button-wrapping.mjs`, `scripts/test-wake-up-and-overflow.mjs`, and `scripts/test-wind-down-awake-fix.mjs`.
+- Local TypeScript and focused tests passed. The full local run passed 54 of 56 suites. The strike-history and Owner/role HTTP fixtures returned 503. Hosted TypeScript, the production build, and all 56 unit suites passed on the final code. [Hosted checks](https://github.com/KrishJdev/Z-Catchers/actions/runs/45821428341/job/139914385187)
+- Seeded Chromium verified layout at 360, 390, 430, 768, 1024, 1440, and 1600 px. It exercised long names, grace periods, a cross-timezone midnight bedtime, journal destinations and assist retries, stars, profile navigation, Details focus, Sleep Shield, private punishments, and roster read failures. The example overdue card went from 148 to 110 px at 390 px and from 212 to 110 px at 1440 px. [Browser check](https://github.com/KrishJdev/Z-Catchers/actions/runs/45822195353/job/139917029268) · [Screenshots](https://github.com/KrishJdev/Z-Catchers/actions/runs/45822195353/artifacts/15118352791)
+
+| Milestone | Status | Next action |
+| --- | --- | --- |
+| Phase 2 member card implementation and regression checks | DONE | Review the member-card feature branch against `dev`. |
+| UI/UX Phases 1–2 production release | TODO | After Phase 2 merges, check the installed iOS and Android PWAs and promote both phases together. |
+| Phase 3 moderator drawer | DONE | Implemented and verified in [PR #126](https://github.com/KrishJdev/Z-Catchers/pull/126). |
+
+## November 26 - UI/UX Phase 1 roster dashboard and navigation
+
+- Implemented the compact fox summary, All / Starred filter, and simpler counts for Overdue, Winding Down, Awake, and Sleeping. The summary uses the current filter. Filter and disclosure choices persist for the browser session. Saving the disclosure directly on click fixes a lost preference on immediate reload that the hosted preview reproduced.
+- The same quick check-in component appears beside the roster heading on desktops and above the mobile navigation in a shared footer. The roster reserves the footer's measured height, including the safe area. The panel preserves wake-time drafts when resizing.
+- Updated `src/app/page.tsx`, `src/app/globals.css`, `src/components/BottomNav.tsx`, `src/components/Header.tsx`, `src/components/PinnedSelfActionBar.tsx`, and `src/components/StatusBucket.tsx`.
+- Extended `scripts/test-phase2-mobile-touch-ux.mjs`, `scripts/test-phase35-pwa-phone-robustness.mjs`, `scripts/test-pinned-self-action-bar.mjs`, and `scripts/test-smart-status-bucket-folding.mjs`. Updated `DESIGN_SYSTEM.md` and `HANDOFF.md` and added `UI_UX_IMPLEMENTATION_PLAN.md`.
+- Local type checking and targeted roster/PWA tests passed. On both the baseline and feature branch, 54 of 56 suites passed locally. The private strike-history and Owner/role HTTP fixtures returned 503 where they expected 403. Hosted TypeScript, production build and all 56 unit suites passed after the disclosure fix. In the hosted Chromium comparison, the first overdue card moved about 120 px higher at 390 px. The fixture exercised 360, 390, 430, 768, 1024, and 1440 px, including scroll clearance, reload persistence, manual wake retry across the breakpoint, and undo. [390 px and 1440 px screenshots](https://github.com/KrishJdev/Z-Catchers/actions/runs/45813793086/artifacts/15113024901)
+
+| Milestone | Status | Next action |
+| --- | --- | --- |
+| Phase 1 roster dashboard and navigation implementation | DONE | [PR #124](https://github.com/KrishJdev/Z-Catchers/pull/124) merged into `dev` at `42d2adc`. |
+| Phase 1 hosted build, unit tests, and responsive preview | DONE | Review PR checks and the before-and-after screenshots. |
+| Installed PWA verification | TODO | Verify safe areas, resume, keyboard, and sheet close behavior on iOS and Android before the combined release. |
+| Phase 2 member cards | DONE | See the Phase 2 implementation and verification above. |
+
+## Punishment deadline review on PR #123
+
+- Validate deadline offset hours and minutes before calling the RPC. Require an explicit offset when both occurrences of a repeated local time are in the future and use the remaining occurrence when only one is available. Centralize deadline display and timing in the sleep engine.
+- Use fixed GMT offsets consistently for staff and member deadline displays, default deadlines, and progress months. Refund older Metastrike replacements to the recorded charge month, using the pass date and then the legacy timestamp when necessary.
+- Document the accepted deadline format and wait for the deadline-aware RPC in the disposable PostgREST smoke test using a null task ID.
+- The first hosted smoke run hit `PGRST202` in the earlier shared strike-history fixture. Added a schema reload and a read-only RPC readiness check to `scripts/test-dispatcher-ci.mjs` before that fixture.
+- Updated `BACKEND_TZ_PWA_SPEC.md`, `src/app/api/mod/punishments/route.ts`, `src/components/ModeratorPunishmentQueue.tsx`, `src/components/PunishmentList.tsx`, `src/lib/sleepEngine.ts`, `supabase/migrations/20261204_punishment_deadlines.sql`, and `supabase/schema.sql`. Updated `scripts/test-dispatcher-ci.mjs`, `scripts/test-punishment-deadline-rollover.mjs`, `scripts/test-punishment-screens.mjs`, `scripts/test-punishment-task-apis.mjs`, and this handoff.
+
+| Milestone | Status | Next action |
+| --- | --- | --- |
+| CodeRabbit deadline and rollover fixes | DONE | Review commit `795ec59` on PR #123. |
+| Hosted build and PostgREST verification | IN PROGRESS | Verify the standard unit run and the deadline assignment, extension, and completion smoke test. |
+| Release verification | TODO | Follow the Punishments release checklist to apply migration `20261204_punishment_deadlines.sql` before deployment and verify the staff editor and member task list on phone and desktop. |
 
 ## Roster strike edits and shared calendars
 
@@ -3269,6 +3328,8 @@ d:\Projects\Z Catchers\
 ---
 
 ## 7. Immediate Next Steps (For the Next Agent / Session)
+
+After Phase 2 merges into `dev`, start the [Phase 3 moderator drawer](UI_UX_IMPLEMENTATION_PLAN.md#phase-3---moderator-drawer) on `codex/ui-3-moderator-drawer`. Update `ModDrawer.tsx`, `ModeratorStrikeReview.tsx`, and `RosterRoleAction.tsx` for a searchable roster, member details, and clearer approvals. Check the existing Owner and Moderator target permissions, dated strike corrections, and accessibility when returning to the list.
 
 **Release roster strike edits and profile calendars.** Review [PR #121](https://github.com/KrishJdev/Z-Catchers/pull/121) and its hosted checks. After integration, follow the [independent release steps](PUNISHMENTS_RELEASE_CHECKLIST.md#release-strike-editing-and-shared-calendars) for the migration, app deployment and controlled Owner, Moderator and Member checks. Resume punishment cutover when requested.
 

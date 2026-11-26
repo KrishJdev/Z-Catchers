@@ -8,6 +8,24 @@
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+.roster-content {
+  padding-bottom: calc(var(--roster-footer-height, 4rem + var(--safe-area-bottom)) + 1rem);
+}
+
+.roster-footer {
+  padding-bottom: var(--safe-area-bottom);
+}
+
+@screen md {
+  .roster-content {
+    padding-bottom: 1.5rem;
+  }
+
+  .roster-footer {
+    padding-bottom: 0;
+  }
+}
+
 html,
 body {
   min-height: 100dvh;

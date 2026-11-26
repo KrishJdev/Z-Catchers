@@ -1,3 +1,4 @@
+import React from 'react';
 import { DateTime } from 'luxon';
 import { toValidLuxonZone } from '@/lib/timezone';
 
@@ -30,33 +31,36 @@ const STATUS_LABELS: Record<StrikeHistoryEntry['status'], string> = {
   reversed: 'Metastrike reversed',
 };
 
-export function StrikeHistoryList({ days, loading, failed, onRetry, onSelectDay }: {
+export function StrikeHistoryList({ days, selectedDate, loading, failed, onRetry, onSelectDay }: {
   days: ReadonlyMap<string, StrikeHistoryEntry[]>;
+  selectedDate: string;
   loading: boolean;
   failed: boolean;
   onRetry: () => void;
   onSelectDay: (date: string) => void;
 }) {
   return (
-    <section aria-labelledby="strike-history-title" className="rounded-2xl border border-night-border/90 bg-night-elevated/70 p-3.5 sm:p-4">
+    <section aria-labelledby="strike-history-title" className="border-t border-night-border pt-3">
       <h3 id="strike-history-title" className="text-sm font-bold text-cream-primary">Strike history</h3>
-      {loading ? <p role="status" className="mt-2 text-xs text-cream-secondary">Loading strike history…</p>
+      {loading ? <p role="status" className="mt-2 text-sm text-cream-secondary">Loading strike history…</p>
         : failed ? (
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 text-xs">
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 text-sm">
             <p role="status" className="text-cream-secondary">Strike history is unavailable.</p>
             <button type="button" onClick={onRetry} className="min-h-[44px] font-semibold text-status-amber underline">
               Retry strike history
             </button>
           </div>
         ) : days.size === 0 ? (
-          <p className="mt-2 text-xs text-cream-secondary">No recorded strikes or Metastrikes this month.</p>
+          <p className="mt-2 text-sm text-cream-secondary">No recorded strikes or Metastrikes this month.</p>
         ) : (
           <ul className="mt-2 divide-y divide-night-border/70">
             {Array.from(days, ([date, entries]) => (
               <li key={date}>
-                <button type="button" onClick={() => onSelectDay(date)}
-                  className="flex min-h-[44px] w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md px-1 py-2 text-left text-xs hover:bg-night-surface">
-                  <span className="font-semibold text-cream-primary">{DateTime.fromISO(date).toFormat('LLL d')}</span>
+                <button type="button" aria-pressed={selectedDate === date} onClick={() => onSelectDay(date)}
+                  className="flex min-h-[44px] w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md px-2 py-2 text-left text-sm hover:bg-night-elevated">
+                  <span className={selectedDate === date ? 'font-semibold text-status-amber' : 'font-semibold text-cream-primary'}>
+                    {DateTime.fromISO(date).toFormat('LLL d')}
+                  </span>
                   <span className="text-cream-secondary">
                     {Array.from(new Set(entries.map(entry => STATUS_LABELS[entry.status]))).join(' · ')}
                   </span>
@@ -89,7 +93,7 @@ export function StrikeDayDetails({ entries, timezone }: { entries: StrikeHistory
           const zone = entry.issuance_timezone ?? timezone;
           return (
             <li key={`${entry.source_id ?? index}:${entry.record_type}`}
-              className="min-w-0 rounded-lg border border-night-border/80 bg-night-surface/60 px-3 py-2 text-xs text-cream-secondary [overflow-wrap:anywhere]">
+              className="min-w-0 border-b border-night-border/80 pb-2 text-xs text-cream-secondary last:border-0 last:pb-0 [overflow-wrap:anywhere]">
               <p className="font-semibold text-cream-primary">{STATUS_LABELS[entry.status]} · {source}</p>
               {!isPass && <p className="mt-1">{entry.counts ? 'Counts toward punishments.' : 'No longer counts toward punishments.'}</p>}
               <p className="mt-1">

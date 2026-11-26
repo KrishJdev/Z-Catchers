@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useRef, useState, type FormEvent } from 'react';
+import { EmptyPunishments } from './PunishmentList';
+import { queueNotice } from './ModeratorQueueState';
 import {
   fetchMetastrikes, moderatorMetastrikesEndpoint as endpoint, metastrikeDate, metastrikeQuotaLabel,
   metastrikeReasonError, metastrikeStatuses, metastrikeTime,
@@ -146,26 +148,26 @@ export function ModeratorMetastrikeQueue({ onReviewed, onAccessChanged }: {
   };
 
   return (
-    <section aria-label="Metastrikes review queue" className="mt-4 space-y-4">
+    <div className="space-y-4">
       {notice && <p role="status" className="text-sm text-status-sage">{notice}</p>}
       {actionError && <p role="alert" className="text-sm text-status-coral">{actionError}</p>}
       {readError ? (
-        <div role="alert" className="space-y-2 text-sm text-status-coral">
+        <div role="alert" className={queueNotice}>
           <p>{readError}</p>
           <button type="button" className={button} onClick={refresh}>Retry</button>
         </div>
       ) : !pages.pending ? (
-        <p role="status" className="text-sm text-cream-secondary">Loading Metastrikes…</p>
+        <p role="status" className={queueNotice}>Loading Metastrikes…</p>
       ) : (
         <>
-          <button type="button" className={button} onClick={refresh} disabled={busy || Boolean(editor)}>Refresh Metastrikes</button>
+          <button type="button" className={button} onClick={refresh} disabled={busy || Boolean(editor)}>Refresh queue</button>
           {sections.map(({ filter, title, empty }) => {
             const page = pages[filter];
             if (!page) return null;
             return (
               <section key={filter} className="space-y-2">
-                <h3 className="text-sm font-bold">{title}{filter === 'pending' && ` (${page.pending_count})`}</h3>
-                {page.items.length === 0 ? <p className="text-sm text-cream-secondary">{empty}</p> : (
+                <h4 className="text-sm font-semibold">{title}{filter === 'pending' && ` (${page.pending_count})`}</h4>
+                {page.items.length === 0 ? <EmptyPunishments>{empty}</EmptyPunishments> : (
                   <ul className="space-y-2">
                     {page.items.map(item => (
                       <li key={item.id} className="space-y-2 rounded-xl border border-night-border bg-night-elevated/65 p-3 [overflow-wrap:anywhere]">
@@ -239,6 +241,6 @@ export function ModeratorMetastrikeQueue({ onReviewed, onAccessChanged }: {
           })}
         </>
       )}
-    </section>
+    </div>
   );
 }

@@ -16,10 +16,10 @@ function assert(condition, message) {
 async function run() {
   const headerContent = fs.readFileSync(path.resolve('src/components/Header.tsx'), 'utf8');
   const scheduleContent = fs.readFileSync(path.resolve('src/components/MyScheduleModal.tsx'), 'utf8');
-  assert(headerContent.includes('onClick={onOpenProfile}'), 'Header opens Profile');
-  assert(!headerContent.includes('onLogout'), 'Sign out lives inside Profile');
-  assert(scheduleContent.includes('onClick={onLogout}') && scheduleContent.includes('Sign out'), 'Profile provides accessible sign out');
-  assert(scheduleContent.includes('@{currentUser.discord_username}'), 'Profile identifies the signed-in member');
+  assert(headerContent.includes('onClick={onOpenProfile}'), 'Header opens Account settings');
+  assert(!headerContent.includes('onLogout'), 'Sign out lives inside Account settings');
+  assert(scheduleContent.includes('onClick={onLogout}') && scheduleContent.includes('Sign out'), 'Account settings provides accessible sign out');
+  assert(scheduleContent.includes('>{currentUser.discord_username}</p>'), 'Account settings identifies the signed-in member');
 
   // 3. Push Modal Quick Logout
   console.log('\n--- 3. PushModal Member Profile Logout ---');

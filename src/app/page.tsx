@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { UnifiedOnboardingCard } from '@/components/UnifiedOnboardingCard';
@@ -34,12 +34,13 @@ import {
   Moon,
   RefreshCw,
   Star,
-  Users,
   KeyRound,
 } from 'lucide-react';
 
 const STORAGE_KEY_STARRED = 'zcatchers_starred_members';
+const STORAGE_KEY_ROSTER_FILTER = 'zcatchers_roster_filter';
 const STORAGE_KEY_CACHED_ROSTER = 'zcatchers_cached_roster';
+type RosterFilter = 'all' | 'buddies';
 
 function rosterWithoutPrivateCounts(members: Member[]): Member[] {
   return members.map(({ open_punishment_count: _privateCount, ...member }) => withoutMetastrikeReasons(member));
@@ -85,14 +86,48 @@ export default function HomePage() {
 
   // Authenticated current member session (ZC-13)
   const [currentUser, setCurrentUser] = useState<Member | null>(null);
-  const claimedMemberId = currentUser?.id;
 
   const [sessionCheckFailed, setSessionCheckFailed] = useState(false);
   const [sessionCheckAttempt, retrySessionCheck] = useState(0);
 
   // Starred accountability buddies
   const [starredMembers, setStarredMembers] = useState<string[]>([]);
-  const [buddyFilter, setBuddyFilter] = useState<'all' | 'buddies'>('all');
+  const [buddyFilter, setBuddyFilter] = useState<RosterFilter>('all');
+  const rosterContentRef = useRef<HTMLDivElement>(null);
+  const rosterFooterRef = useRef<HTMLDivElement>(null);
+  const showRoster = isSessionChecked || (sessionCheckFailed && members.length > 0);
+
+  useLayoutEffect(() => {
+    const content = rosterContentRef.current;
+    const footer = rosterFooterRef.current;
+    if (!content || !footer) return;
+
+    const measure = () => {
+      const height = Math.ceil(footer.getBoundingClientRect().height);
+      content.style.setProperty('--roster-footer-height', `${height}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(footer, { box: 'border-box' });
+    return () => observer.disconnect();
+  }, [showRoster]);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(STORAGE_KEY_ROSTER_FILTER) === 'buddies') setBuddyFilter('buddies');
+    } catch {
+      // The roster also works with browser storage disabled.
+    }
+  }, []);
+
+  const selectRosterFilter = (filter: RosterFilter) => {
+    setBuddyFilter(filter);
+    try {
+      sessionStorage.setItem(STORAGE_KEY_ROSTER_FILTER, filter);
+    } catch {
+      // Keep the in-memory selection when browser storage is disabled.
+    }
+  };
 
   // Check-in loading indicator
   const [isCheckingIn, setIsCheckingIn] = useState(false);
@@ -108,6 +143,7 @@ export default function HomePage() {
     tab: 'calendar' | 'timetable' | 'punishments';
     personal?: boolean;
   } | null>(null);
+  const activeTab = calendarView?.personal ? 'sleep' : activeModal === 'mod' ? 'mod' : 'roster';
 
   const handleOpenMemberProfile = useCallback((memberId: string, tab: 'calendar' | 'timetable' = 'calendar') => {
     setCalendarView({ memberId, tab });
@@ -693,17 +729,6 @@ export default function HomePage() {
     await fetchRoster();
   }, [fetchRoster]);
 
-  // Claimed member profile & state
-  const claimedMember = useMemo(() => {
-    if (!claimedMemberId) return null;
-    return members.find((m) => m.id === claimedMemberId) || null;
-  }, [members, claimedMemberId]);
-
-  const claimedMemberState = useMemo(() => {
-    if (!claimedMember) return null;
-    return computeMemberState(claimedMember, viewerTimezone);
-  }, [claimedMember, viewerTimezone, tick]);
-
   // Filtered members list based on buddy filter
   const displayedMembers = useMemo(() => {
     if (buddyFilter === 'buddies') {
@@ -749,6 +774,13 @@ export default function HomePage() {
     return { overdue, nagNow: overdue, windingDown, awake, sleeping };
   }, [displayedMembers, viewerTimezone, tick]);
 
+  const overdueFriends = categorized.overdue.filter(({ member }) => member.id !== currentUser?.id).length;
+  const windingDownFriends = categorized.windingDown.filter(({ member }) => member.id !== currentUser?.id).length;
+  const rosterSummary = overdueFriends > 0
+    ? `${overdueFriends} ${overdueFriends === 1 ? 'friend' : 'friends'} past bedtime`
+    : windingDownFriends > 0 ? `${windingDownFriends} winding down` : 'The den is quiet';
+  const rosterFox = overdueFriends > 0 ? 'alert' : windingDownFriends > 0 ? 'lantern' : 'sleeping';
+
   // Home Screen App Badging API: Sync overdue friend count to mobile PWA icon
   useEffect(() => {
     if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
@@ -775,7 +807,7 @@ export default function HomePage() {
     </div>
   );
 
-  if (!isSessionChecked && !(sessionCheckFailed && members.length > 0)) {
+  if (!showRoster) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-night-bg text-cream-primary p-4">
         <FoxMascot state="sleeping" size={56} className="animate-pulse mb-3" />
@@ -790,6 +822,7 @@ export default function HomePage() {
       {sessionRetry}
       <Header
         viewerTimezone={viewerTimezone}
+        activeTab={activeTab}
         isPushEnabled={isPushEnabled}
         onOpenPush={handleOpenPushModal}
         isSleepShieldActive={isSleepShieldActive}
@@ -800,7 +833,7 @@ export default function HomePage() {
         onOpenLogin={handleOpenLogin}
       />
 
-      <div className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-4 md:py-6 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-24">
+      <div ref={rosterContentRef} className="roster-content mx-auto w-full max-w-7xl flex-1 px-4 pt-3 sm:px-6 md:pt-6 lg:px-8">
         {/* Floating Notification Toast */}
         {toastMessage && (
           <div
@@ -832,7 +865,8 @@ export default function HomePage() {
             </div>
             <button
               onClick={() => fetchRoster()}
-              className="text-xs font-semibold text-status-amber hover:underline ml-2"
+              type="button"
+              className="ml-2 min-h-[44px] min-w-[44px] rounded-lg text-xs font-semibold text-status-amber hover:underline focus-visible:ring-2 focus-visible:ring-status-amber"
             >
               Retry
             </button>
@@ -846,75 +880,40 @@ export default function HomePage() {
           onPushStateChanged={setIsPushEnabled}
         />
 
-        {/* Contextual Sleepy Fox Status Banner */}
-        <section className="mb-6 rounded-2xl border border-night-border/80 bg-night-surface/90 p-4 shadow-lg backdrop-blur-sm sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3.5">
-              {claimedMember?.is_in_bed ? (
-                <FoxMascot state="sleeping" size={42} />
-              ) : categorized.overdue.length > 0 ? (
-                <FoxMascot state="alert" size={42} className="animate-pulse" />
-              ) : categorized.windingDown.length > 0 ? (
-                <FoxMascot state="lantern" size={42} />
-              ) : (
-                <FoxMascot state="sleeping" size={42} />
-              )}
-
-              <div>
-                <h2 className="text-sm font-bold text-cream-primary sm:text-base">Roster</h2>
-                <p className="text-xs text-cream-secondary sm:text-sm">
-                  {claimedMemberState?.statusText ?? (categorized.overdue.length ? 'Friends are past bedtime.' : 'The den is quiet.')}
-                </p>
-              </div>
-            </div>
-
-            {/* Quick summary counters */}
-            <div className="flex items-center gap-2 self-start rounded-xl bg-night-surface border border-night-border px-3 py-1.5 text-xs font-medium text-cream-secondary sm:self-auto">
-              <span className="text-status-coral font-bold tabular-nums">
-                {categorized.overdue.length} Overdue
-              </span>
-              <span>•</span>
-              <span className="text-status-amber font-bold tabular-nums">
-                {categorized.windingDown.length} Wind
-              </span>
-              <span>•</span>
-              <span className="text-cream-muted font-bold tabular-nums">
-                {categorized.sleeping.length} Asleep
-              </span>
+        <div className="mb-2 md:flex md:items-center md:justify-between md:gap-6">
+          <div className="flex items-center gap-2.5">
+            <span aria-hidden="true"><FoxMascot state={rosterFox} size={32} /></span>
+            <div>
+              <h1 className="text-lg font-bold leading-tight tracking-tight md:text-2xl">Roster</h1>
+              <p className="text-sm tabular-nums text-cream-secondary">{rosterSummary}</p>
             </div>
           </div>
-        </section>
-
-        {/* Buddy Filter Bar */}
-        <div className="mb-4 flex items-center justify-between flex-wrap gap-2.5">
-          <div className="flex items-center rounded-xl bg-night-surface p-1 border border-night-border/80">
-            <button
-              onClick={() => setBuddyFilter('all')}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-colors whitespace-nowrap ${
-                buddyFilter === 'all'
-                  ? 'bg-night-elevated text-cream-primary'
-                  : 'text-cream-muted hover:text-cream-secondary'
-              }`}
-            >
-              <Users className="h-3.5 w-3.5" />
-              <span>All Den ({members.length})</span>
-            </button>
-            <button
-              onClick={() => setBuddyFilter('buddies')}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 min-h-[36px] text-xs font-semibold transition-colors whitespace-nowrap ${
-                buddyFilter === 'buddies'
-                  ? 'bg-status-amber/20 text-status-amber border border-status-amber/40'
-                  : 'text-cream-muted hover:text-cream-secondary'
-              }`}
-            >
-              <Star
-                className={`h-3.5 w-3.5 ${
-                  buddyFilter === 'buddies' ? 'fill-status-amber text-status-amber' : ''
-                }`}
+          <div ref={rosterFooterRef} className="roster-footer border-night-border bg-night-surface/95 max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:z-40 max-md:border-t max-md:backdrop-blur-md md:w-full md:max-w-md md:shrink-0 md:rounded-2xl">
+            {currentUser && (
+              <PinnedSelfActionBar
+                currentUser={currentUser}
+                onCheckIn={handleCheckIn}
+                onWakeUp={handleWakeUp}
+                onCancelInBed={handleCancelInBed}
+                isCheckingIn={isCheckingIn}
               />
-              <span>Starred Buddies ({starredMembers.length})</span>
-            </button>
+            )}
+            <BottomNav
+              activeTab={activeTab}
+              onChangeTab={handleMobileTabChange}
+              isModerator={Boolean(currentUser?.is_moderator)}
+            />
           </div>
+        </div>
+
+        <div role="group" aria-label="Filter roster" className="mb-2 inline-flex rounded-xl border border-night-border bg-night-surface p-0.5">
+          {([['all', 'All'], ['buddies', 'Starred']] as const).map(([filter, label]) => (
+            <button key={filter} type="button" aria-pressed={buddyFilter === filter} onClick={() => selectRosterFilter(filter)}
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-[10px] px-3 text-sm font-semibold text-cream-secondary hover:text-cream-primary focus-visible:ring-2 focus-visible:ring-status-amber aria-pressed:bg-status-amber/15 aria-pressed:text-status-amber">
+              {filter === 'buddies' && <Star className="h-3.5 w-3.5" aria-hidden="true" />}
+              {label}
+            </button>
+          ))}
         </div>
 
         {loading ? (
@@ -930,8 +929,9 @@ export default function HomePage() {
               Click the star icon ⭐ on any friend&apos;s card to add them to your priority accountability watchlist.
             </p>
             <button
-              onClick={() => setBuddyFilter('all')}
-              className="mt-3 rounded-lg bg-night-elevated px-3 py-1.5 text-xs font-medium text-status-amber hover:bg-night-border"
+              type="button"
+              onClick={() => selectRosterFilter('all')}
+              className="mt-3 min-h-[44px] rounded-lg bg-night-elevated px-3 text-sm font-medium text-status-amber hover:bg-night-border focus-visible:ring-2 focus-visible:ring-status-amber"
             >
               Show All Members
             </button>
@@ -966,13 +966,12 @@ export default function HomePage() {
           </div>
         ) : (
           <>
-            {/* 1. Overdue / Past Bedtime (Always top priority) */}
             <StatusBucket
               id="overdue-past-bedtime"
-              title="Overdue / Past Bedtime"
+              title="Overdue"
               count={categorized.overdue.length}
               accentColor="text-status-coral"
-              icon={<ShieldAlert className="h-4 w-4 text-status-coral animate-pulse" />}
+              icon={<ShieldAlert className="h-4 w-4 text-status-coral" aria-hidden="true" />}
               defaultExpanded={true}
               showEmptyState={false}
             >
@@ -1003,7 +1002,7 @@ export default function HomePage() {
               title="Winding Down"
               count={categorized.windingDown.length}
               accentColor="text-status-amber"
-              icon={<Sparkles className="h-4 w-4 text-status-amber" />}
+              icon={<Sparkles className="h-4 w-4 text-status-amber" aria-hidden="true" />}
               defaultExpanded={true}
               showEmptyState={false}
             >
@@ -1034,7 +1033,7 @@ export default function HomePage() {
               title="Awake"
               count={categorized.awake.length}
               accentColor="text-cream-secondary"
-              icon={<Sun className="h-4 w-4 text-cream-secondary" />}
+              icon={<Sun className="h-4 w-4 text-cream-secondary" aria-hidden="true" />}
               defaultExpanded={false}
             >
               {categorized.awake.map(({ member, state }) => (
@@ -1063,8 +1062,8 @@ export default function HomePage() {
               id="sleeping"
               title="Sleeping"
               count={categorized.sleeping.length}
-              accentColor="text-cream-muted"
-              icon={<Moon className="h-4 w-4 text-cream-muted" />}
+              accentColor="text-cream-secondary"
+              icon={<Moon className="h-4 w-4 text-cream-secondary" aria-hidden="true" />}
               defaultExpanded={false}
               showEmptyState={true}
               emptyMessage="No members currently asleep."
@@ -1092,24 +1091,6 @@ export default function HomePage() {
           </>
         )}
       </div>
-
-      {/* Persistent Pinned Self-Action Bar (Authenticated Members Only) */}
-      {currentUser && (
-        <PinnedSelfActionBar
-          currentUser={currentUser}
-          onCheckIn={handleCheckIn}
-          onWakeUp={handleWakeUp}
-          onCancelInBed={handleCancelInBed}
-          isCheckingIn={isCheckingIn}
-        />
-      )}
-
-      {/* Sticky Bottom Navigation (Mobile Viewports Only: < 768px) */}
-      <BottomNav
-        activeTab={calendarView?.personal ? 'sleep' : activeModal === 'mod' ? 'mod' : 'roster'}
-        onChangeTab={handleMobileTabChange}
-        isModerator={Boolean(currentUser?.is_moderator)}
-      />
 
       {/* Self-Service My Schedule Modal */}
       {currentUser && (activeModal === 'profile' || activeModal === 'schedule') && (
