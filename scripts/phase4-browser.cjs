@@ -65,7 +65,10 @@ async function setup(browser, origin, width) {
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   await page.clock.setFixedTime(now);
-  await context.addInitScript(() => localStorage.setItem('zcatchers_unified_onboarding_dismissed_at', String(Date.now())));
+  await context.addInitScript(() => {
+    localStorage.setItem('zcatchers_unified_onboarding_dismissed_at', String(Date.now()));
+    sessionStorage.setItem('zc_bucket_awake_expanded', 'true');
+  });
   const requested = { strikes: [], wake: [], privateHistory: 0, failLogs: false, failStrikes: false, failWake: true };
   const sleepLogs = logs.map(log => ({ ...log }));
   await context.route('**/*', async route => {
@@ -210,7 +213,7 @@ async function verify(browser, origin, width) {
     requested.failLogs = true;
     requested.failStrikes = true;
     await my.getByRole('button', { name: 'Previous month' }).click();
-    await my.getByRole('alert').getByText('Fixture sleep read failed').waitFor();
+    await my.getByText('Fixture sleep read failed', { exact: true }).waitFor();
     await my.getByRole('button', { name: 'Retry strike history' }).waitFor();
     requested.failLogs = false;
     requested.failStrikes = false;
