@@ -179,7 +179,13 @@ The same callout applies to every role. Show immediate edits and early approval 
 
 Show the Mod entry for signed-in Owners and Moderators based on current server permissions. Open the Warm Dark desktop dialog or mobile sheet directly, with the **Owner** or **Moderator** badge, **Close**, the Sleepy Fox and touch targets of at least 44 px.
 
-In **Roster**, give the Owner **Make moderator** and **Remove moderator** on eligible rows. Confirm the account and change before saving, then refresh the row. Gate other actions by the server’s capabilities and refresh those capabilities on role-related errors.
+Keep **Approvals**, **Roster**, **Punishments**, and **Metastrikes** in the persistent drawer header. Place **Advanced** alongside Close for the Owner. On phones, use a single content scroller and size the sheet to the visible viewport when the keyboard opens.
+
+In **Roster**, use compact searchable rows with an avatar, name, role, and available strike summary. At 1280 px and wider, show the list and member details side by side. At narrower widths, open the detail as a separate view inside the drawer and restore the roster's search, scroll, and keyboard focus on return.
+
+Group detail controls under **Schedule**, **Accountability**, and **Account access**. Show the member's name in confirmations for role changes and destructive actions. Keep write controls behind their existing permissions and close an editor if its target disappears or its permission is revoked.
+
+In **Approvals**, pair the current and requested bedtime and wake time with their local timezones and show the effective date. Compare the scheduled nights that change and wrap the two labeled columns when space is tight. Give Punishments and Metastrikes matching queue headings, spacing, and read states.
 
 Show **Edit strikes** according to the roster row's `can_review_strikes` capability. The Owner sees it on every profile, including their own. A Moderator sees it on every other profile.
 
