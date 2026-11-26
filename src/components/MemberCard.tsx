@@ -143,15 +143,8 @@ export function MemberCard({
     ) ?? []).filter(element => element.tabIndex >= 0 && !element.matches(':disabled') &&
       element.getClientRects().length > 0 && getComputedStyle(element).visibility === 'visible');
 
-    // Focus the first visible control inside the dialog.
-    const focusTimer = setTimeout(() => {
-      const firstFocusable = focusableControls()[0];
-      if (firstFocusable) {
-        firstFocusable.focus();
-      } else {
-        sheetDialogRef.current?.focus();
-      }
-    }, 50);
+    const firstFocusable = focusableControls()[0];
+    (firstFocusable ?? sheetDialogRef.current)?.focus({ preventScroll: true });
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -192,7 +185,6 @@ export function MemberCard({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      clearTimeout(focusTimer);
       window.removeEventListener('keydown', handleKeyDown);
       detailsTrigger?.focus({ preventScroll: true });
     };
@@ -614,10 +606,10 @@ export function MemberCard({
       target="_blank"
       rel="noopener noreferrer"
       onClick={recordsJournalAssist ? handleNagJournalClick : undefined}
-      className={`flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-center text-sm font-semibold leading-tight transition-colors ${journalStyle} ${focusStyle} ${className}`}
+      className={`flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-lg border px-2 py-0.5 text-center text-sm font-semibold leading-4 transition-colors ${journalStyle} ${focusStyle} ${className}`}
     >
       <span className="min-w-0">{journalLabel}</span>
-      <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      {(!recordsJournalAssist || !hasNagged) && <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
     </a>
   );
 
