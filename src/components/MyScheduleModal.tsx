@@ -407,6 +407,8 @@ export function MyScheduleModal({
                   {pendingCooldownNotice && (
                     <span className="mt-0.5 block text-xs text-status-amber">
                       Pending change applies {pendingCooldownNotice.effectiveDate}
+                      {pendingCooldownNotice.pendingBedtime && pendingCooldownNotice.pendingWakeTime &&
+                        ` · ${pendingCooldownNotice.pendingBedtime} bedtime, ${pendingCooldownNotice.pendingWakeTime} wake`}
                     </span>
                   )}
                 </span>

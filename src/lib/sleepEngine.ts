@@ -146,6 +146,12 @@ export function toValidLuxonZone(zoneStr: string | null | undefined): string {
   return clean;
 }
 
+export function getMemberCalendarDate(timezone: string | null | undefined, now = DateTime.utc()) {
+  const zoned = now.setZone(toValidLuxonZone(timezone));
+  const localNow = zoned.isValid ? zoned : now.toUTC();
+  return { localNow, today: localNow.toISODate(), month: localNow.toFormat('yyyy-MM') };
+}
+
 /**
  * Validates whether the given string represents a valid IANA timezone identifier or supported offset in Luxon.
  */

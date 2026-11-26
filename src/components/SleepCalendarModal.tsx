@@ -4,7 +4,7 @@ import { ResponsiveDialog } from '@/components/ResponsiveDialog';
 import { MemberPunishmentList } from '@/components/PunishmentList';
 import { MemberMetastrikeHistory } from '@/components/MemberMetastrikeHistory';
 import { StrikeDayDetails, StrikeHistoryList, type StrikeHistoryEntry, type StrikeHistoryMonth } from '@/components/StrikeHistory';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X,
   ChevronLeft,
@@ -24,16 +24,14 @@ import {
   Edit3,
 } from 'lucide-react';
 import { DateTime } from 'luxon';
-import { computeMemberState, isOverdueBucket } from '@/lib/sleepEngine';
+import { computeMemberState, getMemberCalendarDate, isOverdueBucket, type SleepBucket } from '@/lib/sleepEngine';
 import { FoxMascot } from './FoxMascot';
 import type { Member, SleepLog, WeeklySchedule } from '@/lib/db';
 import {
   formatGmtOffset,
-  toValidLuxonZone,
   DayKey,
   DAY_KEYS,
   WEEKDAY_TO_DAY_KEY,
-  resolveActiveSleepCycleWindow,
 } from '@/lib/timezone';
 
 const DAY_LABELS: Record<DayKey, { short: string; full: string }> = {
@@ -67,8 +65,8 @@ interface SleepHistoryData {
     weekend_bedtime_local?: string | null;
     weekend_wake_time_local?: string | null;
     journal_url?: string;
-    is_in_bed?: boolean;
-    is_woke_up?: boolean;
+    active_day_key?: DayKey;
+    sleep_bucket?: SleepBucket;
     strikes_used?: number;
     strikes_count?: number;
     metastrikes_used?: number;
@@ -187,6 +185,7 @@ export function SleepCalendarModal({
   } | null>(null);
   const [strikeHistoryRetry, setStrikeHistoryRetry] = useState(0);
   const dayDetailsRef = useRef<HTMLElement>(null);
+  const [focusRequest, setFocusRequest] = useState<{ memberId: string | null; date: string } | null>(null);
 
   // The existing roster sync delivers current totals to an open My Sleep panel.
   const punishmentSnapshot = [
@@ -194,12 +193,19 @@ export function SleepCalendarModal({
     initialMember?.metastrikes_used, initialMember?.open_punishment_count,
   ].join(':');
 
-  // Active month in "YYYY-MM" format
-  const [currentMonth, setCurrentMonth] = useState<string>(() => {
-    const now = DateTime.now();
-    const local = now.setZone(toValidLuxonZone((initialMember ?? currentUser)?.timezone));
-    return (local.isValid ? local : now).toFormat('yyyy-MM');
-  });
+  const activeTargetId = memberId || initialMember?.id || null;
+  const isViewer = Boolean(activeTargetId && currentUser?.id === activeTargetId);
+  const rosterMember = initialMember?.id === activeTargetId ? initialMember : null;
+  const liveMember = rosterMember ?? (isViewer ? currentUser : null);
+  const apiMember = data?.member?.id === activeTargetId ? data.member : null;
+  const calendarTimezone = liveMember?.timezone ?? apiMember?.timezone;
+  const now = DateTime.utc();
+  const { localNow, today, month: localMonth } = getMemberCalendarDate(calendarTimezone, now);
+  const [monthChoice, setMonthChoice] = useState<{ memberId: string | null; month: string } | null>(null);
+  const chosenMonth = monthChoice?.memberId === activeTargetId ? monthChoice.month : undefined;
+  const currentMonth = chosenMonth ?? localMonth;
+  // The endpoint uses the target's timezone when a profile opens without roster data.
+  const requestMonth = chosenMonth ?? (liveMember?.timezone ? localMonth : undefined);
 
   const requestSeqRef = useRef(0);
 
@@ -233,18 +239,16 @@ export function SleepCalendarModal({
 
   // Fetch sleep history from API
   const fetchHistory = useCallback(
-    async (mId: string, monthStr: string, background = false) => {
+    async (mId: string, monthStr?: string, background = false) => {
       const requestId = ++requestSeqRef.current;
       if (!background) {
         setLoading(true);
         setError(null);
-        setData(null);
       }
       try {
-        const res = await fetch(
-          `/api/members/sleep-history?memberId=${encodeURIComponent(mId)}&month=${encodeURIComponent(monthStr)}`,
-          { cache: 'no-store' },
-        );
+        const params = new URLSearchParams({ memberId: mId });
+        if (monthStr) params.set('month', monthStr);
+        const res = await fetch(`/api/members/sleep-history?${params}`, { cache: 'no-store' });
         const json = await res.json();
         if (requestSeqRef.current !== requestId) {
           return;
@@ -255,7 +259,7 @@ export function SleepCalendarModal({
         setData(json);
         setError(null);
       } catch (err: unknown) {
-        if (!background && requestSeqRef.current === requestId) {
+        if (requestSeqRef.current === requestId) {
           const message = err instanceof Error ? err.message : 'Unknown error';
           setError(message);
         }
@@ -268,7 +272,6 @@ export function SleepCalendarModal({
     []
   );
 
-  const activeTargetId = memberId || initialMember?.id || null;
   const initialFingerprint = initialMember
     ? `${initialMember.id}_${initialMember.strikes_used}_${initialMember.strikes_count}_${initialMember.metastrikes_used}_${initialMember.metastrikes_count}_${initialMember.strike_cycle_month}`
     : null;
@@ -278,21 +281,23 @@ export function SleepCalendarModal({
   const prevAccountabilityRef = useRef(accountabilityRevision);
   const prevTargetIdRef = useRef<string | null>(null);
   const prevFingerprintRef = useRef<string | null>(null);
-  const prevMonthRef = useRef<string>(currentMonth);
+  const prevMonthRef = useRef(requestMonth);
   const prevIsOpenRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!isOpen || !activeTargetId) {
+      requestSeqRef.current += 1;
       prevTargetIdRef.current = null;
       prevFingerprintRef.current = null;
       prevIsOpenRef.current = isOpen;
+      setMonthChoice(null);
       return;
     }
 
     const justOpened = !prevIsOpenRef.current && isOpen;
     const idChanged = prevTargetIdRef.current !== activeTargetId;
     const fingerprintChanged = prevFingerprintRef.current !== initialFingerprint;
-    const monthChanged = prevMonthRef.current !== currentMonth;
+    const monthChanged = prevMonthRef.current !== requestMonth;
 
     const accountabilityChanged = prevRosterMemberRef.current !== privateRosterMember ||
       prevAccountabilityRef.current !== accountabilityRevision;
@@ -303,22 +308,23 @@ export function SleepCalendarModal({
     if (justOpened || idChanged || fingerprintChanged || monthChanged) {
       prevTargetIdRef.current = activeTargetId;
       prevFingerprintRef.current = initialFingerprint;
-      prevMonthRef.current = currentMonth;
-      setData(null);
-      fetchHistory(activeTargetId, currentMonth);
+      prevMonthRef.current = requestMonth;
+      if (justOpened || idChanged) setSelectedDate(null);
+      fetchHistory(activeTargetId, requestMonth);
     } else if (privateRosterMember && accountabilityChanged) {
       // A past-cycle approval can change the calendar without changing current-month counters.
-      fetchHistory(activeTargetId, currentMonth, true);
+      fetchHistory(activeTargetId, requestMonth, true);
     }
-  }, [isOpen, activeTargetId, initialFingerprint, currentMonth, fetchHistory, privateRosterMember, accountabilityRevision]);
+  }, [isOpen, activeTargetId, initialFingerprint, requestMonth, fetchHistory, privateRosterMember, accountabilityRevision]);
 
   // Set default selected date when data changes or month loads
   useEffect(() => {
-    if (data?.month === currentMonth || error) {
+    if ((apiMember && data?.month === currentMonth) || error) {
+      const latestLogDate = apiMember && data?.month === currentMonth ? data.logs.at(-1)?.cycle_date : null;
       setSelectedDate(previous => previous?.startsWith(`${currentMonth}-`) ? previous
-        : data?.logs.at(-1)?.cycle_date ?? `${currentMonth}-01`);
+        : latestLogDate ?? `${currentMonth}-01`);
     }
-  }, [data, currentMonth, error]);
+  }, [apiMember, data, currentMonth, error]);
 
   useEffect(() => {
     setIsEditingWakeTime(false);
@@ -327,23 +333,16 @@ export function SleepCalendarModal({
   }, [activeTargetId, currentMonth]);
 
   // Navigation handlers
-  const handlePrevMonth = () => {
+  const navigateMonth = (direction: -1 | 1) => {
     triggerHaptic(10);
-    const dt = DateTime.fromISO(`${currentMonth}-01`);
-    setCurrentMonth(dt.minus({ months: 1 }).toFormat('yyyy-MM'));
-  };
-
-  const handleNextMonth = () => {
-    triggerHaptic(10);
-    const dt = DateTime.fromISO(`${currentMonth}-01`);
-    setCurrentMonth(dt.plus({ months: 1 }).toFormat('yyyy-MM'));
+    const month = DateTime.fromISO(`${currentMonth}-01`, { zone: 'utc' }).plus({ months: direction }).toFormat('yyyy-MM');
+    setMonthChoice({ memberId: activeTargetId, month });
   };
 
   // Resolved Member profile info (merged from direct prop and API)
   const resolvedProfile = useMemo(() => {
-    const apiMember = data?.member;
-    const base = initialMember;
-    const id = memberId || base?.id || apiMember?.id || '';
+    const base = liveMember;
+    const id = activeTargetId ?? '';
     const name = base?.discord_username || apiMember?.name || 'Member';
     const avatar = base?.avatar_url || apiMember?.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(name)}`;
     const timezone = base?.timezone || apiMember?.timezone || 'GMT+00:00';
@@ -369,30 +368,6 @@ export function SleepCalendarModal({
       : 0;
     const weeklySchedule = base?.weekly_schedule || apiMember?.weekly_schedule || null;
     const journalUrl = base?.journal_url || apiMember?.journal_url || '';
-    const isInBed = Boolean(base?.is_in_bed ?? apiMember?.is_in_bed);
-
-    // Current time in member's timezone using luxon
-    const memberZone = toValidLuxonZone(timezone);
-    const memberNow = DateTime.utc().setZone(memberZone);
-    
-    // Resolve active cycle dayKey consistently with the sleep engine
-    const effectiveMember: any = base || apiMember || { timezone };
-    let currentDayKey: DayKey;
-    if (
-      apiMember &&
-      (apiMember as any).active_day_key &&
-      (['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as DayKey[]).includes((apiMember as any).active_day_key)
-    ) {
-      currentDayKey = (apiMember as any).active_day_key;
-    } else {
-      try {
-        const activeWindow = resolveActiveSleepCycleWindow(effectiveMember, DateTime.utc(), isInBed);
-        currentDayKey = activeWindow.dayKey;
-      } catch {
-        const todayWeekdayNumber = memberNow.weekday; // 1 = Mon ... 7 = Sun
-        currentDayKey = (['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as DayKey[])[todayWeekdayNumber - 1] || 'mon';
-      }
-    }
 
     return {
       id,
@@ -409,12 +384,9 @@ export function SleepCalendarModal({
       strikeCountsUnavailable: !apiMember && Boolean(base?.strike_counts_unavailable),
       weeklySchedule,
       journalUrl,
-      isInBed,
-      currentDayKey,
     };
-  }, [data?.member, initialMember, memberId]);
+  }, [apiMember, liveMember, activeTargetId]);
 
-  const isViewer = Boolean(currentUser && resolvedProfile.id && currentUser.id === resolvedProfile.id);
   const calendarHistory = Boolean(isOpen && currentUser && activeTab === 'calendar');
   const privateCalendar = calendarHistory && isMySleep && isViewer;
   const historyView = privateCalendar ? 'self' : 'profile';
@@ -458,25 +430,36 @@ export function SleepCalendarModal({
   const displayedDate = selectedDate?.startsWith(`${currentMonth}-`) ? selectedDate : `${currentMonth}-01`;
   const selectedStrikeEntries = strikeDays.get(displayedDate);
 
+  useLayoutEffect(() => {
+    if (!focusRequest) return;
+    const sameSelection = focusRequest.memberId === activeTargetId && focusRequest.date === displayedDate;
+    if (!isOpen || activeTab !== 'calendar' || !sameSelection) {
+      setFocusRequest(null);
+    } else if (dayDetailsRef.current) {
+      dayDetailsRef.current.focus();
+      setFocusRequest(null);
+    }
+  }, [focusRequest, isOpen, activeTab, activeTargetId, displayedDate, loading]);
+
   const selectDay = (date: string) => {
     triggerHaptic(10);
     setSelectedDate(date);
     setIsEditingWakeTime(false);
     setEditError(null);
     setEditSuccess(null);
-    requestAnimationFrame(() => dayDetailsRef.current?.focus());
+    setFocusRequest({ memberId: activeTargetId, date });
   };
 
   // Map of logs keyed on cycle_date
   const logsMap = useMemo(() => {
     const map = new Map<string, SleepLog>();
-    if (data?.month === currentMonth) {
+    if (apiMember && data?.month === currentMonth) {
       for (const log of data.logs) {
         map.set(log.cycle_date, log);
       }
     }
     return map;
-  }, [data, currentMonth]);
+  }, [apiMember, data, currentMonth]);
 
   // Calendar cells generation for 7-column grid
   const calendarCells = useMemo(() => {
@@ -513,8 +496,8 @@ export function SleepCalendarModal({
 
   // Selected log details
   const selectedLog = useMemo(() => {
-    return data?.month === currentMonth ? logsMap.get(displayedDate) ?? null : null;
-  }, [data?.month, currentMonth, displayedDate, logsMap]);
+    return error ? null : logsMap.get(displayedDate) ?? null;
+  }, [error, displayedDate, logsMap]);
 
   // Check if selected date is eligible for self-edit
   const isEligibleForSelfEdit = useMemo(() => {
@@ -526,6 +509,11 @@ export function SleepCalendarModal({
     const diffDays = now.startOf('day').diff(targetDt.startOf('day'), 'days').days;
     return diffDays >= 0 && diffDays <= 7;
   }, [currentUser, resolvedProfile.id, selectedDate, displayedDate]);
+
+  const visibleCalendarRef = useRef({ isOpen, memberId: activeTargetId, month: currentMonth, date: displayedDate });
+  useLayoutEffect(() => {
+    visibleCalendarRef.current = { isOpen, memberId: activeTargetId, month: currentMonth, date: displayedDate };
+  }, [isOpen, activeTargetId, currentMonth, displayedDate]);
 
   // Submit manual wake-up time for selected date
   const handleSaveWakeTime = async (e: React.FormEvent) => {
@@ -554,23 +542,27 @@ export function SleepCalendarModal({
         throw new Error(json.error || 'Failed to update wake time');
       }
 
-      setEditSuccess(
-        json.formatted_duration
-          ? `Logged! Sleep duration: ${json.formatted_duration}.`
-          : 'Wake-up time updated successfully!'
-      );
-      setIsEditingWakeTime(false);
-      setEditWakeTime('');
-
-      if (memberId) {
-        await fetchHistory(memberId, currentMonth, true);
+      const view = visibleCalendarRef.current;
+      if (view.isOpen && view.memberId === currentUser.id) {
+        if (view.date === selectedDate) {
+          setEditSuccess(
+            json.formatted_duration
+              ? `Logged! Sleep duration: ${json.formatted_duration}.`
+              : 'Wake-up time updated successfully!'
+          );
+          setIsEditingWakeTime(false);
+          setEditWakeTime('');
+        }
+        await fetchHistory(view.memberId, view.month, true);
       }
       if (onWakeUpUpdated) {
         await onWakeUpUpdated();
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      setEditError(message);
+      const view = visibleCalendarRef.current;
+      if (view.isOpen && view.memberId === currentUser.id && view.date === selectedDate) {
+        setEditError(err instanceof Error ? err.message : 'Unknown error');
+      }
     } finally {
       setEditSubmitting(false);
     }
@@ -578,21 +570,20 @@ export function SleepCalendarModal({
 
   if (!isOpen) return null;
 
-  const now = DateTime.utc();
-  const localNow = now.setZone(toValidLuxonZone(resolvedProfile.timezone));
-  const today = localNow.toISODate();
   const timezone = formatGmtOffset(resolvedProfile.timezone);
-  const liveMember = initialMember ?? (isViewer ? currentUser : null);
   const state = liveMember ? computeMemberState(liveMember, resolvedProfile.timezone, now) : null;
-  const sleepStatus = (state ? state.bucket === 'SLEEPING' : resolvedProfile.isInBed) ? 'Sleeping'
-    : state?.bucket === 'WINDING_DOWN' ? 'Winding down'
-      : state && isOverdueBucket(state.bucket) ? 'Overdue' : 'Awake';
+  const bucket = state?.bucket ?? apiMember?.sleep_bucket;
+  const sleepStatus = bucket === 'SLEEPING' ? 'Sleeping'
+    : bucket === 'WINDING_DOWN' ? 'Winding down'
+      : isOverdueBucket(bucket) ? 'Overdue'
+        : bucket === 'AWAKE' ? 'Awake' : 'Status unavailable';
+  const currentDayKey = apiMember?.active_day_key ?? state?.dayKey ?? WEEKDAY_TO_DAY_KEY[localNow.weekday];
   const monthTitle = DateTime.fromISO(`${currentMonth}-01`).toFormat('MMMM yyyy');
-  const monthSummary = data?.month === currentMonth ? data.summary : null;
+  const monthSummary = !loading && !error && apiMember && data?.month === currentMonth ? data.summary : null;
 
   return (
     <ResponsiveDialog labelledBy="sleep-calendar-title" onClose={onClose}
-      className="px-2 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] min-[390px]:px-3 sm:px-5 md:max-w-2xl md:p-6 lg:max-w-5xl">
+      className="px-1 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] max-[349px]:[scrollbar-width:none] min-[350px]:px-2 min-[390px]:px-3 sm:px-5 md:max-w-2xl md:p-6 lg:max-w-5xl">
         <header className="border-b border-night-border pb-3">
           <div className="flex items-start gap-3">
             {isMySleep ? (
@@ -611,7 +602,7 @@ export function SleepCalendarModal({
                     : sleepStatus === 'Winding down' ? 'font-semibold text-status-amber' : 'font-semibold text-cream-primary'}>
                     {sleepStatus}
                   </span>
-                  <span className="tabular-nums">{localNow.toFormat('h:mm a')} local · {timezone}</span>
+                  {calendarTimezone && <span className="tabular-nums">{localNow.toFormat('h:mm a')} local · {timezone}</span>}
                 </p>
               )}
             </div>
@@ -683,12 +674,12 @@ export function SleepCalendarModal({
             <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
               <section aria-label="Sleep calendar" className="min-w-0">
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <button type="button" aria-label="Previous month" onClick={handlePrevMonth}
+                  <button type="button" aria-label="Previous month" onClick={() => navigateMonth(-1)}
                     className="grid min-h-[44px] min-w-[44px] place-items-center rounded-lg text-cream-secondary hover:bg-night-elevated hover:text-cream-primary">
                     <ChevronLeft className="h-5 w-5" aria-hidden="true" />
                   </button>
                   <h3 aria-live="polite" className="text-center text-sm font-bold">{monthTitle}</h3>
-                  <button type="button" aria-label="Next month" onClick={handleNextMonth}
+                  <button type="button" aria-label="Next month" onClick={() => navigateMonth(1)}
                     className="grid min-h-[44px] min-w-[44px] place-items-center rounded-lg text-cream-secondary hover:bg-night-elevated hover:text-cream-primary">
                     <ChevronRight className="h-5 w-5" aria-hidden="true" />
                   </button>
@@ -698,7 +689,7 @@ export function SleepCalendarModal({
                   <div className="flex flex-wrap items-center justify-between gap-x-3 rounded-xl border border-status-coral/40 bg-status-coral/10 px-3 py-2">
                     <p role="alert" className="text-sm text-status-coral [overflow-wrap:anywhere]">{error}</p>
                     {activeTargetId && (
-                      <button type="button" onClick={() => void fetchHistory(activeTargetId, currentMonth)}
+                      <button type="button" onClick={() => void fetchHistory(activeTargetId, requestMonth)}
                         className="min-h-[44px] text-sm font-semibold text-status-amber underline">
                         Retry sleep logs
                       </button>
@@ -708,12 +699,12 @@ export function SleepCalendarModal({
 
                 {!loading && !error && (
                   <>
-                    <div className="mb-1 grid grid-cols-7 gap-0.5 text-center sm:gap-1">
+                    <div className="mb-1 grid grid-cols-7 text-center min-[350px]:gap-x-0.5 sm:gap-1">
                       {WEEKDAY_HEADERS.map(day => (
                         <span key={day} className="py-0.5 text-xs font-medium text-cream-secondary">{day}</span>
                       ))}
                     </div>
-                    <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
+                    <div className="grid grid-cols-7 gap-y-0.5 min-[350px]:gap-x-0.5 sm:gap-1">
                       {calendarCells.map((cell, index) => {
                         const date = cell.dateStr;
                         if (!date) return <div key={`padding-${index}`} aria-hidden="true" />;
@@ -967,7 +958,7 @@ export function SleepCalendarModal({
             {/* 7-Day Timetable Cards Grid */}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-7">
               {DAY_KEYS.map((k) => {
-                const isToday = resolvedProfile.currentDayKey === k;
+                const isToday = currentDayKey === k;
                 const isWeekend = k === 'fri' || k === 'sat';
                 const daySched = resolvedProfile.weeklySchedule?.[k] || {
                   bedtime: isWeekend && resolvedProfile.weekendBedtime ? resolvedProfile.weekendBedtime : resolvedProfile.bedtime,

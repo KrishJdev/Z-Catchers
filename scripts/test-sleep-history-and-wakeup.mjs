@@ -322,6 +322,22 @@ async function run() {
   testAssert(historyJson.summary.avgBedtime !== null, 'Summary has avgBedtime calculated');
   testAssert(historyJson.summary.avgWakeTime !== null, 'Summary has avgWakeTime calculated');
 
+  const boundaryMember = { ...mockTestMember, id: 'history-month-boundary', bedtime_local: '21:30', is_in_bed: false };
+  setInMemoryMember(boundaryMember);
+  const previousNow = Date.now;
+  try {
+    const boundary = DateTime.fromISO('2026-12-01T03:00:00Z').toMillis();
+    Date.now = () => boundary;
+    const defaultHistory = await handleSleepHistoryGet(new Request(
+      `http://localhost:3000/api/members/sleep-history?memberId=${boundaryMember.id}`
+    ));
+    const snapshot = await defaultHistory.json();
+    testAssert(defaultHistory.status === 200 && snapshot.month === '2026-11', 'History without an explicit month uses the target member’s local month');
+    testAssert(snapshot.member?.sleep_bucket === 'BEDTIME_NOW', 'History exposes the authoritative sleep bucket for ID-only profiles');
+  } finally {
+    Date.now = previousNow;
+  }
+
   // -------------------------------------------------------------
   // 5. Sleep Engine Immediate State Transition & needsWakeUpLog
   // -------------------------------------------------------------

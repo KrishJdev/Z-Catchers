@@ -5,6 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DateTime } from 'luxon';
 import { SleepCalendarModal } from '../src/components/SleepCalendarModal.tsx';
+import { getMemberCalendarDate } from '../src/lib/sleepEngine.ts';
 
 console.log('🧪 Starting Member Profile Modal, Weekly Timetable & Text Overflow Verification...\n');
 
@@ -156,6 +157,11 @@ const previousNow = Date.now;
 try {
   const currentTime = DateTime.fromISO('2026-11-30T18:45:00Z').toMillis();
   Date.now = () => currentTime;
+  const boundary = DateTime.fromMillis(currentTime, { zone: 'utc' });
+  const utcDate = getMemberCalendarDate('UTC', boundary);
+  const kolkataDate = getMemberCalendarDate('GMT+05:30', boundary);
+  assert.deepEqual([utcDate.month, utcDate.today], ['2026-11', '2026-11-30']);
+  assert.deepEqual([kolkataDate.month, kolkataDate.today], ['2026-12', '2026-12-01']);
   const peer = profileMarkup({ isStarred: true });
   assert.match(peer, /Overdue.*12:15 AM local/);
   assert.match(peer, /href="https:\/\/discord\.com\/channels\/123\/456\/789".*Open journal/);
@@ -163,10 +169,17 @@ try {
   assert.match(peer, /aria-current="date"[^>]*aria-label="December 1, No sleep activity recorded"/);
   assert.doesNotMatch(peer, />Punishments<|Request Metastrike|Edit Wake-Up Time/);
   assert.doesNotMatch(profileMarkup({ member: { ...member, journal_url: 'https://example.com/channels/123/456' } }), /Open journal/);
+  const byId = profileMarkup({ member: null, memberId: 'peer', currentUser: member });
+  assert.match(byId, />Status unavailable</);
+  assert.match(byId, />November 2026</);
+  assert.doesNotMatch(byId, /12:15 AM local|>Awake</);
+  assert.match(profileMarkup({ member: null, currentUser: member, isMySleep: true }), />December 2026</);
   const personal = profileMarkup({ isMySleep: true, currentUser: member, onRequestMetastrike: () => {} });
   assert.match(personal, />Tonight<.*9:45 PM.*6:15 AM/);
   assert.match(personal, /aria-pressed="true"[^>]*>Calendar<.*>Schedule<.*>Punishments</);
-  assert.ok(personal.indexOf('aria-label="Sleep calendar"') < personal.indexOf('id="selected-sleep-night"'));
+  const calendarIndex = personal.indexOf('aria-label="Sleep calendar"');
+  const inspectorIndex = personal.indexOf('id="selected-sleep-night"');
+  assert.ok(calendarIndex >= 0 && inspectorIndex > calendarIndex);
   assert.match(profileMarkup({ isMySleep: true, currentUser: member, initialTab: 'punishments' }), /Loading punishments/);
 } finally {
   Date.now = previousNow;

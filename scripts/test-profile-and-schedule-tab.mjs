@@ -39,13 +39,18 @@ async function run() {
     id: 'fox', discord_username: 'Rowan Fox', discord_handle: '@rowan',
     timezone: 'Europe/Athens', bedtime_local: '23:00', wake_time_local: '07:00',
     pending_effective_at: DateTime.utc().plus({ days: 1 }).toISO(),
+    pending_bedtime_local: '23:20', pending_wake_time_local: '07:40',
   };
-  const account = renderToStaticMarkup(createElement(MyScheduleModal, {
-    isOpen: true, currentUser, viewerTimezone: 'Asia/Kolkata',
+  const renderAccount = member => renderToStaticMarkup(createElement(MyScheduleModal, {
+    isOpen: true, currentUser: member, viewerTimezone: 'Asia/Kolkata',
     onClose() {}, onLogout() {}, async onRefreshRoster() {},
   }));
+  const account = renderAccount(currentUser);
   assert(/Account settings.*Rowan Fox.*@rowan.*Edit profile.*Sleep schedule.*Pending change applies.*Sign out/.test(account),
     'Account sheet shows the identity, separate editor actions, pending schedule, and sign out');
+  assert(/Pending change applies.*23:20 bedtime, 07:40 wake/.test(account), 'Account settings shows both pending times alongside the effective date');
+  const wakeOnly = renderAccount({ ...currentUser, pending_bedtime_local: null });
+  assert(/Pending change applies/.test(wakeOnly) && !/07:40 wake/.test(wakeOnly), 'A wake-only change shows its effective date');
 
   // 3. Fallback auto-derivation of handle if discord_handle was null
   console.log('\n--- 3. Discord Handle Fallback Auto-population ---');
