@@ -1,0 +1,43 @@
+name: Phase 4 profile and calendar browser verification
+on:
+  push:
+    branches: [codex/verify-ui-4-profiles-my-sleep]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key
+      SESSION_SECRET: fixture-session-secret-at-least-32-characters-long
+      PIN_SALT: fixture-pin-salt-for-verification
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.2
+          npx playwright install chromium --with-deps
+      - name: Verify the Phase 4 screens
+        run: |
+          export PHASE4_BASELINE="$RUNNER_TEMP/zc-phase4-baseline"
+          git worktree add --detach "$PHASE4_BASELINE" 4a2ae4d1c58ef707b3317b5fe4c53a479afe1232
+          ln -s "$PWD/node_modules" "$PHASE4_BASELINE/node_modules"
+          node scripts/phase4-browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase-4-profile-and-my-sleep-comparison
+          path: phase4-screenshots
+          if-no-files-found: warn
