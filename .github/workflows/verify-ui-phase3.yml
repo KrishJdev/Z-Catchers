@@ -1,0 +1,45 @@
+name: Phase 3 browser verification
+
+on:
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    if: github.head_ref == 'codex/ui-3-moderator-drawer'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key
+      SESSION_SECRET: browser-test-session-secret-at-least-32-characters
+      PIN_SALT: browser-test-pin-salt-for-verification
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium
+        run: |
+          npm install --no-save --package-lock=false playwright
+          npx playwright install --with-deps chromium
+      - name: Verify the moderator drawer
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/phase3-baseline" 40335db11db93116d20c8f1b5050a15f7ac84c2c
+          ln -s "$PWD/node_modules" "$RUNNER_TEMP/phase3-baseline/node_modules"
+          PHASE3_BASELINE="$RUNNER_TEMP/phase3-baseline" node scripts/verify-phase3-browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase-3-moderator-drawer-before-and-after
+          path: phase3-screenshots/
