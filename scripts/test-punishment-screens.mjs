@@ -49,9 +49,9 @@ const card = (currentMemberId, count) => render(MemberCard, {
   state,
   onOpenPunishments: () => {},
 });
-assert.match(card(member.id, 0), /View punishments, 0 open/);
-assert.doesNotMatch(card(member.id, null), /View punishments/);
-assert.doesNotMatch(card('other', 2), /View punishments/);
+assert.doesNotMatch(card(member.id, 0), /Punishments/);
+assert.doesNotMatch(card(member.id, null), /Punishments/);
+assert.doesNotMatch(card('other', 2), /Punishments/);
 
 for (const [status, label] of [
   ['pending', 'Pending'], ['awaiting_assignment', 'Awaiting assignment'],

@@ -152,7 +152,7 @@ console.log('✅ PASSED: Check-in during wind-down + early wake-up stays AWAKE a
 console.log('\n--- 2. Leave Quiet Note Overflow Layout Verification ---');
 const memberCardContent = fs.readFileSync(path.join(process.cwd(), 'src/components/MemberCard.tsx'), 'utf8');
 
-// Ensure flex-1 and min-w-0 on action bar elements in SLEEPING state
+// The shared journal link wraps long labels and stays within its grid track.
 assert(
   memberCardContent.includes("bucket === 'SLEEPING'"),
   'MemberCard must handle bucket === SLEEPING'
@@ -162,12 +162,12 @@ assert(
   'MemberCard must provide Wake Up (Undo) option in sleeping state'
 );
 assert(
-  memberCardContent.includes('flex-1 min-w-0') && memberCardContent.includes('Leave quiet note'),
-  'Leave quiet note anchor must have flex-1 min-w-0 to prevent horizontal overflow'
+  memberCardContent.includes("journalLink('min-w-0 self-stretch')") && memberCardContent.includes('Quiet Note'),
+  'Quiet Note uses the shared journal link with a shrinkable grid item'
 );
 assert(
-  memberCardContent.includes('truncate') && memberCardContent.includes('Leave quiet note'),
-  'Leave quiet note text must have truncate to safely fit narrow card widths'
+  memberCardContent.includes('<span className="min-w-0">{journalLabel}</span>'),
+  'Quiet Note text can wrap to safely fit narrow card widths'
 );
 console.log('✅ PASSED: MemberCard includes Wake Up (Undo) button and flex-1 min-w-0 truncation for Leave quiet note.');
 

@@ -21,6 +21,13 @@ const myScheduleModalContent = fs.readFileSync(myScheduleModalPath, 'utf8');
 const metastrikeModalContent = fs.readFileSync(metastrikeModalPath, 'utf8');
 const memberCardContent = fs.readFileSync(memberCardPath, 'utf8');
 
+const visibleCard = memberCardContent.slice(memberCardContent.indexOf('  const journalLink'), memberCardContent.indexOf('{isDetailsOpen && ('));
+assert.match(visibleCard, /grid-cols-\[minmax\(0,1fr\)_minmax\(0,1\.9fr\)_auto\]/, 'The status and journal tracks can shrink independently of Details');
+assert.match(visibleCard, /<span className="min-w-0">\{journalLabel\}<\/span>/, 'Long journal action text can wrap without truncation');
+assert.equal([...visibleCard.matchAll(/<(?:button|a)\b[\s\S]*?min-h-\[44px\] min-w-\[44px\]/g)].length, 4,
+  'Profile, star, journal and Details have at least a 44px touch area');
+assert.match(visibleCard, /whitespace-nowrap text-base font-bold tabular-nums/, 'Converted bedtime stays on one line');
+
 // 1. ModDrawer: Approve Now button must have whitespace-nowrap and no duplicate lightning emoji
 assert(
   !modDrawerContent.includes('<span>⚡ Approve Now</span>'),

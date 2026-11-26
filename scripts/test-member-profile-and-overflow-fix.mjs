@@ -35,8 +35,8 @@ assert(
   'MemberCard supports onOpenProfile prop'
 );
 assert(
-  memberCardContent.includes('aria-label={`View ${member.discord_username}\'s profile`}'),
-  'MemberCard provides accessible profile trigger on avatar or name'
+  memberCardContent.includes('aria-label={`View ${member.discord_username}\'s profile'),
+  'MemberCard provides an accessible shared avatar and name trigger'
 );
 assert(
   memberCardContent.includes('min-h-[44px] min-w-[44px]') && memberCardContent.includes('handleProfileClick'),
