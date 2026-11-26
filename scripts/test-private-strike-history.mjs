@@ -3,6 +3,22 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { PGlite } from '@electric-sql/pglite';
 import { DateTime } from 'luxon';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { StrikeDayDetails, StrikeHistoryList } from '../src/components/StrikeHistory.tsx';
+
+const record = {
+  cycle_date: '2026-11-26', record_type: 'strike', source_type: 'moderator',
+  status: 'counted', counts: true, issued_at: '2026-11-26T18:30:00Z',
+  issuance_timezone: 'Asia/Kolkata',
+};
+const days = new Map([[record.cycle_date, [record]]]);
+const selected = renderToStaticMarkup(createElement(StrikeHistoryList, { days, selectedDate: record.cycle_date }));
+assert.match(selected, /aria-pressed="true".*Nov 26.*Strike counts/);
+const start = renderToStaticMarkup(createElement(StrikeHistoryList, { days, selectedDate: '2026-11-01' }));
+assert.match(start, /aria-pressed="false".*Nov 26/);
+const details = renderToStaticMarkup(createElement(StrikeDayDetails, { entries: [record], timezone: 'UTC' }));
+assert.match(details, /Staff correction.*Counts toward punishments.*Nov 27, 2026.*12:00 AM/);
 
 const db = new PGlite();
 const schema = readFileSync('supabase/schema.sql', 'utf8').replace('CREATE EXTENSION IF NOT EXISTS "pgcrypto";', '');

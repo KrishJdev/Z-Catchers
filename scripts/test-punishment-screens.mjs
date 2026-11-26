@@ -38,7 +38,7 @@ for (const role of ['member', 'moderator']) {
   });
   assert.match(header, /Mod Panel/);
   assert.match(header, /aria-label="Notification settings\. Push notifications on for this device"/);
-  assert.match(header, /aria-label="Open profile"/);
+  assert.match(header, /aria-label="Open account settings"/);
   assert.match(header, /role="status"[^>]*>.*Sleep Shield active<\/span>/);
 }
 

@@ -19,6 +19,9 @@ import {
   Shield,
   RefreshCw,
   LogOut,
+  Pencil,
+  UserRound,
+  ChevronRight,
 } from 'lucide-react';
 
 import { COMMON_IANA_TIMEZONES, GMT_OFFSETS, formatGmtOffset, toValidLuxonZone, detectUserTimezone, DayKey, DailySchedule, WeeklySchedule, DAY_KEYS } from '@/lib/timezone';
@@ -349,7 +352,8 @@ export function MyScheduleModal({
   };
 
   const activeSchedule = computeMemberState(currentUser, viewerTimezone);
-  const title = view === 'profile' ? 'Profile' : view === 'edit' ? 'Edit profile' : 'Sleep schedule';
+  const title = view === 'profile' ? 'Account settings' : view === 'edit' ? 'Edit profile' : 'Sleep schedule';
+  const accountHandle = currentUser.discord_handle?.trim().replace(/^@/, '');
   const openView = (next: typeof view) => {
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -365,32 +369,52 @@ export function MyScheduleModal({
           <h2 ref={headingRef} tabIndex={-1} id="modal-schedule-title" className="min-w-0 flex-1 font-bold">{title}</h2>
           <button type="button" onClick={onClose}
             className="grid min-h-[44px] min-w-[44px] place-items-center rounded-xl text-cream-secondary hover:bg-night-elevated"
-            aria-label="Close profile settings">
+            aria-label="Close account settings">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {view === 'profile' ? (
-          <div className="space-y-2 pt-4">
-            <p className="pb-1 text-sm text-cream-secondary [overflow-wrap:anywhere]">@{currentUser.discord_username}</p>
-            <button type="button" onClick={() => openView('edit')}
-              className="block min-h-[44px] w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-left text-sm font-semibold">
-              Edit profile
-            </button>
-            <button type="button" onClick={() => openView('schedule')}
-              className="block min-h-[44px] w-full rounded-xl border border-night-border bg-night-elevated px-3 py-2 text-left text-sm">
-              <span className="block font-semibold">Sleep schedule</span>
-              <span className="block text-xs text-cream-secondary">Bedtime {activeSchedule.activeBedtimeLocal} · Wake {activeSchedule.activeWakeTimeLocal}</span>
-              {pendingCooldownNotice && (
-                <span className="mt-1 block text-xs text-status-amber">
-                  Pending change applies {pendingCooldownNotice.effectiveDate}
-                  {pendingCooldownNotice.pendingBedtime && pendingCooldownNotice.pendingWakeTime &&
-                    ` · ${pendingCooldownNotice.pendingBedtime} bedtime, ${pendingCooldownNotice.pendingWakeTime} wake`}
+          <div className="pt-3">
+            <div className="flex items-center gap-3 pb-3">
+              {currentUser.avatar_url ? (
+                <img src={currentUser.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full bg-night-elevated object-cover" />
+              ) : (
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-night-elevated">
+                  <UserRound className="h-5 w-5 text-cream-secondary" aria-hidden="true" />
                 </span>
               )}
-            </button>
+              <div className="min-w-0 [overflow-wrap:anywhere]">
+                <p className="text-sm font-semibold">{currentUser.discord_username}</p>
+                {accountHandle && <p className="text-sm text-cream-secondary">@{accountHandle}</p>}
+              </div>
+            </div>
+            <div className="divide-y divide-night-border border-y border-night-border">
+              <button type="button" onClick={() => openView('edit')}
+                className="flex min-h-[44px] w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm hover:bg-night-elevated">
+                <Pencil className="h-4 w-4 shrink-0 text-cream-secondary" aria-hidden="true" />
+                <span className="min-w-0 flex-1 font-semibold">Edit profile</span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-cream-secondary" aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => openView('schedule')}
+                className="flex min-h-[44px] w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm hover:bg-night-elevated">
+                <Moon className="h-4 w-4 shrink-0 text-cream-secondary" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">Sleep schedule</span>
+                  <span className="block text-xs text-cream-secondary tabular-nums">
+                    Bedtime {activeSchedule.activeBedtimeLocal} · Wake {activeSchedule.activeWakeTimeLocal}
+                  </span>
+                  {pendingCooldownNotice && (
+                    <span className="mt-0.5 block text-xs text-status-amber">
+                      Pending change applies {pendingCooldownNotice.effectiveDate}
+                    </span>
+                  )}
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-cream-secondary" aria-hidden="true" />
+              </button>
+            </div>
             <button type="button" onClick={onLogout}
-              className="flex min-h-[44px] w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-semibold text-status-coral hover:bg-status-coral/10">
+              className="mt-2 flex min-h-[44px] w-full items-center gap-2.5 rounded-lg px-2 text-left text-sm font-semibold text-status-coral hover:bg-status-coral/10">
               <LogOut className="h-4 w-4" aria-hidden="true" /> Sign out
             </button>
           </div>
@@ -399,7 +423,7 @@ export function MyScheduleModal({
             {initialView === 'profile' && (
               <button type="button" onClick={() => openView('profile')} disabled={loading || cancelLoading}
                 className="min-h-[44px] text-sm font-semibold text-status-amber">
-                Back to Profile
+                Back to account settings
               </button>
             )}
 
