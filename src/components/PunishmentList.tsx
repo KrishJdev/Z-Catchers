@@ -167,27 +167,32 @@ export function MemberPunishmentList({ memberId, rosterMember, accountabilityRev
   const month = DateTime.fromISO(data.month, { zone: 'utc' }).toFormat('LLLL yyyy');
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border border-night-border bg-night-elevated/65 p-3">
-        <h3 className="font-semibold">{month}</h3>
-        <p className="mt-1 text-sm text-cream-secondary">Monthly strikes <strong className="text-cream-primary">{data.strikes_used}</strong></p>
-        <p className="text-sm text-cream-secondary">Metastrikes used {data.metastrikes_used}/3</p>
-        <div className="mt-3 flex gap-1.5" aria-hidden="true">
+      <section aria-labelledby="monthly-punishment-progress" className="max-w-xl rounded-xl bg-night-elevated p-3.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h3 id="monthly-punishment-progress" className="text-sm font-semibold">Monthly progress</h3>
+          <p className="text-xs text-cream-secondary">{month}</p>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-cream-secondary tabular-nums">
+          <p>Monthly strikes <strong className="text-cream-primary">{data.strikes_used}</strong></p>
+          <p>Metastrikes used <strong className="text-cream-primary">{data.metastrikes_used}/3</strong></p>
+        </div>
+        <div className="mt-2 flex gap-1.5" aria-hidden="true">
           {Array.from({ length: data.strikes_per_punishment }, (_, index) => (
             <span key={index} className={`h-1.5 flex-1 rounded-full ${index < data.strikes_toward_next ? 'bg-status-amber' : 'bg-night-border'}`} />
           ))}
         </div>
         <p className="mt-2 text-xs text-cream-secondary">{data.strikes_toward_next} of {data.strikes_per_punishment} toward your next punishment</p>
       </section>
-      <section className="space-y-2">
-        <h3 className="font-semibold">Open punishments <span className="ml-1 text-sm text-status-amber">{data.open_count}</span></h3>
+      <section aria-labelledby="open-punishments" className="space-y-2">
+        <h3 id="open-punishments" className="text-sm font-semibold">Open punishments <span className="ml-1 tabular-nums text-status-amber">{data.open_count}</span></h3>
         {data.open_items.length ? (
           <ul className="space-y-2">{data.open_items.map(item => <PunishmentDetails key={item.id} item={item} />)}</ul>
         ) : (
           <EmptyPunishments>No open punishments.</EmptyPunishments>
         )}
       </section>
-      <section className="space-y-2">
-        <h3 className="font-semibold">Completed history</h3>
+      <section aria-labelledby="completed-punishments" className="space-y-2 border-t border-night-border pt-3">
+        <h3 id="completed-punishments" className="text-sm font-semibold">Completed history</h3>
         {data.history.length ? (
           <ul className="space-y-2">{data.history.map(item => <PunishmentDetails key={item.id} item={item} />)}</ul>
         ) : <p className="text-sm text-cream-secondary">No completed punishments yet.</p>}

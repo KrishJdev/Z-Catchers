@@ -126,9 +126,9 @@ On wider viewports, Z Catchers transforms into a spacious, multi-column communit
   * Left: Fox mascot SVG logo + "Z Catchers" brand wordmark.
   * Center: Live local digital clock (`tabular-nums`) with viewer's timezone string and a read-only Sleep Shield status.
   * Right: Desktop quick-action navigation buttons:
-    * **My Sleep** opens the calendar, timetable, and punishments. Signed-in profile calendars and My Sleep use a rust lightning bolt for strike history and an amber shield for Metastrike-only days, alongside the sleep-status dot. The selected month's history lists dates newest first and opens the day inspector with the issuance time, timezone, source and counting status. Give strike history its own retry control so members can still browse sleep logs when the history service is unavailable.
+    * **My Sleep** opens the Tonight summary and the Calendar, Schedule, and Punishments views.
     * **Mod Panel** opens the moderator drawer for effective moderators.
-    * The bell opens Notification settings and reflects this device’s push status. The adjacent avatar opens Profile, with Edit profile, Sleep schedule, and Sign out.
+    * The bell opens Notification settings and reflects this device’s push status. The adjacent avatar opens Account settings, with Edit profile, Sleep schedule, and Sign out.
 * **Check-in panel:** At 768 px and up, place the same check-in instance next to the roster intro in a bordered panel. Hide the mobile navigation and let the page scroll naturally. An open manual wake draft stays mounted as the layout changes.
 * **Status Buckets & Multi-Column Member Grid:**
   * Status sections expand across the full container width.
@@ -169,6 +169,8 @@ Keep **Grace**, **Strike Issued**, **Protected by Metastrike**, and any eligible
 * **Desktop View (≥ 768px):** Centered dialog modal (`fixed inset-0 z-50 flex items-center justify-center p-4 bg-night-bg/80 backdrop-blur-md` with inner dialog `w-full max-w-lg bg-night-surface border border-night-border rounded-2xl p-6 shadow-2xl`).
 
 ### 6.2 48-Hour Cooldown Warning Callout (Inside `MyScheduleModal`)
+
+The **Account settings** sheet starts with the account avatar, display name, and Discord handle when available. Use full-width rows for **Edit profile** and **Sleep schedule**, with the effective date of a pending change beside the schedule. Use coral for **Sign out**.
 When a user edits their existing bedtime or timezone, display a clear callout box above the Save button:
 * **Style:** `bg-status-amber/10 border border-status-amber/30 rounded-xl p-3 text-xs text-cream-secondary leading-relaxed`
 * **Copy:** `"🛡️ Accountability Cooldown: Changing your bedtime or timezone takes 48 hours to take effect so nobody can dodge their bedtime at the last minute. Updating your Discord Journal link is instant."`
@@ -203,3 +205,10 @@ Use a centered Warm Dark dialog on desktop and a scrollable bottom sheet with sa
 In My Sleep, show the calendar month's requests with a text status, private reason and any decision explanation. Offer withdrawal on pending requests. Shared views use **Protected by Metastrike**.
 
 In the Mod Panel, show pending count, oldest requests first and recent decisions. Show the member, cycle, reason, submission time, applicable strike and monthly quota in each pending row. Confirm approval and require an explanation for decline. Show the hold in the member and staff task lists, where it pauses assignment or completion.
+
+### 6.5 Member profiles and My Sleep
+
+- A member profile starts with the avatar, display name, current roster status, and local clock. Keep **Open journal** visible on phones and give the star control a 44 px touch target with a pressed state. Use **Calendar** and **Schedule** view labels.
+- My Sleep begins with **Tonight** and the active cycle's resolved bedtime and wake time. Add **Punishments** to the view switcher. Put the private Metastrike request beside the selected night and the recorded and request histories below the calendar. Keep monthly progress, open punishments, and completed history in distinct sections. Display supplied deadlines on assigned tasks.
+- Place the month switcher above the weekday headings. Outline the selected day in amber, highlight the local current date with a filled numeral, and use a dot for sleep status with a rust lightning bolt for strikes and an amber shield for Metastrikes. Include the sleep and ledger status in the date button's accessible label.
+- Place selected-night details immediately after the grid on phones and beside the grid from 1024 px. Date selection brings focus to the details. Keep monthly statistics beneath the grid and use readable secondary text for recorded and target times. Keep the issuance time, timezone, source, and counting status in the selected night's strike details. Give strike history its own retry control.

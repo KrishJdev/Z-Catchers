@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, Member, getMemberSleepLogs, SleepLog, getMemberByIdSafe } from '@/lib/db';
+import { supabaseAdmin, getMemberSleepLogs, SleepLog, getMemberByIdSafe } from '@/lib/db';
 import { DateTime } from 'luxon';
 import { toValidLuxonZone } from '@/lib/timezone';
 import { isDemoSeedMember, generateDemoSleepLogs } from '@/lib/demoSeed';
-import { calculateSleepStreak, resolveActiveSleepCycleWindow, getScheduleForDay } from '@/lib/sleepEngine';
+import { calculateSleepStreak, computeMemberState, getMemberCalendarDate, resolveActiveSleepCycleWindow, getScheduleForDay } from '@/lib/sleepEngine';
 import { resolveMemberStrikeCounts } from '@/lib/strikes';
 
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -63,9 +63,10 @@ export async function GET(request: Request) {
 
     const member = rawMember;
     const memberTz = toValidLuxonZone(member.timezone);
-    const nowLocal = DateTime.utc().setZone(memberTz);
+    const nowUtc = DateTime.utc();
+    const { localNow: nowLocal, month: localMonth } = getMemberCalendarDate(member.timezone, nowUtc);
 
-    let targetMonth = monthParam ? monthParam.trim() : nowLocal.toFormat('yyyy-MM');
+    const targetMonth = monthParam ? monthParam.trim() : localMonth;
     const monthStart = DateTime.fromISO(`${targetMonth}-01`, { zone: 'utc' });
     if (!MONTH_REGEX.test(targetMonth) || !monthStart.isValid || monthStart.year === 0) {
       return NextResponse.json(
@@ -187,9 +188,9 @@ export async function GET(request: Request) {
 
     const checkinDates = (checkinRows || []).map((l: { local_date: string }) => l.local_date);
     const streakDays = calculateSleepStreak(checkinDates, nowLocal);
-    const nowUtc = DateTime.utc();
     const strikeCounts = await resolveMemberStrikeCounts(member, nowUtc);
     const activeWindow = resolveActiveSleepCycleWindow(member, nowUtc, Boolean(member.is_in_bed));
+    const { bucket } = computeMemberState(member, member.timezone, nowUtc);
 
     return NextResponse.json({
       member: {
@@ -212,6 +213,7 @@ export async function GET(request: Request) {
         role: member.role,
         is_in_bed: member.is_in_bed,
         is_woke_up: member.is_woke_up,
+        sleep_bucket: bucket,
         strikes_used: strikeCounts.strikes_used,
         strikes_count: strikeCounts.strikes_used,
         metastrikes_used: strikeCounts.metastrikes_used,

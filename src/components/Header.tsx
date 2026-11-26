@@ -132,7 +132,7 @@ export function Header({
                 {isPushEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
                 {isPushEnabled && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-status-sage ring-2 ring-night-surface" />}
               </button>
-              <button type="button" onClick={onOpenProfile} aria-haspopup="dialog" aria-label="Open profile"
+              <button type="button" onClick={onOpenProfile} aria-haspopup="dialog" aria-label="Open account settings"
                 className="flex h-11 min-w-[44px] items-center justify-center gap-2 rounded-xl border border-status-amber/40 bg-status-amber/10 px-2 text-xs font-semibold text-status-amber hover:bg-status-amber/20">
                 {currentUser.avatar_url ? (
                   <img src={currentUser.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" />
