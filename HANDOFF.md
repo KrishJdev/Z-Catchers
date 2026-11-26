@@ -1,17 +1,32 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-26T18:13:48.4564630+05:30
-> **Active working branch:** `codex/ui-2-member-cards` from GitHub `dev` at `42d2adc`. Latest implementation and verification commit `8fb2e11a135c99bdf0313d59bf80d5120b3d5155`.
+> **Last Updated:** 2026-11-26T13:14:45.567Z
+> **Active working branch:** `codex/ui-3-moderator-drawer` from `dev` at `40335db`. Verified implementation commit `01bd78a4255e814fb2556e13c7eea8be8fee8376`. [PR #126](https://github.com/KrishJdev/Z-Catchers/pull/126) targets `dev`.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
 > **Active integration:** Moderation Phases 0–4 merged to `dev`, ending with [PR #109](https://github.com/KrishJdev/Z-Catchers/pull/109). [Production PR #110](https://github.com/KrishJdev/Z-Catchers/pull/110) merged to `main` at `3c0d55a`.
 > **Merged Production Release Pull Requests:** [#15 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/15), [#20 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/20), [#22 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/22), [#24 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/24), [#26 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/26), [#28 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/28), [#50 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/50), [#52 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/52), [#59 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/59), [#61 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/61), [#76 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/76), [#79 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/79), [#81 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/81), [#83 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/83)  
 > **Punishments production release:** [PR #104](https://github.com/KrishJdev/Z-Catchers/pull/104) merged into `main` at `e72f3f6` on November 21, 2026.
+> **Phase 3 build status:** `npx tsc --noEmit`, `npm run build`, and all 56 `npm run test:unit` suites passed in [hosted CI](https://github.com/KrishJdev/Z-Catchers/actions/runs/45826268313/job/139931099005). The [dispatcher integration](https://github.com/KrishJdev/Z-Catchers/actions/runs/45826268250/job/139931098953) also passed.
 > **Phase 2 build status:** `npx tsc --noEmit`, `npm run test:unit` (56 suites), and `npm run build` passed in [hosted verification](https://github.com/KrishJdev/Z-Catchers/actions/runs/45821428341/job/139914385187). The [seeded Chromium run](https://github.com/KrishJdev/Z-Catchers/actions/runs/45822195353/job/139917029268) passed.
 > **Prior build status:** GitHub CI passed TypeScript, the build, and all 56 `npm run test:unit` suites on `e9e1115`. The dispatcher smoke run reached the shared strike-history fixture and exposed a PostgREST schema reload race. The smoke test now requests the reload and waits for that RPC before exercising the history route. Hosted checks on the follow-up are pending. [PR #123 checks](https://github.com/KrishJdev/Z-Catchers/pull/123/checks)
 
 ---
+
+## November 26 - UI/UX Phase 3 moderator drawer
+
+- Added compact searchable roster rows and a dedicated member detail screen inside the phone sheet. Returning restores the search, list scroll, and focus. The roster and member detail share the dialog at 1280 px and wider.
+- Grouped the existing schedule, journal, dated strike, pass, and account operations into three member sections. Kept the permission checks, added contextual confirmation for destructive actions, and close open editors when the target or permission is lost.
+- Added a current-versus-requested comparison of the affected nights. It includes bedtime, wake time, local timezones, and the effective date. Kept the four views in the header and matched the Punishment and Metastrike queue layouts.
+- Updated `src/components/ModDrawer.tsx`, `ModeratorStrikeReview.tsx`, `RosterRoleAction.tsx`, `ModeratorPunishmentQueue.tsx`, and `ModeratorMetastrikeQueue.tsx`. Added `src/components/ModeratorScheduleComparison.tsx` and `ModeratorQueueState.tsx`. Extended `scripts/test-moderation-drawer.mjs` and `test-ui-normalization-and-button-wrapping.mjs`, and updated `DESIGN_SYSTEM.md` and `HANDOFF.md`.
+- Chromium passed at 360, 390, 430, 768, 1024, and 1440 px. Fixtures covered Member, Moderator, and Owner access, self and staff targets, roster focus and scroll restoration, schedule save, dated strike correction, role changes with an editor open, custom approval, queue read retries, Advanced, and Escape. The 390 px drawer displayed at least three member rows at once. [Browser run](https://github.com/KrishJdev/Z-Catchers/actions/runs/45826914773/job/139933321033) · [390 px and 1440 px screenshots](https://github.com/KrishJdev/Z-Catchers/actions/runs/45826914773/artifacts/15120796937)
+
+| Milestone | Status | Next action |
+| --- | --- | --- |
+| Phase 3 moderator drawer implementation and browser verification | DONE | Review [PR #126](https://github.com/KrishJdev/Z-Catchers/pull/126). |
+| Installed iOS and Android PWA checks | TODO | Verify the native keyboard, safe areas, resume, and sheet close behavior on installed devices before release. |
+| Phase 4 Profiles and My Sleep | TODO | After Phase 3 merges, branch `codex/ui-4-profiles-my-sleep` from current `dev`. Follow the Phase 4 plan for the identity header, Calendar and Schedule tabs, and My Sleep entry points. Start with `src/components/SleepCalendarModal.tsx`, `MyScheduleModal.tsx`, `StrikeHistory.tsx`, and `PunishmentList.tsx`. |
 
 ## November 26 - UI/UX Phase 2 member cards
 
@@ -25,7 +40,7 @@
 | --- | --- | --- |
 | Phase 2 member card implementation and regression checks | DONE | Review the member-card feature branch against `dev`. |
 | UI/UX Phases 1–2 production release | TODO | After Phase 2 merges, check the installed iOS and Android PWAs and promote both phases together. |
-| Phase 3 moderator drawer | TODO | Start `codex/ui-3-moderator-drawer` from the latest `dev` after Phase 2 merges. |
+| Phase 3 moderator drawer | DONE | Implemented and verified in [PR #126](https://github.com/KrishJdev/Z-Catchers/pull/126). |
 
 ## November 26 - UI/UX Phase 1 roster dashboard and navigation
 
