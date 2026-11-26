@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { FoxMascot } from '@/components/FoxMascot';
 
@@ -77,27 +77,17 @@ export function StatusBucket({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const bucketKey = id || title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const contentId = `bucket-content-${bucketKey}`;
-  const isRestoredRef = useRef(false);
-
-  // Restore saved session override before paint to prevent visual flash / layout shift
+  // Restore the disclosure before paint. Only a member's toggle writes the preference.
   useIsomorphicLayoutEffect(() => {
-    if (typeof window === 'undefined') return;
-    isRestoredRef.current = false;
-    const saved = getSavedBucketExpansion(bucketKey, defaultExpanded);
-    setIsExpanded(saved);
-    isRestoredRef.current = true;
+    setIsExpanded(getSavedBucketExpansion(bucketKey, defaultExpanded));
   }, [bucketKey, defaultExpanded]);
-
-  // Persist committed expansion state separately after restoration guard verifies initial state has settled
-  useEffect(() => {
-    if (!isRestoredRef.current || typeof window === 'undefined') return;
-    saveBucketExpansion(bucketKey, isExpanded);
-  }, [isExpanded, bucketKey]);
 
   if (count === 0 && !showEmptyState) return null;
 
   const handleToggle = () => {
-    setIsExpanded((prev) => !prev);
+    const nextExpanded = !isExpanded;
+    setIsExpanded(nextExpanded);
+    saveBucketExpansion(bucketKey, nextExpanded);
   };
 
   return (

@@ -116,9 +116,11 @@ assert(
   'StatusBucket must restore expansion state before paint via layout effect'
 );
 assert(
-  statusBucketSource.includes('isRestoredRef'),
-  'StatusBucket must include a restoration guard to prevent un-restored default state from overwriting saved override'
+  !/useIsomorphicLayoutEffect\(\(\) => \{[^}]*saveBucketExpansion/.test(statusBucketSource),
+  'Restoring a disclosure must never write the default over the saved override'
 );
+assert.match(statusBucketSource, /const handleToggle = \(\) => \{[^}]*saveBucketExpansion\(bucketKey, nextExpanded\)/,
+  'The click must save the disclosure before a reload can interrupt rendering');
 assert(
   !statusBucketSource.match(/setIsExpanded\([^)]*sessionStorage/),
   'setIsExpanded updater must remain pure without inline sessionStorage writes'
