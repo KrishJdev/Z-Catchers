@@ -1,0 +1,36 @@
+name: Phase 4 CodeRabbit regression checks
+on:
+  push:
+    branches: [codex/verify-ui-4-review-fixes]
+permissions:
+  contents: read
+jobs:
+  calendar-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key
+      SESSION_SECRET: fixture-session-secret-at-least-32-characters-long
+      PIN_SALT: fixture-pin-salt-for-verification
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Install browser tooling
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.2
+          if command -v google-chrome >/dev/null; then
+            echo "CALENDAR_BROWSER=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          else
+            npx playwright install chromium --with-deps
+          fi
+      - name: Verify calendar races and narrow touch targets
+        run: node scripts/calendar-review-browser.cjs
