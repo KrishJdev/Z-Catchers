@@ -67,6 +67,7 @@ async function setup(browser, width = 390, isMobile = true) {
     return route.continue();
   });
   await page.goto(origin + '/calendar-review-fixture', { waitUntil: 'networkidle' });
+  await page.locator('main[data-ready="true"]').waitFor();
   return { context, page, state };
 }
 
@@ -184,10 +185,9 @@ async function main() {
     });
     const browser = await chromium.launch({ executablePath: process.env.CALENDAR_BROWSER || undefined });
     try {
-      const cases = [timezoneAndTargets(browser, true), timezoneAndTargets(browser, false), focusAndWake(browser)];
-      const results = await Promise.allSettled(cases);
-      for (const result of results) if (result.status === 'rejected') console.error(result.reason);
-      assert(results.every(result => result.status === 'fulfilled'));
+      await timezoneAndTargets(browser, true);
+      await timezoneAndTargets(browser, false);
+      await focusAndWake(browser);
     } finally { await browser.close(); }
   } finally { server.kill(); }
 }

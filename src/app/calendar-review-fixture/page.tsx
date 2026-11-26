@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Member } from '@/lib/db';
 import { SleepCalendarModal } from '@/components/SleepCalendarModal';
 
@@ -11,8 +11,10 @@ const viewer = {
 
 export default function CalendarReviewFixture() {
   const [target, setTarget] = useState<'peer' | 'viewer' | null>(null);
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   return (
-    <main>
+    <main data-ready={ready}>
       <button onClick={() => setTarget('peer')}>Open by ID</button>
       <button onClick={() => setTarget('viewer')}>Open My Sleep</button>
       {target && <SleepCalendarModal key={target} isOpen memberId={target} currentUser={viewer}
