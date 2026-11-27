@@ -69,6 +69,12 @@ for (const [status, label] of [
   if (status === 'assigned') assert.match(row, /Wind down.*&lt;two lines&gt;/);
   if (status === 'completed') assert.match(row, /2026-12-01T10:00:00Z/);
 }
+const queueTask = { status: 'awaiting_assignment', earned_cycle_date: '2026-11-30' };
+const queueRow = (memberHandle) => render(PunishmentDetails, { item: queueTask, memberName: 'Fox', memberHandle });
+assert.match(queueRow('@night_fox'), /Fox <span[^>]*>@night_fox<\/span>/);
+assert.match(queueRow('sleepy_fox'), /Fox <span[^>]*>@sleepy_fox<\/span>/);
+assert.match(queueRow(null), />Fox<\/span><\/p>/);
+assert.doesNotMatch(render(PunishmentDetails, { item: queueTask }), /@night_fox|>Fox</);
 const optionsAt = (input, zone, now) => getPunishmentDeadlineOptions(input, zone, DateTime.fromISO(now));
 for (const zone of ['Asia/Kolkata', 'GMT+05:30']) {
   assert.deepEqual(optionsAt('2026-12-05T23:30', zone, '2026-12-01T00:00Z'), {

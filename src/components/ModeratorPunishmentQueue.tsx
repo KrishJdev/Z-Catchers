@@ -7,6 +7,7 @@ import {
 } from '@/components/PunishmentList';
 import { readPunishmentFailure, type PunishmentReadFailure } from '@/lib/punishmentAvailability';
 import { queueNotice } from './ModeratorQueueState';
+import { ModerationMemberName } from './ModerationMemberName';
 
 const sections = [
   { status: 'awaiting_assignment', title: 'Needs assignment' },
@@ -15,7 +16,7 @@ const sections = [
 ] as const;
 
 type QueueStatus = typeof sections[number]['status'];
-type Task = Punishment & { member_name: string };
+type Task = Punishment & { member_id: string; member_name: string };
 type QueuePage = { items: Task[]; next_offset: number | null };
 type TaskResult = { item: Task; open_count: number };
 type TaskAction = 'assign' | 'edit' | 'complete';
@@ -37,7 +38,8 @@ async function readQueue(status: QueueStatus, offset: number, signal: AbortSigna
   return { failure: 'unavailable' };
 }
 
-export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
+export function ModeratorPunishmentQueue({ memberHandles, onTaskChanged, onAccessChanged }: {
+  memberHandles: ReadonlyMap<string, string | null>;
   onAccessChanged?: () => void;
   onTaskChanged: () => Promise<void>;
 }) {
@@ -196,7 +198,8 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
     <div ref={queueRef} className="space-y-4">
       {result && !queueFailure && (
         <p tabIndex={-1} ref={resultRef} role="status" className="rounded-xl border border-status-sage/40 bg-status-sage/10 p-3 text-sm [overflow-wrap:anywhere]">
-          {result.item.member_name} · {result.item.title} · {punishmentStatus[result.item.status]} · {result.open_count} open
+          <ModerationMemberName name={result.item.member_name} handle={memberHandles.get(result.item.member_id)} />
+          {' · '}{result.item.title} · {punishmentStatus[result.item.status]} · {result.open_count} open
         </p>
       )}
       {actionError && !editor && <p role="alert" className="text-sm text-status-coral">{actionError}</p>}
@@ -215,7 +218,7 @@ export function ModeratorPunishmentQueue({ onTaskChanged, onAccessChanged }: {
             {page.items.length === 0 ? <p className="text-sm text-cream-secondary">No items.</p> : (
               <ul className="space-y-2">
                 {page.items.map(item => (
-                  <PunishmentDetails key={item.id} item={item} memberName={item.member_name}>
+                  <PunishmentDetails key={item.id} item={item} memberName={item.member_name} memberHandle={memberHandles.get(item.member_id)}>
                     {editor?.item.id === item.id ? (
                       <form key={editor.action} className="space-y-3 pt-2" onSubmit={save}>
                         {editor.action === 'complete' ? (

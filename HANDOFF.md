@@ -1,7 +1,8 @@
 # Project Handoff Document: Z Catchers (`HANDOFF.md`)
 
-> **Last Updated:** 2026-11-26T13:14:45.567Z
-> **Active working branch:** `codex/ui-3-moderator-drawer` from `dev` at `40335db`. Verified implementation commit `01bd78a4255e814fb2556e13c7eea8be8fee8376`. [PR #126](https://github.com/KrishJdev/Z-Catchers/pull/126) targets `dev`.
+> **Last Updated:** 2026-11-27T10:30:43.392Z
+> **Active working branch:** `codex/mod-drawer-discord-handles` from `dev` at `75a038a`. Implementation commit `569eb94b4fc72171a404008c97b0c82b3a7f82c6`.
+> **Verification:** Local `npx tsc --noEmit --incremental false` and drawer, punishment screen and UI normalization tests passed. Two local database fixture suites returned 503 on both the base and feature trees. The managed Windows runner blocked a Next.js build directory write.
 > **Target Integration Branch:** `dev`  
 > **Production Branch:** `main`  
 > **Merged Integration Pull Requests:** [#14 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/14), [#16 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/16), [#17 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/17), [#18 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/18), [#19 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/19), [#21 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/21), [#23 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/23), [#25 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/25), [#27 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/27), [#44 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/44), [#49 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/49), [#51 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/51), [#53 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/53), [#54 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/54), [#55 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/55), [#56 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/56), [#57 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/57), [#58 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/58), [#60 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/60), [#72 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/72), [#73 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/73), [#74 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/74), [#75 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/75), [#77 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/77), [#78 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/78), [#80 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/80), [#82 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/82), [#84 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/84), [#85 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/85), [#86 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/86), [#87 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/87), [#89 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/89), [#90 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/90), [#91 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/91), [#92 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/92), [#93 [MERGED]](https://github.com/KrishJdev/Z-Catchers/pull/93)  
@@ -13,6 +14,18 @@
 > **Prior build status:** GitHub CI passed TypeScript, the build, and all 56 `npm run test:unit` suites on `e9e1115`. The dispatcher smoke run reached the shared strike-history fixture and exposed a PostgREST schema reload race. The smoke test now requests the reload and waits for that RPC before exercising the history route. Hosted checks on the follow-up are pending. [PR #123 checks](https://github.com/KrishJdev/Z-Catchers/pull/123/checks)
 
 ---
+
+## November 27 - Reviewed Metastrike intake and moderator identities
+
+- Opened reviewed Metastrike requests in production at `2026-11-27T10:18:44Z`. Both Metastrike flags read true. The existing activation timestamp and punishment visibility were preserved. Before enabling requests, both ledger audits returned zero issues and three consecutive scheduled requests returned HTTP 200 with zero dispatcher errors and strike-write failures.
+- Display Discord usernames in Approvals, Roster, Punishments, and Metastrikes. Both queues resolve the stored handle by member ID against the authorized roster. Names still render when the roster has no handle.
+- Updated `src/components/ModDrawer.tsx`, `ModerationMemberName.tsx`, `ModeratorMetastrikeQueue.tsx`, `ModeratorPunishmentQueue.tsx`, `PunishmentList.tsx`, `RosterRoleAction.tsx`, `src/lib/metastrikeScreens.ts`, `scripts/test-moderation-drawer.mjs`, `scripts/test-punishment-screens.mjs`, and `HANDOFF.md`.
+
+| Milestone | Status | Next action |
+| --- | --- | --- |
+| Reviewed Metastrike intake | DONE | Verify the next eligible member request and staff review from My Sleep and Mod Panel. |
+| Moderator Discord usernames | IN PROGRESS | Review hosted checks and merge the feature PR into `dev`, then release through `main`. |
+
 
 ## November 26 - UI/UX Phase 3 moderator drawer
 

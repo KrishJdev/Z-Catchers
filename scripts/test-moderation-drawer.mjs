@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ModDrawer } from '../src/components/ModDrawer.tsx';
 import { RosterRoleAction } from '../src/components/RosterRoleAction.tsx';
 import { ModeratorScheduleComparison } from '../src/components/ModeratorScheduleComparison.tsx';
+import { ModerationMemberName } from '../src/components/ModerationMemberName.tsx';
 
 const member = {
   id: 'candidate',
@@ -14,6 +15,13 @@ const member = {
   discord_handle: 'nightfox',
 };
 const render = (Component, props) => renderToStaticMarkup(createElement(Component, props));
+const memberName = handle => render(ModerationMemberName, { name: member.discord_username, handle });
+assert.equal(memberName(' @nightfox '), memberName('nightfox'));
+assert.match(memberName('nightfox'), /Night Fox <span[^>]*>@nightfox<\/span>/);
+assert.match(memberName('@anotherfox'), /Night Fox <span[^>]*>@anotherfox<\/span>/);
+for (const handle of [undefined, null, '', ' @ ']) {
+  assert.match(memberName(handle), />Night Fox<\/span>$/);
+}
 const roleAction = (overrides = {}, props = {}) => render(RosterRoleAction, {
   member: { ...member, ...overrides },
   isOwner: true,
@@ -24,6 +32,7 @@ assert.match(roleAction(), /Make moderator for Night Fox/);
 assert.doesNotMatch(roleAction(), />Confirm<|>Cancel</);
 const confirmation = roleAction({}, { confirming: true });
 assert.match(confirmation, /Make <strong>Night Fox<\/strong>.*@nightfox.* a moderator\?/);
+assert.equal(roleAction({ discord_handle: '@nightfox' }, { confirming: true }), confirmation);
 assert.match(confirmation, /aria-expanded="true"/);
 assert.match(confirmation, />Confirm<\/button>.*>Cancel<\/button>/);
 assert.equal((confirmation.match(/min-h-\[44px\]/g) || []).length, 3);
