@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, type FormEvent } from 'react';
 import { EmptyPunishments } from './PunishmentList';
 import { queueNotice } from './ModeratorQueueState';
+import { ModerationMemberName } from './ModerationMemberName';
 import {
   fetchMetastrikes, moderatorMetastrikesEndpoint as endpoint, metastrikeDate, metastrikeQuotaLabel,
   metastrikeReasonError, metastrikeStatuses, metastrikeTime,
@@ -26,7 +27,8 @@ function strikeEvidence(item: StaffMetastrikeRequest) {
   return 'No nightly strike recorded yet';
 }
 
-export function ModeratorMetastrikeQueue({ onReviewed, onAccessChanged }: {
+export function ModeratorMetastrikeQueue({ memberHandles, onReviewed, onAccessChanged }: {
+  memberHandles: ReadonlyMap<string, string | null>;
   onReviewed: () => void;
   onAccessChanged?: () => void;
 }) {
@@ -172,7 +174,7 @@ export function ModeratorMetastrikeQueue({ onReviewed, onAccessChanged }: {
                     {page.items.map(item => (
                       <li key={item.id} className="space-y-2 rounded-xl border border-night-border bg-night-elevated/65 p-3 [overflow-wrap:anywhere]">
                         <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm font-semibold">
-                          <span>{item.member_name}</span>
+                          <ModerationMemberName name={item.member_name} handle={memberHandles.get(item.member_id)} />
                           <time dateTime={item.cycle_date}>{metastrikeDate(item.cycle_date)}</time>
                           <span className="text-status-amber">{metastrikeStatuses[item.status]}</span>
                         </div>

@@ -49,6 +49,7 @@ export type MemberMetastrikes = {
 };
 
 export type StaffMetastrikeRequest = MetastrikeRequest & {
+  member_id: string;
   member_name: string;
   member_active: boolean;
   cutoff_at: string;
