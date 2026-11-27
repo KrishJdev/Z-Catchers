@@ -3,6 +3,7 @@
 import React, { useEffect, useState, type ReactNode } from 'react';
 import { DateTime } from 'luxon';
 import { FoxMascot } from '@/components/FoxMascot';
+import { ModerationMemberName } from './ModerationMemberName';
 import { readPunishmentFailure, type PunishmentReadFailure } from '@/lib/punishmentAvailability';
 import { getPunishmentDeadlineState } from '@/lib/sleepEngine';
 import type { Member } from '@/lib/db';
@@ -38,9 +39,10 @@ interface MemberPunishments {
   history: Punishment[];
 }
 
-export function PunishmentDetails({ item, memberName, children }: {
+export function PunishmentDetails({ item, memberName, memberHandle, children }: {
   item: Punishment;
   memberName?: string;
+  memberHandle?: string | null;
   children?: ReactNode;
 }) {
   const [, refreshDeadline] = useState(0);
@@ -64,7 +66,7 @@ export function PunishmentDetails({ item, memberName, children }: {
   const earned = DateTime.fromISO(item.earned_cycle_date, { zone: 'utc' }).toLocaleString(DateTime.DATE_MED);
   return (
     <li className="space-y-2 rounded-xl border border-night-border bg-night-elevated/65 p-3 [overflow-wrap:anywhere]">
-      {memberName && <p className="font-semibold">{memberName}</p>}
+      {memberName && <p className="font-semibold"><ModerationMemberName name={memberName} handle={memberHandle} /></p>}
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
         <span className="font-semibold text-status-amber">{punishmentStatus[item.status]}</span>
         <span className="text-cream-secondary">Earned <time dateTime={item.earned_cycle_date}>{earned}</time></span>

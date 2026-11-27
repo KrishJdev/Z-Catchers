@@ -19,6 +19,7 @@ import { FoxMascot } from './FoxMascot';
 import type { Member, ModerationRosterMember } from '@/lib/db';
 import { getScheduleForDay } from '@/lib/sleepEngine';
 import { ModeratorScheduleComparison } from './ModeratorScheduleComparison';
+import { formatDiscordHandle, ModerationMemberName } from './ModerationMemberName';
 import { queueNotice } from './ModeratorQueueState';
 import { pendingScheduleSnapshot } from '@/lib/pendingSchedule';
 import { isDemoSeedMember } from '@/lib/demoSeed';
@@ -440,6 +441,8 @@ export function ModDrawer({
     return modMembers.filter((m) => !!m.pending_effective_at && canManage(m));
   }, [modMembers, canManage]);
 
+  const memberHandles = useMemo(() => new Map(modMembers.map(member => [member.id, member.discord_handle])), [modMembers]);
+
   // Filter roster for search query
   const filteredRoster = useMemo(() => {
     if (!searchQuery.trim()) return modMembers;
@@ -447,7 +450,7 @@ export function ModDrawer({
     return modMembers.filter(
       (m) =>
         m.discord_username.toLowerCase().includes(q) ||
-        (m.discord_handle && m.discord_handle.toLowerCase().includes(q)) ||
+        formatDiscordHandle(m.discord_handle)?.toLowerCase().includes(q) ||
         m.timezone.toLowerCase().includes(q)
     );
   }, [modMembers, searchQuery]);
@@ -927,7 +930,7 @@ export function ModDrawer({
           </button>
           {confirming && (
             <div id={id} className="rounded-lg border border-night-border bg-night-bg p-3 text-sm">
-              <p className="break-words">{prompt} <strong>{member.discord_username}</strong>?</p>
+              <p className="break-words">{prompt} <strong><ModerationMemberName name={member.discord_username} handle={member.discord_handle} /></strong>?</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button type="button" className={primaryButton + ' !bg-status-coral'} disabled={busy} onClick={() => {
                   setConfirmation(null);
@@ -1033,7 +1036,7 @@ export function ModDrawer({
         <section aria-labelledby="mod-member-access" className="space-y-2 border-t border-night-border pt-3">
           <h4 id="mod-member-access" className="font-semibold">Account access</h4>
           <p className="break-words text-sm text-cream-secondary">
-            {member.discord_id ? 'Discord linked' : 'Discord not linked'}{member.discord_handle && ` · @${member.discord_handle}`}
+            {member.discord_id ? 'Discord linked' : 'Discord not linked'}
           </p>
           {canManageAccount && (
             <>
@@ -1463,13 +1466,14 @@ export function ModDrawer({
           {activeTab === 'punishments' && (
             <section aria-labelledby="mod-punishments-heading" className="space-y-3">
               <h3 id="mod-punishments-heading" className="text-base font-bold">Punishment queue</h3>
-              <ModeratorPunishmentQueue onTaskChanged={onRosterChanged} onAccessChanged={handleDrawerAccessChanged} />
+              <ModeratorPunishmentQueue memberHandles={memberHandles} onTaskChanged={onRosterChanged} onAccessChanged={handleDrawerAccessChanged} />
             </section>
           )}
           {activeTab === 'metastrikes' && (
             <section aria-labelledby="mod-metastrikes-heading" className="space-y-3">
               <h3 id="mod-metastrikes-heading" className="text-base font-bold">Metastrike queue</h3>
-              <ModeratorMetastrikeQueue key={actorId} onReviewed={() => void onMetastrikeReviewed()} onAccessChanged={handleDrawerAccessChanged} />
+              <ModeratorMetastrikeQueue key={actorId} memberHandles={memberHandles}
+                onReviewed={() => void onMetastrikeReviewed()} onAccessChanged={handleDrawerAccessChanged} />
             </section>
           )}
           {activeTab === 'pending' && (
@@ -1495,7 +1499,9 @@ export function ModDrawer({
                     <li key={member.id} className="space-y-3 rounded-xl border border-night-border bg-night-elevated p-3 sm:p-4">
                       <div className="flex items-center gap-3">
                         <RosterAvatar member={member} />
-                        <h4 className="min-w-0 break-words font-semibold">{member.discord_username}</h4>
+                        <h4 className="min-w-0 font-semibold">
+                          <ModerationMemberName name={member.discord_username} handle={member.discord_handle} />
+                        </h4>
                       </div>
                       <ModeratorScheduleComparison member={member} />
                       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-night-border pt-2">
@@ -1552,8 +1558,9 @@ export function ModDrawer({
                   <p className={queueNotice}>{searchQuery.trim() ? 'No members matched your search.' : 'No members on the roster.'}</p>
                 )}
                 <ul className="divide-y divide-night-border">
-                  {filteredRoster.map(member => (
-                    <li key={member.id}>
+                  {filteredRoster.map(member => {
+                    const handle = formatDiscordHandle(member.discord_handle);
+                    return <li key={member.id}>
                       <button type="button" id={`mod-roster-member-${member.id}`} aria-controls={selectedMember?.id === member.id ? 'mod-member-detail' : undefined}
                         aria-current={selectedMember?.id === member.id ? 'true' : undefined}
                         onClick={event => openMember(member, event.currentTarget)}
@@ -1562,6 +1569,7 @@ export function ModDrawer({
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-semibold" title={member.discord_username}>{member.discord_username}</span>
                           <span className="flex flex-wrap gap-x-2 text-xs text-cream-secondary">
+                            {handle && <span className="[overflow-wrap:anywhere]">{handle}</span>}
                             <span>{memberRoleLabel(member)}{!member.is_active && ' · Inactive'}</span>
                             {member.can_review_strikes && !member.strike_counts_unavailable && (
                               <span className="tabular-nums">{strikeTotal(member)} {strikeTotal(member) === 1 ? 'strike' : 'strikes'}</span>
@@ -1570,8 +1578,8 @@ export function ModDrawer({
                         </span>
                         <ChevronRight className="h-4 w-4 shrink-0 text-cream-secondary" aria-hidden="true" />
                       </button>
-                    </li>
-                  ))}
+                    </li>;
+                  })}
                 </ul>
               </section>
 
@@ -1585,7 +1593,7 @@ export function ModDrawer({
                     <RosterAvatar member={selectedMember} />
                     <div className="min-w-0">
                       <h3 id="mod-member-heading" tabIndex={-1} className="break-words text-lg font-bold focus-visible:outline-status-amber">
-                        {selectedMember.discord_username}
+                        <ModerationMemberName name={selectedMember.discord_username} handle={selectedMember.discord_handle} />
                       </h3>
                       <p className="text-sm text-cream-secondary">
                         {memberRoleLabel(selectedMember)} · {selectedMember.is_active ? 'Active' : 'Inactive'}

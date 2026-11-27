@@ -2,6 +2,7 @@
 
 import React, { useEffect, useId, useRef } from 'react';
 import type { Member } from '@/lib/db';
+import { formatDiscordHandle } from './ModerationMemberName';
 
 export type ModeratorRoleChange = {
   member_id: string;
@@ -29,7 +30,7 @@ export function RosterRoleAction({ member, isOwner, confirming, busy, onToggle, 
 
   const granting = role === 'member';
   const label = granting ? 'Make moderator' : 'Remove moderator';
-  const account = member.discord_handle ? `@${member.discord_handle}` : member.discord_id;
+  const account = formatDiscordHandle(member.discord_handle) ?? member.discord_id;
   return (
     <div>
       <button
